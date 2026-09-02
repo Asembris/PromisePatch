@@ -6,11 +6,10 @@ PromisePatch turns one spoken physical-world exception ("today's raspberry deliv
 arrive") into a correct, consent-respecting, selectively-applied set of customer-promise
 recoveries, with the reasoning visible. Made-to-order bakery vertical.
 
-## Current phase
+## Current state
 
-**Phase 0 — foundation and deterministic engine core.** Only `packages/promise-graph`
-exists: a pure Python engine with no I/O. No backend, frontend, database, Docker, AWS,
-Bedrock, MCP, messaging or order simulator.
+Deterministic engine, backend foundation, and PostgreSQL baseline schema are complete. Next
+work is the database audit, immutability, and least-privilege runtime boundary.
 
 ## Authoritative documents
 
