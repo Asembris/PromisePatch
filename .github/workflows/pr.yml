@@ -1,0 +1,108 @@
+name: pr
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.9.18"
+  GITLEAKS_VERSION: "8.21.2"
+
+# Phase 0 runs exactly six jobs: lint, types, tests, properties, imports, secrets.
+# There is no Docker, frontend, AWS or LLM job, because there is nothing yet for them to
+# test and a job that always passes is worse than no job. Each later phase adds its own.
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  types:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      - run: uv run mypy packages/promise-graph
+
+  tests:
+    name: pytest + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      - run: >
+          uv run pytest packages/promise-graph
+          --cov=promise_graph
+          --cov-branch
+          --cov-report=term-missing
+          --cov-fail-under=95
+
+  properties:
+    name: hypothesis (ci profile)
+    runs-on: ubuntu-latest
+    env:
+      HYPOTHESIS_PROFILE: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      - run: uv run pytest packages/promise-graph/tests/properties
+
+  imports:
+    name: import-linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      - run: uv run lint-imports
+
+  secrets:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The pinned upstream binary rather than gitleaks-action, which requires a licence key
+      # for organisation-owned repositories.
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+      - name: Scan for secrets
+        run: ./gitleaks detect --source . --redact --no-banner --exit-code 1
