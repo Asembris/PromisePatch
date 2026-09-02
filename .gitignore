@@ -1,0 +1,39 @@
+# Planning documents — local only, never tracked
+ARCHITECTURE_PLAN.md
+PROMISEPATCH_PRODUCT_SPEC.md
+
+# Python environments
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Python build / cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local data / infra artifacts
+*.sqlite3
+*.db
+cdk.out/
