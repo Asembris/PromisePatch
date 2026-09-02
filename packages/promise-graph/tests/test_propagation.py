@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import EdgeKind, ExceptionCategory, RecipeLineRole, TaskState
 from promise_graph.propagation import propagate
-from tests.fixtures import hollow_oak as ho
 from tests.fixtures import settle
 
 

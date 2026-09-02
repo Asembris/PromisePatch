@@ -9,15 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from promise_graph.model import (
-    ConstraintKind,
-    CustomerConstraint,
-    InventoryLedgerEntry,
-    LedgerSourceKind,
-    OrderId,
-)
-from promise_graph.snapshot import GraphSnapshot
-from tests.fixtures.hollow_oak import (
+from promise_graph.examples.hollow_oak import (
     AUTHOR,
     BLUEBERRIES,
     CONSTRAINT_B_ASK,
@@ -30,6 +22,14 @@ from tests.fixtures.hollow_oak import (
     VP_TODAY,
     VP_TOMORROW,
 )
+from promise_graph.model import (
+    ConstraintKind,
+    CustomerConstraint,
+    InventoryLedgerEntry,
+    LedgerSourceKind,
+    OrderId,
+)
+from promise_graph.snapshot import GraphSnapshot
 
 CONSTRAINT_A_EXCLUDE_STRAWBERRIES = "cn-a-exclude-strawberries"
 CONSTRAINT_B_EXCLUDE_STRAWBERRIES = "cn-b-exclude-strawberries"

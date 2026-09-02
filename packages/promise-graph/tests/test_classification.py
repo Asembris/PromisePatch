@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from promise_graph.classification import analyze, classify
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import (
     REJECTION_PRECEDENCE,
     Classification,
@@ -20,7 +21,6 @@ from promise_graph.model import (
 from promise_graph.options import OptionSet, RejectedCandidate
 from promise_graph.propagation import propagate
 from tests.fixtures import adversarial as adv
-from tests.fixtures import hollow_oak as ho
 from tests.fixtures import settle, settle_and_analyze
 
 # --------------------------------------------------------------------------- one per rule id

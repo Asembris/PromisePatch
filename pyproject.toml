@@ -3,17 +3,18 @@ name = "promisepatch-workspace"
 version = "0.0.0"
 description = "PromisePatch monorepo workspace root"
 requires-python = ">=3.12,<3.13"
-dependencies = ["promise-graph"]
+dependencies = ["promise-graph", "promisepatch"]
 
 [tool.uv]
 package = false
 native-tls = true
 
 [tool.uv.workspace]
-members = ["packages/promise-graph"]
+members = ["packages/promise-graph", "apps/backend"]
 
 [tool.uv.sources]
 promise-graph = { workspace = true }
+promisepatch = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -23,6 +24,7 @@ dev = [
     "mypy>=1.11",
     "ruff>=0.6",
     "import-linter>=2.0",
+    "httpx2>=2.0,<3",
 ]
 
 # --------------------------------------------------------------------------- ruff
@@ -30,7 +32,7 @@ dev = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["packages/promise-graph/src", "packages/promise-graph"]
+src = ["packages/promise-graph/src", "packages/promise-graph", "apps/backend/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "DTZ", "SIM", "RET", "T20", "RUF"]
@@ -47,7 +49,7 @@ strict = true
 warn_unreachable = true
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
-mypy_path = ["packages/promise-graph/src", "packages/promise-graph"]
+mypy_path = ["packages/promise-graph/src", "packages/promise-graph", "apps/backend/src"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -57,14 +59,15 @@ disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["packages/promise-graph/tests"]
-addopts = "-q --strict-markers --strict-config"
+testpaths = ["packages/promise-graph/tests", "apps/backend/tests"]
+pythonpath = ["packages/promise-graph"]
+addopts = "-q --strict-markers --strict-config --import-mode=importlib"
 markers = ["property: Hypothesis property-based invariant tests"]
 
 # --------------------------------------------------------------------------- coverage
 
 [tool.coverage.run]
-source = ["promise_graph"]
+source = ["promise_graph", "promisepatch"]
 branch = true
 
 [tool.coverage.report]
@@ -79,13 +82,14 @@ exclude_lines = [
 # --------------------------------------------------------------------------- import-linter
 
 [tool.importlinter]
-root_packages = ["promise_graph"]
+root_packages = ["promise_graph", "promisepatch"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "promise_graph module layering"
 type = "layers"
 layers = [
+    "promise_graph.examples",
     "promise_graph.evidence",
     "promise_graph.revalidation",
     "promise_graph.fingerprint",
@@ -106,8 +110,20 @@ forbidden_modules = [
     "logging",
     "os",
     "pathlib",
+    "promisepatch",
     "random",
     "socket",
     "subprocess",
     "urllib",
+]
+
+[[tool.importlinter.contracts]]
+name = "promisepatch module layering"
+type = "layers"
+layers = [
+    "promisepatch.cli",
+    "promisepatch.main",
+    "promisepatch.api",
+    "promisepatch.observability",
+    "promisepatch.config",
 ]

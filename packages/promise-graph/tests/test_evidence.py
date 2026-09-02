@@ -6,10 +6,10 @@ import json
 from datetime import datetime
 
 from promise_graph.evidence import Reachability, build_case_evidence, build_promise_evidence
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.fingerprint import canonical_json
 from promise_graph.model import Classification
 from tests.fixtures import adversarial as adv
-from tests.fixtures import hollow_oak as ho
 from tests.fixtures import settle, settle_and_analyze
 
 

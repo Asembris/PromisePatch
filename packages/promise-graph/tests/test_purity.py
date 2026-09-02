@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 import promise_graph
-from tests.fixtures import hollow_oak as ho
+from promise_graph.examples import hollow_oak as ho
 
 SRC = Path(promise_graph.__file__).parent
 

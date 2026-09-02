@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.fingerprint import constraint_hash, fingerprint, scope_for
 from promise_graph.model import (
     ApprovalDecisionKind,
@@ -19,7 +20,6 @@ from promise_graph.model import (
 from promise_graph.options import approval_deadline
 from promise_graph.revalidation import RevalidationOutcome, revalidate
 from promise_graph.snapshot import GraphSnapshot
-from tests.fixtures import hollow_oak as ho
 from tests.fixtures import settle, settle_and_analyze
 
 

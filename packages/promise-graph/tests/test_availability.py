@@ -16,9 +16,9 @@ from promise_graph.availability import (
     reserved,
     supply,
 )
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import ReceivedState, TaskState
 from promise_graph.snapshot import LineSettlement
-from tests.fixtures import hollow_oak as ho
 
 
 def test_on_hand_sums_the_ledger(anchor: datetime) -> None:

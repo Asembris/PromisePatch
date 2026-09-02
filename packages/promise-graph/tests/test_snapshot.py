@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import (
     CustomerPromise,
     InventoryReservation,
@@ -19,7 +20,6 @@ from promise_graph.model import (
     TaskState,
 )
 from promise_graph.snapshot import GraphSnapshot, SnapshotIntegrityError, reservations_for_line
-from tests.fixtures import hollow_oak as ho
 
 NOW = datetime(2026, 3, 4, 7, 0, tzinfo=UTC)
 

@@ -1,0 +1,67 @@
+"""The ``api`` entrypoint: a FastAPI application factory.
+
+``create_app`` takes its settings as an argument so tests can build an app for a given
+environment without touching ``os.environ``. The module-level ``app`` is what uvicorn imports
+in production and under ``--reload``.
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from uuid import uuid4
+
+from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
+
+from promisepatch import __version__
+from promisepatch.api.middleware import CorrelationIdMiddleware
+from promisepatch.api.routers import health_router
+from promisepatch.config import Environment, Settings, get_settings
+from promisepatch.observability import configure_logging, get_logger
+
+logger = get_logger(__name__)
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build the API application for the given settings."""
+    resolved = settings or get_settings()
+    configure_logging(resolved)
+    boot_id = str(uuid4())
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        logger.info("api.start", boot_id=boot_id, env=str(resolved.env), version=__version__)
+        yield
+        logger.info("api.stop", boot_id=boot_id)
+
+    # Interactive docs are a development affordance, not a product surface: they are closed
+    # in a deployed environment rather than left open behind an unauthenticated path.
+    expose_docs = resolved.env is not Environment.AWS
+
+    app = FastAPI(
+        title="PromisePatch API",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/docs" if expose_docs else None,
+        redoc_url=None,
+        openapi_url="/openapi.json" if expose_docs else None,
+    )
+    app.state.boot_id = boot_id
+    app.state.settings = resolved
+
+    app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(resolved.cors_origin_list),
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["X-Correlation-ID"],
+    )
+
+    app.include_router(health_router)
+    return app
+
+
+app = create_app()

@@ -14,13 +14,13 @@ from promise_graph.availability import (
     expected,
     on_hand,
 )
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import (
     ExceptionCategory,
     LedgerSourceKind,
     PhysicalException,
     ReceivedState,
 )
-from tests.fixtures import hollow_oak as ho
 
 
 def test_raspberry_only_settles_two_lines_and_posts_once(anchor: datetime) -> None:

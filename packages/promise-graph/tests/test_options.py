@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import (
     OptionKind,
     PhysicalException,
@@ -23,7 +24,6 @@ from promise_graph.options import (
 from promise_graph.propagation import propagate
 from promise_graph.snapshot import GraphSnapshot
 from tests.fixtures import adversarial as adv
-from tests.fixtures import hollow_oak as ho
 from tests.fixtures import settle
 
 

@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import Classification, ReasonDetail, RuleId
 from tests.fixtures import adversarial as adv
 from tests.fixtures import classifications, settle_and_analyze
-from tests.fixtures import hollow_oak as ho
 
 BLOCKED = Classification.BLOCKED
 AUTO = Classification.AUTO_RECOVERABLE

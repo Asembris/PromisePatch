@@ -11,10 +11,10 @@ from decimal import Decimal
 
 import pytest
 
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import Classification, ReasonDetail, RuleId
 from promise_graph.snapshot import GraphSnapshot
 from tests.fixtures import classifications, settle_and_analyze
-from tests.fixtures import hollow_oak as ho
 
 ANCHORS = [
     datetime(2026, 3, 4, 7, 0, tzinfo=UTC),

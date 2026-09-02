@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+from promise_graph.examples import hollow_oak as ho
 from promise_graph.fingerprint import (
     TrackScope,
     canonical_json,
@@ -20,7 +21,6 @@ from promise_graph.fingerprint import (
 from promise_graph.model import OrderState, TaskState
 from promise_graph.propagation import propagate
 from promise_graph.snapshot import GraphSnapshot
-from tests.fixtures import hollow_oak as ho
 from tests.fixtures import settle, settle_and_analyze
 
 Mutation = Callable[[GraphSnapshot], GraphSnapshot]
