@@ -15,6 +15,7 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,9 +41,26 @@ class Settings(BaseSettings):
     log_level: str = "info"
     cors_origins: str = "http://localhost:5173"
 
+    migration_database_url: SecretStr | None = None
+    """Admin/DDL connection, used by Alembic and by schema tests. Never by request handlers.
+
+    A :class:`~pydantic.SecretStr` so the credential cannot reach a log line, a traceback or a
+    ``repr`` by accident. The runtime connection is a separate, least-privileged role and a
+    separate setting; it does not exist yet.
+    """
+
     @property
     def is_local(self) -> bool:
         return self.env is Environment.LOCAL
+
+    def require_migration_database_url(self) -> str:
+        """The DDL connection string, or a precise failure naming what to configure."""
+        if self.migration_database_url is None:
+            raise RuntimeError(
+                "PP_MIGRATION_DATABASE_URL is not configured; "
+                "set it to a postgresql+asyncpg:// URI before running migrations."
+            )
+        return self.migration_database_url.get_secret_value()
 
     @property
     def cors_origin_list(self) -> tuple[str, ...]:

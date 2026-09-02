@@ -25,6 +25,7 @@ dev = [
     "ruff>=0.6",
     "import-linter>=2.0",
     "httpx2>=2.0,<3",
+    "pytest-asyncio>=0.24,<1",
 ]
 
 # --------------------------------------------------------------------------- ruff
@@ -40,6 +41,9 @@ ignore = ["RUF012"]
 
 [tool.ruff.lint.per-file-ignores]
 "packages/promise-graph/tests/**" = ["N802", "N803", "N806"]
+# Migration bodies are generated SQL text: a CHECK listing twelve rule ids cannot be
+# wrapped without changing the statement it emits.
+"apps/backend/alembic/versions/**" = ["E501"]
 
 # --------------------------------------------------------------------------- mypy
 
@@ -62,7 +66,12 @@ minversion = "8.0"
 testpaths = ["packages/promise-graph/tests", "apps/backend/tests"]
 pythonpath = ["packages/promise-graph"]
 addopts = "-q --strict-markers --strict-config --import-mode=importlib"
-markers = ["property: Hypothesis property-based invariant tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "property: Hypothesis property-based invariant tests",
+    "integration: needs a live PostgreSQL database (PP_MIGRATION_DATABASE_URL)",
+]
 
 # --------------------------------------------------------------------------- coverage
 
