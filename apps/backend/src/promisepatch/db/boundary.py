@@ -29,16 +29,28 @@ RUNTIME_ROLE = "promisepatch_app"
 
 ASSERT_GOVERNED_FUNCTION = "assert_governed_write"
 REJECT_MUTATION_FUNCTION = "reject_mutation"
+NOTIFY_EVENT_FUNCTION = "notify_domain_event"
 
 GOVERNED_WRITE_TRIGGER = "trg_10_governed_write"
 GOVERNED_TRUNCATE_TRIGGER = "trg_11_governed_truncate"
 APPEND_ONLY_TRIGGER = "trg_00_append_only"
 NO_TRUNCATE_TRIGGER = "trg_01_no_truncate"
+NOTIFY_EVENT_TRIGGER = "trg_20_notify_domain_event"
 """Numeric prefixes are load-bearing.
 
 PostgreSQL fires triggers of the same timing in name order, so ``trg_00_append_only`` runs
 before ``trg_10_governed_write``: an update to an append-only table fails as immutable rather
 than as unaudited, whether or not the transaction was authorised.
+
+``trg_20_notify_domain_event`` sorts last and fires ``AFTER INSERT``, so the event spine
+announces a row only once the guards have accepted it.
+"""
+
+EVENT_CHANNEL = "promisepatch_events"
+"""The ``LISTEN``/``NOTIFY`` channel a committed domain event announces itself on.
+
+A wake-up hint, never a delivery mechanism. The payload is one sequence number, the durable row
+is the state, and a listener that missed a notification recovers by reading the ledger.
 """
 
 GOVERNED_TABLES: frozenset[str] = frozenset(

@@ -59,6 +59,13 @@ mypy_path = ["packages/promise-graph/src", "packages/promise-graph", "apps/backe
 module = "tests.*"
 disallow_untyped_decorators = false
 
+# asyncpg ships no py.typed marker. The driver is used directly only by the event listener,
+# which wraps it behind a Protocol naming the four calls it makes, so the untyped surface is
+# one import wide rather than spread through the application.
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
+ignore_missing_imports = true
+
 # --------------------------------------------------------------------------- pytest
 
 [tool.pytest.ini_options]

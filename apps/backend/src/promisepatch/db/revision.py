@@ -14,5 +14,5 @@ from __future__ import annotations
 
 from typing import Final
 
-HEAD_REVISION: Final = "0003_runtime_readiness_access"
+HEAD_REVISION: Final = "0004_domain_event_notifications"
 """The Alembic revision a database must be at for this code to be ready to serve."""
