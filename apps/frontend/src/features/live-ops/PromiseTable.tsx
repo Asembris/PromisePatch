@@ -64,9 +64,12 @@ export function PromiseTable({ promises }: { promises: readonly PromiseView[] })
 function PromiseRow({ promise }: { promise: PromiseView }): ReactNode {
   return (
     <tr data-testid="promise-row" data-promise-id={promise.id} className="border-b border-edge last:border-0">
+      {/* Date first, then time. The order book routinely spans several days, and leading with
+          the clock made a correctly ordered list read as though it jumped backwards — 19:30
+          followed by 11:00 is ascending only once the day is the thing the eye reads first. */}
       <td className={`${CELL} whitespace-nowrap`}>
-        <div className="font-medium">{formatTime(promise.due_at)}</div>
-        <div className="text-xs text-muted">{formatDateTime(promise.due_at)}</div>
+        <div className="font-medium">{formatDateTime(promise.due_at)}</div>
+        <div className="text-xs text-muted">order due {formatTime(promise.order_due_at)}</div>
       </td>
 
       <td className={CELL}>
