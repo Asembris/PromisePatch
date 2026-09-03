@@ -45,8 +45,17 @@ class Settings(BaseSettings):
     """Admin/DDL connection, used by Alembic and by schema tests. Never by request handlers.
 
     A :class:`~pydantic.SecretStr` so the credential cannot reach a log line, a traceback or a
-    ``repr`` by accident. The runtime connection is a separate, least-privileged role and a
-    separate setting; it does not exist yet.
+    ``repr`` by accident. The runtime connection is a separate, least-privileged role, whose
+    password is :attr:`db_app_password`.
+    """
+
+    db_app_password: SecretStr | None = None
+    """Password for ``promisepatch_app``, the least-privileged runtime role.
+
+    Read in exactly two places: the migration that creates the role, and the database tests
+    that connect as it to prove what it cannot do. The role's connection string is derived from
+    the administrative one -- same host, same database, different login -- so there is one
+    credential here rather than a second URI to keep in step.
     """
 
     @property
@@ -61,6 +70,15 @@ class Settings(BaseSettings):
                 "set it to a postgresql+asyncpg:// URI before running migrations."
             )
         return self.migration_database_url.get_secret_value()
+
+    def require_db_app_password(self) -> str:
+        """The runtime role's password, or a precise failure naming what to configure."""
+        if self.db_app_password is None:
+            raise RuntimeError(
+                "PP_DB_APP_PASSWORD is not configured; "
+                "set it before creating or connecting as the promisepatch_app role."
+            )
+        return self.db_app_password.get_secret_value()
 
     @property
     def cors_origin_list(self) -> tuple[str, ...]:
