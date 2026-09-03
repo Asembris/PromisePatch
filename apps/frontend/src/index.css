@@ -1,0 +1,28 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-surface: oklch(99% 0.002 250);
+  --color-panel: oklch(100% 0 0);
+  --color-edge: oklch(91% 0.005 250);
+  --color-ink: oklch(24% 0.012 250);
+  --color-muted: oklch(52% 0.012 250);
+  --font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+}
+
+/* A visible focus ring everywhere, rather than per-component. Keyboard use is a baseline. */
+:focus-visible {
+  outline: 2px solid oklch(55% 0.16 255);
+  outline-offset: 2px;
+}
