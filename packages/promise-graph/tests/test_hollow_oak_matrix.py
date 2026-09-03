@@ -245,3 +245,20 @@ def _need(snapshot: GraphSnapshot, version_id: str, resource_id: str) -> Decimal
             assert line.qty_per_unit is not None
             return Decimal(line.qty_per_unit)
     raise AssertionError(f"{version_id} does not use {resource_id}")
+
+
+def test_fixture_child_collections_are_in_canonical_order(anchor: datetime) -> None:
+    """Order within a commitment or a version is not a fact any keyed store can hold.
+
+    The fixture is authored in the order such a store must return, so a persisted copy of this
+    graph compares equal to it directly instead of only after re-sorting.
+    """
+    base = ho.hollow_oak(anchor)
+    for snapshot in (base, ho.with_charlotte_variant(base)):
+        for commitment in snapshot.commitments.values():
+            assert commitment.lines == tuple(sorted(commitment.lines, key=lambda line: line.id))
+        for version in snapshot.versions.values():
+            assert version.lines == tuple(
+                sorted(version.lines, key=lambda line: (line.resource_id, line.role))
+            )
+            assert version.equipment_ids == tuple(sorted(version.equipment_ids))

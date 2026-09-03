@@ -133,6 +133,15 @@ layers = [
     "promisepatch.cli",
     "promisepatch.main",
     "promisepatch.api",
+    "promisepatch.fixtures",
+    "promisepatch.graph",
+    "promisepatch.db",
     "promisepatch.observability",
     "promisepatch.config",
 ]
+
+[[tool.importlinter.contracts]]
+name = "the engine never learns about the application"
+type = "forbidden"
+source_modules = ["promise_graph"]
+forbidden_modules = ["promisepatch", "sqlalchemy"]

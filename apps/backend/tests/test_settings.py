@@ -58,3 +58,27 @@ def test_cors_origins_parse_as_a_comma_separated_list() -> None:
 def test_settings_are_immutable() -> None:
     with pytest.raises(ValueError, match="frozen"):
         Settings().env = Environment.AWS  # type: ignore[misc]
+
+
+def test_fixture_resets_are_off_unless_someone_turns_them_on() -> None:
+    """A reset deletes every domain row PromisePatch owns, so the default must be no."""
+    assert Settings.model_fields["allow_fixture_reset"].default is False
+
+
+def test_a_missing_demo_password_names_the_variable_to_set() -> None:
+    settings = Settings(demo_worker_password=None, demo_owner_password=None)
+    with pytest.raises(RuntimeError, match="PP_DEMO_WORKER_PASSWORD"):
+        settings.require_demo_worker_password()
+    with pytest.raises(RuntimeError, match="PP_DEMO_OWNER_PASSWORD"):
+        settings.require_demo_owner_password()
+
+
+def test_a_configured_demo_password_is_returned_unwrapped() -> None:
+    settings = Settings(demo_worker_password="opens the door", demo_owner_password="so does this")
+    assert settings.require_demo_worker_password() == "opens the door"
+    assert settings.require_demo_owner_password() == "so does this"
+
+
+def test_a_demo_password_does_not_leak_through_a_repr() -> None:
+    """A secret that prints itself in a traceback is a secret in the logs."""
+    assert "opens the door" not in repr(Settings(demo_worker_password="opens the door"))

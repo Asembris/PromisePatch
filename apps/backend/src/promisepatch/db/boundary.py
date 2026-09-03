@@ -132,6 +132,17 @@ def all_tables() -> frozenset[str]:
     return GOVERNED_TABLES | UNGOVERNED_TABLES
 
 
+def resettable_tables() -> frozenset[str]:
+    """Every table a fixture reset may empty: the whole schema except the ledgers of record.
+
+    Derived rather than listed, so a table added later is reset by default and only a
+    deliberate entry in :data:`TRUNCATE_PROTECTED_TABLES` keeps it. Getting that wrong in the
+    safe direction leaves stale demo rows behind; getting it wrong the other way would delete
+    history, which is why the exclusion is the thing written down.
+    """
+    return all_tables() - TRUNCATE_PROTECTED_TABLES
+
+
 def runtime_privileges(table: str) -> frozenset[str]:
     """Exactly what the runtime role may do to ``table``.
 

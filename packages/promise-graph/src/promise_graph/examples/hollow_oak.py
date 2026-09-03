@@ -17,6 +17,13 @@ The chosen values (A 2.4 kg, B 2.2 kg) are the smallest tidy numbers that satisf
 They are large for one cake; that is forced by the frozen expectations, not a modelling error,
 and ``test_hollow_oak_matrix`` asserts the constraints so a future retune cannot silently
 break the demo behaviour.
+
+**Child collections are authored in canonical order.** Commitment lines are written in
+ascending line-id order and recipe-version lines in ascending ``(resource_id, role)`` order,
+which is the order the engine's own indexes impose and the only order a store keyed on those
+columns can return. Authoring them that way costs nothing and makes "this graph, reloaded from
+anywhere, is the same object" a plain equality rather than a comparison modulo ordering.
+``test_hollow_oak_matrix`` asserts it, so a later edit cannot drift out of canonical order.
 """
 
 from __future__ import annotations
@@ -213,10 +220,10 @@ def with_charlotte_variant(snapshot: GraphSnapshot) -> GraphSnapshot:
         version_no=2,
         lines=(
             RecipeVersionLine(
-                resource_id=STRAWBERRIES, role=RecipeLineRole.FILLING, qty_per_unit=q("3.0")
+                resource_id=LADYFINGERS, role=RecipeLineRole.STRUCTURAL, qty_per_unit=q("1.0")
             ),
             RecipeVersionLine(
-                resource_id=LADYFINGERS, role=RecipeLineRole.STRUCTURAL, qty_per_unit=q("1.0")
+                resource_id=STRAWBERRIES, role=RecipeLineRole.FILLING, qty_per_unit=q("3.0")
             ),
         ),
         equipment_ids=(DECK_OVEN,),
@@ -391,16 +398,16 @@ def _commitments(t: Times) -> list[SupplierCommitment]:
             due_at=t.at(hours=23),
             lines=(
                 CommitmentLine(
-                    id="cl-vp-tomorrow-raspberries",
-                    commitment_id=VP_TOMORROW,
-                    resource_id=RASPBERRIES,
-                    quantity=q("3.0"),
-                ),
-                CommitmentLine(
                     id="cl-vp-tomorrow-blueberries",
                     commitment_id=VP_TOMORROW,
                     resource_id=BLUEBERRIES,
                     quantity=q("2.0"),
+                ),
+                CommitmentLine(
+                    id="cl-vp-tomorrow-raspberries",
+                    commitment_id=VP_TOMORROW,
+                    resource_id=RASPBERRIES,
+                    quantity=q("3.0"),
                 ),
             ),
         ),
@@ -410,16 +417,16 @@ def _commitments(t: Times) -> list[SupplierCommitment]:
             due_at=t.at(hours=25),
             lines=(
                 CommitmentLine(
-                    id="cl-dl-tomorrow-cream",
-                    commitment_id=DL_TOMORROW,
-                    resource_id=HEAVY_CREAM,
-                    quantity=q("8.0"),
-                ),
-                CommitmentLine(
                     id="cl-dl-tomorrow-butter",
                     commitment_id=DL_TOMORROW,
                     resource_id=BUTTER,
                     quantity=q("5.0"),
+                ),
+                CommitmentLine(
+                    id="cl-dl-tomorrow-cream",
+                    commitment_id=DL_TOMORROW,
+                    resource_id=HEAVY_CREAM,
+                    quantity=q("8.0"),
                 ),
             ),
         ),
@@ -494,12 +501,12 @@ def _recipes(anchor: datetime) -> tuple[list[Recipe], list[RecipeVersion]]:
                     resource_id=PLAIN_FLOUR, role=RecipeLineRole.STRUCTURAL, qty_per_unit=q("0.9")
                 ),
                 RecipeVersionLine(
-                    resource_id=ROSE_WATER, role=RecipeLineRole.FILLING, qty_per_unit=q("0.05")
-                ),
-                RecipeVersionLine(
                     resource_id=RASPBERRIES,
                     role=RecipeLineRole.VISIBLE_DECORATION,
                     qty_per_unit=q("2.2"),
+                ),
+                RecipeVersionLine(
+                    resource_id=ROSE_WATER, role=RecipeLineRole.FILLING, qty_per_unit=q("0.05")
                 ),
             ),
             (DECK_OVEN,),
@@ -529,10 +536,10 @@ def _recipes(anchor: datetime) -> tuple[list[Recipe], list[RecipeVersion]]:
             1,
             (
                 RecipeVersionLine(
-                    resource_id=RASPBERRIES, role=RecipeLineRole.FILLING, qty_per_unit=q("3.0")
+                    resource_id=LADYFINGERS, role=RecipeLineRole.STRUCTURAL, qty_per_unit=q("1.0")
                 ),
                 RecipeVersionLine(
-                    resource_id=LADYFINGERS, role=RecipeLineRole.STRUCTURAL, qty_per_unit=q("1.0")
+                    resource_id=RASPBERRIES, role=RecipeLineRole.FILLING, qty_per_unit=q("3.0")
                 ),
             ),
             (DECK_OVEN,),
@@ -543,10 +550,10 @@ def _recipes(anchor: datetime) -> tuple[list[Recipe], list[RecipeVersion]]:
             2,
             (
                 RecipeVersionLine(
-                    resource_id=RASPBERRIES, role=RecipeLineRole.FILLING, qty_per_unit=q("1.5")
+                    resource_id=LEMONS, role=RecipeLineRole.FILLING, qty_per_unit=q("0.4")
                 ),
                 RecipeVersionLine(
-                    resource_id=LEMONS, role=RecipeLineRole.FILLING, qty_per_unit=q("0.4")
+                    resource_id=RASPBERRIES, role=RecipeLineRole.FILLING, qty_per_unit=q("1.5")
                 ),
             ),
             (CONVECTION_OVEN,),

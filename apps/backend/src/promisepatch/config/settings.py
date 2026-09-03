@@ -58,6 +58,29 @@ class Settings(BaseSettings):
     credential here rather than a second URI to keep in step.
     """
 
+    demo_worker_password: SecretStr | None = None
+    """Password seeded for the demo baker login by ``pp reset-demo-state``."""
+
+    demo_owner_password: SecretStr | None = None
+    """Password seeded for the demo owner login by ``pp reset-demo-state``."""
+
+    allow_fixture_reset: bool = False
+    """Whether this deployment permits a fixture reset at all.
+
+    Off by default, and deliberately not inferred from :attr:`env`. A reset deletes every
+    domain row it owns; a process cannot work out from its own environment whether the database
+    it is pointed at is the demo one, and guessing wrong destroys the wrong data. Turning this
+    on is a statement by whoever configured the deployment, which is the only party that knows.
+    """
+
+    bakery_tz: str = "Africa/Tunis"
+    """The bakery's local timezone.
+
+    Read when an operator gives ``pp reset-demo-state`` a wall-clock anchor: "reset as if it is
+    seven in the morning here" is the natural way to stage a demo, and it is a different instant
+    depending on where "here" is. Every stored timestamp remains UTC.
+    """
+
     @property
     def is_local(self) -> bool:
         return self.env is Environment.LOCAL
@@ -80,6 +103,14 @@ class Settings(BaseSettings):
             )
         return self.db_app_password.get_secret_value()
 
+    def require_demo_worker_password(self) -> str:
+        """The demo baker's password, or a precise failure naming what to configure."""
+        return _required(self.demo_worker_password, "PP_DEMO_WORKER_PASSWORD")
+
+    def require_demo_owner_password(self) -> str:
+        """The demo owner's password, or a precise failure naming what to configure."""
+        return _required(self.demo_owner_password, "PP_DEMO_OWNER_PASSWORD")
+
     @property
     def cors_origin_list(self) -> tuple[str, ...]:
         """``PP_CORS_ORIGINS`` as a comma-separated list.
@@ -88,6 +119,13 @@ class Settings(BaseSettings):
         fields as JSON, which would make the natural ``a,b`` form a startup error.
         """
         return tuple(origin.strip() for origin in self.cors_origins.split(",") if origin.strip())
+
+
+def _required(value: SecretStr | None, name: str) -> str:
+    """Unwrap a configured secret, or say exactly which variable is missing."""
+    if value is None:
+        raise RuntimeError(f"{name} is not configured; set it before seeding the demo logins.")
+    return value.get_secret_value()
 
 
 @lru_cache(maxsize=1)
