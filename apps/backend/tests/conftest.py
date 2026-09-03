@@ -8,19 +8,23 @@ whichever lands on ``sys.path`` first. Files here are imported by path instead.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from starlette.testclient import TestClient
 
 from promisepatch.api.routers import auth as login_router
 from promisepatch.config import Environment, Settings
 from promisepatch.db import RuntimeDatabase, build_engine
+from promisepatch.db.models import FixtureState
 from promisepatch.db.uow import Actor
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import reset_demo_state
@@ -137,6 +141,21 @@ async def database(app_database_url: str) -> AsyncIterator[RuntimeDatabase]:
 # --------------------------------------------------------------- a database with the demo in it
 
 
+def run_off_loop[T](factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
+    """Run a coroutine to completion on a loop of its own, in a worker thread.
+
+    ``asyncio.run`` cannot be called from the main thread here: pytest-asyncio owns the loop
+    policy there for async tests, and running one inside a synchronous fixture leaves that
+    thread with no current loop, so the test that requested the fixture then fails on setup.
+
+    A worker thread has its own loop and its own lifecycle, so this works identically whether
+    the requesting test is synchronous or asynchronous -- which is what lets one fixture serve
+    both. The factory is called inside the thread because a coroutine object is single-use.
+    """
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(lambda: asyncio.run(factory())).result()
+
+
 DEMO_ANCHOR = datetime(2026, 3, 4, 7, 0, tzinfo=UTC)
 """A fixed anchor, so every offset in the fixture lands on the same instant on every run.
 
@@ -154,16 +173,22 @@ class DemoState:
     digest: str
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def demo_state() -> DemoState:
-    """Load the demo fixture once per test session, through the privileged operator path.
+    """Guarantee the database holds the demo fixture at :data:`DEMO_ANCHOR`.
+
+    Checks first and reloads only when the check fails, which is what makes this correct
+    rather than merely fast. The round-trip suite deliberately resets the database at several
+    other anchors to prove the loader reproduces each one, and it runs before these tests in
+    the same session. A fixture that seeded once would leave every later assertion describing
+    a graph that had since been replaced -- the numbers would still be internally consistent,
+    which is precisely what makes that failure mode expensive to diagnose.
 
     Synchronous on purpose: it drives its own event loop, so it does not have to agree with
-    pytest-asyncio's per-function loop scope and can stay session-scoped -- one reset for the
-    whole suite rather than one per test over a pooled connection.
+    pytest-asyncio's per-function loop scope.
 
-    The reset runs as the migration role because that is the only identity that may truncate.
-    The runtime role deliberately cannot, which is why there is no HTTP reset endpoint.
+    The reload runs as the migration role, because that is the only identity that may
+    truncate. The runtime role deliberately cannot, which is why there is no HTTP reset.
     """
     settings = Settings()
     if settings.migration_database_url is None:
@@ -173,9 +198,16 @@ def demo_state() -> DemoState:
     if not settings.allow_fixture_reset:
         pytest.skip("PP_ALLOW_FIXTURE_RESET is not true; refusing to reset this database")
 
-    async def seed() -> DemoState:
+    async def ensure() -> DemoState:
         engine = build_engine(settings.require_migration_database_url(), pool_size=1)
         try:
+            async with engine.connect() as connection:
+                loaded = (
+                    (await connection.execute(select(FixtureState.__table__))).mappings().first()
+                )
+            if loaded is not None and loaded["anchor_at"] == DEMO_ANCHOR:
+                return DemoState(anchor=loaded["anchor_at"], digest=loaded["fixture_digest"])
+
             async with engine.begin() as connection:
                 outcome = await reset_demo_state(
                     connection,
@@ -191,7 +223,7 @@ def demo_state() -> DemoState:
         finally:
             await engine.dispose()
 
-    return asyncio.run(seed())
+    return run_off_loop(ensure)
 
 
 @pytest.fixture
