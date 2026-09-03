@@ -11,7 +11,16 @@ table, which keeps the graph transactional with the state it describes (ADR-0002
 # metadata contains would depend on which modules happened to be imported first.
 from promisepatch.db import models as models
 from promisepatch.db.base import Base, metadata
+from promisepatch.db.revision import HEAD_REVISION
 from promisepatch.db.session import build_engine
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 
-__all__ = ["Actor", "Base", "GovernedWrite", "UnitOfWork", "build_engine", "metadata"]
+__all__ = [
+    "HEAD_REVISION",
+    "Actor",
+    "Base",
+    "GovernedWrite",
+    "UnitOfWork",
+    "build_engine",
+    "metadata",
+]

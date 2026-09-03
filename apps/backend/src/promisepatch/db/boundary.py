@@ -109,7 +109,24 @@ TRUNCATE_PROTECTED_TABLES: frozenset[str] = frozenset({"audit_events", "domain_e
 """Ledgers no authorisation can empty. Every other table's TRUNCATE is merely governed."""
 
 MIGRATION_ONLY_TABLES: frozenset[str] = frozenset({"alembic_version"})
-"""Schema bookkeeping. The runtime role holds no privilege on it at all."""
+"""Schema bookkeeping, written only by the migration path.
+
+The runtime role holds no privilege here that could change what it says. It holds exactly one
+that lets it read what it says, for the reason set out on :data:`READINESS_READABLE_TABLES`.
+"""
+
+READINESS_READABLE_TABLES: frozenset[str] = frozenset({"alembic_version"})
+"""Migration metadata the runtime role may read, and only read.
+
+``/readyz`` compares the revision the database is at against the revision this code was built
+for, and the comparison is worthless unless it is made over the connection that actually
+serves requests: a probe authenticating as the migration user would be reporting on a
+connection nobody uses. So the runtime role is granted ``SELECT`` on ``alembic_version`` and
+nothing further -- it can see which migration ran, and it cannot claim, rewrite or erase one.
+"""
+
+READINESS_PRIVILEGES: frozenset[str] = frozenset({"SELECT"})
+"""Read, and no more. Anything else here would let the application lie about its own schema."""
 
 RUNTIME_SEQUENCES: frozenset[str] = frozenset(
     {
@@ -147,8 +164,11 @@ def runtime_privileges(table: str) -> frozenset[str]:
     """Exactly what the runtime role may do to ``table``.
 
     An append-only ledger is granted ``INSERT`` and nothing that could rewrite it, so the
-    immutability trigger is a second line rather than the only one.
+    immutability trigger is a second line rather than the only one. Migration bookkeeping is
+    readable where readiness needs it and otherwise out of reach entirely.
     """
+    if table in READINESS_READABLE_TABLES:
+        return READINESS_PRIVILEGES
     if table in MIGRATION_ONLY_TABLES:
         return frozenset()
     if table in APPEND_ONLY_TABLES:

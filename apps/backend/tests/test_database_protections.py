@@ -32,6 +32,7 @@ from promisepatch.db.boundary import (
     AUDIT_MARKER,
     GOVERNED_TABLES,
     MIGRATION_ONLY_TABLES,
+    READINESS_READABLE_TABLES,
     RUNTIME_ROLE,
     RUNTIME_SEQUENCES,
     SUPABASE_API_ROLES,
@@ -543,6 +544,25 @@ async def test_the_runtime_role_privilege_matrix_is_exactly_as_intended(
     assert granted == {table: set(runtime_privileges(table)) for table in tables}
 
 
+async def test_the_runtime_role_may_read_the_revision_but_not_claim_one(
+    app_conn: AsyncConnection,
+) -> None:
+    """Readiness must compare revisions over the connection that serves requests.
+
+    Asserted as the runtime role itself rather than through ``has_table_privilege``, because
+    the question is whether the probe works, not whether a catalogue says it should.
+    """
+    for table in sorted(READINESS_READABLE_TABLES):
+        revision = await app_conn.scalar(text(f'select version_num from promisepatch."{table}"'))
+        assert revision
+
+    error = await refused(
+        app_conn,
+        "insert into promisepatch.alembic_version (version_num) values ('9999_forged')",
+    )
+    assert sqlstate(error) == INSUFFICIENT_PRIVILEGE
+
+
 async def test_the_runtime_role_may_draw_from_a_sequence_but_not_rewind_it(
     conn: AsyncConnection,
 ) -> None:
@@ -570,11 +590,16 @@ async def test_the_runtime_role_cannot_reach_around_the_triggers(
 
     Disabling one trigger needs ownership; ``session_replication_role`` would silence every
     trigger in the session at once and needs a superuser. The application is neither.
+
+    Migration bookkeeping is reachable for reading and for nothing else: since
+    ``0003_runtime_readiness_access`` the runtime role may see which revision ran, so what is
+    asserted here is that it still cannot rewrite one and so cannot misrepresent its schema.
     """
     for statement in (
         "alter table promisepatch.resources disable trigger trg_10_governed_write",
         "set session_replication_role = 'replica'",
-        "select * from promisepatch.alembic_version",
+        "update promisepatch.alembic_version set version_num = '9999_forged'",
+        "delete from promisepatch.alembic_version",
     ):
         error = await refused(app_conn, statement)
         assert sqlstate(error) == INSUFFICIENT_PRIVILEGE, statement
