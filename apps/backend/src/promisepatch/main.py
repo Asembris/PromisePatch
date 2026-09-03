@@ -19,12 +19,15 @@ from promisepatch.api.errors import register_error_handlers
 from promisepatch.api.middleware import CorrelationIdMiddleware
 from promisepatch.api.routers import (
     auth_router,
+    events_router,
     health_router,
     promises_router,
     resources_router,
 )
+from promisepatch.api.stream import EventBroadcaster
 from promisepatch.config import Environment, Settings, get_settings
 from promisepatch.db import RuntimeDatabase
+from promisepatch.db.listen import DomainEventListener
 from promisepatch.observability import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -35,6 +38,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or get_settings()
     configure_logging(resolved)
     boot_id = str(uuid4())
+    # One fan-out for the process, built before startup so a handler can depend on it whether
+    # or not a listener ever manages to connect. It is an optimisation over polling; the
+    # durable ledger is what makes a stream correct.
+    broadcaster = EventBroadcaster()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -43,6 +50,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # database is still starting all need ``create_app`` to succeed on its own.
         database = RuntimeDatabase.from_settings(resolved) if resolved.database_url else None
         app.state.database = database
+        # One LISTEN for the whole process, feeding every open stream. Started here rather than
+        # per request because a subscription is a server session, and one per browser would
+        # spend the runtime role's connection budget on an audience.
+        listener = (
+            DomainEventListener.from_settings(resolved, on_wakeup=broadcaster.publish)
+            if database is not None
+            else None
+        )
+        app.state.event_listener = listener
+        if listener is not None:
+            await listener.start()
         logger.info(
             "api.start",
             boot_id=boot_id,
@@ -54,7 +72,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             # Explicit disposal: a reload that left its pool behind would hold connections a
-            # least-privileged role has a small budget of.
+            # least-privileged role has a small budget of. The listener holds one of its own,
+            # outside the pool, so it is released explicitly too.
+            if listener is not None:
+                await listener.stop()
             if database is not None:
                 await database.dispose()
             logger.info("api.stop", boot_id=boot_id)
@@ -73,9 +94,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.boot_id = boot_id
     app.state.settings = resolved
-    # Replaced by the real engine in ``lifespan``; declared here so a handler can read the
-    # attribute unconditionally rather than guarding on whether startup has run.
+    app.state.broadcaster = broadcaster
+    # Replaced by the real engine and listener in ``lifespan``; declared here so a handler can
+    # read the attribute unconditionally rather than guarding on whether startup has run.
     app.state.database = None
+    app.state.event_listener = None
 
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(
@@ -92,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(promises_router)
     app.include_router(resources_router)
+    app.include_router(events_router)
     return app
 
 

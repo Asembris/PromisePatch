@@ -29,8 +29,17 @@ from starlette.requests import Request
 from promisepatch.api.auth.cookies import CSRF_HEADER, SESSION_COOKIE, unsign
 from promisepatch.api.auth.sessions import Principal, resolve
 from promisepatch.api.errors import ApiError
+from promisepatch.api.stream import EventBroadcaster
 from promisepatch.config import Settings
 from promisepatch.db import RuntimeDatabase
+
+UNAUTHENTICATED = ApiError(
+    status_code=401,
+    code="UNAUTHENTICATED",
+    message="a valid session is required",
+)
+"""One rejection for absent, forged, expired and revoked alike. A caller has no legitimate use
+for the difference, and telling them apart would confirm that a session id was once real."""
 
 
 def now() -> datetime:
@@ -46,6 +55,12 @@ def now() -> datetime:
 def get_settings(request: Request) -> Settings:
     settings: Settings = request.app.state.settings
     return settings
+
+
+def get_broadcaster(request: Request) -> EventBroadcaster:
+    """The process's one in-memory fan-out, shared by every open stream."""
+    broadcaster: EventBroadcaster = request.app.state.broadcaster
+    return broadcaster
 
 
 def get_database(request: Request) -> RuntimeDatabase:
@@ -71,14 +86,18 @@ async def get_connection(
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DatabaseDep = Annotated[RuntimeDatabase, Depends(get_database)]
 ConnectionDep = Annotated[AsyncConnection, Depends(get_connection)]
+BroadcasterDep = Annotated[EventBroadcaster, Depends(get_broadcaster)]
 
 
-async def optional_principal(
-    request: Request,
-    settings: SettingsDep,
-    connection: ConnectionDep,
+async def resolve_principal(
+    request: Request, settings: Settings, connection: AsyncConnection
 ) -> Principal | None:
-    """The caller, if the cookie names a live session. ``None`` is a normal answer."""
+    """The caller behind the cookie, read over the connection the caller supplies.
+
+    Split out from the request dependency because two surfaces need the same answer over
+    different connections: an ordinary request already holds one for its whole transaction,
+    while a stream must not -- see :func:`require_stream_principal`.
+    """
     cookie = request.cookies.get(SESSION_COOKIE)
     if not cookie:
         return None
@@ -88,20 +107,46 @@ async def optional_principal(
     return await resolve(connection, session_id=session_id, now=now())
 
 
+async def optional_principal(
+    request: Request,
+    settings: SettingsDep,
+    connection: ConnectionDep,
+) -> Principal | None:
+    """The caller, if the cookie names a live session. ``None`` is a normal answer."""
+    return await resolve_principal(request, settings, connection)
+
+
 async def require_principal(
     principal: Annotated[Principal | None, Depends(optional_principal)],
 ) -> Principal:
     """The caller, or 401. Absent, forged, expired and revoked are one answer on purpose."""
     if principal is None:
-        raise ApiError(
-            status_code=401,
-            code="UNAUTHENTICATED",
-            message="a valid session is required",
-        )
+        raise UNAUTHENTICATED
+    return principal
+
+
+async def require_stream_principal(
+    request: Request,
+    settings: SettingsDep,
+    database: DatabaseDep,
+) -> Principal:
+    """The caller, or 401 -- checked over a connection that is handed straight back.
+
+    A long-lived response cannot authenticate through :data:`ConnectionDep`: that dependency
+    holds one transaction open for the whole request, and a request that lasts as long as the
+    browser stays on the page would hold a connection out of a small pool for hours, and would
+    hold a transaction open for just as long. The session is therefore read in a transaction of
+    its own, which ends before the first frame is written.
+    """
+    async with database.connect() as connection:
+        principal = await resolve_principal(request, settings, connection)
+    if principal is None:
+        raise UNAUTHENTICATED
     return principal
 
 
 PrincipalDep = Annotated[Principal, Depends(require_principal)]
+StreamPrincipalDep = Annotated[Principal, Depends(require_stream_principal)]
 
 
 async def require_csrf(request: Request, principal: PrincipalDep) -> Principal:
