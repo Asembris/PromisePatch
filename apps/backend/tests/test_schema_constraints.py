@@ -7,12 +7,14 @@ holds until the first script, migration or future slice writes around it.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import insert, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -42,11 +44,30 @@ from promisepatch.db.models import (
     SupplierCommitment,
     Track,
 )
+from promisepatch.db.uow import Actor, UnitOfWork
 
 pytestmark = pytest.mark.integration
 
 NOW = datetime(2026, 3, 4, 7, 0, tzinfo=UTC)
 LATER = NOW + timedelta(hours=8)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def authorised(conn: AsyncConnection) -> AsyncIterator[None]:
+    """Every write in this module goes through the governed path, as production's do.
+
+    The audited-write trigger refuses an unaudited write to a governed table, so a fixture row
+    is not something a test can simply insert any more. Nothing about what these tests assert
+    changes: the constraint still has to be the thing that rejects the row, and a check that
+    stopped firing would still fail here. Only the way the row is offered has changed.
+    """
+    fixture_load = UnitOfWork(conn).governed(
+        event_type="FIXTURE_LOAD",
+        actor=Actor(kind="SYSTEM", id="schema-constraint-tests"),
+        authority="NONE",
+    )
+    async with fixture_load:
+        yield
 
 
 def unique(prefix: str) -> str:

@@ -12,5 +12,6 @@ table, which keeps the graph transactional with the state it describes (ADR-0002
 from promisepatch.db import models as models
 from promisepatch.db.base import Base, metadata
 from promisepatch.db.session import build_engine
+from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 
-__all__ = ["Base", "build_engine", "metadata"]
+__all__ = ["Actor", "Base", "GovernedWrite", "UnitOfWork", "build_engine", "metadata"]
