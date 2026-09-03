@@ -12,13 +12,11 @@ from collections.abc import AsyncIterator, Iterator
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
-from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from starlette.testclient import TestClient
 
 from promisepatch.config import Environment, Settings
-from promisepatch.db import build_engine
-from promisepatch.db.boundary import RUNTIME_ROLE
+from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.main import create_app
 
 
@@ -43,9 +41,9 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 def database_url() -> str:
     """The administrative connection the schema tests run against.
 
-    Schema verification is schema work, so it uses the migration connection. When the
-    least-privileged application role exists, the runtime tests will use that one instead and
-    this fixture stays where it belongs: proving the shape, not exercising the app.
+    Schema verification is schema work, so it uses the migration connection. Anything that
+    exercises the application uses ``app_database_url`` instead, which is the credential a
+    request would really arrive on.
     """
     settings = Settings()
     if settings.migration_database_url is None:
@@ -80,27 +78,18 @@ async def conn(engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
             await transaction.rollback()
 
 
-def runtime_url(admin_url: str, password: str) -> str:
-    """The runtime role's connection, derived from the administrative one.
-
-    Same host, same database, a different login: the least-privileged role is not a second
-    deployment target, it is a second identity on the same one, so it needs a password rather
-    than a URI of its own. A connection pooler qualifies the user with the project reference
-    (``postgres.abcdef``); the tenant part is kept and only the role name is replaced.
-    """
-    url = make_url(admin_url)
-    tenant = (url.username or "").partition(".")[2]
-    login = f"{RUNTIME_ROLE}.{tenant}" if tenant else RUNTIME_ROLE
-    return url.set(username=login, password=password).render_as_string(hide_password=False)
-
-
 @pytest.fixture(scope="session")
-def app_database_url(database_url: str) -> str:
-    """The connection the application itself would use, if it were running."""
+def app_database_url() -> str:
+    """The connection the application itself uses, exactly as configured.
+
+    Read from ``PP_DATABASE_URL`` rather than derived, because the thing under test is the
+    credential the running API would actually present. A derived URL would prove the role can
+    do what we expect and say nothing about whether the deployment points at that role.
+    """
     settings = Settings()
-    if settings.db_app_password is None:
-        pytest.skip("PP_DB_APP_PASSWORD is not set; the runtime-role tests need it")
-    return runtime_url(database_url, settings.require_db_app_password())
+    if settings.database_url is None:
+        pytest.skip("PP_DATABASE_URL is not set; the runtime-connection tests need it")
+    return settings.require_database_url()
 
 
 @pytest_asyncio.fixture
@@ -125,3 +114,14 @@ async def app_conn(app_engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
             yield connection
         finally:
             await transaction.rollback()
+
+
+@pytest_asyncio.fixture
+async def database(app_database_url: str) -> AsyncIterator[RuntimeDatabase]:
+    """The application's own database handle, disposed with the test that asked for it."""
+    settings = Settings()
+    created = RuntimeDatabase.from_settings(settings)
+    try:
+        yield created
+    finally:
+        await created.dispose()

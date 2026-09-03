@@ -12,6 +12,7 @@ table, which keeps the graph transactional with the state it describes (ADR-0002
 from promisepatch.db import models as models
 from promisepatch.db.base import Base, metadata
 from promisepatch.db.revision import HEAD_REVISION
+from promisepatch.db.runtime import RuntimeDatabase, RuntimeRoleError, login_role
 from promisepatch.db.session import build_engine
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 
@@ -20,7 +21,10 @@ __all__ = [
     "Actor",
     "Base",
     "GovernedWrite",
+    "RuntimeDatabase",
+    "RuntimeRoleError",
     "UnitOfWork",
     "build_engine",
+    "login_role",
     "metadata",
 ]

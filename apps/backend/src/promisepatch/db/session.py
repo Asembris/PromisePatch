@@ -18,6 +18,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 DEFAULT_CONNECT_TIMEOUT = 15
 
+POOLER_SAFE_CONNECT_ARGS: dict[str, int] = {
+    "timeout": DEFAULT_CONNECT_TIMEOUT,
+    # Zero, not merely small: any cached statement handle can be invalidated by a pooler
+    # swapping the server connection underneath it.
+    "prepared_statement_cache_size": 0,
+}
+"""The driver arguments that make this engine correct behind a pooler, named so a test can
+assert them. Reading them off a constructed engine would mean reaching into private pool
+attributes, which is a worse guarantee than checking the input everything is built from."""
+
 
 def build_engine(url: str, *, echo: bool = False, pool_size: int = 5) -> AsyncEngine:
     """Build an async engine that behaves correctly behind a connection pooler."""
@@ -26,10 +36,9 @@ def build_engine(url: str, *, echo: bool = False, pool_size: int = 5) -> AsyncEn
         echo=echo,
         future=True,
         pool_size=pool_size,
+        # No overflow: a least-privileged role has a connection budget, and a burst that
+        # silently exceeded it would fail as a database outage rather than as backpressure.
         max_overflow=0,
         pool_pre_ping=True,
-        connect_args={
-            "timeout": DEFAULT_CONNECT_TIMEOUT,
-            "prepared_statement_cache_size": 0,
-        },
+        connect_args=dict(POOLER_SAFE_CONNECT_ARGS),
     )

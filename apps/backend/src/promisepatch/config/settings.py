@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     log_level: str = "info"
     cors_origins: str = "http://localhost:5173"
 
+    database_url: SecretStr | None = None
+    """The connection every request is served over: ``promisepatch_app``, and nothing more.
+
+    Separate from :attr:`migration_database_url` on purpose rather than derived from it. The
+    audited write boundary is only a control if the application cannot step over it, and an
+    application holding the owner's credential could. Keeping the runtime connection a distinct
+    variable means granting the API more privilege is an explicit act someone has to perform,
+    not a side effect of how a URL was assembled.
+    """
+
     migration_database_url: SecretStr | None = None
     """Admin/DDL connection, used by Alembic and by schema tests. Never by request handlers.
 
@@ -84,6 +94,15 @@ class Settings(BaseSettings):
     @property
     def is_local(self) -> bool:
         return self.env is Environment.LOCAL
+
+    def require_database_url(self) -> str:
+        """The runtime connection string, or a precise failure naming what to configure."""
+        if self.database_url is None:
+            raise RuntimeError(
+                "PP_DATABASE_URL is not configured; set it to a postgresql+asyncpg:// URI "
+                "that logs in as promisepatch_app before serving requests."
+            )
+        return self.database_url.get_secret_value()
 
     def require_migration_database_url(self) -> str:
         """The DDL connection string, or a precise failure naming what to configure."""

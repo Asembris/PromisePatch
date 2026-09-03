@@ -18,6 +18,7 @@ from promisepatch import __version__
 from promisepatch.api.middleware import CorrelationIdMiddleware
 from promisepatch.api.routers import health_router
 from promisepatch.config import Environment, Settings, get_settings
+from promisepatch.db import RuntimeDatabase
 from promisepatch.observability import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -31,9 +32,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        logger.info("api.start", boot_id=boot_id, env=str(resolved.env), version=__version__)
-        yield
-        logger.info("api.stop", boot_id=boot_id)
+        # The engine is opened here rather than at import time so that building an application
+        # is not itself an attempt to reach a database: tests, ``--help`` and a container whose
+        # database is still starting all need ``create_app`` to succeed on its own.
+        database = RuntimeDatabase.from_settings(resolved) if resolved.database_url else None
+        app.state.database = database
+        logger.info(
+            "api.start",
+            boot_id=boot_id,
+            env=str(resolved.env),
+            version=__version__,
+            database_configured=database is not None,
+        )
+        try:
+            yield
+        finally:
+            # Explicit disposal: a reload that left its pool behind would hold connections a
+            # least-privileged role has a small budget of.
+            if database is not None:
+                await database.dispose()
+            logger.info("api.stop", boot_id=boot_id)
 
     # Interactive docs are a development affordance, not a product surface: they are closed
     # in a deployed environment rather than left open behind an unauthenticated path.
@@ -49,6 +67,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.boot_id = boot_id
     app.state.settings = resolved
+    # Replaced by the real engine in ``lifespan``; declared here so a handler can read the
+    # attribute unconditionally rather than guarding on whether startup has run.
+    app.state.database = None
 
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(

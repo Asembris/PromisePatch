@@ -20,6 +20,7 @@ from promisepatch.db.boundary import (
     GOVERNED_TABLES,
     MIGRATION_ONLY_TABLES,
     READ_WRITE_PRIVILEGES,
+    READINESS_PRIVILEGES,
     TRUNCATE_PROTECTED_TABLES,
     UNGOVERNED_TABLES,
     all_tables,
@@ -76,8 +77,20 @@ def test_no_table_is_ever_granted_truncate() -> None:
         assert "TRUNCATE" not in runtime_privileges(table)
 
 
-def test_the_migration_ledger_is_out_of_the_runtime_role_s_reach() -> None:
-    assert runtime_privileges("alembic_version") == frozenset()
+def test_the_migration_ledger_is_readable_and_nothing_more() -> None:
+    """Readiness has to compare revisions over the connection that serves requests.
+
+    ``0003_runtime_readiness_access`` grants that read and only that read: the application can
+    see which migration ran and holds nothing that could claim, rewrite or erase one, so it
+    cannot misreport its own schema.
+    """
+    assert runtime_privileges("alembic_version") == READINESS_PRIVILEGES
+    assert runtime_privileges("alembic_version") == frozenset({"SELECT"})
+
+
+def test_no_migration_table_is_writable_by_the_runtime_role() -> None:
+    for table in sorted(MIGRATION_ONLY_TABLES):
+        assert not runtime_privileges(table) & {"INSERT", "UPDATE", "DELETE", "TRUNCATE"}
 
 
 def test_the_marker_is_namespaced_to_this_application() -> None:
