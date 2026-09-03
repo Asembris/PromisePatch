@@ -68,6 +68,15 @@ class Settings(BaseSettings):
     credential here rather than a second URI to keep in step.
     """
 
+    session_secret: SecretStr | None = None
+    """Key the ``pp_session`` cookie is signed with.
+
+    Signing is what stops a browser handing us a session id it made up: the cookie carries an
+    id and a MAC over it, and an id whose MAC does not verify is discarded before the database
+    is asked about it. Rotating this value invalidates every outstanding cookie, which is the
+    intended blunt instrument.
+    """
+
     demo_worker_password: SecretStr | None = None
     """Password seeded for the demo baker login by ``pp reset-demo-state``."""
 
@@ -121,6 +130,15 @@ class Settings(BaseSettings):
                 "set it before creating or connecting as the promisepatch_app role."
             )
         return self.db_app_password.get_secret_value()
+
+    def require_session_secret(self) -> str:
+        """The cookie signing key, or a precise failure naming what to configure.
+
+        There is deliberately no generated fallback. A key invented at boot would work
+        perfectly on one process and silently log every user out of a second one, and a
+        constant default would mean anyone holding this source could forge a session.
+        """
+        return _required(self.session_secret, "PP_SESSION_SECRET")
 
     def require_demo_worker_password(self) -> str:
         """The demo baker's password, or a precise failure naming what to configure."""

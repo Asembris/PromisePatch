@@ -15,8 +15,9 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from promisepatch import __version__
+from promisepatch.api.errors import register_error_handlers
 from promisepatch.api.middleware import CorrelationIdMiddleware
-from promisepatch.api.routers import health_router
+from promisepatch.api.routers import auth_router, health_router
 from promisepatch.config import Environment, Settings, get_settings
 from promisepatch.db import RuntimeDatabase
 from promisepatch.observability import configure_logging, get_logger
@@ -81,7 +82,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         expose_headers=["X-Correlation-ID"],
     )
 
+    register_error_handlers(app)
     app.include_router(health_router)
+    app.include_router(auth_router)
     return app
 
 

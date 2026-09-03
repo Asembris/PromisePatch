@@ -14,3 +14,20 @@ class HealthResponse(BaseModel):
     service: str
     version: str
     boot_id: str
+
+
+class ErrorBody(BaseModel):
+    """The inside of an error: a stable code, and a sentence for a person."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    code: str
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    """Every failure this API returns has this shape and no other."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    error: ErrorBody
