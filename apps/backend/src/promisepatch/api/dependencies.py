@@ -69,6 +69,7 @@ async def get_connection(
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+DatabaseDep = Annotated[RuntimeDatabase, Depends(get_database)]
 ConnectionDep = Annotated[AsyncConnection, Depends(get_connection)]
 
 
