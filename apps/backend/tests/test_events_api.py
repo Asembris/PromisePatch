@@ -18,18 +18,21 @@ import json
 from collections.abc import AsyncIterator, MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from promisepatch.api.routers import auth as login_router
 from promisepatch.api.stream import NO_CURSOR, RESYNC_EVENT
 from promisepatch.config import Settings
 from promisepatch.db import build_engine
+from promisepatch.db.models import Session
 from promisepatch.db.uow import Actor
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, reset_demo_state
@@ -317,6 +320,25 @@ async def test_a_revoked_session_cannot_open_a_stream(
     assert (await session.logout()).status == 204
 
     assert (await session.request("GET", "/events")).status == 401
+
+
+async def test_an_expired_session_cannot_open_a_stream(
+    live_app: FastAPI, live_settings: Settings, operator_engine: AsyncEngine
+) -> None:
+    """Expiry is decided by the row, not by the cookie a client chooses to keep presenting."""
+    session = await signed_in(live_app, live_settings)
+    session_id = UUID(session.cookies["pp_session"].split(".")[0])
+
+    async with operator_engine.begin() as connection:
+        await connection.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(expires_at=datetime.now(UTC) - timedelta(hours=1))
+        )
+
+    reply = await session.request("GET", "/events")
+    assert reply.status == 401
+    assert reply.json()["error"]["code"] == "UNAUTHENTICATED"
 
 
 async def test_the_baker_may_open_a_stream(live_app: FastAPI, live_settings: Settings) -> None:
