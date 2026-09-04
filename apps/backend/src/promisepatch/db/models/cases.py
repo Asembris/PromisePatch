@@ -39,6 +39,8 @@ from promise_graph.model import (
 from promisepatch.db.base import Base
 from promisepatch.db.types import (
     CASE_STATES,
+    CLARIFICATION_SLOTS,
+    REPORT_KINDS,
     TERMINAL_TRACK_STATES,
     TRACK_STATES,
     Quantity,
@@ -100,8 +102,105 @@ class ExceptionFact(Base):
     supersedes_fact_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("exception_facts.id"), nullable=True
     )
+    source_report_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("case_reports.id"), nullable=True
+    )
+    """The statement that attested this fact.
+
+    Without it the ledger could say *what* changed and the audit row *who* changed it, and
+    nothing would connect either to the sentence somebody actually said. It is nullable
+    because the fixture loader seeds facts that no worker spoke.
+    """
+
     attested_by: Mapped[str] = mapped_column(String(64), nullable=False)
     attested_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+
+
+class CaseReport(Base):
+    """One raw statement a worker made about a case, kept exactly as they made it.
+
+    This is the provenance spine of intake. A physical fact is only ever as good as the claim
+    it came from, so the claim is a row: who said it, when they saw it, what they said, and
+    which delivery of which command it was.
+
+    ``id`` is the caller's own command identity rather than a generated key, which is what
+    makes a retried transport delivery one statement instead of two: the second insert is a
+    primary-key conflict, and ``request_hash`` then decides whether it was the same request
+    being redelivered or a different one wearing the same name.
+
+    Append-only. A worker who was wrong makes a *new* statement; nothing edits what they said.
+    """
+
+    __tablename__ = "case_reports"
+    __table_args__ = (
+        enum_check("kind", REPORT_KINDS, name="kind"),
+        CheckConstraint("ordinal > 0", name="ordinal_positive"),
+        CheckConstraint("btrim(raw_text) <> ''", name="raw_text_required"),
+        UniqueConstraint("case_id", "ordinal", name="uq_case_reports_case_ordinal"),
+        Index("ix_case_reports_case", "case_id", "ordinal"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    reported_by: Mapped[str] = mapped_column(ForeignKey("workers.id"), nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ExceptionClarification(Base):
+    """A question the system asked, its graph-sourced options, and the answer that closed it.
+
+    Two constraints carry the interaction contract. ``ix_exception_clarifications_open`` allows
+    at most one unanswered question per case, so a case can never be waiting on two things at
+    once; ``uq_exception_clarifications_case_ordinal`` numbers them, which is how the two-
+    clarification ceiling is counted from stored rows rather than from a variable in a process.
+
+    ``options`` is the consequential part. Each option carries the commitment lines that
+    choosing it would settle, captured from the delivery's own rows at the moment the question
+    was asked -- so an answer can only ever select among physical outcomes that were already
+    possible, and never name a line the delivery did not have.
+    """
+
+    __tablename__ = "exception_clarifications"
+    __table_args__ = (
+        enum_check("slot", CLARIFICATION_SLOTS, name="slot"),
+        CheckConstraint("ordinal > 0", name="ordinal_positive"),
+        CheckConstraint("btrim(question) <> ''", name="question_required"),
+        CheckConstraint("(answer_report_id IS NULL) = (answered_at IS NULL)", name="answer_shape"),
+        CheckConstraint(
+            "resolved_option_code IS NULL OR answered_at IS NOT NULL", name="resolution_shape"
+        ),
+        UniqueConstraint("case_id", "ordinal", name="uq_exception_clarifications_case_ordinal"),
+        Index(
+            "ix_exception_clarifications_open",
+            "case_id",
+            unique=True,
+            postgresql_where=text("answered_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    slot: Mapped[str] = mapped_column(String(24), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    options: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    asked_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+    answer_report_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("case_reports.id"), nullable=True
+    )
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
+    resolved_option_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class Case(Base):

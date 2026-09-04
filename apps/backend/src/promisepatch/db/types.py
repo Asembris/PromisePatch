@@ -82,6 +82,15 @@ CASE_STATES: tuple[str, ...] = (
 )
 """The frozen case states. The transition table that walks them is a later slice."""
 
+REPORT_KINDS: tuple[str, ...] = ("REPORT", "CLARIFICATION_ANSWER", "CORRECTION")
+"""Why a worker spoke, which decides what their words are permitted to mean.
+
+Mirrors :class:`promisepatch.domain.observation.ReportKind`; a test asserts the two agree.
+"""
+
+CLARIFICATION_SLOTS: tuple[str, ...] = ("COMMITMENT", "SCOPE")
+"""The parts of a binding that can be materially ambiguous, per the frozen triggers."""
+
 TRACK_STATES: tuple[str, ...] = (
     "PENDING",
     "UNAFFECTED",

@@ -55,6 +55,7 @@ SYSTEM = Actor(kind="SYSTEM", id="database-protection-tests")
 APPEND_ONLY_COLUMN = {
     "approval_decisions": "raw_text",
     "audit_events": "type",
+    "case_reports": "raw_text",
     "domain_events": "type",
     "exception_facts": "target_id",
     "inventory_ledger": "source_id",

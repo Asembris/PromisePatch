@@ -66,7 +66,7 @@ def check_values(table: Table, column: str) -> set[str]:
 
 
 def test_the_schema_has_the_expected_shape() -> None:
-    assert len(TABLES) == 41
+    assert len(TABLES) == 43
 
 
 @pytest.mark.parametrize("table", TABLES, ids=TABLE_IDS)

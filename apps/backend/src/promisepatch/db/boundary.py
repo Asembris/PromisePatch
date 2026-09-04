@@ -95,11 +95,13 @@ GOVERNED_TABLES: frozenset[str] = frozenset(
     {
         "approval_decisions",
         "approval_requests",
+        "case_reports",
         "cases",
         "commitment_lines",
         "customers",
         "equipment_alternatives",
         "equipment_outages",
+        "exception_clarifications",
         "exception_facts",
         "exceptions",
         "inbound_replies",
@@ -146,6 +148,7 @@ APPEND_ONLY_TABLES: frozenset[str] = frozenset(
     {
         "approval_decisions",
         "audit_events",
+        "case_reports",
         "domain_events",
         "exception_facts",
         "inventory_ledger",
