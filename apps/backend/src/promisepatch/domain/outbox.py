@@ -63,6 +63,22 @@ and given a second, concurrent attempt.
 """
 
 
+CONTINUATION: Final = "continuation"
+DELIVERED: Final = "delivered"
+FAILED: Final = "failed"
+"""How an effect says what its answer should make runnable.
+
+A payload may carry ``continuation`` naming a step to enqueue when the provider accepts the
+call, another for when it finally refuses, or neither. The dispatcher stays ignorant of what
+either step *means*: it enqueues a row in the same transaction that records the answer, and the
+step runner decides the rest under its own lock and its own audit.
+
+Storing the hand-off on the row rather than holding it in the dispatcher is what makes it
+crash-safe. An in-memory callback would be lost with the process that was about to run it,
+leaving a provider effect that is durable and a recovery that nobody will ever finish.
+"""
+
+
 class DuplicateEffectError(RuntimeError):
     """Two effects were enqueued under one idempotency key.
 
@@ -250,6 +266,7 @@ async def _record_delivered(
                 "last_error": None,
             },
         )
+        await _continue(connection, claim=claim, on=DELIVERED)
         await append_event(
             connection,
             event_type=EVENT_EFFECT_DELIVERED,
@@ -305,6 +322,7 @@ async def _record_terminal(
                 state="FAILED",
                 values={"last_error": outcome.error},
             )
+            await _continue(connection, claim=claim, on=FAILED)
             await _append_failure(connection, claim=claim, outcome=outcome, now=now)
             return DeliveryStatus.TERMINAL
 
@@ -332,6 +350,7 @@ async def _record_terminal(
             await _settle(
                 connection, claim=claim, state="FAILED", values={"last_error": outcome.error}
             )
+            await _continue(connection, claim=claim, on=FAILED)
             await _append_failure(connection, claim=claim, outcome=outcome, now=now)
     return DeliveryStatus.TERMINAL
 
@@ -352,6 +371,31 @@ async def _append_failure(
             "attempts": claim.attempts,
             "error": outcome.error,
         },
+    )
+
+
+async def _continue(connection: AsyncConnection, *, claim: EffectClaim, on: str) -> None:
+    """Make the work this answer unblocks runnable, in the transaction that records the answer.
+
+    Deferred import, because the step ledger enqueues the effects this module delivers and a
+    module-level import in both directions would be a cycle.
+
+    No case row is locked here and none is needed: this inserts a ``case_steps`` row and takes
+    no lock a step transition would ever wait on, so it cannot close a cycle with one.
+    """
+    from promisepatch.domain.steps import enqueue_step
+
+    continuation = claim.payload.get(CONTINUATION)
+    if claim.case_id is None or not isinstance(continuation, Mapping):
+        return
+    successor = continuation.get(on)
+    if not isinstance(successor, Mapping):
+        return
+    await enqueue_step(
+        connection,
+        case_id=claim.case_id,
+        step_key=str(successor["step_key"]),
+        kind=str(successor["kind"]),
     )
 
 

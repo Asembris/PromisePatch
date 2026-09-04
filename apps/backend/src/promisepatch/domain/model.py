@@ -105,6 +105,15 @@ WAKEUP_TIMER_KIND: Final = "WORKFLOW_WAKEUP"
 FAKE_EFFECT_KIND: Final = "FAKE_EFFECT"
 CASE_SUBJECT: Final = "CASE"
 
+EFFECT_CASE_ID: Final = "case_id"
+EFFECT_TRACK_ID: Final = "track_id"
+"""The two payload keys an outbound effect is indexed by, wherever it came from.
+
+Named here rather than in whichever module writes them, because the dispatcher, the evidence
+read model and the transition that enqueued the effect all have to agree on them, and three
+string literals in three files agree only until somebody edits one.
+"""
+
 # --------------------------------------------------------------------------------- directives
 
 
