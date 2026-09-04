@@ -845,6 +845,49 @@ async def test_the_spine_stays_ordered_across_the_whole_run(physical: Intake) ->
     assert case_id in {event.case_id for event in collected}
 
 
+# -------------------------------------------------------------- the operator view (§40)
+
+
+async def test_the_operator_view_reads_the_persisted_plan(physical: Intake) -> None:
+    """One reusable read behind the CLI, the trace and the evidence screen."""
+    case_id = await planned_case(physical)
+    status = await analysis.read_case_status(physical.database, case_id=case_id)
+
+    assert status.state == analysis.CASE_PLANNED
+    assert status.category == "SUPPLY_NOT_RECEIVED"
+    assert status.needs_owner_attention is False
+
+    by_promise = {track.promise_id: track for track in status.tracks}
+    assert by_promise[A].classification == Classification.AUTO_RECOVERABLE.value
+    assert by_promise[A].customer_name and by_promise[A].order_external_id
+    assert [option.to_version_id for option in by_promise[A].options] == [ho.RAC_V4]
+    assert by_promise[A].options[0].chosen is True
+    assert by_promise[A].paths == 1
+    assert by_promise[A].watched_entities > 0
+
+    assert by_promise[B].options[0].requires_approval is True
+    assert by_promise[C].options == ()
+    assert by_promise[E].state == analysis.TRACK_UNAFFECTED
+    assert by_promise[E].watched_entities == 0
+
+
+async def test_the_operator_view_orders_tracks_by_the_allocator_s_priority(
+    physical: Intake,
+) -> None:
+    status = await analysis.read_case_status(
+        physical.database, case_id=await planned_case(physical)
+    )
+    priorities = [track.priority for track in status.tracks]
+
+    assert priorities == sorted(priorities)
+    assert [track.promise_id for track in status.tracks if track.priority] == [A, B, C, D]
+
+
+async def test_the_operator_view_refuses_a_case_that_does_not_exist(physical: Intake) -> None:
+    with pytest.raises(analysis.CaseNotFoundError):
+        await analysis.read_case_status(physical.database, case_id=uuid4())
+
+
 # -------------------------------------------------------------------------------- helpers
 
 

@@ -40,7 +40,7 @@ from decimal import Decimal
 from typing import Any, Final
 from uuid import UUID, uuid5
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -55,6 +55,8 @@ from promise_graph.propagation import Impact, LineQuantification, Path
 from promise_graph.snapshot import GraphSnapshot
 from promisepatch.db.models import (
     Case,
+    Customer,
+    Order,
     PhysicalException,
     RecoveryOption,
     Track,
@@ -62,6 +64,7 @@ from promisepatch.db.models import (
     TrackWatch,
 )
 from promisepatch.db.models import Promise as PromiseRow
+from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 from promisepatch.domain.cases import LockedCase
@@ -930,6 +933,153 @@ async def _live_tracks_elsewhere(
         )
     ).all()
     return {row.promise_id: row.id for row in rows}
+
+
+# ---------------------------------------------------------------------------- operator view
+
+
+@dataclass(frozen=True, slots=True)
+class OptionStatus:
+    """One persisted recovery candidate, as an operator needs to read it."""
+
+    id: UUID
+    kind: str
+    order_line_id: str | None
+    from_version_id: str | None
+    to_version_id: str | None
+    substitute_resource_id: str | None
+    required_quantity: Decimal | None
+    requires_approval: bool
+    approval_rule: str | None
+    chosen: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TrackStatus:
+    """One promise's posture in one case."""
+
+    track_id: UUID
+    promise_id: str
+    order_external_id: str
+    customer_name: str
+    state: str
+    classification: str | None
+    rule_id: str | None
+    reason_detail: str | None
+    priority: int
+    fingerprint: str | None
+    deadline_at: datetime | None
+    linked_track_id: UUID | None
+    paths: int
+    watched_entities: int
+    options: tuple[OptionStatus, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CaseStatus:
+    """What one case currently concludes. A read, and only a read."""
+
+    case_id: UUID
+    state: str
+    needs_owner_attention: bool
+    exception_id: UUID | None
+    category: str | None
+    tracks: tuple[TrackStatus, ...]
+
+
+class CaseNotFoundError(RuntimeError):
+    """No case by that id."""
+
+
+async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseStatus:
+    """Everything analysis and planning concluded about one case.
+
+    A reusable read service rather than a query inside a command handler, so the operator CLI,
+    the evidence API and the demo trace all describe a case the same way.
+    """
+    async with database.connect() as connection:
+        case = (await connection.execute(select(Case).where(Case.id == case_id))).one_or_none()
+        if case is None:
+            raise CaseNotFoundError(f"case {case_id} does not exist")
+        category = (
+            None
+            if case.exception_id is None
+            else await connection.scalar(
+                select(PhysicalException.category).where(PhysicalException.id == case.exception_id)
+            )
+        )
+        rows = (
+            await connection.execute(
+                select(
+                    Track.__table__,
+                    Order.external_id.label("order_external_id"),
+                    Customer.name.label("customer_name"),
+                )
+                .join(PromiseRow, PromiseRow.id == Track.promise_id)
+                .join(Order, Order.id == PromiseRow.order_id)
+                .join(Customer, Customer.id == Order.customer_id)
+                .where(Track.case_id == case_id)
+                .order_by(Track.priority, Track.promise_id)
+            )
+        ).all()
+
+        tracks: list[TrackStatus] = []
+        for track in rows:
+            options = (
+                await connection.execute(
+                    select(RecoveryOption)
+                    .where(RecoveryOption.track_id == track.id)
+                    .order_by(RecoveryOption.id)
+                )
+            ).all()
+            paths = await connection.scalar(
+                select(func.count()).select_from(TrackPath).where(TrackPath.track_id == track.id)
+            )
+            watched = await connection.scalar(
+                select(func.count()).select_from(TrackWatch).where(TrackWatch.track_id == track.id)
+            )
+            tracks.append(
+                TrackStatus(
+                    track_id=track.id,
+                    promise_id=track.promise_id,
+                    order_external_id=track.order_external_id,
+                    customer_name=track.customer_name,
+                    state=track.state,
+                    classification=track.classification,
+                    rule_id=track.rule_id,
+                    reason_detail=track.reason_detail,
+                    priority=track.priority,
+                    fingerprint=track.fingerprint,
+                    deadline_at=track.deadline_at,
+                    linked_track_id=track.linked_track_id,
+                    paths=int(paths or 0),
+                    watched_entities=int(watched or 0),
+                    options=tuple(
+                        OptionStatus(
+                            id=option.id,
+                            kind=option.kind,
+                            order_line_id=option.order_line_id,
+                            from_version_id=option.from_version_id,
+                            to_version_id=option.to_version_id,
+                            substitute_resource_id=option.substitute_resource_id,
+                            required_quantity=option.required_quantity,
+                            requires_approval=option.requires_approval,
+                            approval_rule=option.approval_rule,
+                            chosen=option.id == track.chosen_option_id,
+                        )
+                        for option in options
+                    ),
+                )
+            )
+
+    return CaseStatus(
+        case_id=case.id,
+        state=case.state,
+        needs_owner_attention=case.needs_owner_attention,
+        exception_id=case.exception_id,
+        category=category,
+        tracks=tuple(tracks),
+    )
 
 
 # ------------------------------------------------------------------------------ identifiers

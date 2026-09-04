@@ -18,7 +18,7 @@ import typer
 from promisepatch.config import Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
-from promisepatch.domain import intake
+from promisepatch.domain import analysis, intake
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 
@@ -202,6 +202,66 @@ def correct_physical_fact_command(
             raw_text=text,
         )
     )
+
+
+# --------------------------------------------------------------------------- case commands
+
+
+@app.command(name="case-status")
+def case_status_command(
+    case: str = typer.Option(..., "--case", help="The case to describe."),
+) -> None:
+    """Show what analysis and planning concluded for one case.
+
+    Read-only. It runs no step, enqueues nothing and changes nothing: the worker is what moves
+    a case, and an operator command that quietly did the work would make the durable engine
+    optional. Everything printed comes from :func:`promisepatch.domain.analysis.read_case_status`.
+    """
+    settings = get_settings()
+    try:
+        status = asyncio.run(_read_case_status(settings, _uuid(case, "--case")))
+    except (RuntimeError, ValueError) as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+    typer.echo(f"case:      {status.case_id}")
+    typer.echo(f"state:     {status.state}")
+    typer.echo(f"exception: {status.exception_id or '-'} ({status.category or '-'})")
+    typer.echo(f"attention: {'yes' if status.needs_owner_attention else 'no'}")
+    for track in status.tracks:
+        typer.echo("")
+        typer.echo(f"  {track.promise_id}  {track.customer_name} / {track.order_external_id}")
+        typer.echo(
+            f"    {track.classification or '-'} via {track.rule_id or '-'} "
+            f"({track.reason_detail or '-'})"
+        )
+        typer.echo(
+            f"    track {track.state}, priority {track.priority}, "
+            f"{track.paths} path(s), {track.watched_entities} watched"
+        )
+        if track.fingerprint:
+            typer.echo(f"    fingerprint {track.fingerprint}")
+        if track.linked_track_id:
+            typer.echo(f"    linked to track {track.linked_track_id}")
+        if track.deadline_at:
+            typer.echo(f"    approval window closes {track.deadline_at.isoformat()}")
+        for option in track.options:
+            marker = "*" if option.chosen else " "
+            typer.echo(
+                f"   {marker}option {option.kind} {option.from_version_id or '-'} -> "
+                f"{option.to_version_id or '-'} "
+                f"({'approval required' if option.requires_approval else 'no approval'})"
+            )
+        if not track.options:
+            typer.echo("     no recovery option")
+
+
+async def _read_case_status(settings: Settings, case_id: UUID) -> analysis.CaseStatus:
+    database = RuntimeDatabase.from_settings(settings)
+    try:
+        return await analysis.read_case_status(database, case_id=case_id)
+    finally:
+        await database.dispose()
 
 
 def _uuid(value: str, flag: str) -> UUID:

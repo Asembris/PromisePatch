@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 from promisepatch import cli
 from promisepatch.cli import app, resolve_anchor
 from promisepatch.config import Settings, get_settings
-from promisepatch.domain import intake
+from promisepatch.domain import analysis, intake
 from promisepatch.fixtures.reset import ResetOutcome
 
 runner = CliRunner()
@@ -268,6 +268,81 @@ def test_an_unparseable_identifier_is_reported_rather_than_raised(
             "maya",
         ],
     )
+
+    assert result.exit_code == 1
+    assert "not a UUID" in result.output
+
+
+# --------------------------------------------------------------------------- case status
+
+
+def test_case_status_is_a_subcommand() -> None:
+    assert "case-status" in runner.invoke(app, ["--help"]).stdout
+
+
+def test_case_status_delegates_to_the_domain_read_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI parses a case id and prints. Reading a case belongs to the domain."""
+    seen: dict[str, object] = {}
+    track = analysis.TrackStatus(
+        track_id=UUID(int=3),
+        promise_id="pr-a",
+        order_external_id="EXT-A",
+        customer_name="Amara Diallo",
+        state=analysis.TRACK_PENDING,
+        classification="AUTO_RECOVERABLE",
+        rule_id="R-PREAPPROVED",
+        reason_detail="PREAPPROVAL_COVERS",
+        priority=1,
+        fingerprint="f" * 64,
+        deadline_at=None,
+        linked_track_id=None,
+        paths=1,
+        watched_entities=9,
+        options=(
+            analysis.OptionStatus(
+                id=UUID(int=4),
+                kind="SUBSTITUTE_RESOURCE",
+                order_line_id="ol-a",
+                from_version_id="rv-raspberry-almond-3",
+                to_version_id="rv-raspberry-almond-4",
+                substitute_resource_id="res-strawberries",
+                required_quantity=None,
+                requires_approval=False,
+                approval_rule="R-PREAPPROVED",
+                chosen=True,
+            ),
+        ),
+    )
+
+    async def fake(database: object, *, case_id: UUID) -> analysis.CaseStatus:
+        seen["case_id"] = case_id
+        return analysis.CaseStatus(
+            case_id=case_id,
+            state=analysis.CASE_PLANNED,
+            needs_owner_attention=False,
+            exception_id=UUID(int=2),
+            category="SUPPLY_NOT_RECEIVED",
+            tracks=(track,),
+        )
+
+    monkeypatch.setattr(analysis, "read_case_status", fake)
+    monkeypatch.setattr(
+        cli, "_read_case_status", lambda settings, case_id: fake(None, case_id=case_id)
+    )
+
+    result = runner.invoke(app, ["case-status", "--case", str(UUID(int=1))])
+
+    assert result.exit_code == 0, result.output
+    assert seen["case_id"] == UUID(int=1)
+    assert analysis.CASE_PLANNED in result.output
+    assert "AUTO_RECOVERABLE" in result.output
+    assert "rv-raspberry-almond-4" in result.output
+
+
+def test_case_status_refuses_an_unparseable_identifier() -> None:
+    result = runner.invoke(app, ["case-status", "--case", "nope"])
 
     assert result.exit_code == 1
     assert "not a UUID" in result.output
