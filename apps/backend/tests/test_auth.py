@@ -124,11 +124,19 @@ def test_a_login_from_an_unserved_origin_is_refused(api: TestClient) -> None:
     assert response.json()["error"]["code"] == "ORIGIN_NOT_ALLOWED"
 
 
-def test_a_login_from_the_configured_origin_is_allowed(api: TestClient) -> None:
+def test_a_login_from_the_configured_origin_is_allowed(
+    api: TestClient, runtime_settings: Settings
+) -> None:
+    """The allowlist is configuration, so the origin under test is read rather than assumed.
+
+    A literal here would assert nothing about the allowlist and everything about one
+    deployment's default: it passes because the default happens to be that string, and fails
+    the moment a stack serves the frontend from any other port.
+    """
     response = api.post(
         "/api/auth/login",
         json={"username": BAKER, "password": password_for("baker")},
-        headers={"Origin": "http://localhost:5173"},
+        headers={"Origin": runtime_settings.cors_origin_list[0]},
     )
 
     assert response.status_code == 200
