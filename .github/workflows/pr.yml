@@ -191,6 +191,54 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  e2e:
+    name: whole-stack browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      # Standard library only, so this needs no dependency resolution of its own.
+      - name: Generate the local stack environment
+        run: python3 scripts/bootstrap_local_env.py
+
+      - name: Bring up the stack
+        # `--wait` is the gate: PostgreSQL healthy, migrations exited zero, the fixture loaded,
+        # readiness green, the frontend serving. A failure anywhere in that chain fails here
+        # rather than arriving later as a confusing browser timeout.
+        run: docker compose up --detach --wait
+
+      - name: Install the browser
+        working-directory: apps/frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Browser suite against the running stack
+        working-directory: apps/frontend
+        run: npm run e2e
+
+      - name: Stack logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/frontend/playwright-report
+          retention-days: 7
+
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes
+
   secrets:
     name: gitleaks
     runs-on: ubuntu-latest
