@@ -5,13 +5,16 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
 from typer.testing import CliRunner
 
+from promisepatch import cli
 from promisepatch.cli import app, resolve_anchor
 from promisepatch.config import Settings, get_settings
+from promisepatch.domain import intake
 from promisepatch.fixtures.reset import ResetOutcome
 
 runner = CliRunner()
@@ -180,3 +183,91 @@ def test_worker_reports_a_misconfiguration_instead_of_a_traceback(
     result = runner.invoke(app, ["worker"])
     assert result.exit_code == 1
     assert "PP_DATABASE_URL" in result.output
+
+
+# ------------------------------------------------------------------------- intake commands
+
+
+@pytest.mark.parametrize(
+    "name", ["report-exception", "answer-clarification", "correct-physical-fact"]
+)
+def test_the_intake_commands_are_subcommands(name: str) -> None:
+    assert name in runner.invoke(cli.app, ["--help"]).output
+
+
+def test_reporting_an_exception_delegates_to_the_domain_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI parses arguments and prints a result. Everything else belongs to the domain."""
+    seen: dict[str, object] = {}
+
+    async def fake(database: object, **kwargs: object) -> intake.IntakeResult:
+        seen.update(kwargs)
+        return intake.IntakeResult(
+            case_id=UUID(int=1), statement_id=UUID(int=2), state="RECEIVED", created=True
+        )
+
+    monkeypatch.setattr(intake, "open_physical_exception", fake)
+    monkeypatch.setattr(cli, "_with_database", lambda settings, operation: operation(None))
+
+    result = runner.invoke(
+        cli.app, ["report-exception", "the deck oven is down", "--worker", "maya"]
+    )
+
+    assert result.exit_code == 0
+    assert seen["worker_id"] == "maya"
+    assert seen["raw_text"] == "the deck oven is down"
+    assert str(UUID(int=1)) in result.output
+
+
+def test_a_supplied_command_id_is_the_one_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transport that can redeliver supplies its own identity, and it must survive intact."""
+    given = UUID("11111111-2222-3333-4444-555555555555")
+    seen: dict[str, object] = {}
+
+    async def fake(database: object, **kwargs: object) -> intake.IntakeResult:
+        seen.update(kwargs)
+        return intake.IntakeResult(
+            case_id=UUID(int=1), statement_id=given, state="CLARIFYING", created=False
+        )
+
+    monkeypatch.setattr(intake, "answer_clarification", fake)
+    monkeypatch.setattr(cli, "_with_database", lambda settings, operation: operation(None))
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "answer-clarification",
+            "just the raspberries",
+            "--case",
+            str(UUID(int=1)),
+            "--worker",
+            "maya",
+            "--command-id",
+            str(given),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert seen["command_id"] == given
+    assert "already (retry)" in result.output
+
+
+def test_an_unparseable_identifier_is_reported_rather_than_raised(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli, "_with_database", lambda settings, operation: operation(None))
+    result = runner.invoke(
+        cli.app,
+        [
+            "correct-physical-fact",
+            "the strawberries were missing",
+            "--case",
+            "nope",
+            "--worker",
+            "maya",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "not a UUID" in result.output
