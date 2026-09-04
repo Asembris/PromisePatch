@@ -168,6 +168,29 @@ jobs:
         if: failure()
         run: docker logs pp-postgres
 
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      # `npm ci`, never `npm install`: it installs the committed lockfile exactly and fails if
+      # the lockfile and the manifest disagree, so this job cannot pass against a dependency
+      # set nobody reviewed.
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
   secrets:
     name: gitleaks
     runs-on: ubuntu-latest
