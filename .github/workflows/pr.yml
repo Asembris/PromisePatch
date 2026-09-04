@@ -15,10 +15,17 @@ concurrency:
 env:
   UV_VERSION: "0.9.18"
   GITLEAKS_VERSION: "8.21.2"
+  NODE_VERSION: "24"
 
-# Phase 0 runs exactly six jobs: lint, types, tests, properties, imports, secrets.
-# There is no Docker, frontend, AWS or LLM job, because there is nothing yet for them to
-# test and a job that always passes is worse than no job. Each later phase adds its own.
+# Every job here tests something that exists. The engine and its static gates came first; the
+# backend, the database and the frontend were added as each became real code that a change to
+# another part of the repository could break. There is still no AWS or LLM job, because there
+# is still nothing for one to test, and a job that always passes is worse than no job.
+#
+# Each database-backed job brings its own disposable PostgreSQL, on its own runner. Nothing
+# here reaches a hosted database, and no two jobs share one -- the fixture reset truncates
+# every table PromisePatch owns, and two suites doing that to one database would fail each
+# other at random rather than report anything true.
 
 jobs:
   lint:
@@ -44,7 +51,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync --frozen --all-packages
-      - run: uv run mypy packages/promise-graph
+      - run: uv run mypy packages/promise-graph apps/backend
 
   tests:
     name: pytest + coverage
@@ -88,6 +95,78 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen --all-packages
       - run: uv run lint-imports
+
+  backend:
+    name: backend + postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+
+      - name: Start a disposable PostgreSQL 16
+        # Started here rather than declared as a service container so the credentials can be
+        # generated for this run: a password written into this file would be a password in the
+        # repository, and gitleaks would be right to say so. The init directory is the one the
+        # local stack mounts, so the managed-host API roles exist here too and the revocation
+        # of them in migration 0002 is exercised rather than skipped.
+        run: |
+          set -euo pipefail
+          superuser_password="$(openssl rand -hex 24)"
+          app_password="$(openssl rand -hex 24)"
+          session_secret="$(openssl rand -hex 32)"
+          worker_password="$(openssl rand -hex 12)"
+          owner_password="$(openssl rand -hex 12)"
+          for secret in "$superuser_password" "$app_password" "$session_secret" \
+                        "$worker_password" "$owner_password"; do
+            echo "::add-mask::$secret"
+          done
+
+          docker run --detach --name pp-postgres \
+            --env POSTGRES_PASSWORD="$superuser_password" \
+            --env POSTGRES_DB=promisepatch \
+            --volume "$PWD/docker/postgres/init:/docker-entrypoint-initdb.d:ro" \
+            --publish 127.0.0.1:5432:5432 \
+            postgres:16-alpine
+
+          for _ in $(seq 1 60); do
+            if docker exec pp-postgres pg_isready -U postgres -d promisepatch; then break; fi
+            sleep 1
+          done
+          docker exec pp-postgres pg_isready -U postgres -d promisepatch
+
+          address="127.0.0.1:5432/promisepatch"
+          {
+            echo "PP_ENV=local"
+            echo "PP_MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:$superuser_password@$address"
+            echo "PP_DATABASE_URL=postgresql+asyncpg://promisepatch_app:$app_password@$address"
+            echo "PP_DB_APP_PASSWORD=$app_password"
+            echo "PP_SESSION_SECRET=$session_secret"
+            echo "PP_DEMO_WORKER_PASSWORD=$worker_password"
+            echo "PP_DEMO_OWNER_PASSWORD=$owner_password"
+            echo "PP_ALLOW_FIXTURE_RESET=true"
+          } >> "$GITHUB_ENV"
+
+      - name: Migrate an empty database to head
+        run: uv run alembic -c apps/backend/alembic.ini upgrade head
+
+      - name: The schema is the revision this build was written against
+        run: |
+          uv run alembic -c apps/backend/alembic.ini current
+          uv run alembic -c apps/backend/alembic.ini check
+
+      # One process, no parallelism: several of these tests reload the fixture, which
+      # truncates every table PromisePatch owns.
+      - name: Backend suite, integration tests included
+        run: uv run pytest apps/backend
+
+      - name: PostgreSQL logs
+        if: failure()
+        run: docker logs pp-postgres
 
   secrets:
     name: gitleaks
