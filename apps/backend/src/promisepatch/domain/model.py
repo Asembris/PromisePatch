@@ -110,10 +110,16 @@ CASE_SUBJECT: Final = "CASE"
 
 @dataclass(frozen=True, slots=True)
 class CreateStep:
-    """Enqueue a successor. ``step_key`` is unique per case, so proposing it twice is a no-op."""
+    """Enqueue a successor. ``step_key`` is unique per case, so proposing it twice is a no-op.
+
+    ``kind`` is a :class:`StepKind` or a plain string, because not every unit of work is one of
+    the synthetic handlers this enum names: intake steps need the graph to decide and are
+    dispatched by name instead. The column is ``VARCHAR(64)`` either way, and a stored kind
+    nothing can execute fails loudly rather than being skipped.
+    """
 
     step_key: str
-    kind: StepKind
+    kind: StepKind | str
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +157,21 @@ class EmitEffect:
     kind: str
     payload: Mapping[str, Any]
     idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class AppendEvent:
+    """One further event the transition wants on the spine, after its own.
+
+    A step transition always announces itself (``workflow.step.completed``); a transition that
+    also changed something a person cares about -- a physical fact recorded, a question asked --
+    says so in its own words here. Appended in order, immediately after the step's event and
+    inside the same transaction, so the two can never be separated by a crash.
+    """
+
+    type: str
+    payload: Mapping[str, Any] = field(default_factory=dict)
+    entity_refs: tuple[Mapping[str, Any], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +218,7 @@ class StepOutcome:
     timers: tuple[ArmTimer, ...] = ()
     cancellations: tuple[CancelTimer, ...] = ()
     effects: tuple[EmitEffect, ...] = ()
+    events: tuple[AppendEvent, ...] = ()
     result: Mapping[str, Any] = field(default_factory=dict)
     error: str | None = None
 

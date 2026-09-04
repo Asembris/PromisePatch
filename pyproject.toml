@@ -183,6 +183,33 @@ forbidden_modules = [
     "urllib",
 ]
 
+# The reading of a worker's sentence is decided by values alone. It gets resources, deliveries
+# and quantities as arguments and returns a conclusion, so "what did the system understand" is
+# answerable without a database -- and "just read the row here" can never be the easy fix in the
+# one place where reading a row would let a guess become a settled delivery.
+[[tool.importlinter.contracts]]
+name = "physical interpretation decides without doing"
+type = "forbidden"
+source_modules = [
+    "promisepatch.domain.interpretation",
+    "promisepatch.domain.observation",
+]
+forbidden_modules = [
+    "asyncio",
+    "fastapi",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.main",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "urllib",
+]
+
 [[tool.importlinter.contracts]]
 name = "the engine never learns about the application"
 type = "forbidden"
