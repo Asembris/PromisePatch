@@ -31,7 +31,9 @@ export default tseslint.config(
     },
   },
   {
-    files: ['vite.config.ts'],
+    // Build configuration and the browser-gate suite: these run in Node, and the browser
+    // globals the rest of the package uses are not defined for them.
+    files: ['vite.config.ts', 'playwright.config.ts', 'e2e/**/*.ts'],
     languageOptions: { globals: globals.node },
   },
   {
