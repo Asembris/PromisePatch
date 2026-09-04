@@ -584,6 +584,47 @@ async def test_a_death_before_the_plan_commits_leaves_the_case_analyzed(
         assert await physical.options(track.id) == []
 
 
+async def test_a_worker_that_dies_after_claiming_the_analysis_leaves_it_for_the_next(
+    physical: Intake,
+) -> None:
+    from promisepatch.domain import crash
+
+    case_id = await _ready_for_analysis(physical)
+    first = physical.worker(identity="dies-after-claiming")
+
+    with crash.arm(crash.AFTER_CLAIM_COMMIT), pytest.raises(crash.WorkerDied):
+        await first.run_once()
+
+    (claimed,) = await physical.outstanding(case_id)
+    assert claimed.kind == analysis.STEP_ANALYZE_IMPACT
+    assert claimed.state == "IN_FLIGHT"
+
+    await physical.expire_lease(claimed.id)
+    await physical.drain(worker=physical.worker(identity="picks-it-up"))
+
+    assert (await physical.case(case_id)).state == analysis.CASE_PLANNED
+
+
+async def test_a_death_after_the_plan_commits_leaves_the_case_planned(
+    physical: Intake,
+) -> None:
+    from promisepatch.domain import crash
+
+    case_id = await _ready_for_analysis(physical)
+    await physical.drain(limit=1)
+    worker = physical.worker(identity="dies-after-planning")
+
+    with crash.arm(crash.AFTER_TRANSITION_COMMIT), pytest.raises(crash.WorkerDied):
+        await worker.run_once()
+
+    assert (await physical.case(case_id)).state == analysis.CASE_PLANNED
+    settled = await _row_counts(physical, case_id)
+
+    await physical.drain(worker=physical.worker(identity="tries-again"))
+    assert await _row_counts(physical, case_id) == settled
+    assert (await physical.case(case_id)).state == analysis.CASE_PLANNED
+
+
 async def test_a_second_analysis_of_the_same_truth_adds_no_rows(physical: Intake) -> None:
     """The replay guarantee, made visible: derived ids, so a second pass writes the same rows."""
     case_id = await planned_case(physical)
@@ -727,6 +768,27 @@ async def test_two_cases_analyse_without_corrupting_each_other(physical: Intake)
         assert cream[promise_id].classification == Classification.UNAFFECTED.value
 
     assert (await classifications(physical, delivery))[A] == (Classification.AUTO_RECOVERABLE.value)
+
+
+async def test_two_workers_sweeping_two_cases_at_once_make_progress_on_both(
+    physical: Intake,
+) -> None:
+    """``SKIP LOCKED`` means two sweeps take different rows rather than queueing."""
+    import asyncio
+
+    delivery = await _ready_for_analysis(physical)
+    spoilage = await physical.report(CREAM_UNUSABLE)
+    await physical.drain_intake(spoilage.case_id)
+
+    a = physical.worker(identity="sweeper-a")
+    b = physical.worker(identity="sweeper-b")
+    for _ in range(6):
+        await asyncio.gather(a.run_once(), b.run_once())
+
+    assert (await physical.case(delivery)).state == analysis.CASE_PLANNED
+    assert (await physical.case(spoilage.case_id)).state == analysis.CASE_PLANNED
+    assert (await classifications(physical, delivery))[A] == (Classification.AUTO_RECOVERABLE.value)
+    assert (await classifications(physical, spoilage.case_id))[E] == Classification.BLOCKED.value
 
 
 async def test_a_second_case_reaching_a_live_promise_links_instead_of_competing(
