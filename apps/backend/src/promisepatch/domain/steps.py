@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Final, Protocol
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, or_, select, update
@@ -45,7 +45,6 @@ from promisepatch.db.models import CaseStep
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 from promisepatch.domain import crash, handlers, retry
-from promisepatch.domain.analysis import ANALYSIS_STEP_KINDS
 from promisepatch.domain.cases import LockedCase, apply_case_change, lock_case
 from promisepatch.domain.model import (
     AUDIT_STEP_EXECUTED,
@@ -250,13 +249,8 @@ async def _run(connection: AsyncConnection, *, claim: StepClaim, actor: Actor) -
     now = await database_now(connection)
 
     crash.at(crash.DURING_HANDLER)
-    if row.kind in INTAKE_STEP_KINDS or row.kind in ANALYSIS_STEP_KINDS:
-        # Intake and analysis both decide from the graph rather than from a context alone, so
-        # they read and write inside this transaction instead of returning directives for one.
-        # Deferred import: both executors name step keys this module enqueues.
-        from promisepatch.domain import analysis, physical
-
-        executor = physical.execute if row.kind in INTAKE_STEP_KINDS else analysis.execute
+    executor = _executor_for(row.kind)
+    if executor is not None:
         outcome = await executor(
             connection,
             case=case,
@@ -283,6 +277,42 @@ async def _run(connection: AsyncConnection, *, claim: StepClaim, actor: Actor) -
     return await _commit_transition(
         connection, claim=claim, case=case, outcome=outcome, now=now, actor=actor
     )
+
+
+class StepExecutor(Protocol):
+    """A unit of work that decides from the database rather than from a context alone."""
+
+    async def __call__(
+        self,
+        connection: AsyncConnection,
+        *,
+        case: LockedCase,
+        kind: str,
+        step_key: str,
+        now: datetime,
+        worker: str,
+    ) -> StepOutcome: ...
+
+
+def _executor_for(kind: str) -> StepExecutor | None:
+    """The module that runs this kind of step, or ``None`` for a pure handler.
+
+    Intake, analysis and recovery all read the graph, the plan or the outbox to decide, so they
+    read and write inside the execution transaction instead of returning directives for one.
+
+    The import is deferred because each of those modules names step keys *this* module
+    enqueues, and a module-level import in both directions would be a cycle. Resolved once per
+    step rather than once per process, which costs a dictionary lookup in ``sys.modules``.
+    """
+    from promisepatch.domain import analysis, physical, recovery
+
+    if kind in INTAKE_STEP_KINDS:
+        return physical.execute
+    if kind in analysis.ANALYSIS_STEP_KINDS:
+        return analysis.execute
+    if kind in recovery.RECOVERY_STEP_KINDS:
+        return recovery.execute
+    return None
 
 
 async def _fence(connection: AsyncConnection, claim: StepClaim) -> CaseStep:

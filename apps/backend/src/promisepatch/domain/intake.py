@@ -148,12 +148,12 @@ async def open_physical_exception(
 
     try:
         async with database.begin() as connection:
-            await _require_worker(connection, worker_id)
+            await require_worker(connection, worker_id)
             now = await database_now(connection)
             unit_of_work = UnitOfWork(connection)
             async with unit_of_work.governed(
                 event_type=AUDIT_CASE_OPENED,
-                actor=await _actor(connection, worker_id),
+                actor=await actor_for(connection, worker_id),
                 # A worker reporting what they saw is not exercising a policy or a consent;
                 # they are the source of the observation, and `NONE` says exactly that.
                 authority="NONE",
@@ -249,13 +249,13 @@ async def answer_clarification(
             )
 
     async with database.begin() as connection:
-        await _require_worker(connection, worker_id)
+        await require_worker(connection, worker_id)
         case = await lock_case(connection, case_id)
         if case.state != CASE_CLARIFYING:
             raise NotAwaitingClarificationError(
                 f"case {case_id} is {case.state}, not {CASE_CLARIFYING}"
             )
-        await _require_permitted(connection, case_id=case_id, worker_id=worker_id)
+        await require_permitted(connection, case_id=case_id, worker_id=worker_id)
 
         clarification = (
             await connection.execute(
@@ -275,7 +275,7 @@ async def answer_clarification(
         unit_of_work = UnitOfWork(connection)
         async with unit_of_work.governed(
             event_type=AUDIT_CLARIFICATION_ANSWERED,
-            actor=await _actor(connection, worker_id),
+            actor=await actor_for(connection, worker_id),
             authority="NONE",
             case_id=case_id,
             before={"clarification": str(clarification.id), "answered": False},
@@ -360,9 +360,9 @@ async def correct_physical_fact(
             )
 
     async with database.begin() as connection:
-        await _require_worker(connection, worker_id)
+        await require_worker(connection, worker_id)
         case = await lock_case(connection, case_id)
-        await _require_permitted(connection, case_id=case_id, worker_id=worker_id)
+        await require_permitted(connection, case_id=case_id, worker_id=worker_id)
         bound = await connection.scalar(select(Case.exception_id).where(Case.id == case_id))
         if bound is None:
             raise NothingToCorrectError(f"case {case_id} has attested no physical fact to correct")
@@ -372,7 +372,7 @@ async def correct_physical_fact(
         unit_of_work = UnitOfWork(connection)
         async with unit_of_work.governed(
             event_type=AUDIT_CORRECTION_REPORTED,
-            actor=await _actor(connection, worker_id),
+            actor=await actor_for(connection, worker_id),
             authority="NONE",
             case_id=case_id,
             after={"exception_id": str(bound), "case_state": case.state},
@@ -447,13 +447,13 @@ async def _existing(
     return _Existing(case_id=row.case_id, state=row.state)
 
 
-async def _require_worker(connection: AsyncConnection, worker_id: str) -> None:
+async def require_worker(connection: AsyncConnection, worker_id: str) -> None:
     exists = await connection.scalar(select(Worker.id).where(Worker.id == worker_id))
     if exists is None:
         raise UnknownWorkerError(f"no worker {worker_id!r}")
 
 
-async def _actor(connection: AsyncConnection, worker_id: str) -> Actor:
+async def actor_for(connection: AsyncConnection, worker_id: str) -> Actor:
     """A staff member's audit identity, taken from their role rather than assumed.
 
     The distinction matters downstream: an owner binding a case by hand and a baker attesting
@@ -463,7 +463,7 @@ async def _actor(connection: AsyncConnection, worker_id: str) -> Actor:
     return Actor(kind="OWNER" if role == OWNER_ROLE else "WORKER", id=worker_id)
 
 
-async def _require_permitted(connection: AsyncConnection, *, case_id: UUID, worker_id: str) -> None:
+async def require_permitted(connection: AsyncConnection, *, case_id: UUID, worker_id: str) -> None:
     """Who may speak on a case: the worker who opened it, or an owner.
 
     Narrow on purpose. A physical attestation is only worth anything if the person making it

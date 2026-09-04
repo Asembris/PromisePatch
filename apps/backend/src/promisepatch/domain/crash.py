@@ -24,6 +24,8 @@ from typing import Final
 
 BEFORE_CLAIM: Final = "before_claim"
 AFTER_CLAIM_COMMIT: Final = "after_claim_commit"
+BEFORE_CONFIRMATION_COMMIT: Final = "before_confirmation_commit"
+AFTER_CONFIRMATION_COMMIT: Final = "after_confirmation_commit"
 DURING_HANDLER: Final = "during_handler"
 BEFORE_TRANSITION_COMMIT: Final = "before_transition_commit"
 AFTER_TRANSITION_COMMIT: Final = "after_transition_commit"
@@ -43,6 +45,8 @@ never committed, an external call the provider accepted but that we never record
 ALL_BOUNDARIES: Final[tuple[str, ...]] = (
     BEFORE_CLAIM,
     AFTER_CLAIM_COMMIT,
+    BEFORE_CONFIRMATION_COMMIT,
+    AFTER_CONFIRMATION_COMMIT,
     DURING_HANDLER,
     BEFORE_TRANSITION_COMMIT,
     AFTER_TRANSITION_COMMIT,
