@@ -32,8 +32,8 @@ affect a customer is testable with zero cloud access.
 ## Run the local stack
 
 The stack is a disposable PostgreSQL 16 in a Docker volume, the repository's own migrations,
-the Hollow Oak fixture, the API and the frontend. It needs no hosted database and no cloud
-account.
+the Hollow Oak fixture, the API, the durable workflow worker and the frontend. It needs no
+hosted database and no cloud account.
 
 ```bash
 uv run python scripts/bootstrap_local_env.py
@@ -52,6 +52,7 @@ has loaded, `/readyz` reports ready and the frontend is serving. Then open
 
 ```bash
 docker compose run --rm seed        # reload the fixture
+docker compose restart worker       # restart the worker; outstanding work resumes
 docker compose down                 # stop, keeping the database
 docker compose down --volumes       # stop and discard the database
 ```
@@ -60,6 +61,7 @@ docker compose down --volumes       # stop and discard the database
 |---|---|---|
 | frontend | <http://localhost:55173> | `frontend:5173` |
 | api | <http://localhost:58000> | `api:8000` |
+| worker | no port; `docker compose logs worker` | -- |
 | postgres | `127.0.0.1:55432` | `postgres:5432` |
 
 The host ports are deliberately not 5173, 8000 and 5432: those are usually already taken on a
@@ -68,10 +70,14 @@ be a confusing way to find out.
 
 Two properties are worth knowing before you use it:
 
-- **The API holds no administrative credential.** It connects as `promisepatch_app`, which
-  owns nothing, migrates nothing and cannot truncate a table. Migrations and
-  `pp reset-demo-state` run in separate containers with the administrative connection. That is
-  why there is no HTTP reset endpoint.
+- **Neither the API nor the worker holds an administrative credential.** Both connect as
+  `promisepatch_app`, which owns nothing, migrates nothing and cannot truncate a table.
+  Migrations and `pp reset-demo-state` run in separate containers with the administrative
+  connection. That is why there is no HTTP reset endpoint.
+- **The worker is stateless, so restarting it is the recovery mechanism.** Every piece of
+  outstanding work is a row and everything the process holds is a lease; `docker compose
+  restart worker` -- or killing it outright -- loses nothing, and the work resumes as the
+  leases expire. Several workers can run at once without coordinating.
 - **`pp reset-demo-state` recreates the fixture workers, so it signs everyone out.** It is an
   operator command that replaces every domain row PromisePatch owns, and the sessions go with
   them. A browser watching the live feed will see the resulting domain event, refetch, be told

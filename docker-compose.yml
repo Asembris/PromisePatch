@@ -1,6 +1,8 @@
 # The disposable local stack.
 #
-#     postgres  ──healthy──▶  migrate  ──exit 0──▶  seed  ──exit 0──▶  api  ──healthy──▶  frontend
+#                                                            ┌──▶  api  ──healthy──▶  frontend
+#     postgres  ──healthy──▶  migrate  ──exit 0──▶  seed  ────┤
+#                                                            └──▶  worker
 #
 # Every arrow is a condition rather than a hope. `depends_on` with `service_healthy` and
 # `service_completed_successfully` is what makes "the stack is up" mean the schema is at head
@@ -112,6 +114,25 @@ services:
     # Long enough for uvicorn's graceful shutdown to finish: the lifespan disposes the engine
     # pool and releases the listener's dedicated LISTEN connection, and a role with a small
     # connection budget should not have those reclaimed by timeout.
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  worker:
+    # The same image and the same credential as `api`. A worker holds no migration URL and no
+    # `PP_ALLOW_FIXTURE_RESET`: it connects as `promisepatch_app`, so the audited write boundary
+    # constrains it exactly as it constrains a request handler. Giving the process that runs
+    # unattended more privilege than the one a human is watching would be precisely backwards.
+    image: promisepatch-backend:local
+    pull_policy: never
+    command: ["pp", "worker"]
+    env_file: [docker/env/api.env]
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    # No healthcheck and nothing to drain. A worker holds no server socket to probe, and
+    # everything it is doing is a row: `SIGTERM` ends the current cycle, and a hard kill leaves
+    # leases that expire. `restart: unless-stopped` is therefore a real recovery mechanism here
+    # rather than a way of hiding a crash -- restarting is what recovery looks like.
     stop_grace_period: 20s
     restart: unless-stopped
 
