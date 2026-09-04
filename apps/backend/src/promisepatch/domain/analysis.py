@@ -285,6 +285,14 @@ async def _analyze(
             "case_state": CASE_ANALYZED,
             "classifications": {record.promise_id: record.classification for record in records},
             "rules": {record.promise_id: record.rule_id for record in records},
+            "details": {record.promise_id: record.reason_detail for record in records},
+            # A BLOCKED track cites a constraint and carries no option row to hold it, so the
+            # audit ledger is where "which rule of this customer's stopped us" survives.
+            "cited": {
+                record.promise_id: list(record.cited_constraint_ids)
+                for record in records
+                if record.cited_constraint_ids
+            },
         },
         provenance={
             "step_key": step_key,
@@ -336,6 +344,12 @@ async def _analyze(
             "as_of": snapshot.as_of,
             "classifications": {record.promise_id: record.classification for record in records},
             "rules": {record.promise_id: record.rule_id for record in records},
+            "details": {record.promise_id: record.reason_detail for record in records},
+            "cited": {
+                record.promise_id: list(record.cited_constraint_ids)
+                for record in records
+                if record.cited_constraint_ids
+            },
             "tracks": {record.promise_id: str(record.track_id) for record in records},
         },
     )
@@ -353,6 +367,7 @@ class _TrackRecord:
     rule_id: str
     reason_detail: str
     priority: int
+    cited_constraint_ids: tuple[str, ...]
     linked_track_id: UUID | None
     paths: tuple[dict[str, Any], ...]
 
@@ -383,6 +398,7 @@ def _record_for(
         rule_id=result.rule_id.value,
         reason_detail=result.reason_detail.value,
         priority=rank,
+        cited_constraint_ids=tuple(result.cited_constraint_ids),
         linked_track_id=linked_to if state == TRACK_LINKED else None,
         paths=tuple(
             _path_row(track_id=track_id, ordinal=ordinal, path=path, impact=impact, result=result)

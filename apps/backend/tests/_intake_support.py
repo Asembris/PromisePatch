@@ -27,7 +27,11 @@ import pytest_asyncio
 from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy import update as sa_update
 
+from promise_graph.classification import analyze as engine_analyze
 from promise_graph.examples import hollow_oak
+from promise_graph.model import ExceptionCategory
+from promise_graph.model import PhysicalException as EnginePhysicalException
+from promise_graph.snapshot import GraphSnapshot, reservations_for_line
 from promisepatch.config import Settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db import events as ledger
@@ -41,11 +45,21 @@ from promisepatch.db.models import (
     ExceptionClarification,
     ExceptionFact,
     InventoryLedgerEntry,
+    Order,
+    OrderLine,
     PhysicalException,
+    ProductionTask,
+    Promise,
+    RecipeVersion,
+    RecoveryOption,
+    Reservation,
+    Track,
+    TrackPath,
+    TrackWatch,
 )
 from promisepatch.db.models import Worker as WorkerRow
 from promisepatch.db.uow import Actor, UnitOfWork
-from promisepatch.domain import crash, intake
+from promisepatch.domain import analysis, crash, intake
 from promisepatch.domain.adapters import FakeEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
 from promisepatch.domain.observation import INTAKE_STEP_KINDS
@@ -67,6 +81,16 @@ CORRECTION = "Correction - the strawberries were missing too."
 UNREADABLE = "the delivery situation is weird"
 
 WORKFLOW_TABLES: tuple[str, ...] = ("case_steps", "timers", "outbox_messages", "inbox_events")
+
+ORDER_BOOK: tuple[Any, ...] = (
+    Order,
+    OrderLine,
+    Reservation,
+    ProductionTask,
+    RecipeVersion,
+    Promise,
+)
+"""The tables analysis and planning must never write. Read before, compared after."""
 
 
 def bakery_anchor(settings: Settings) -> datetime:
@@ -362,6 +386,206 @@ class Intake:
                 .where(CaseStep.id == step_id)
                 .values(lease_expires_at=text("now() - interval '1 second'"))
             )
+
+    async def rows_of(self, model: Any) -> list[Any]:
+        """Every row of one table, for count and emptiness assertions."""
+        async with self.database.connect() as connection:
+            return list((await connection.execute(select(model))).all())
+
+    # ------------------------------------------------------------------- analysis reads
+
+    async def tracks(self, case_id: UUID) -> list[Any]:
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(Track).where(Track.case_id == case_id).order_by(Track.promise_id)
+                    )
+                ).all()
+            )
+
+    async def track(self, case_id: UUID, promise_id: str) -> Any:
+        async with self.database.connect() as connection:
+            return (
+                await connection.execute(
+                    select(Track).where(Track.case_id == case_id, Track.promise_id == promise_id)
+                )
+            ).one_or_none()
+
+    async def options(self, track_id: UUID) -> list[Any]:
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(RecoveryOption)
+                        .where(RecoveryOption.track_id == track_id)
+                        .order_by(RecoveryOption.id)
+                    )
+                ).all()
+            )
+
+    async def paths(self, track_id: UUID) -> list[Any]:
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(TrackPath)
+                        .where(TrackPath.track_id == track_id)
+                        .order_by(TrackPath.ordinal)
+                    )
+                ).all()
+            )
+
+    async def watch(self, track_id: UUID) -> list[tuple[str, str]]:
+        async with self.database.connect() as connection:
+            rows = (
+                await connection.execute(
+                    select(TrackWatch.entity_type, TrackWatch.entity_id).where(
+                        TrackWatch.track_id == track_id
+                    )
+                )
+            ).all()
+        return sorted((row.entity_type, row.entity_id) for row in rows)
+
+    async def snapshot(self) -> GraphSnapshot:
+        """The same whole-graph read the analysis worker makes, for direct engine comparison."""
+        async with self.database.connect() as connection:
+            return await analysis.fresh_snapshot(connection)
+
+    async def engine_analysis(
+        self, case_id: UUID, *, now: datetime | None = None
+    ) -> tuple[GraphSnapshot, Any]:
+        """Run ``promise_graph`` directly against the persisted graph and the case's exception.
+
+        The comparison the equivalence tests make is only worth anything if this side of it
+        reads no backend answer: the snapshot, the exception and the classification all come
+        from the engine's own code path, and only the raw rows are shared.
+        """
+        row = await self.exception(case_id)
+        assert row is not None
+        graph = await self.snapshot()
+        exception = EnginePhysicalException(
+            id=str(row.id),
+            category=ExceptionCategory(row.category),
+            commitment_id=row.commitment_id,
+            scope_line_ids=tuple(str(item) for item in row.scope_line_ids),
+            resource_id=row.resource_id,
+            quantity=row.quantity,
+            outage_until=row.outage_until,
+            reported_by=row.reported_by,
+            reported_at=row.reported_at,
+            raw_utterance=row.raw_utterance,
+        )
+        return graph, engine_analyze(graph, exception, now or datetime.now(UTC))
+
+    # ------------------------------------------------------------- order-system stand-ins
+
+    async def order_book(self) -> dict[str, list[tuple[Any, ...]]]:
+        """Every row of the tables a plan must not touch, as comparable tuples."""
+        captured: dict[str, list[tuple[Any, ...]]] = {}
+        async with self.database.connect() as connection:
+            for model in ORDER_BOOK:
+                table = model.__table__
+                rows = (await connection.execute(select(table).order_by(*table.primary_key))).all()
+                captured[table.name] = [tuple(row) for row in rows]
+        return captured
+
+    async def repin_order_line(self, line_id: str, version_id: str) -> None:
+        """Re-pin one line to another authored version, the way the order system will.
+
+        Reservations are recomputed through the engine's own derivation rather than written by
+        hand, so the mutated database still satisfies invariant 11.4.3: a line's reservations
+        are its pinned version times its quantity.
+        """
+        graph = await self.snapshot()
+        order_line = graph.order_lines[line_id]
+        version = graph.versions[version_id]
+        derived = reservations_for_line(
+            order_line.model_copy(update={"recipe_version_id": version_id}),
+            version,
+            graph.resources,
+        )
+        async with self.database.begin() as connection:
+            unit_of_work = UnitOfWork(connection)
+            async with unit_of_work.governed(
+                event_type="ORDER_SYSTEM_TEST_MUTATION",
+                actor=Actor(kind="SYSTEM", id="order-system-stand-in"),
+                authority="NONE",
+            ) as write:
+                await write.execute(
+                    sa_update(OrderLine)
+                    .where(OrderLine.id == line_id)
+                    .values(recipe_version_id=version_id)
+                )
+                await write.execute(delete(Reservation).where(Reservation.order_line_id == line_id))
+                for reservation in derived:
+                    await write.execute(
+                        insert(Reservation).values(
+                            id=reservation.id,
+                            order_line_id=reservation.order_line_id,
+                            resource_id=reservation.resource_id,
+                            quantity=reservation.quantity,
+                            source_recipe_version_id=reservation.source_recipe_version_id,
+                        )
+                    )
+                await write.execute(
+                    sa_update(Order)
+                    .where(Order.id == order_line.order_id)
+                    .values(
+                        external_version=Order.external_version + 1,
+                        state="AMENDED",
+                        updated_at=datetime.now(UTC),
+                    )
+                )
+
+    async def bump_order_version(self, order_id: str) -> None:
+        """One fingerprint input moved, and nothing else."""
+        async with self.database.begin() as connection:
+            unit_of_work = UnitOfWork(connection)
+            async with unit_of_work.governed(
+                event_type="ORDER_SYSTEM_TEST_MUTATION",
+                actor=Actor(kind="SYSTEM", id="order-system-stand-in"),
+                authority="NONE",
+            ) as write:
+                await write.execute(
+                    sa_update(Order)
+                    .where(Order.id == order_id)
+                    .values(
+                        external_version=Order.external_version + 1,
+                        updated_at=datetime.now(UTC),
+                    )
+                )
+
+    # ------------------------------------------------------------------- step scheduling
+
+    async def defer(self, step_id: UUID) -> None:
+        """Push one step out of reach so a later one can be made to run first.
+
+        Deterministic ordering without sleeping: a ``PENDING`` step whose ``next_attempt_at``
+        lies in the future is not claimable, so the sweep takes the next row instead.
+        """
+        async with self.database.begin() as connection:
+            await connection.execute(
+                sa_update(CaseStep)
+                .where(CaseStep.id == step_id)
+                .values(next_attempt_at=text("now() + interval '1 hour'"))
+            )
+
+    async def release(self, step_id: UUID) -> None:
+        async with self.database.begin() as connection:
+            await connection.execute(
+                sa_update(CaseStep).where(CaseStep.id == step_id).values(next_attempt_at=None)
+            )
+
+    async def step_named(self, case_id: UUID, step_key: str) -> Any:
+        async with self.database.connect() as connection:
+            return (
+                await connection.execute(
+                    select(CaseStep).where(
+                        CaseStep.case_id == case_id, CaseStep.step_key == step_key
+                    )
+                )
+            ).one_or_none()
 
     async def outstanding(self, case_id: UUID) -> list[Any]:
         async with self.database.connect() as connection:
