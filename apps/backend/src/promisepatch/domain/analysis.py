@@ -57,6 +57,7 @@ from promisepatch.db.models import (
     Case,
     Customer,
     Order,
+    OutboxMessage,
     PhysicalException,
     RecoveryOption,
     Track,
@@ -69,6 +70,7 @@ from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 from promisepatch.domain.cases import LockedCase
 from promisepatch.domain.model import (
+    EFFECT_TRACK_ID,
     EVENT_STEP_COMPLETED,
     EVENT_STEP_SKIPPED,
     AppendEvent,
@@ -945,6 +947,25 @@ class OptionStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class EffectStatus:
+    """One outbound effect a track caused, as an operator needs to read it.
+
+    The idempotency key and the provider reference are both here on purpose: together they are
+    how a person answers "did that actually reach the order system, and can I prove it" without
+    opening a database. Nothing sensitive is in either -- they are our own identifiers and the
+    provider's own receipt, not the content of anybody's order.
+    """
+
+    kind: str
+    state: str
+    idempotency_key: str
+    provider_ref: str | None
+    attempts: int
+    delivered_at: datetime | None
+    last_error: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class TrackStatus:
     """One promise's posture in one case."""
 
@@ -963,6 +984,7 @@ class TrackStatus:
     paths: int
     watched_entities: int
     options: tuple[OptionStatus, ...]
+    effects: tuple[EffectStatus, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1028,6 +1050,13 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
             watched = await connection.scalar(
                 select(func.count()).select_from(TrackWatch).where(TrackWatch.track_id == track.id)
             )
+            effects = (
+                await connection.execute(
+                    select(OutboxMessage)
+                    .where(OutboxMessage.payload[EFFECT_TRACK_ID].astext == str(track.id))
+                    .order_by(OutboxMessage.created_at)
+                )
+            ).all()
             tracks.append(
                 TrackStatus(
                     track_id=track.id,
@@ -1058,6 +1087,18 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                             chosen=option.id == track.chosen_option_id,
                         )
                         for option in options
+                    ),
+                    effects=tuple(
+                        EffectStatus(
+                            kind=effect.kind,
+                            state=effect.state,
+                            idempotency_key=effect.idempotency_key,
+                            provider_ref=effect.provider_ref,
+                            attempts=effect.attempts,
+                            delivered_at=effect.delivered_at,
+                            last_error=effect.last_error,
+                        )
+                        for effect in effects
                     ),
                 )
             )

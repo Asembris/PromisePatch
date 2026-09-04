@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 from promisepatch import cli
 from promisepatch.cli import app, resolve_anchor
 from promisepatch.config import Settings, get_settings
-from promisepatch.domain import analysis, intake
+from promisepatch.domain import analysis, intake, recovery
 from promisepatch.fixtures.reset import ResetOutcome
 
 runner = CliRunner()
@@ -341,8 +341,143 @@ def test_case_status_delegates_to_the_domain_read_service(
     assert "rv-raspberry-almond-4" in result.output
 
 
+def test_case_status_shows_the_effect_a_recovery_produced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An operator asking "did that reach the order system" gets the key and the receipt."""
+    track = analysis.TrackStatus(
+        track_id=UUID(int=3),
+        promise_id="pr-a",
+        order_external_id="EXT-A",
+        customer_name="Amara Diallo",
+        state=recovery.TRACK_RECOVERED,
+        classification="AUTO_RECOVERABLE",
+        rule_id="R-PREAPPROVED",
+        reason_detail="PREAPPROVAL_COVERS",
+        priority=1,
+        fingerprint="f" * 64,
+        deadline_at=None,
+        linked_track_id=None,
+        paths=1,
+        watched_entities=9,
+        options=(),
+        effects=(
+            analysis.EffectStatus(
+                kind=recovery.EFFECT_ORDER_AMEND,
+                state="DELIVERED",
+                idempotency_key="pp:amend:track:option:1",
+                provider_ref="fake-abc123",
+                attempts=2,
+                delivered_at=None,
+                last_error=None,
+            ),
+        ),
+    )
+
+    async def fake(database: object, *, case_id: UUID) -> analysis.CaseStatus:
+        return analysis.CaseStatus(
+            case_id=case_id,
+            state=recovery.CASE_EXECUTING,
+            needs_owner_attention=True,
+            exception_id=UUID(int=2),
+            category="SUPPLY_NOT_RECEIVED",
+            tracks=(track,),
+        )
+
+    monkeypatch.setattr(
+        cli, "_read_case_status", lambda settings, case_id: fake(None, case_id=case_id)
+    )
+
+    result = runner.invoke(app, ["case-status", "--case", str(UUID(int=1))])
+
+    assert result.exit_code == 0, result.output
+    assert recovery.EFFECT_ORDER_AMEND in result.output
+    assert "DELIVERED" in result.output
+    assert "pp:amend:track:option:1" in result.output
+    assert "fake-abc123" in result.output
+
+
 def test_case_status_refuses_an_unparseable_identifier() -> None:
     result = runner.invoke(app, ["case-status", "--case", "nope"])
+
+    assert result.exit_code == 1
+    assert "not a UUID" in result.output
+
+
+# --------------------------------------------------------------------------- confirm plan
+
+
+def test_confirm_plan_is_a_subcommand() -> None:
+    assert "confirm-plan" in runner.invoke(app, ["--help"]).stdout
+
+
+def test_confirming_a_plan_delegates_to_the_domain_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI parses three arguments and prints. What a yes authorises is the domain's."""
+    seen: dict[str, object] = {}
+    given = UUID("11111111-2222-3333-4444-555555555555")
+
+    async def fake(database: object, **kwargs: object) -> recovery.ConfirmationResult:
+        seen.update(kwargs)
+        return recovery.ConfirmationResult(
+            case_id=UUID(int=1),
+            command_id=given,
+            state=recovery.CASE_EXECUTING,
+            created=True,
+            applying=(UUID(int=3),),
+            escalated=(UUID(int=4), UUID(int=5)),
+            awaiting_approval=(UUID(int=6),),
+        )
+
+    monkeypatch.setattr(recovery, "confirm_plan", fake)
+    monkeypatch.setattr(
+        cli,
+        "_confirm",
+        lambda settings, case_id, worker_id, command_id: fake(
+            None, case_id=case_id, worker_id=worker_id, command_id=command_id
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "confirm-plan",
+            "--case",
+            str(UUID(int=1)),
+            "--worker",
+            "maya",
+            "--command-id",
+            str(given),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert seen["case_id"] == UUID(int=1)
+    assert seen["worker_id"] == "maya"
+    assert seen["command_id"] == given
+    assert recovery.CASE_EXECUTING in result.output
+    assert "applying:  1" in result.output
+
+
+def test_confirm_plan_reports_a_refusal_instead_of_a_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A case that is not waiting for a yes is an operator error, not a crash."""
+
+    async def refuse(settings: object, case_id: UUID, worker_id: str, command_id: UUID) -> None:
+        raise recovery.PlanNotConfirmableError("case is ANALYZED, not PLANNED")
+
+    monkeypatch.setattr(cli, "_confirm", refuse)
+
+    result = runner.invoke(app, ["confirm-plan", "--case", str(UUID(int=1)), "--worker", "maya"])
+
+    assert result.exit_code == 1
+    assert "not PLANNED" in result.output
+
+
+def test_confirm_plan_refuses_an_unparseable_identifier() -> None:
+    result = runner.invoke(app, ["confirm-plan", "--case", "nope", "--worker", "maya"])
 
     assert result.exit_code == 1
     assert "not a UUID" in result.output

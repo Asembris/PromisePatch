@@ -18,7 +18,7 @@ import typer
 from promisepatch.config import Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
-from promisepatch.domain import analysis, intake
+from promisepatch.domain import analysis, intake, recovery
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 
@@ -207,6 +207,54 @@ def correct_physical_fact_command(
 # --------------------------------------------------------------------------- case commands
 
 
+@app.command(name="confirm-plan")
+def confirm_plan_command(
+    case: str = typer.Option(..., "--case", help="The planned case to confirm."),
+    worker: str = typer.Option(..., "--worker", help="The staff id confirming the plan."),
+    command_id: str = typer.Option(
+        "", "--command-id", help="Stable command identity; a retry must reuse it."
+    ),
+) -> None:
+    """Confirm a plan, so the recoveries it already authorises may execute.
+
+    Thin, like the intake commands. Who may confirm, what a confirmation permits, and which
+    tracks it does *not* permit all live in :mod:`promisepatch.domain.recovery`, where the MCP
+    tool and the voice orchestrator will find them unchanged.
+
+    Nothing is sent from here and nothing is applied here. This makes the confirmation durable;
+    the worker process is what executes against it, and until one runs the case sits exactly
+    where this command left it.
+    """
+    settings = get_settings()
+    try:
+        outcome = asyncio.run(
+            _confirm(settings, _uuid(case, "--case"), worker, _command_id(command_id))
+        )
+    except (RuntimeError, ValueError) as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+    typer.echo(f"case:      {outcome.case_id}")
+    typer.echo(f"command:   {outcome.command_id}")
+    typer.echo(f"state:     {outcome.state}")
+    typer.echo(f"accepted:  {'now' if outcome.created else 'already (retry)'}")
+    typer.echo(f"applying:  {len(outcome.applying)}")
+    typer.echo(f"escalated: {len(outcome.escalated)}")
+    typer.echo(f"awaiting approval: {len(outcome.awaiting_approval)}")
+
+
+async def _confirm(
+    settings: Settings, case_id: UUID, worker_id: str, command_id: UUID
+) -> recovery.ConfirmationResult:
+    database = RuntimeDatabase.from_settings(settings)
+    try:
+        return await recovery.confirm_plan(
+            database, case_id=case_id, command_id=command_id, worker_id=worker_id
+        )
+    finally:
+        await database.dispose()
+
+
 @app.command(name="case-status")
 def case_status_command(
     case: str = typer.Option(..., "--case", help="The case to describe."),
@@ -254,6 +302,14 @@ def case_status_command(
             )
         if not track.options:
             typer.echo("     no recovery option")
+        for effect in track.effects:
+            typer.echo(
+                f"    effect {effect.kind} {effect.state} "
+                f"(attempt {effect.attempts}, ref {effect.provider_ref or '-'})"
+            )
+            typer.echo(f"      key {effect.idempotency_key}")
+            if effect.last_error:
+                typer.echo(f"      last error: {effect.last_error}")
 
 
 async def _read_case_status(settings: Settings, case_id: UUID) -> analysis.CaseStatus:
