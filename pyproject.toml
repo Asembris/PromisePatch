@@ -55,7 +55,12 @@ strict = true
 warn_unreachable = true
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
-mypy_path = ["packages/promise-graph/src", "packages/promise-graph", "apps/backend/src"]
+mypy_path = [
+    "packages/promise-graph/src",
+    "packages/promise-graph",
+    "apps/backend/src",
+    "apps/backend/tests",
+]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -73,7 +78,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["packages/promise-graph/tests", "apps/backend/tests"]
-pythonpath = ["packages/promise-graph"]
+pythonpath = ["packages/promise-graph", "apps/backend/tests"]
 addopts = "-q --strict-markers --strict-config --import-mode=importlib"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -141,12 +146,41 @@ type = "layers"
 layers = [
     "promisepatch.cli",
     "promisepatch.main",
+    "promisepatch.worker",
     "promisepatch.api",
+    "promisepatch.domain",
     "promisepatch.fixtures",
     "promisepatch.graph",
     "promisepatch.db",
     "promisepatch.observability",
     "promisepatch.config",
+]
+
+# The workflow's decisions are made by functions that cannot reach a database, a provider or a
+# request. Everything they need is an argument, which is what makes a step's behaviour testable
+# without infrastructure -- and what stops "just read the row here" from ever being the easy fix.
+[[tool.importlinter.contracts]]
+name = "workflow handlers decide without doing"
+type = "forbidden"
+source_modules = [
+    "promisepatch.domain.handlers",
+    "promisepatch.domain.model",
+    "promisepatch.domain.retry",
+]
+forbidden_modules = [
+    "asyncio",
+    "fastapi",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.main",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "urllib",
 ]
 
 [[tool.importlinter.contracts]]
