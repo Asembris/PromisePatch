@@ -175,20 +175,6 @@ WATCH_RESERVATION: Final = "reservation"
 WATCH_TASK: Final = "production_task"
 WATCH_RESOURCE: Final = "resource"
 
-SCOPE_WATCH_TYPES: Final[tuple[str, ...]] = (
-    WATCH_ORDER,
-    WATCH_ORDER_LINE,
-    WATCH_TASK,
-    WATCH_RESOURCE,
-)
-"""The watch rows a :class:`~promise_graph.fingerprint.TrackScope` can be rebuilt from.
-
-Revalidation needs the scope back, not a description of it, so these four are exactly the
-fields of ``TrackScope``. The other three -- pinned versions, constraints, reservations -- are
-watched because an order-system change event names them, and are already inside the
-fingerprint that the scope produces.
-"""
-
 
 class AnalysisStateError(RuntimeError):
     """The case is not in a shape this step can analyse or plan against."""
@@ -666,8 +652,12 @@ def _watch_pairs(
 def scope_from_watch(rows: Sequence[tuple[str, str]], *, promise_id: str) -> TrackScope:
     """Rebuild a track's scope from its persisted watch rows.
 
-    The inverse of the first four types :func:`_watch_pairs` writes, so a later revalidation
-    can recompute the same fingerprint over the same entities without re-running propagation.
+    The inverse of the order, order-line, task and resource rows :func:`_watch_pairs` writes,
+    which are exactly the fields of :class:`~promise_graph.fingerprint.TrackScope` -- so a
+    later revalidation recomputes the same fingerprint over the same entities without having
+    to re-run propagation first. The other three watched types (pinned versions, constraints,
+    reservations) are already inside the fingerprint the scope produces, and are stored
+    because an order-system change event names them.
     """
     by_type: dict[str, list[str]] = {}
     for entity_type, entity_id in rows:
