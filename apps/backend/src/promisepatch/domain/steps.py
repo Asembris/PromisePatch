@@ -57,6 +57,7 @@ from promisepatch.domain.model import (
     StepOutcome,
     StepResult,
 )
+from promisepatch.domain.observation import INTAKE_STEP_KINDS
 from promisepatch.domain.outbox import enqueue_effect, stamp_created_in_tx_seq
 from promisepatch.domain.timers import arm_timer, cancel_timer
 from promisepatch.observability import get_logger
@@ -247,17 +248,33 @@ async def _run(connection: AsyncConnection, *, claim: StepClaim, actor: Actor) -
     case = await lock_case(connection, claim.case_id)
     now = await database_now(connection)
 
-    context = StepContext(
-        step_id=claim.step_id,
-        case_id=claim.case_id,
-        step_key=claim.step_key,
-        kind=StepKind(row.kind),
-        attempts=claim.attempts,
-        case_state=case.state,
-        now=now,
-    )
     crash.at(crash.DURING_HANDLER)
-    outcome = handlers.handle(context)
+    if row.kind in INTAKE_STEP_KINDS:
+        # Intake decides from the graph rather than from a context alone, so it reads and
+        # writes inside this transaction instead of returning directives for one. Deferred
+        # import: the intake executor enqueues successors through this module.
+        from promisepatch.domain import physical
+
+        outcome = await physical.execute(
+            connection,
+            case=case,
+            kind=row.kind,
+            step_key=claim.step_key,
+            now=now,
+            worker=claim.lease_owner,
+        )
+    else:
+        outcome = handlers.handle(
+            StepContext(
+                step_id=claim.step_id,
+                case_id=claim.case_id,
+                step_key=claim.step_key,
+                kind=StepKind(row.kind),
+                attempts=claim.attempts,
+                case_state=case.state,
+                now=now,
+            )
+        )
 
     if outcome.disposition is Disposition.RETRYING:
         return await _schedule_retry(connection, claim=claim, outcome=outcome, now=now)
@@ -397,6 +414,19 @@ async def _commit_transition(
                 "attempt": claim.attempts,
             },
         )
+        # What the transition did, in its own words, after what the engine did in ours. Still
+        # inside the transaction and still taking no lock the spine's own has not already
+        # taken, so the ordering guarantee is untouched.
+        for event in outcome.events:
+            await append_event(
+                connection,
+                event_type=event.type,
+                correlation_id=write.correlation_id,
+                occurred_at=now,
+                case_id=claim.case_id,
+                entity_refs=list(event.entity_refs),
+                payload=dict(event.payload),
+            )
         await stamp_created_in_tx_seq(connection, effect_ids=effect_ids, seq=seq)
 
         crash.at(crash.BEFORE_TRANSITION_COMMIT)
