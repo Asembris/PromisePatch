@@ -1,9 +1,18 @@
 """Infrastructure of the durable engine: events, steps, timers, inbox, outbox, conversations.
 
 These tables exist so that restart safety is a property of the database rather than of any
-running process. Nothing in this slice writes them; the transitions that do arrive with the
-case engine. The schema lands now so the audited-write boundary can be installed once, over
-every governed table, instead of being retrofitted table by table.
+running process: a worker that dies holds nothing, because everything it was doing is a row.
+
+Three primitives here carry the whole restart story, and each is enforced by the database
+rather than by a convention a future writer has to remember:
+
+* a **lease** (``lease_owner``, ``lease_expires_at``) says which worker owns a unit of work and
+  until when, so a dead process becomes an expired claim rather than a stuck row;
+* ``attempts`` is the **fencing token**. The claim increments it, so a stalled worker's
+  completion names an attempt that no longer exists and matches no row;
+* **uniqueness** decides the races that matter -- one step per ``(case_id, step_key)``, one
+  live timer per subject, one effect per idempotency key -- so a duplicate is a no-op in
+  PostgreSQL rather than a second real-world consequence.
 """
 
 from __future__ import annotations
@@ -14,6 +23,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     Index,
     Integer,
     String,
@@ -36,6 +46,11 @@ from promisepatch.db.types import (
     enum_check,
 )
 
+_IN_FLIGHT_LEASE = (
+    "state <> 'IN_FLIGHT' OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)"
+)
+"""Executing means owned, by somebody, until a stated instant. Written once for both leases."""
+
 
 class DomainEvent(Base):
     """The append-only sequence spine.
@@ -45,6 +60,14 @@ class DomainEvent(Base):
     ``entity_refs`` names what changed, which is how a later slice recomputes only the tracks
     that were actually watching a touched entity. Like the audit ledger, it holds no foreign
     key into the domain: the record of what happened outlives the rows it happened to.
+
+    **``seq`` is commit-ordered, and not by this column.** The mapped default draws a value
+    that a ``BEFORE INSERT`` trigger then discards and redraws while holding a transaction
+    advisory lock, which is what makes ``seq(e1) < seq(e2) ⇒ commit(e1) < commit(e2)`` true for
+    committed rows. Appending an event is therefore the last lock a transaction may take; see
+    :func:`promisepatch.db.events.append_event`. The default stays because a row inserted with
+    no trigger must fail loudly rather than arrive with a null key, and it is why the committed
+    numbers have gaps.
     """
 
     __tablename__ = "domain_events"
@@ -66,14 +89,33 @@ class CaseStep(Base):
     """One idempotent unit of execution within a case.
 
     ``(case_id, step_key)`` is unique so that resuming after a crash re-enters the plan rather
-    than re-running it: a step that already committed cannot be enqueued a second time.
+    than re-running it: a step that already committed cannot be enqueued a second time, and a
+    successor a retried transition proposes twice is refused by the database.
+
+    ``attempts`` is the fencing token as well as the retry counter. A claim moves the row to
+    ``IN_FLIGHT`` and increments it in one statement, so ``(state, lease_owner, attempts)``
+    identifies exactly one claim: a worker that stalled past its lease and woke up to find the
+    step reclaimed matches no row, and writes nothing. A second version column would say the
+    same thing twice and could disagree with itself.
     """
 
     __tablename__ = "case_steps"
     __table_args__ = (
         enum_check("state", STEP_STATES, name="state"),
+        # A negative attempt count would make the fencing token meaningless and the backoff
+        # ladder index out of range; neither should be reachable by any statement at all.
+        CheckConstraint("attempts >= 0", name="attempts_non_negative"),
+        # An IN_FLIGHT row with no lease could never be reclaimed: nothing would say when its
+        # owner's claim ran out, so a crash there would strand the step for good.
+        CheckConstraint(_IN_FLIGHT_LEASE, name="in_flight_lease"),
         UniqueConstraint("case_id", "step_key", name="uq_case_steps_case_step_key"),
         Index("ix_case_steps_state_next_attempt", "state", "next_attempt_at"),
+        # The reclaim path: expired leases only, so the sweep never walks live or settled rows.
+        Index(
+            "ix_case_steps_lease_expires_at",
+            "lease_expires_at",
+            postgresql_where=text("state = 'IN_FLIGHT'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -91,14 +133,34 @@ class CaseStep(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
     done_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        Timestamp, nullable=False, server_default=func.now()
+    )
 
 
 class Timer(Base):
-    """A deadline that survives a restart, because it is a row rather than a scheduled task."""
+    """A deadline that survives a restart, because it is a row rather than a scheduled task.
+
+    ``ix_timers_live_subject`` is what makes arming idempotent: at most one *unfired* timer per
+    ``(kind, subject_type, subject_id)``, so a transition that re-arms a deadline it already
+    armed produces one wake-up rather than two. The index is partial on purpose -- once a timer
+    has fired it stops constraining anything, and the same semantic deadline may be armed again
+    for the next round.
+    """
 
     __tablename__ = "timers"
     __table_args__ = (
         Index("ix_timers_due_unfired", "due_at", postgresql_where=text("fired_at IS NULL")),
+        Index(
+            "ix_timers_live_subject",
+            "kind",
+            "subject_type",
+            "subject_id",
+            unique=True,
+            postgresql_where=text("fired_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -143,13 +205,25 @@ class OutboxMessage(Base):
 
     The idempotency key is derived from server-side ids and is unique, so a retry after an
     uncertain delivery cannot become a second amendment.
+
+    **The guarantee this table provides is at-least-once dispatch under a stable key.** A
+    process that dies between the provider accepting a call and the acknowledgement committing
+    will send again, with the identical ``idempotency_key``; whether that becomes one effect or
+    two in the outside world is the provider's to decide, not ours to claim.
     """
 
     __tablename__ = "outbox_messages"
     __table_args__ = (
         enum_check("state", OUTBOX_STATES, name="state"),
+        CheckConstraint("attempts >= 0", name="attempts_non_negative"),
+        CheckConstraint(_IN_FLIGHT_LEASE, name="in_flight_lease"),
         UniqueConstraint("idempotency_key", name="uq_outbox_messages_idempotency_key"),
         Index("ix_outbox_messages_state_next_attempt", "state", "next_attempt_at"),
+        Index(
+            "ix_outbox_messages_lease_expires_at",
+            "lease_expires_at",
+            postgresql_where=text("state = 'IN_FLIGHT'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -161,6 +235,13 @@ class OutboxMessage(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
     provider_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_in_tx_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        Timestamp, nullable=False, server_default=func.now()
+    )
 
 
 class Conversation(Base):

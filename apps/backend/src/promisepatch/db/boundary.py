@@ -21,8 +21,41 @@ added later cannot quietly land outside the boundary.
 
 from __future__ import annotations
 
+import hashlib
+
+
+def advisory_lock_key(name: str) -> int:
+    """A PostgreSQL advisory-lock key derived from an operation's name.
+
+    The first eight bytes of the SHA-256 digest, read as a signed big-endian integer, which is
+    the range ``pg_advisory_xact_lock(bigint)`` accepts. Deriving rather than choosing means
+    two operations cannot silently share a key, and a key cannot collide with one picked by
+    another application sharing the database.
+    """
+    return int.from_bytes(hashlib.sha256(name.encode("utf-8")).digest()[:8], "big", signed=True)
+
+
 AUDIT_MARKER = "promisepatch.audit_event_id"
 """Transaction-local setting naming the audit event that authorises the current write."""
+
+EVENT_ORDER_LOCK_NAME = "promisepatch.domain_event_order"
+EVENT_ORDER_LOCK_KEY = advisory_lock_key(EVENT_ORDER_LOCK_NAME)
+"""The advisory lock a transaction holds from its first domain event until it ends.
+
+Held by a ``BEFORE INSERT`` trigger on ``domain_events``, which draws ``seq`` only once it has
+the lock. That is what makes the spine commit-ordered: for two committed events,
+``seq(e1) < seq(e2)`` implies ``commit(e1) < commit(e2)``, so a subscriber whose cursor only
+moves forward cannot step over a row that had not committed yet when it read.
+
+**It is the last lock an event-producing transaction may take.** A transaction that appended an
+event and then waited on an unrelated row would hold the whole spine while a second transaction,
+holding that row, queued behind it. Every writer takes locks in this order instead:
+
+    case_steps row → cases row → owned timer / inbox / outbox rows → this lock → COMMIT
+
+Derived from the name rather than chosen, so it cannot collide by accident with another
+application sharing the database. Migration 0005 writes the resulting integer out literally; a
+test asserts the two still agree."""
 
 RUNTIME_ROLE = "promisepatch_app"
 """The least-privileged login the application uses. It owns nothing and migrates nothing."""
@@ -30,11 +63,13 @@ RUNTIME_ROLE = "promisepatch_app"
 ASSERT_GOVERNED_FUNCTION = "assert_governed_write"
 REJECT_MUTATION_FUNCTION = "reject_mutation"
 NOTIFY_EVENT_FUNCTION = "notify_domain_event"
+COMMIT_ORDER_FUNCTION = "assign_commit_ordered_seq"
 
 GOVERNED_WRITE_TRIGGER = "trg_10_governed_write"
 GOVERNED_TRUNCATE_TRIGGER = "trg_11_governed_truncate"
 APPEND_ONLY_TRIGGER = "trg_00_append_only"
 NO_TRUNCATE_TRIGGER = "trg_01_no_truncate"
+COMMIT_ORDER_TRIGGER = "trg_05_commit_ordered_seq"
 NOTIFY_EVENT_TRIGGER = "trg_20_notify_domain_event"
 """Numeric prefixes are load-bearing.
 
@@ -42,8 +77,11 @@ PostgreSQL fires triggers of the same timing in name order, so ``trg_00_append_o
 before ``trg_10_governed_write``: an update to an append-only table fails as immutable rather
 than as unaudited, whether or not the transaction was authorised.
 
-``trg_20_notify_domain_event`` sorts last and fires ``AFTER INSERT``, so the event spine
-announces a row only once the guards have accepted it.
+``trg_05_commit_ordered_seq`` is ``BEFORE INSERT FOR EACH ROW`` on ``domain_events``: the last
+moment at which ``seq`` can still be decided, and therefore the only place the commit order can
+be established. ``trg_20_notify_domain_event`` sorts last and fires ``AFTER INSERT``, so the
+spine announces a row only once the guards have accepted it -- and announces the sequence
+number the earlier trigger settled on.
 """
 
 EVENT_CHANNEL = "promisepatch_events"

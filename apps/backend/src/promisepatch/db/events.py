@@ -13,25 +13,30 @@ Two properties of the read are load-bearing:
 * **The read is ordered and bounded.** Ascending ``seq``, with a caller-supplied limit, so a
   subscriber that has been away cannot ask one query to materialise an unbounded history.
 
-**A note on commit order.** ``seq`` is drawn at INSERT and becomes visible at COMMIT, so two
-overlapping writers could in principle commit sequence values out of order and a cursor that
-only ever moves forward would step over the later-committing, lower-numbered row. Today that
-cannot happen: every ``domain_events`` insert is made by :mod:`promisepatch.fixtures.reset`,
-which holds ``pg_advisory_xact_lock`` for its whole transaction, so domain events commit in
-sequence order by construction. The case engine will introduce a second writer, and when it
-does, either that serialisation has to be preserved or the cursor has to gain a commit-ordered
-coordinate. It is written down here because it is the one assumption this module cannot check
-for itself.
+**Commit order is what makes the cursor safe, and it is enforced in PostgreSQL.** ``seq`` is
+drawn at INSERT and becomes visible at COMMIT, so two overlapping writers could in principle
+commit sequence values out of order, and a cursor that only ever moves forward would step over
+the later-committing, lower-numbered row -- permanently. A ``BEFORE INSERT`` trigger takes
+:data:`~promisepatch.db.boundary.EVENT_ORDER_LOCK_KEY` as a transaction advisory lock and draws
+``seq`` only once it holds it, so a transaction cannot obtain a sequence value while an earlier,
+lower-numbered one is still unfinished. For committed events, ``seq(e1) < seq(e2)`` implies
+``commit(e1) < commit(e2)``.
+
+The correctness lives in the database rather than in this module because there is no way for a
+reader to check it, and no way to ask every future writer to remember it. What writers *do*
+have to remember is the other half -- see :func:`append_event` for the lock order that keeps
+the guarantee from becoming a queue.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -66,6 +71,56 @@ _COLUMNS = (
     DomainEvent.entity_refs,
     DomainEvent.occurred_at,
 )
+
+
+async def append_event(
+    connection: AsyncConnection,
+    *,
+    event_type: str,
+    correlation_id: UUID,
+    occurred_at: datetime,
+    case_id: UUID | None = None,
+    entity_refs: Sequence[Any] = (),
+    payload: Mapping[str, Any] | None = None,
+    event_id: UUID | None = None,
+) -> int:
+    """Append one event to the spine and return the sequence it was given.
+
+    **Call this last.** Inserting here takes
+    :data:`~promisepatch.db.boundary.EVENT_ORDER_LOCK_KEY` and holds it until the transaction
+    ends, so from this point on the transaction should acquire no further lock and do no
+    further waiting -- every other event-producing transaction in the system is queued behind
+    it. The order every writer follows is:
+
+        ``case_steps`` row → ``cases`` row → owned timer / inbox / outbox rows → this → COMMIT
+
+    A transaction that appended an event and then blocked on a row somebody else held would
+    stall the whole spine, and if that somebody were itself waiting to append, the pair would
+    deadlock. PostgreSQL would detect and abort one of them, which is a correct outcome and a
+    bad design; the ordering is what stops it arising.
+
+    Writes to *its own* rows after this point are fine, and are the reason the rule is phrased
+    as "acquire no further lock" rather than "issue no further statement": a row this
+    transaction inserted is already locked by it, so stamping the sequence number back onto an
+    outbox message it just created waits for nobody.
+
+    ``occurred_at`` is passed in rather than defaulted to ``now()``, so an event carries the
+    instant the transaction read once and used for every decision in it.
+    """
+    statement = (
+        insert(DomainEvent)
+        .values(
+            event_id=event_id or uuid4(),
+            type=event_type,
+            case_id=case_id,
+            entity_refs=list(entity_refs),
+            payload=dict(payload or {}),
+            correlation_id=correlation_id,
+            occurred_at=occurred_at,
+        )
+        .returning(DomainEvent.seq)
+    )
+    return int((await connection.execute(statement)).scalar_one())
 
 
 async def latest_seq(connection: AsyncConnection) -> int:

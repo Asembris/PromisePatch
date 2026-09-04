@@ -30,12 +30,10 @@ the record of them is exactly what must not be rewritten.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Final
-from uuid import uuid4
 
 from argon2 import PasswordHasher
 from sqlalchemy import Table, insert, text
@@ -43,8 +41,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from promisepatch.config import Settings
 from promisepatch.db.base import SCHEMA, metadata
-from promisepatch.db.boundary import resettable_tables
-from promisepatch.db.models import DomainEvent, FixtureState
+from promisepatch.db.boundary import advisory_lock_key, resettable_tables
+from promisepatch.db.events import append_event
+from promisepatch.db.models import FixtureState
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.projection import TableRows, digest, project, project_staff
@@ -61,9 +60,7 @@ tracks and no watches left to recompute.
 """
 
 LOCK_NAME: Final = "promisepatch.fixture_reset"
-LOCK_KEY: Final = int.from_bytes(
-    hashlib.sha256(LOCK_NAME.encode("utf-8")).digest()[:8], "big", signed=True
-)
+LOCK_KEY: Final = advisory_lock_key(LOCK_NAME)
 """Advisory lock key, derived from the operation's name so it cannot collide by accident."""
 
 FIXTURE_STATE_ID: Final = 1
@@ -162,25 +159,19 @@ async def reset_demo_state(
                 fixture_digest=fixture_digest,
             )
         )
-        domain_event_seq = (
-            await write.execute(
-                insert(DomainEvent)
-                .values(
-                    event_id=uuid4(),
-                    type=DOMAIN_EVENT_TYPE,
-                    case_id=None,
-                    entity_refs=[],
-                    payload={
-                        "fixture": demo.FIXTURE_NAME,
-                        "anchor": anchor.isoformat(),
-                        "digest": fixture_digest,
-                    },
-                    correlation_id=write.correlation_id,
-                    occurred_at=now,
-                )
-                .returning(DomainEvent.seq)
-            )
-        ).scalar_one()
+        # Last, and after every table lock this transaction needs: appending an event takes the
+        # spine's ordering lock and holds it to commit, so nothing may queue behind it here.
+        domain_event_seq = await append_event(
+            write.connection,
+            event_type=DOMAIN_EVENT_TYPE,
+            correlation_id=write.correlation_id,
+            occurred_at=now,
+            payload={
+                "fixture": demo.FIXTURE_NAME,
+                "anchor": anchor.isoformat(),
+                "digest": fixture_digest,
+            },
+        )
 
         return ResetOutcome(
             fixture_name=demo.FIXTURE_NAME,
