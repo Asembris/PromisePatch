@@ -140,3 +140,43 @@ def test_an_unparseable_anchor_is_refused() -> None:
 def test_an_unknown_bakery_timezone_is_refused() -> None:
     with pytest.raises(ValueError, match="PP_BAKERY_TZ"):
         resolve_anchor("2026-03-04T07:00", Settings(bakery_tz="Mars/Olympus_Mons"))
+
+
+# ------------------------------------------------------------------------------ pp worker
+
+
+def test_worker_is_a_subcommand() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "worker" in result.stdout
+
+
+def test_worker_runs_the_loop_with_the_processes_own_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI resolves settings and hands them over; it decides nothing about the loop itself."""
+    from promisepatch import worker as worker_module
+
+    seen: list[Settings] = []
+
+    async def record(settings: Settings, adapter: Any = None) -> None:
+        seen.append(settings)
+
+    monkeypatch.setattr(worker_module, "run", record)
+    assert runner.invoke(app, ["worker"]).exit_code == 0
+    assert len(seen) == 1
+
+
+def test_worker_reports_a_misconfiguration_instead_of_a_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An operator gets the variable to fix, on stderr, with a non-zero exit code."""
+    from promisepatch import worker as worker_module
+
+    async def refuse(settings: Settings, adapter: Any = None) -> None:
+        raise RuntimeError("PP_DATABASE_URL is not configured")
+
+    monkeypatch.setattr(worker_module, "run", refuse)
+    result = runner.invoke(app, ["worker"])
+    assert result.exit_code == 1
+    assert "PP_DATABASE_URL" in result.output

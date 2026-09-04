@@ -48,6 +48,24 @@ def api(
     uvicorn.run("promisepatch.main:app", host=host, port=port, reload=reload)
 
 
+@app.command()
+def worker() -> None:
+    """Run the durable workflow worker.
+
+    Connects as ``promisepatch_app`` like every other runtime process. Stop it with Ctrl+C or a
+    ``SIGTERM``; killing it outright is also fine, because everything it was doing is a row and
+    every claim it held expires.
+    """
+    from promisepatch import worker as worker_module
+
+    settings = get_settings()
+    try:
+        asyncio.run(worker_module.run(settings))
+    except RuntimeError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+
 @app.command(name="reset-demo-state")
 def reset_demo_state_command(
     anchor: str = typer.Option(
