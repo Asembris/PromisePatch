@@ -38,3 +38,10 @@ Thumbs.db
 *.db
 cdk.out/
 .mcp.json
+
+# Generated local-stack environment. The committed *.env.example templates are the shape;
+# the rendered files hold generated credentials and never leave the machine.
+docker/env/*.env
+
+# An optional local root CA for container builds; machine-specific, never shared.
+docker/env/extra-ca.crt

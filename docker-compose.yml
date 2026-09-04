@@ -1,0 +1,153 @@
+# The disposable local stack.
+#
+#     postgres  ──healthy──▶  migrate  ──exit 0──▶  seed  ──exit 0──▶  api  ──healthy──▶  frontend
+#
+# Every arrow is a condition rather than a hope. `depends_on` with `service_healthy` and
+# `service_completed_successfully` is what makes "the stack is up" mean the schema is at head
+# and the fixture is loaded: a failed migration leaves the API unstarted instead of leaving a
+# healthy-looking process serving an empty or half-migrated database.
+#
+# **Privilege separation is the shape of this file.** There is no shared environment. The
+# administrative connection reaches `migrate` and `seed`; the runtime connection reaches
+# `api`; the frontend receives neither, because everything a `VITE_`-prefixed variable holds is
+# compiled into a bundle any visitor can read. Nothing is interpolated from the repository's
+# own `.env` either -- a developer whose `.env` points at a hosted database must not be able to
+# migrate it by typing `docker compose up`.
+#
+# Generate the environment files first:
+#
+#     uv run python scripts/bootstrap_local_env.py
+#
+# This database is a throwaway volume on one machine. It is not a model of a deployment.
+
+name: promisepatch
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: [docker/env/postgres.env]
+    ports:
+      # A high host port on purpose: 5432 is very often already taken by a locally installed
+      # PostgreSQL, and a stack that silently connected to that one instead would be a
+      # migration run against the wrong database.
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once, on an empty data directory, before anything else touches the database. It
+      # creates the login-less roles a managed host puts in front of its REST layer, so that
+      # migration 0002's revocation of them is exercised here and not only in production.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # `-U`/`-d` matter: the default `pg_isready` answers about the server, and the server
+      # accepts connections for a moment before `initdb` has finished creating this database.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d promisepatch"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    # The one place the backend image is built. `seed` and `api` run the same image with
+    # different commands and different credentials.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+      secrets: [extra_ca]
+    image: promisepatch-backend:local
+    # Alembic, and only Alembic. The repository's migrations are the schema; there is no
+    # `create_all()` path and no ad-hoc SQL that could put a database into a state no
+    # migration describes.
+    command: ["alembic", "-c", "apps/backend/alembic.ini", "upgrade", "head"]
+    env_file: [docker/env/migrate.env]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # A migration that failed must stay failed and hold the rest of the stack back. Restarting
+    # it would turn a schema error into a loop that eventually looks like a slow start.
+    restart: "no"
+
+  seed:
+    # The same image as `migrate` and `api`, built once by `migrate`. Three build sections for
+    # one tag would have three builders exporting the same name concurrently.
+    image: promisepatch-backend:local
+    # The repository's own fixture path, not a copy of it: no SQL file, no shell script and no
+    # duplicated demo data anywhere in this directory.
+    command: ["pp", "reset-demo-state"]
+    env_file: [docker/env/migrate.env]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    image: promisepatch-backend:local
+    env_file: [docker/env/api.env]
+    ports:
+      # High host ports throughout, for the reason given on the database: 8000 is a very
+      # common default and a stack that quietly attached to something else already listening
+      # there would be a confusing way to find out. Inside the network the API is `api:8000`,
+      # which is what the frontend proxies to and what the healthcheck asks.
+      - "127.0.0.1:58000:8000"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      # `/readyz`, not `/healthz`: liveness only says the process is running, and this gate
+      # exists to say the database answers over the runtime role and the schema is the one
+      # this build expects. Python rather than curl, so the image needs no extra package.
+      test:
+        - CMD
+        - python
+        - -c
+        - 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/readyz", timeout=5)'
+      interval: 3s
+      timeout: 6s
+      retries: 20
+      start_period: 10s
+    # Long enough for uvicorn's graceful shutdown to finish: the lifespan disposes the engine
+    # pool and releases the listener's dedicated LISTEN connection, and a role with a small
+    # connection budget should not have those reclaimed by timeout.
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      secrets: [extra_ca]
+    image: promisepatch-frontend:local
+    environment:
+      # The only configuration this container gets, and it is a routing decision rather than a
+      # credential: where the dev server forwards `/api` and `/events`.
+      VITE_DEV_API_PROXY_TARGET: http://api:8000
+    ports:
+      # 5173 is Vite's default and is very likely already in use on a machine that develops
+      # this frontend -- including by this repository's own `npm run dev`. A stack that
+      # answered on a port something else already owns would be a confusing way to find out.
+      - "127.0.0.1:55173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - 'fetch("http://127.0.0.1:5173/").then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))'
+      interval: 3s
+      timeout: 6s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+
+secrets:
+  extra_ca:
+    # Build-time only, and empty by default: `bootstrap_local_env.py` creates the file so the
+    # mount always resolves, and an empty one installs nothing. It exists for a machine whose
+    # antivirus or corporate proxy terminates TLS with an issuer no base image trusts, where
+    # the alternative is a stack that simply cannot be built.
+    file: docker/env/extra-ca.crt

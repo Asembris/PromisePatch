@@ -1,0 +1,55 @@
+# What never enters an image.
+#
+# Patterns are anchored at the build context root unless they start with `**/`, so anything
+# that can exist at more than one depth is written both ways round. Getting that wrong is
+# silent: the file is simply copied.
+
+# Secrets first, and by pattern rather than by name: an image is copied, pushed and inspected
+# by more parties than a working tree is, and a credential baked into one layer is not removed
+# by deleting the file in a later one.
+.env
+.env.*
+**/.env
+**/.env.*
+docker/env/*.env
+
+# Local planning documents. Untracked, and not container material either.
+ARCHITECTURE_PLAN.md
+PROMISEPATCH_PRODUCT_SPEC.md
+
+# History and tooling state.
+.git
+.github
+.claude
+.mcp.json
+
+# Environments and caches: rebuilt inside the image, and a host virtualenv or a host
+# `node_modules` is built for the wrong platform in any case.
+.venv
+venv
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.hypothesis
+**/.import_linter_cache
+.coverage
+coverage.xml
+htmlcov
+
+# Build output and test artefacts.
+**/dist
+**/build
+**/.vite
+**/test-results
+**/playwright-report
+**/blob-report
+
+# Editors and OS.
+.vscode
+.idea
+**/.DS_Store
+**/Thumbs.db

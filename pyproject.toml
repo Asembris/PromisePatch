@@ -44,6 +44,8 @@ ignore = ["RUF012"]
 # Migration bodies are generated SQL text: a CHECK listing twelve rule ids cannot be
 # wrapped without changing the statement it emits.
 "apps/backend/alembic/versions/**" = ["E501"]
+# Operator scripts talk to a terminal: printing is their interface, not a stray debug line.
+"scripts/**" = ["T20"]
 
 # --------------------------------------------------------------------------- mypy
 

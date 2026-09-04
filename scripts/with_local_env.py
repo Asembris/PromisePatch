@@ -1,0 +1,64 @@
+"""Run a command against the local stack without disturbing the repository's ``.env``.
+
+Repository tooling -- Alembic, the integration suite, ``pp reset-demo-state`` -- reads its
+connection strings from the environment, and pydantic-settings falls back to ``.env`` in the
+working directory. A developer whose ``.env`` points at a hosted database should not have to
+overwrite it to run the suite against a disposable local one, so this loads
+``docker/env/host.env`` and runs the command with it:
+
+    uv run python scripts/with_local_env.py -- uv run pytest apps/backend
+
+The loaded values take precedence over ``.env`` because they are set in the real environment,
+which pydantic-settings prefers over a file. Nothing is printed: the file holds credentials.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+HOST_ENV = ROOT / "docker" / "env" / "host.env"
+
+
+def load(path: Path) -> dict[str, str]:
+    """Read ``KEY=value`` lines, ignoring comments and blanks. No interpolation, no quoting.
+
+    The file is generated from a committed template by ``bootstrap_local_env.py``, so it has
+    exactly this shape; a general dotenv parser here would be inventing a contract nothing
+    else in the repository speaks.
+    """
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
+def main(argv: list[str]) -> int:
+    command = argv[1:]
+    if command and command[0] == "--":
+        command = command[1:]
+    if not command:
+        print("usage: with_local_env.py -- COMMAND [ARGS...]", file=sys.stderr)
+        return 2
+    if not HOST_ENV.is_file():
+        print(
+            "docker/env/host.env is missing; run: uv run python scripts/bootstrap_local_env.py",
+            file=sys.stderr,
+        )
+        return 1
+
+    environment = {**os.environ, **load(HOST_ENV)}
+    # `shell=False`: the command is an argument vector the caller already split, and passing it
+    # through a shell would make quoting in a test command a source of surprise.
+    return subprocess.run(command, env=environment, cwd=ROOT, check=False).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

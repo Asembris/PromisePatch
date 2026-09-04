@@ -1,0 +1,43 @@
+# The frontend image: the Vite dev server, as the frozen local topology describes it.
+#
+# It is a dev server on purpose rather than a static bundle behind a web server. The dev
+# server proxies `/api` and `/events` to the API, which makes the browser regard the API as
+# the same origin as the page -- so the `SameSite=Lax`, `HttpOnly` session cookie is sent on
+# every read and on the event stream, with no CORS allowlist involved. The production
+# topology (a static bundle on S3 behind CloudFront) belongs to a later phase and is not
+# modelled here.
+#
+# This image receives no database URL, no session secret and no account password. Everything
+# a `VITE_`-prefixed variable holds is compiled into a bundle any visitor can read, so the
+# only configuration it is given is where to forward the API calls.
+
+FROM node:24-bookworm-slim
+
+ENV NODE_ENV=development
+
+WORKDIR /app
+RUN chown node:node /app
+USER node
+
+COPY --chown=node:node apps/frontend/package.json apps/frontend/package-lock.json ./
+
+# `npm ci` rather than `npm install`: it installs the committed lockfile exactly and fails if
+# the manifest and the lockfile disagree, which is the difference between a reproducible image
+# and one that resolved whatever was newest on the day it was built.
+#
+# The mounted certificate is an optional additional root CA, for a machine whose antivirus or
+# corporate proxy terminates TLS with an issuer Node's bundled trust list has never heard of.
+# It is empty unless somebody puts a certificate in `docker/env/extra-ca.crt`, in which case it
+# is trusted for this one registry fetch: mounted rather than copied, so it is neither a layer
+# in the image nor a difference between this build and the one CI runs.
+RUN --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.crt,uid=1000,mode=0444 \
+    if [ -s /tmp/extra-ca.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.crt; fi; \
+    npm ci
+
+COPY --chown=node:node apps/frontend/ ./
+
+EXPOSE 5173
+
+# `--host` binds beyond the loopback interface so the published port reaches the server; the
+# port itself stays the one the Vite config pins.
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
