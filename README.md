@@ -111,6 +111,13 @@ The backend suite needs a database. With the local stack running:
 uv run python scripts/with_local_env.py -- uv run pytest apps/backend
 ```
 
+Stop the worker first, though — it and the suite share the local database, and a running worker
+will claim the steps a workflow test just enqueued and finish them out from under it:
+
+```bash
+docker compose stop worker
+```
+
 The frontend gates:
 
 ```bash
