@@ -47,6 +47,7 @@ from promisepatch.db.models import (
     InventoryLedgerEntry,
     Order,
     OrderLine,
+    OutboxMessage,
     PhysicalException,
     ProductionTask,
     Promise,
@@ -59,7 +60,7 @@ from promisepatch.db.models import (
 )
 from promisepatch.db.models import Worker as WorkerRow
 from promisepatch.db.uow import Actor, UnitOfWork
-from promisepatch.domain import analysis, crash, intake
+from promisepatch.domain import analysis, crash, intake, recovery
 from promisepatch.domain.adapters import FakeEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
 from promisepatch.domain.observation import INTAKE_STEP_KINDS
@@ -116,11 +117,18 @@ class Intake:
 
     # ---------------------------------------------------------------------------- driving
 
-    def worker(self, *, identity: str | None = None) -> Worker:
-        """A worker process of its own, so two of them can be made to contend deliberately."""
+    def worker(
+        self, *, identity: str | None = None, adapter: FakeEffectAdapter | None = None
+    ) -> Worker:
+        """A worker process of its own, so two of them can be made to contend deliberately.
+
+        The adapter is injectable because the provider's memory is where half of the
+        crash-safety assertions live: how many transport calls it saw, and how many logical
+        effects those became.
+        """
         return Worker(
             database=self.database,
-            adapter=FakeEffectAdapter(),
+            adapter=adapter or FakeEffectAdapter(),
             identity=WorkerIdentity(identity) if identity else WorkerIdentity.create(),
         )
 
@@ -212,6 +220,21 @@ class Intake:
         await self.answer(opened.case_id, RASPBERRY_ONLY)
         await self.drain_intake(opened.case_id)
         return opened.case_id
+
+    async def confirm(
+        self,
+        case_id: UUID,
+        *,
+        worker_id: str = BAKER,
+        command_id: UUID | None = None,
+    ) -> recovery.ConfirmationResult:
+        """A worker's yes, through the same reusable command the CLI and MCP tools will call."""
+        return await recovery.confirm_plan(
+            self.database,
+            case_id=case_id,
+            command_id=command_id or uuid4(),
+            worker_id=worker_id,
+        )
 
     @asynccontextmanager
     async def another_baker(self, worker_id: str = "sam") -> AsyncIterator[str]:
@@ -446,6 +469,50 @@ class Intake:
                 )
             ).all()
         return sorted((row.entity_type, row.entity_id) for row in rows)
+
+    async def effects(self) -> list[Any]:
+        """Every outbound effect in the database, oldest first."""
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(OutboxMessage).order_by(OutboxMessage.created_at, OutboxMessage.id)
+                    )
+                ).all()
+            )
+
+    async def effects_for(self, track_id: UUID) -> list[Any]:
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(OutboxMessage)
+                        .where(OutboxMessage.payload["track_id"].astext == str(track_id))
+                        .order_by(OutboxMessage.created_at)
+                    )
+                ).all()
+            )
+
+    async def tasks(self) -> dict[str, tuple[str, Any]]:
+        """Every production task's state and holder, for the writes a blocked track performs."""
+        async with self.database.connect() as connection:
+            rows = (await connection.execute(select(ProductionTask))).all()
+        return {row.id: (row.state, row.held_by_case_id) for row in rows}
+
+    async def expire_effect_lease(self, effect_id: UUID) -> None:
+        """Age an outbox claim out without waiting: leases compare against the DB clock."""
+        await self._age_effect(effect_id, "lease_expires_at")
+
+    async def make_effect_due(self, effect_id: UUID) -> None:
+        await self._age_effect(effect_id, "next_attempt_at")
+
+    async def _age_effect(self, effect_id: UUID, column: str) -> None:
+        async with self.database.begin() as connection:
+            await connection.execute(
+                sa_update(OutboxMessage)
+                .where(OutboxMessage.id == effect_id)
+                .values(**{column: text("now() - interval '1 second'")})
+            )
 
     async def snapshot(self) -> GraphSnapshot:
         """The same whole-graph read the analysis worker makes, for direct engine comparison."""
