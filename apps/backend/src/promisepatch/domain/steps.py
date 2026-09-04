@@ -45,6 +45,7 @@ from promisepatch.db.models import CaseStep
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 from promisepatch.domain import crash, handlers, retry
+from promisepatch.domain.analysis import ANALYSIS_STEP_KINDS
 from promisepatch.domain.cases import LockedCase, apply_case_change, lock_case
 from promisepatch.domain.model import (
     AUDIT_STEP_EXECUTED,
@@ -249,13 +250,14 @@ async def _run(connection: AsyncConnection, *, claim: StepClaim, actor: Actor) -
     now = await database_now(connection)
 
     crash.at(crash.DURING_HANDLER)
-    if row.kind in INTAKE_STEP_KINDS:
-        # Intake decides from the graph rather than from a context alone, so it reads and
-        # writes inside this transaction instead of returning directives for one. Deferred
-        # import: the intake executor enqueues successors through this module.
-        from promisepatch.domain import physical
+    if row.kind in INTAKE_STEP_KINDS or row.kind in ANALYSIS_STEP_KINDS:
+        # Intake and analysis both decide from the graph rather than from a context alone, so
+        # they read and write inside this transaction instead of returning directives for one.
+        # Deferred import: both executors name step keys this module enqueues.
+        from promisepatch.domain import analysis, physical
 
-        outcome = await physical.execute(
+        executor = physical.execute if row.kind in INTAKE_STEP_KINDS else analysis.execute
+        outcome = await executor(
             connection,
             case=case,
             kind=row.kind,

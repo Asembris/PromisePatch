@@ -79,12 +79,13 @@ from promisepatch.db.models import (
     SupplierCommitment,
 )
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
-from promisepatch.domain import interpretation
+from promisepatch.domain import analysis, interpretation
 from promisepatch.domain.cases import LockedCase
 from promisepatch.domain.model import (
     EVENT_STEP_COMPLETED,
     AppendEvent,
     CaseChange,
+    CreateStep,
     Disposition,
     StepOutcome,
 )
@@ -592,6 +593,15 @@ async def _record(
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
+        # The facts are attested, so the next thing that should happen is that somebody works
+        # out what they cost. Enqueued in the transaction that recorded them, keyed by the
+        # statement that attested them, so a replay proposes the identical step and gets one.
+        successors=(
+            CreateStep(
+                step_key=analysis.analyze_step_key(context.current.id),
+                kind=analysis.STEP_ANALYZE_IMPACT,
+            ),
+        ),
         events=(
             AppendEvent(
                 type=EVENT_FACT_RECORDED,
@@ -860,6 +870,15 @@ async def _correct(
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
+        # A correction changes what is physically true, so whatever was concluded from the
+        # previous truth has to be concluded again. This is that re-analysis, under the
+        # correcting statement's own key so it cannot collide with the first one.
+        successors=(
+            CreateStep(
+                step_key=analysis.analyze_step_key(context.current.id),
+                kind=analysis.STEP_ANALYZE_IMPACT,
+            ),
+        ),
         events=(
             AppendEvent(
                 type=EVENT_FACT_CORRECTED,

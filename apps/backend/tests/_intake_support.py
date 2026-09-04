@@ -48,6 +48,7 @@ from promisepatch.db.uow import Actor, UnitOfWork
 from promisepatch.domain import crash, intake
 from promisepatch.domain.adapters import FakeEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
+from promisepatch.domain.observation import INTAKE_STEP_KINDS
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import reset_demo_state
 from promisepatch.worker import Worker
@@ -154,12 +155,38 @@ class Intake:
             raw_text=text_said,
         )
 
+    async def drain_intake(
+        self, case_id: UUID, *, worker: Worker | None = None, limit: int = 16
+    ) -> None:
+        """Run cycles until this case's *intake* steps are settled, and stop there.
+
+        A resolved intake enqueues impact analysis, so a plain drain carries the case all the
+        way to ``PLANNED``. The assertions about what intake alone concluded need the boundary
+        intake actually ends at, and steps are claimed oldest-first, so stopping as soon as no
+        intake step is outstanding stops exactly there.
+        """
+        runner = worker or self.worker()
+        for _ in range(limit):
+            outstanding = await self.outstanding(case_id)
+            if not any(step.kind in INTAKE_STEP_KINDS for step in outstanding):
+                return
+            if not await runner.run_once():
+                return
+
     async def resolved_case(self) -> UUID:
         """The canonical path, driven to the point where both facts are attested."""
         opened = await self.report()
         await self.drain()
         await self.answer(opened.case_id, RASPBERRY_ONLY)
         await self.drain()
+        return opened.case_id
+
+    async def attested_case(self) -> UUID:
+        """The same path, stopped the instant intake is done and before anything is analysed."""
+        opened = await self.report()
+        await self.drain_intake(opened.case_id)
+        await self.answer(opened.case_id, RASPBERRY_ONLY)
+        await self.drain_intake(opened.case_id)
         return opened.case_id
 
     @asynccontextmanager

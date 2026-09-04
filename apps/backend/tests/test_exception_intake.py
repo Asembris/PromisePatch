@@ -318,8 +318,12 @@ async def test_the_interpretation_step_finishes(physical: Intake) -> None:
 async def test_the_case_is_ready_for_analysis_without_claiming_to_be_analysed(
     physical: Intake,
 ) -> None:
-    """``ANALYZED`` means every promise has a classification. None has been looked at."""
-    case_id = await physical.resolved_case()
+    """``ANALYZED`` means every promise has a classification. None has been looked at.
+
+    Driven to the end of intake and no further: a resolved intake enqueues analysis, and this
+    is an assertion about the boundary between the two rather than about the whole workflow.
+    """
+    case_id = await physical.attested_case()
     case = await physical.case(case_id)
 
     assert case.state == CASE_INTERPRETING
@@ -389,7 +393,7 @@ async def test_replaying_the_worker_after_resolution_posts_nothing_further(
 
 async def test_intake_proposes_no_recovery_of_any_kind(physical: Intake) -> None:
     """Nothing here classifies a promise, names a recipe version or reserves substitute stock."""
-    case_id = await physical.resolved_case()
+    case_id = await physical.attested_case()
     events = await physical.events(case_id)
 
     assert not any("track" in event or "option" in event for event in events)
@@ -445,9 +449,9 @@ async def test_the_two_answers_leave_genuinely_different_physical_state(
 
 async def test_no_classification_is_produced_by_either_answer(physical: Intake) -> None:
     opened = await physical.report()
-    await physical.drain()
+    await physical.drain_intake(opened.case_id)
     await physical.answer(opened.case_id, WHOLE_DELIVERY)
-    await physical.drain()
+    await physical.drain_intake(opened.case_id)
     case = await physical.case(opened.case_id)
 
     assert case.state == CASE_INTERPRETING
@@ -918,7 +922,7 @@ async def test_equipment_down_records_an_outage_without_asking_anything(
     from promisepatch.db.models import EquipmentOutage
 
     opened = await physical.report("the deck oven is down")
-    await physical.drain()
+    await physical.drain_intake(opened.case_id)
 
     case = await physical.case(opened.case_id)
     assert case.state == CASE_INTERPRETING
