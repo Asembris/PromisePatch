@@ -176,7 +176,7 @@ def analyze(snapshot: GraphSnapshot, exception: PhysicalException, now: datetime
     classifications: dict[PromiseId, ClassificationResult] = {}
 
     claims = PlanClaims()
-    for promise_id in _priority_order(snapshot, impact):
+    for promise_id in priority_order(snapshot, impact):
         option_set = enumerate_options(snapshot, impact, promise_id, now, claims)
         option_sets[promise_id] = option_set
         result = classify(snapshot, impact, promise_id, option_set)
@@ -201,8 +201,13 @@ def analyze(snapshot: GraphSnapshot, exception: PhysicalException, now: datetime
     )
 
 
-def _priority_order(snapshot: GraphSnapshot, impact: Impact) -> tuple[PromiseId, ...]:
-    """Affected promises ordered exactly as the allocator orders their tasks."""
+def priority_order(snapshot: GraphSnapshot, impact: Impact) -> tuple[PromiseId, ...]:
+    """Affected promises ordered exactly as the allocator orders their tasks.
+
+    Public because the order is part of the answer: a track persists its rank so an operator
+    can see which promise the allocator served first, and recomputing that ordering in the
+    application would be a second implementation of a decision this module already made.
+    """
     keyed: list[tuple[str, str, PromiseId]] = []
     for promise_id in impact.affected_promise_ids:
         order = snapshot.orders[snapshot.promises[promise_id].order_id]
