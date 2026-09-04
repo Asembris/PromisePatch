@@ -95,10 +95,32 @@ ORDER_BOOK: tuple[Any, ...] = (
 
 
 def bakery_anchor(settings: Settings) -> datetime:
-    """Seven this morning, in the kitchen's timezone. Every fixture offset is measured from it."""
+    """An anchor that keeps the fixture's working day ahead of the clock, at any hour.
+
+    The dataset is day-shaped: a delivery an hour in, ovens running through the afternoon, and
+    the next delivery the following morning. Two things have to stay true of it whatever time
+    the suite runs, and a fixed "seven this morning" only kept the first.
+
+    * **Today's delivery has to be today.** The interpreter resolves "today's raspberry
+      delivery" against the bakery's calendar day (:func:`~promisepatch.domain.physical.
+      bakery_day`), so that delivery must fall inside the day and the next one must fall
+      outside it -- otherwise the canonical sentence is genuinely ambiguous and the reading
+      stops to ask which delivery was meant.
+    * **The day's work has to still be ahead.** Equipment propagation intersects an outage with
+      ``[now, outage_until]``, so a suite running at nine in the evening against a fixture whose
+      ovens finished at nine finds nothing affected -- correctly. Every test about what an
+      outage reaches would then pass by describing an empty kitchen, which is the worst way for
+      one to pass.
+
+    Anchoring two hours behind the clock satisfies both: the delivery was due an hour ago and
+    did not arrive, and every production task is still in front of the kitchen. The floor an
+    hour past midnight is what stops the *next* delivery, twenty-three hours out, from landing
+    back inside today and turning one raspberry commitment into two.
+    """
     zone = ZoneInfo(settings.bakery_tz)
-    local = datetime.now(zone).replace(hour=7, minute=0, second=0, microsecond=0)
-    return local.astimezone(UTC)
+    now = datetime.now(UTC)
+    day_start = now.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(now - timedelta(hours=2), (day_start + timedelta(hours=1)).astimezone(UTC))
 
 
 @dataclass(frozen=True, slots=True)
