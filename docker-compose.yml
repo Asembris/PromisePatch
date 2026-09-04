@@ -69,8 +69,11 @@ services:
 
   seed:
     # The same image as `migrate` and `api`, built once by `migrate`. Three build sections for
-    # one tag would have three builders exporting the same name concurrently.
+    # one tag would have three builders exporting the same name concurrently; `pull_policy` is
+    # the other half of saying so, because a service with no build section is otherwise assumed
+    # to come from a registry, and this image never does.
     image: promisepatch-backend:local
+    pull_policy: never
     # The repository's own fixture path, not a copy of it: no SQL file, no shell script and no
     # duplicated demo data anywhere in this directory.
     command: ["pp", "reset-demo-state"]
@@ -82,6 +85,7 @@ services:
 
   api:
     image: promisepatch-backend:local
+    pull_policy: never
     env_file: [docker/env/api.env]
     ports:
       # High host ports throughout, for the reason given on the database: 8000 is a very
