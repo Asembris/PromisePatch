@@ -16,6 +16,10 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
+
+# The ``workflow`` fixture is defined beside its own helpers so that tests can import the type
+# they annotate it with; pytest collects it from here.
+from _workflow_support import workflow as workflow
 from fastapi import FastAPI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
