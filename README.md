@@ -11,9 +11,10 @@ while leaving every unaffected promise untouched.
 ## Status
 
 An active hackathon build. What exists today is the deterministic engine
-(`packages/promise-graph`), the backend with its audited PostgreSQL write boundary, and the
-Live Operations screen. There is no case engine, no order-system integration, no LLM and no
-deployment yet.
+(`packages/promise-graph`), the backend with its audited PostgreSQL write boundary, the durable
+case engine, the Live Operations screen, and the external order-system integration — a
+separate order system that owns order state, a signed event ingress, and governed recovery
+amendments pushed back at it. There is no LLM and no deployment yet.
 
 ## The deterministic engine
 
@@ -32,8 +33,8 @@ affect a customer is testable with zero cloud access.
 ## Run the local stack
 
 The stack is a disposable PostgreSQL 16 in a Docker volume, the repository's own migrations,
-the Hollow Oak fixture, the API, the durable workflow worker and the frontend. It needs no
-hosted database and no cloud account.
+the Hollow Oak fixture, the API, the durable workflow worker, the frontend and the External
+Order System simulator. It needs no hosted database and no cloud account.
 
 ```bash
 uv run python scripts/bootstrap_local_env.py
@@ -62,13 +63,14 @@ docker compose down --volumes       # stop and discard the database
 | frontend | <http://localhost:55173> | `frontend:5173` |
 | api | <http://localhost:58000> | `api:8000` |
 | worker | no port; `docker compose logs worker` | -- |
+| order-simulator | <http://localhost:58100> | `order-simulator:8100` |
 | postgres | `127.0.0.1:55432` | `postgres:5432` |
 
 The host ports are deliberately not 5173, 8000 and 5432: those are usually already taken on a
 machine that develops this project, and a stack that quietly attached to something else would
 be a confusing way to find out.
 
-Two properties are worth knowing before you use it:
+A few properties are worth knowing before you use it:
 
 - **Neither the API nor the worker holds an administrative credential.** Both connect as
   `promisepatch_app`, which owns nothing, migrates nothing and cannot truncate a table.
@@ -82,6 +84,11 @@ Two properties are worth knowing before you use it:
   operator command that replaces every domain row PromisePatch owns, and the sessions go with
   them. A browser watching the live feed will see the resulting domain event, refetch, be told
   its session is gone, and return to the sign-in screen. That is current, intended behaviour.
+- **The order system is a different system, and is meant to look like one.** It runs in its
+  own process, over its own SQLite volume, on its own port, with its own UI. PromisePatch
+  mirrors it and pushes governed amendments at it; neither reads the other's storage. It is a
+  simulator — not Square, not a production point of sale — and
+  [docs/order-system.md](docs/order-system.md) says exactly what it does and does not prove.
 
 Behind an antivirus or corporate proxy that terminates TLS, put that root certificate in
 `docker/env/extra-ca.crt` before building; the file is created empty and is otherwise ignored.
@@ -116,6 +123,19 @@ will claim the steps a workflow test just enqueued and finish them out from unde
 
 ```bash
 docker compose stop worker
+```
+
+The order-system integration runs both applications against each other, and the acceptance
+proof for the whole boundary is one file:
+
+```bash
+uv run python scripts/with_local_env.py -- uv run pytest apps/backend/tests/test_order_system_boundary.py
+```
+
+The order system's own suite needs nothing but Python:
+
+```bash
+uv run pytest apps/order-simulator packages/order-contract
 ```
 
 The frontend gates:
