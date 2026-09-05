@@ -145,10 +145,6 @@ AUDIT_REVALIDATION_NOT_REQUIRED: Final = "RECOVERY_REVALIDATION_NOT_REQUIRED"
 AUDIT_CASE_RECONCILED: Final = "CASE_RECONCILED"
 
 
-class RevalidationStateError(RuntimeError):
-    """A revalidation step describes a shape of the world that cannot be true."""
-
-
 # --------------------------------------------------------------------------------- executor
 
 

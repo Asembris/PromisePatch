@@ -15,9 +15,9 @@ check failure outcome   meaning
 10    ``NOOP``          this request was already decided, or its decision is not this one
 ===== ================= ==========================================================
 
-Two of the ten cannot be answered from the graph, because what they ask about is the
-*provenance* of an answer rather than the state of the kitchen. Both are therefore supplied by
-the caller, and both default to the value that leaves the check exactly as it was:
+Three of the checks ask something the graph alone cannot answer -- whose answer this was, whose
+hold that is, and whether this answer has already been spent. Each takes an input from the
+caller, and each defaults to the value that leaves its check exactly as the frozen list words it:
 
 ``sender_chain``
     The sender identity the persisted chain resolves to -- decision -> stored inbound reply ->

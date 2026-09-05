@@ -526,7 +526,7 @@ def test_check_6_accepts_a_task_this_case_holds(anchor: datetime) -> None:
 
 
 def test_check_6_refuses_a_task_another_case_holds(anchor: datetime) -> None:
-    """Somebody else's blocked promise is waiting on that oven, and only its owner may release it."""
+    """Another case's blocked promise is waiting on that oven; only its owner may release it."""
     snapshot, request, decision = prepared(anchor)
     result = revalidate(
         held_by(snapshot, "case-2"),

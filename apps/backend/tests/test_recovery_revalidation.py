@@ -1224,7 +1224,16 @@ async def test_a_change_to_watched_state_is_seen_by_the_commit_guard(
 async def test_a_change_landing_after_a_passing_revalidation_still_stops_the_amendment(
     physical: Intake,
 ) -> None:
-    """The last line of defence: execution revalidates too, so a late change is still refused."""
+    """The last line of defence: execution revalidates too, so a late change is still refused.
+
+    A change committed in the window between a passing checklist and the transaction that emits
+    the amendment cannot be caught by the checklist -- it had already finished. ``APPLY_RECOVERY``
+    recomputes the fingerprint inside the transaction that would send the effect, which is what
+    makes "no external effect under a plan that no longer describes the world" hold whatever the
+    interleaving. The track is left ``STALE`` and the case does not resolve, because §23 counts a
+    stale track as outstanding work; re-planning from *that* boundary is the recovery saga's own
+    and is unchanged by this slice.
+    """
     case_id, _ = await approved_case(physical)
     track_b = await track_of(physical, case_id, B)
 
@@ -1242,3 +1251,4 @@ async def test_a_change_landing_after_a_passing_revalidation_still_stops_the_ame
 
     assert await amendments_for(physical, track_b.id) == []
     assert (await track_of(physical, case_id, B)).state == recovery.TRACK_STALE
+    assert (await physical.case(case_id)).state != cases.CASE_RESOLVED
