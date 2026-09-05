@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 from promisepatch import cli
 from promisepatch.cli import app, resolve_anchor
 from promisepatch.config import Settings, get_settings
-from promisepatch.domain import analysis, intake, recovery
+from promisepatch.domain import analysis, cases, intake, recovery
 from promisepatch.fixtures.reset import ResetOutcome
 
 runner = CliRunner()
@@ -377,7 +377,7 @@ def test_case_status_shows_the_effect_a_recovery_produced(
     async def fake(database: object, *, case_id: UUID) -> analysis.CaseStatus:
         return analysis.CaseStatus(
             case_id=case_id,
-            state=recovery.CASE_EXECUTING,
+            state=cases.CASE_EXECUTING,
             needs_owner_attention=True,
             exception_id=UUID(int=2),
             category="SUPPLY_NOT_RECEIVED",
@@ -423,7 +423,7 @@ def test_confirming_a_plan_delegates_to_the_domain_service(
         return recovery.ConfirmationResult(
             case_id=UUID(int=1),
             command_id=given,
-            state=recovery.CASE_EXECUTING,
+            state=cases.CASE_EXECUTING,
             created=True,
             applying=(UUID(int=3),),
             escalated=(UUID(int=4), UUID(int=5)),
@@ -456,7 +456,7 @@ def test_confirming_a_plan_delegates_to_the_domain_service(
     assert seen["case_id"] == UUID(int=1)
     assert seen["worker_id"] == "maya"
     assert seen["command_id"] == given
-    assert recovery.CASE_EXECUTING in result.output
+    assert cases.CASE_EXECUTING in result.output
     assert "applying:  1" in result.output
 
 
@@ -481,3 +481,166 @@ def test_confirm_plan_refuses_an_unparseable_identifier() -> None:
 
     assert result.exit_code == 1
     assert "not a UUID" in result.output
+
+
+# ------------------------------------------------------------------ customer channel
+
+
+def test_receive_customer_reply_is_a_subcommand() -> None:
+    assert "receive-customer-reply" in runner.invoke(app, ["--help"]).stdout
+
+
+def test_there_is_no_command_that_approves_for_a_customer() -> None:
+    """The absence is the assertion.
+
+    A worker or an owner cannot record a customer's consent, so no operator command may exist
+    that would let them. The delivery command is the only path in, and all it can do is carry
+    what somebody actually sent.
+    """
+    names = {command.name or "" for command in app.registered_commands}
+
+    assert "approve-for-customer" not in names
+    assert not [name for name in names if "approve" in name]
+    assert not [name for name in names if "decision" in name]
+
+
+def test_a_delivered_reply_is_only_ingested(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The command writes transport material and decides nothing at all."""
+    seen: dict[str, object] = {}
+
+    async def fake(settings: object, **kwargs: object) -> bool:
+        seen.update(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        cli,
+        "_receive_reply",
+        lambda settings, *, request_id, sender, text, provider_event_id: fake(
+            None,
+            request_id=request_id,
+            sender=sender,
+            text=text,
+            provider_event_id=provider_event_id,
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "receive-customer-reply",
+            "Strawberries work",
+            "--request",
+            str(UUID(int=7)),
+            "--from",
+            "tg:1002",
+            "--event-id",
+            "update-42",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert seen["request_id"] == UUID(int=7)
+    assert seen["sender"] == "tg:1002"
+    assert seen["text"] == "Strawberries work"
+    assert seen["provider_event_id"] == "update-42"
+    assert "accepted: now" in result.output
+
+
+def test_a_redelivered_reply_is_reported_as_a_duplicate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The inbox deduplicated it, and the operator is told so rather than told it worked."""
+    monkeypatch.setattr(
+        cli,
+        "_receive_reply",
+        lambda settings, **kwargs: _false(),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "receive-customer-reply",
+            "YES",
+            "--request",
+            str(UUID(int=7)),
+            "--from",
+            "tg:1002",
+            "--event-id",
+            "update-42",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "duplicate delivery" in result.output
+
+
+async def _false() -> bool:
+    return False
+
+
+def test_receive_customer_reply_refuses_an_unparseable_request() -> None:
+    result = runner.invoke(
+        app, ["receive-customer-reply", "YES", "--request", "nope", "--from", "tg:1002"]
+    )
+
+    assert result.exit_code == 1
+    assert "not a UUID" in result.output
+
+
+def test_case_status_shows_the_approval_without_the_customers_words(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An operator sees which request, until when, and what came back. Not the address."""
+    approval = analysis.ApprovalStatus(
+        request_id=UUID(int=9),
+        option_code="OPT-ABC123",
+        state="ANSWERED",
+        decided=True,
+        sent_at=datetime(2026, 3, 4, 8, 0, tzinfo=UTC),
+        deadline=datetime(2026, 3, 4, 12, 0, tzinfo=UTC),
+        provider_ref="fake-msg-1",
+        decision="APPROVE",
+        parser="LITERAL",
+        replies=2,
+    )
+    track = analysis.TrackStatus(
+        track_id=UUID(int=3),
+        promise_id="pr-b",
+        order_external_id="EXT-B",
+        customer_name="Tomas Lindqvist",
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        rule_id="R-VISIBLE-ASK",
+        reason_detail="VISIBLE_CHANGE_ASK",
+        priority=1,
+        fingerprint="f" * 64,
+        deadline_at=approval.deadline,
+        linked_track_id=None,
+        paths=1,
+        watched_entities=4,
+        options=(),
+        approval=approval,
+    )
+
+    async def fake(database: object, *, case_id: UUID) -> analysis.CaseStatus:
+        return analysis.CaseStatus(
+            case_id=case_id,
+            state="WAITING",
+            needs_owner_attention=False,
+            exception_id=UUID(int=2),
+            category="SUPPLY_NOT_RECEIVED",
+            tracks=(track,),
+        )
+
+    monkeypatch.setattr(
+        cli, "_read_case_status", lambda settings, case_id: fake(None, case_id=case_id)
+    )
+
+    result = runner.invoke(app, ["case-status", "--case", str(UUID(int=1))])
+
+    assert result.exit_code == 0, result.output
+    assert str(UUID(int=9)) in result.output
+    assert "OPT-ABC123" in result.output
+    assert "ANSWERED" in result.output
+    assert "APPROVE" in result.output
+    assert "LITERAL" in result.output
+    assert "fake-msg-1" in result.output
+    assert "tg:" not in result.output

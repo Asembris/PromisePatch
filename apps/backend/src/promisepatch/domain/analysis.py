@@ -54,8 +54,11 @@ from promise_graph.options import RecoveryOption as EngineOption
 from promise_graph.propagation import Impact, LineQuantification, Path
 from promise_graph.snapshot import GraphSnapshot
 from promisepatch.db.models import (
+    ApprovalDecision,
+    ApprovalRequest,
     Case,
     Customer,
+    InboundReply,
     Order,
     OutboxMessage,
     PhysicalException,
@@ -966,6 +969,27 @@ class EffectStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalStatus:
+    """What was asked of one customer, and what came back, as an operator needs to read it.
+
+    Deliberately without the customer's channel address and without a word of what they wrote.
+    Both are in the database, where a reader has to be entitled to look; what an operator needs
+    on a terminal is which request, until when, and whether it has been answered.
+    """
+
+    request_id: UUID
+    option_code: str
+    state: str
+    decided: bool
+    sent_at: datetime
+    deadline: datetime
+    provider_ref: str | None
+    decision: str | None
+    parser: str | None
+    replies: int
+
+
+@dataclass(frozen=True, slots=True)
 class TrackStatus:
     """One promise's posture in one case."""
 
@@ -985,6 +1009,7 @@ class TrackStatus:
     watched_entities: int
     options: tuple[OptionStatus, ...]
     effects: tuple[EffectStatus, ...] = ()
+    approval: ApprovalStatus | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1057,6 +1082,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                     .order_by(OutboxMessage.created_at)
                 )
             ).all()
+            approval = await _approval_status(connection, track.id)
             tracks.append(
                 TrackStatus(
                     track_id=track.id,
@@ -1100,6 +1126,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                         )
                         for effect in effects
                     ),
+                    approval=approval,
                 )
             )
 
@@ -1110,6 +1137,44 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
         exception_id=case.exception_id,
         category=category,
         tracks=tuple(tracks),
+    )
+
+
+async def _approval_status(connection: AsyncConnection, track_id: UUID) -> ApprovalStatus | None:
+    """The approval request on one track, with its decision if it has one.
+
+    A separate read rather than a join into the track query, because most tracks have no request
+    at all and an outer join would put six null columns on every row of the common case.
+    """
+    request = (
+        await connection.execute(
+            select(ApprovalRequest).where(ApprovalRequest.track_id == track_id)
+        )
+    ).one_or_none()
+    if request is None:
+        return None
+
+    decision = (
+        await connection.execute(
+            select(ApprovalDecision.decision, ApprovalDecision.parser).where(
+                ApprovalDecision.request_id == request.id
+            )
+        )
+    ).one_or_none()
+    replies = await connection.scalar(
+        select(func.count()).select_from(InboundReply).where(InboundReply.request_id == request.id)
+    )
+    return ApprovalStatus(
+        request_id=request.id,
+        option_code=request.option_code,
+        state=request.state,
+        decided=request.decided,
+        sent_at=request.sent_at,
+        deadline=request.deadline,
+        provider_ref=request.provider_ref,
+        decision=None if decision is None else decision.decision,
+        parser=None if decision is None else decision.parser,
+        replies=int(replies or 0),
     )
 
 

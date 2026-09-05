@@ -3,14 +3,21 @@
 Everything an operator does to a running PromisePatch — serve the API, reset the demo
 fixture, replay an inbox row — is a subcommand here rather than a script, so each one is
 typed, testable and discoverable.
+
+Every command here is thin, and thin is a requirement rather than a style. A command parses
+arguments, calls a reusable service in :mod:`promisepatch.domain`, and prints what came back.
+None of them decides anything, and none of them is a shortcut around a rule: in particular
+there is no command by which an operator could record a customer's approval, because approval
+comes from the customer's own channel and from nowhere else.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
@@ -18,7 +25,7 @@ import typer
 from promisepatch.config import Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
-from promisepatch.domain import analysis, intake, recovery
+from promisepatch.domain import analysis, handlers, inbox, intake, recovery
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 
@@ -255,6 +262,85 @@ async def _confirm(
         await database.dispose()
 
 
+# --------------------------------------------------------------------- customer channel
+
+
+@app.command(name="receive-customer-reply")
+def receive_customer_reply_command(
+    text: str = typer.Argument(..., help="What the customer sent, verbatim."),
+    request: str = typer.Option(..., "--request", help="The approval request being replied to."),
+    sender: str = typer.Option(
+        ..., "--from", help="The channel the reply arrived on, e.g. tg:1002."
+    ),
+    event_id: str = typer.Option(
+        "", "--event-id", help="The provider's own id for this delivery; a retry must reuse it."
+    ),
+) -> None:
+    """Deliver one customer reply through the fake customer channel.
+
+    A transport, and only a transport. It writes the raw material to ``inbox_events`` and stops:
+    it does not check the sender, does not read the words, and cannot create an approval
+    decision. The worker reads the stored row and applies the consent protocol to it under the
+    case lock, which is the only path by which a customer's words become authority.
+
+    That separation is the point of the command's existence. There is deliberately no
+    ``approve-for-customer``, and no flag here that would make one: an operator can deliver a
+    message a customer sent, and cannot supply the message.
+
+    A redelivery carrying the same ``--event-id`` is absorbed by the inbox's own uniqueness and
+    does nothing a second time.
+    """
+    settings = get_settings()
+    delivery = event_id or f"cli-{uuid4()}"
+    try:
+        stored = asyncio.run(
+            _receive_reply(
+                settings,
+                request_id=_uuid(request, "--request"),
+                sender=sender,
+                text=text,
+                provider_event_id=delivery,
+            )
+        )
+    except (RuntimeError, ValueError) as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+    typer.echo(f"request:  {request}")
+    typer.echo(f"from:     {sender}")
+    typer.echo(f"event:    {delivery}")
+    typer.echo(f"accepted: {'now' if stored else 'already (duplicate delivery)'}")
+
+
+async def _receive_reply(
+    settings: Settings,
+    *,
+    request_id: UUID,
+    sender: str,
+    text: str,
+    provider_event_id: str,
+) -> bool:
+    database = RuntimeDatabase.from_settings(settings)
+    try:
+        async with database.begin() as connection:
+            stored = await inbox.ingest(
+                connection,
+                source=handlers.CUSTOMER_REPLY_SOURCE,
+                provider_event_id=provider_event_id,
+                body=json.dumps(
+                    {
+                        "request_id": str(request_id),
+                        "sender": sender,
+                        "text": text,
+                        "provider_message_id": provider_event_id,
+                    }
+                ),
+            )
+        return stored is not None
+    finally:
+        await database.dispose()
+
+
 @app.command(name="case-status")
 def case_status_command(
     case: str = typer.Option(..., "--case", help="The case to describe."),
@@ -302,6 +388,17 @@ def case_status_command(
             )
         if not track.options:
             typer.echo("     no recovery option")
+        if track.approval is not None:
+            approval = track.approval
+            typer.echo(
+                f"    approval {approval.request_id} ({approval.option_code}) "
+                f"{approval.state}, deadline {approval.deadline.isoformat()}"
+            )
+            typer.echo(
+                f"      sent {approval.sent_at.isoformat()} "
+                f"ref {approval.provider_ref or '-'}, replies {approval.replies}"
+            )
+            typer.echo(f"      decision {approval.decision or '-'} via {approval.parser or '-'}")
         for effect in track.effects:
             typer.echo(
                 f"    effect {effect.kind} {effect.state} "
