@@ -3,16 +3,23 @@ name = "promisepatch-workspace"
 version = "0.0.0"
 description = "PromisePatch monorepo workspace root"
 requires-python = ">=3.12,<3.13"
-dependencies = ["promise-graph", "promisepatch"]
+dependencies = ["order-contract", "order-simulator", "promise-graph", "promisepatch"]
 
 [tool.uv]
 package = false
 native-tls = true
 
 [tool.uv.workspace]
-members = ["packages/promise-graph", "apps/backend"]
+members = [
+    "packages/promise-graph",
+    "packages/order-contract",
+    "apps/backend",
+    "apps/order-simulator",
+]
 
 [tool.uv.sources]
+order-contract = { workspace = true }
+order-simulator = { workspace = true }
 promise-graph = { workspace = true }
 promisepatch = { workspace = true }
 
@@ -33,7 +40,15 @@ dev = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["packages/promise-graph/src", "packages/promise-graph", "apps/backend/src"]
+src = [
+    "packages/promise-graph/src",
+    "packages/promise-graph",
+    "packages/order-contract/src",
+    "packages/order-contract",
+    "apps/backend/src",
+    "apps/order-simulator/src",
+    "apps/order-simulator",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "DTZ", "SIM", "RET", "T20", "RUF"]
@@ -46,6 +61,9 @@ ignore = ["RUF012"]
 "apps/backend/alembic/versions/**" = ["E501"]
 # Operator scripts talk to a terminal: printing is their interface, not a stray debug line.
 "scripts/**" = ["T20"]
+# The simulator's operator screen is a markup template. A CSS rule or a form action wrapped
+# to fit a column limit is markup that reads worse and renders the same.
+"apps/order-simulator/src/order_simulator/ui.py" = ["E501"]
 
 # --------------------------------------------------------------------------- mypy
 
@@ -58,8 +76,10 @@ plugins = ["pydantic.mypy"]
 mypy_path = [
     "packages/promise-graph/src",
     "packages/promise-graph",
+    "packages/order-contract/src",
     "apps/backend/src",
     "apps/backend/tests",
+    "apps/order-simulator/src",
 ]
 
 [[tool.mypy.overrides]]
@@ -77,8 +97,13 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["packages/promise-graph/tests", "apps/backend/tests"]
-pythonpath = ["packages/promise-graph", "apps/backend/tests"]
+testpaths = [
+    "packages/promise-graph/tests",
+    "packages/order-contract/tests",
+    "apps/order-simulator/tests",
+    "apps/backend/tests",
+]
+pythonpath = ["packages/promise-graph", "apps/backend/tests", "apps/order-simulator/tests"]
 addopts = "-q --strict-markers --strict-config --import-mode=importlib"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -90,7 +115,7 @@ markers = [
 # --------------------------------------------------------------------------- coverage
 
 [tool.coverage.run]
-source = ["promise_graph", "promisepatch"]
+source = ["order_contract", "order_simulator", "promise_graph", "promisepatch"]
 branch = true
 
 [tool.coverage.report]
@@ -105,7 +130,7 @@ exclude_lines = [
 # --------------------------------------------------------------------------- import-linter
 
 [tool.importlinter]
-root_packages = ["promise_graph", "promisepatch"]
+root_packages = ["order_contract", "order_simulator", "promise_graph", "promisepatch"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -243,4 +268,30 @@ forbidden_modules = [
     "starlette",
     "subprocess",
     "urllib",
+]
+
+# The order system is a different system, and this is what makes that structural rather than
+# stated. It cannot import PromisePatch, cannot import PromisePatch's engine, and holds no
+# SQLAlchemy model or Alembic revision: its storage is its own SQLite file and nothing else.
+[[tool.importlinter.contracts]]
+name = "the order system never learns about PromisePatch"
+type = "forbidden"
+source_modules = ["order_simulator"]
+forbidden_modules = ["alembic", "promise_graph", "promisepatch", "sqlalchemy"]
+
+# The wire contract is shared by both sides, so it must belong to neither. It is Pydantic and
+# the standard library: no application, no database, no HTTP client. Anything else here would
+# make importing the contract mean importing one side's implementation.
+[[tool.importlinter.contracts]]
+name = "the contract belongs to neither application"
+type = "forbidden"
+source_modules = ["order_contract"]
+forbidden_modules = [
+    "fastapi",
+    "httpx2",
+    "order_simulator",
+    "promise_graph",
+    "promisepatch",
+    "sqlalchemy",
+    "starlette",
 ]

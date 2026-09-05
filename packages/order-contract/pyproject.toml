@@ -1,0 +1,20 @@
+[project]
+name = "order-contract"
+version = "0.1.0"
+description = "The typed integration contract between PromisePatch and an external order system: order events, recovery amendments and the signature that authenticates them."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+dependencies = ["pydantic>=2.9,<3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/order_contract"]

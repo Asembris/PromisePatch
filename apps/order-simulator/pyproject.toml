@@ -1,0 +1,31 @@
+[project]
+name = "order-simulator"
+version = "0.1.0"
+description = "External Order System — simulator: a separate FastAPI application that owns demo order state, emits signed order events and accepts idempotent amendments."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.32,<1",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6,<3",
+    "python-multipart>=0.0.9",
+    "httpx2>=2.0,<3",
+    "order-contract",
+]
+
+[project.scripts]
+order-simulator = "order_simulator.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/order_simulator"]
