@@ -15,7 +15,7 @@ from uuid import uuid4
 
 import httpx2
 import pytest_asyncio
-from _intake_support import Intake
+from _intake_support import RASPBERRY_ONLY, Intake
 from _intake_support import physical as physical
 from _order_system_support import (
     LEMON_CURD,
@@ -38,6 +38,7 @@ from promisepatch.config import Settings
 from promisepatch.db.models import AuditEvent, InboxEvent, Order, OrderLine, Reservation
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.domain import order_mirror
+from promisepatch.domain.cases import CASE_PLANNED
 from promisepatch.domain.order_mirror import Disposition
 
 WORKER = "order-mirror-tests"
@@ -64,8 +65,16 @@ async def unconfigured(
     runtime_settings: Settings,
     physical: Intake,
 ) -> AsyncIterator[httpx2.AsyncClient]:
-    """The same application with no order system configured at all."""
-    async with ingress_client(runtime_settings) as client:
+    """The same application with no order-system secret configured at all.
+
+    Cleared explicitly rather than by leaving the environment alone: a developer's local stack
+    configures one, so "unconfigured" has to be stated here or this fixture would quietly
+    become "configured" and the test would pass by asserting the wrong rejection.
+    """
+    without_secret = runtime_settings.model_copy(
+        update={"order_system_webhook_secret": None, "order_system_base_url": None}
+    )
+    async with ingress_client(without_secret) as client:
         yield client
 
 
@@ -604,6 +613,32 @@ async def test_the_worker_cycle_applies_an_order_event(physical: Intake) -> None
 
     assert await physical.worker().run_once() is True
     assert await pinned(physical.database) == LEMON_CURD
+
+
+async def test_an_unreachable_order_system_does_not_stop_the_rest_of_the_worker(
+    physical: Intake,
+) -> None:
+    """§70: one provider being unreachable is a runtime dependency, not a global mutex.
+
+    The order event waiting here needs an authoritative read to be applied safely, and this
+    worker has no way to make one. What must not happen is everything else stopping with it: an
+    exception a baker reports while the order system is down is still interpreted, analysed and
+    planned, on the same worker, in the same cycles.
+    """
+    await store(physical, an_event(version=4, previous_version=3))
+    opened = await physical.report()
+
+    await physical.drain(limit=30)
+    await physical.answer(opened.case_id, RASPBERRY_ONLY)
+    await physical.drain(limit=30)
+
+    case = await physical.case(opened.case_id)
+    assert case is not None
+    assert case.state == CASE_PLANNED
+    assert len(await physical.tracks(opened.case_id)) == 6
+    # And the order event stayed out of everybody's way rather than holding the queue.
+    assert (await inbox_rows(physical.database))[0].state == "FAILED"
+    assert (await mirrored(physical.database)).external_version == 1
 
 
 def test_the_signature_helper_and_the_ingress_agree_on_the_header_names() -> None:
