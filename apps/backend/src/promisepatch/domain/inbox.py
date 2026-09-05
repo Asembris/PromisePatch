@@ -16,6 +16,12 @@ Processing is one transaction per record: read a ``RECEIVED`` row under ``FOR UP
 LOCKED``, hand its stored material to a pure normaliser, write the verdict, create at most one
 deterministic successor, append the event, commit. A worker killed in the middle of that rolls
 back to ``RECEIVED``, which is retriable, rather than to a half-consumed state that is not.
+
+**Nothing is decided here.** Processing an inbound record works out which case, if any, the
+record is about, and creates the step that will decide what to do with it under its own lock and
+its own audit. A customer's reply in particular is only *bound* here; whether the sender was
+entitled to send it, whether the request is still open and whether the words mean anything are
+questions for the transition that could act on the answers.
 """
 
 from __future__ import annotations
@@ -106,6 +112,13 @@ async def process_one(database: RuntimeDatabase, *, worker: str) -> ProcessedInb
             return None
 
         outcome = handlers.normalize_inbound(row.source, row.raw_body)
+        if row.source == handlers.CUSTOMER_REPLY_SOURCE and outcome.state == "PROCESSED":
+            # Normalisation is pure and cannot ask which case a reply belongs to, so the one
+            # question that needs a row is asked here, in the same transaction. Deferred import
+            # because the consent protocol enqueues steps this module's successors execute.
+            from promisepatch.domain.approvals import bind_customer_reply
+
+            outcome = await bind_customer_reply(connection, outcome)
         crash.at(crash.DURING_INBOX_PROCESSING)
 
         step_key: str | None = None

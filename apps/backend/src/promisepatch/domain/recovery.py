@@ -7,8 +7,9 @@ survives each boundary is a row rather than anything a process is holding.
 ``confirm_plan``
     A worker says yes. One short governed transaction moves the case to ``EXECUTING``,
     escalates the tracks nothing can recover, holds their production tasks, and enqueues one
-    ``APPLY_RECOVERY`` step per automatically recoverable track. **No network call, and no
-    outbound effect.** Confirmation authorises later execution; it does not perform any.
+    ``APPLY_RECOVERY`` step per automatically recoverable track and one ``REQUEST_APPROVAL``
+    step per track whose customer has to be asked. **No network call, and no outbound effect.**
+    Confirmation authorises later execution; it does not perform any.
 
 ``APPLY_RECOVERY``
     A leased, fenced step re-checks that the plan still describes the world, moves the track
@@ -31,10 +32,12 @@ Outbox dispatch
 
 **Confirmation is not blanket authority.** A worker's yes permits exactly the recoveries the
 order's own constraints already allow -- §15's "Apply AUTO recovery ... Worker confirms plan".
-It does not permit a visible change the customer has not agreed to, so an
-``APPROVAL_REQUIRED`` track is left exactly where planning put it: ``PENDING``, with no step,
-no effect and no approval request. The customer's literal consent is a different authority and
-arrives on its own path.
+It does not permit a visible change the customer has not agreed to. What it authorises for an
+``APPROVAL_REQUIRED`` track is therefore *asking*, and nothing else: the step it enqueues writes
+a durable request and a message, and the track stays ``PENDING`` until the customer has actually
+been contacted. Applying that change needs the customer's own literal consent, which is a
+different authority, arrives on a different path, and is handled in
+:mod:`promisepatch.domain.approvals`.
 
 **Execution consumes the plan; it never re-makes it.** The option applied is the row planning
 chose, read back by id. If the world has moved -- the fingerprint no longer matches what was
@@ -65,6 +68,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from promise_graph.fingerprint import fingerprint
 from promise_graph.model import Classification
+from promise_graph.snapshot import GraphSnapshot
 from promisepatch.db.clock import database_now
 from promisepatch.db.events import append_event
 from promisepatch.db.models import (
@@ -83,7 +87,15 @@ from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 from promisepatch.domain import crash
 from promisepatch.domain.analysis import fresh_snapshot, scope_from_watch
-from promisepatch.domain.cases import LockedCase, apply_case_change, lock_case
+from promisepatch.domain.cases import (
+    CASE_EXECUTING,
+    CASE_PLANNED,
+    LockedCase,
+    apply_case_change,
+    case_events,
+    lock_case,
+    settled_case_state,
+)
 from promisepatch.domain.intake import actor_for, require_permitted, require_worker
 from promisepatch.domain.model import (
     EFFECT_TRACK_ID,
@@ -100,11 +112,6 @@ from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
 
-# ------------------------------------------------------------------------------- case states
-
-CASE_PLANNED: Final = "PLANNED"
-CASE_EXECUTING: Final = "EXECUTING"
-
 # ------------------------------------------------------------------------------ track states
 
 TRACK_PENDING: Final = "PENDING"
@@ -112,11 +119,11 @@ TRACK_APPLYING: Final = "APPLYING"
 TRACK_RECOVERED: Final = "RECOVERED"
 TRACK_ESCALATED: Final = "ESCALATED"
 TRACK_STALE: Final = "STALE"
-"""The §13.4 postures this slice can write.
+"""The §13.4 postures a recovery writes.
 
-``WAITING_FOR_CUSTOMER`` is deliberately absent. It names a track whose approval request has
-actually been sent, and until one exists a track that claimed to be waiting would be waiting
-for nothing.
+``WAITING_FOR_CUSTOMER`` is deliberately absent *here*. It names a track whose approval request
+has actually been sent, which is a different authority arriving on a different path, and
+:mod:`promisepatch.domain.approvals` is the only module that writes it.
 """
 
 # ------------------------------------------------------------------------------- step naming
@@ -405,7 +412,7 @@ async def _confirm(
         held: dict[UUID, tuple[str, ...]] = {}
         for track, _ in plan.escalate:
             await _escalate_track(write, track=track)
-            held[track.id] = await _hold_tasks(write, track=track, case_id=case_id)
+            held[track.id] = await hold_tasks(write, track=track, case_id=case_id)
 
         await _record_confirmation(
             connection,
@@ -423,6 +430,19 @@ async def _confirm(
                 track_id=track.id,
                 step_key=apply_step_key(track.id),
                 kind=STEP_APPLY_RECOVERY,
+            )
+        # Deferred: the approval protocol reads this module's fenced track writes, so a
+        # module-level import in both directions would be a cycle. This edge runs once per
+        # confirmation. What it enqueues is permission to *ask*, never permission to apply.
+        from promisepatch.domain.approvals import STEP_REQUEST_APPROVAL, request_step_key
+
+        for track in plan.approval:
+            await _enqueue(
+                connection,
+                case_id=case_id,
+                track_id=track.id,
+                step_key=request_step_key(track.id),
+                kind=STEP_REQUEST_APPROVAL,
             )
 
         # Last: from here the transaction holds the spine's ordering lock, and everything
@@ -500,8 +520,9 @@ def _partition(tracks: Sequence[Any]) -> _Plan:
             else:
                 auto.append(track)
         elif track.classification == Classification.APPROVAL_REQUIRED.value:
-            # Left exactly where planning put it. The customer has not been asked, so there is
-            # nothing to wait for and nothing this worker's yes could authorise.
+            # Left exactly where planning put it, and given work of a different kind. The
+            # customer has not been asked yet, so there is still nothing to wait for; what this
+            # worker's yes authorises is the asking.
             approval.append(track)
         else:
             escalate.append((track, ESCALATION_BLOCKED))
@@ -519,7 +540,7 @@ async def _escalate_track(write: GovernedWrite, *, track: Any) -> None:
         raise RecoveryStateError(f"track {track.id} changed under a held lock")
 
 
-async def _hold_tasks(write: GovernedWrite, *, track: Any, case_id: UUID) -> tuple[str, ...]:
+async def hold_tasks(write: GovernedWrite, *, track: Any, case_id: UUID) -> tuple[str, ...]:
     """Put the kitchen work for a blocked promise on hold, and say which tasks those were.
 
     §13.5: a blocked track never messages a customer and never touches the order, and this is
@@ -670,21 +691,21 @@ async def _apply(
     is no effect and no ``APPLYING`` track; after it, both, and the dispatcher finds the row.
     """
     if case.state != CASE_EXECUTING:
-        return _skipped(STEP_APPLY_RECOVERY, {"case_state": case.state})
+        return skipped(STEP_APPLY_RECOVERY, {"case_state": case.state})
 
-    track = await _lock_track(connection, track_of(step_key))
+    track = await lock_track(connection, track_of(step_key))
     if track.state != TRACK_PENDING:
         # Somebody already moved it: reclaimed and applied, escalated, or withdrawn. Applying
         # again would be a second amendment for one plan.
-        return _skipped(STEP_APPLY_RECOVERY, {"track_state": track.state})
+        return skipped(STEP_APPLY_RECOVERY, {"track_state": track.state})
     if track.classification != Classification.AUTO_RECOVERABLE.value:
         # Unreachable from a confirmation, and refused anyway. A worker's yes never authorises
         # a change a customer has not agreed to, whatever enqueued the step.
-        return _skipped(STEP_APPLY_RECOVERY, {"classification": track.classification})
+        return skipped(STEP_APPLY_RECOVERY, {"classification": track.classification})
 
-    option = await _chosen_option(connection, track)
+    option = await chosen_option(connection, track)
     if option is None or option.requires_approval:
-        return await _stale(
+        return await mark_stale(
             connection,
             case=case,
             track=track,
@@ -697,9 +718,9 @@ async def _apply(
             ),
         )
 
-    planned, current = track.fingerprint, await _current_fingerprint(connection, track)
+    planned, current = track.fingerprint, await current_fingerprint(connection, track)
     if planned != current:
-        return await _stale(
+        return await mark_stale(
             connection,
             case=case,
             track=track,
@@ -744,7 +765,7 @@ async def _apply(
         },
         occurred_at=now,
     ) as write:
-        await _set_track_state(write, track=track, state=TRACK_APPLYING)
+        await set_track(write, track=track, state=TRACK_APPLYING)
 
     return StepOutcome(
         disposition=Disposition.DONE,
@@ -799,7 +820,7 @@ def _amend_payload(*, track: Any, option: Any, order: Any) -> Mapping[str, Any]:
     }
 
 
-async def _stale(
+async def mark_stale(
     connection: AsyncConnection,
     *,
     case: LockedCase,
@@ -827,17 +848,20 @@ async def _stale(
         provenance={"worker": worker, "detail": detail},
         occurred_at=now,
     ) as write:
-        await _set_track_state(write, track=track, state=TRACK_STALE)
+        await set_track(write, track=track, state=TRACK_STALE)
+        moved_to = await settled_case_state(connection, case=case)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
+        case_change=CaseChange(state=moved_to),
         events=(
             AppendEvent(
                 type=EVENT_TRACK_STALE,
                 payload={"detail": detail},
                 entity_refs=({"kind": "track", "id": str(track.id)},),
             ),
+            *case_events(moved_to, case_id=case.id),
         ),
         result={"outcome": "STALE", "track_id": str(track.id), "detail": detail},
     )
@@ -862,11 +886,11 @@ async def _finalize(
     be claiming an effect nobody could show afterwards.
     """
     if case.state != CASE_EXECUTING:
-        return _skipped(STEP_FINALIZE_RECOVERY, {"case_state": case.state})
+        return skipped(STEP_FINALIZE_RECOVERY, {"case_state": case.state})
 
-    track = await _lock_track(connection, track_of(step_key))
+    track = await lock_track(connection, track_of(step_key))
     if track.state != TRACK_APPLYING:
-        return _skipped(STEP_FINALIZE_RECOVERY, {"track_state": track.state})
+        return skipped(STEP_FINALIZE_RECOVERY, {"track_state": track.state})
 
     key = await _applied_key(connection, track)
     effect = await _effect_for(connection, key)
@@ -885,7 +909,7 @@ async def _finalize(
             f"but track {track.id} chose {track.chosen_option_id}"
         )
 
-    option = await _chosen_option(connection, track)
+    option = await chosen_option(connection, track)
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
         event_type=AUDIT_RECOVERY_COMPLETED,
@@ -904,17 +928,22 @@ async def _finalize(
         provenance={"step_key": step_key, "worker": worker, "attempts": effect.attempts},
         occurred_at=now,
     ) as write:
-        await _set_track_state(write, track=track, state=TRACK_RECOVERED)
+        await set_track(write, track=track, state=TRACK_RECOVERED)
+        # After the write, so the answer includes it: this may have been the last runnable
+        # piece of work, and the case is then waiting on a customer somebody else contacted.
+        moved_to = await settled_case_state(connection, case=case)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
+        case_change=CaseChange(state=moved_to),
         events=(
             AppendEvent(
                 type=EVENT_TRACK_RECOVERED,
                 payload={"provider_ref": effect.provider_ref, "attempts": effect.attempts},
                 entity_refs=({"kind": "track", "id": str(track.id)},),
             ),
+            *case_events(moved_to, case_id=case.id),
         ),
         result={
             "outcome": "RECOVERED",
@@ -938,9 +967,9 @@ async def _abandon(
     §11.6: after the retry bound the track escalates with ``DOWNSTREAM_UNAVAILABLE`` and the
     case carries on with its other tracks. It never reports a success it did not observe.
     """
-    track = await _lock_track(connection, track_of(step_key))
+    track = await lock_track(connection, track_of(step_key))
     if track.state != TRACK_APPLYING:
-        return _skipped(STEP_ABANDON_RECOVERY, {"track_state": track.state})
+        return skipped(STEP_ABANDON_RECOVERY, {"track_state": track.state})
 
     key = await _applied_key(connection, track)
     unit_of_work = UnitOfWork(connection)
@@ -959,18 +988,20 @@ async def _abandon(
         provenance={"step_key": step_key, "worker": worker, "idempotency_key": key},
         occurred_at=now,
     ) as write:
-        await _set_track_state(write, track=track, state=TRACK_ESCALATED)
+        await set_track(write, track=track, state=TRACK_ESCALATED)
+        moved_to = await settled_case_state(connection, case=case)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
-        case_change=CaseChange(needs_owner_attention=True),
+        case_change=CaseChange(state=moved_to, needs_owner_attention=True),
         events=(
             AppendEvent(
                 type=EVENT_TRACK_ESCALATED,
                 payload={"reason": ESCALATION_DOWNSTREAM_UNAVAILABLE},
                 entity_refs=({"kind": "track", "id": str(track.id)},),
             ),
+            *case_events(moved_to, case_id=case.id),
         ),
         result={
             "outcome": "ESCALATED",
@@ -983,7 +1014,7 @@ async def _abandon(
 # ---------------------------------------------------------------------------------- reading
 
 
-async def _lock_track(connection: AsyncConnection, track_id: UUID) -> Any:
+async def lock_track(connection: AsyncConnection, track_id: UUID) -> Any:
     """Take the track row for update. After the case row, and before anything derived from it."""
     row = (
         await connection.execute(select(Track).where(Track.id == track_id).with_for_update())
@@ -993,7 +1024,7 @@ async def _lock_track(connection: AsyncConnection, track_id: UUID) -> Any:
     return row
 
 
-async def _chosen_option(connection: AsyncConnection, track: Any) -> Any:
+async def chosen_option(connection: AsyncConnection, track: Any) -> Any:
     """The option planning chose, read back by id. Nothing here selects among candidates."""
     if track.chosen_option_id is None:
         return None
@@ -1007,12 +1038,18 @@ async def _chosen_option(connection: AsyncConnection, track: Any) -> Any:
     ).one_or_none()
 
 
-async def _current_fingerprint(connection: AsyncConnection, track: Any) -> str:
+async def current_fingerprint(
+    connection: AsyncConnection, track: Any, *, snapshot: GraphSnapshot | None = None
+) -> str:
     """Recompute this track's fingerprint over the state it is watching, as it stands now.
 
     The scope is rebuilt from the persisted ``track_watch`` rows rather than by re-running
     propagation, so the entities compared are exactly the ones planning declared -- and a
     change outside them is irrelevant by definition rather than by assumption.
+
+    A caller that has already loaded a snapshot passes it in. Loading a second one would be a
+    second read of the graph at a second instant, and a comparison made across two instants
+    proves nothing about either.
     """
     rows = (
         await connection.execute(
@@ -1024,7 +1061,7 @@ async def _current_fingerprint(connection: AsyncConnection, track: Any) -> str:
     scope = scope_from_watch(
         [(row.entity_type, row.entity_id) for row in rows], promise_id=track.promise_id
     )
-    return fingerprint(await fresh_snapshot(connection), scope).hash
+    return fingerprint(snapshot or await fresh_snapshot(connection), scope).hash
 
 
 async def _order_of(connection: AsyncConnection, promise_id: str) -> Any:
@@ -1073,16 +1110,23 @@ async def _effect_for(connection: AsyncConnection, idempotency_key: str) -> Any:
 # ---------------------------------------------------------------------------------- writing
 
 
-async def _set_track_state(write: GovernedWrite, *, track: Any, state: str) -> None:
+async def set_track(
+    write: GovernedWrite, *, track: Any, state: str | None = None, **values: Any
+) -> None:
     """One row, or this transaction does not commit.
 
     The version this transaction read is repeated as a predicate. A worker whose lease expired
     and was reclaimed while it worked matches nothing here, so it overwrites nothing.
+
+    ``state`` is optional because not every consequential change to a track is a change of
+    posture: binding a track to the approval request just created for it moves nothing in
+    §13.4 and still has to be fenced and versioned like everything else.
     """
+    changes: dict[str, Any] = {"version": Track.version + 1, **values}
+    if state is not None:
+        changes["state"] = state
     result = await write.execute(
-        update(Track)
-        .where(Track.id == track.id, Track.version == track.version)
-        .values(state=state, version=Track.version + 1)
+        update(Track).where(Track.id == track.id, Track.version == track.version).values(**changes)
     )
     if result.rowcount != 1:
         raise RecoveryStateError(
@@ -1114,7 +1158,7 @@ async def _enqueue(
     )
 
 
-def _skipped(kind: str, because: Mapping[str, Any]) -> StepOutcome:
+def skipped(kind: str, because: Mapping[str, Any]) -> StepOutcome:
     return StepOutcome(
         disposition=Disposition.SKIPPED,
         event_type=EVENT_STEP_SKIPPED,

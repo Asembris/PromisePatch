@@ -11,9 +11,9 @@ Three properties, all enforced by the database rather than by this module:
 * **One live timer per subject.** A partial unique index over ``(kind, subject_type,
   subject_id) WHERE fired_at IS NULL`` means arming a deadline twice produces one row. Arming
   is therefore idempotent, so a transition that is retried after a crash re-arms harmlessly.
-* **One logical wake-up per timer.** The step a firing creates is keyed ``timer:{id}``, derived
-  from the timer rather than invented, so two workers polling at the same instant -- or one
-  worker polling twice -- cannot produce two wake-ups.
+* **One logical wake-up per timer.** The step a firing creates is derived from the timer or from
+  the subject it is a deadline for -- never invented -- so two workers polling at the same
+  instant, or one worker polling twice, cannot produce two wake-ups.
 * **Fire and cancel cannot both win.** Both take the row lock; whichever is second re-evaluates
   its predicate against the row the first one left. A cancel that arrives after a firing
   deletes nothing, because the row is no longer unfired.
@@ -132,20 +132,39 @@ async def fire_due_timer(database: RuntimeDatabase, *, worker: str) -> FiredTime
         if candidate is None:
             return None
 
-        step_key: str | None = None
-        if candidate.subject_type == CASE_SUBJECT:
-            # Imported here rather than at module scope: `steps` needs `timers` for arming and
-            # cancellation, so the two modules refer to each other and one of the edges has to
-            # be deferred. This is the edge that runs once per fired deadline, not per step.
-            from promisepatch.domain.steps import enqueue_step
+        # Imported here rather than at module scope: `steps` needs `timers` for arming and
+        # cancellation, and the approval protocol arms its own deadlines through this module, so
+        # both edges have to be deferred. They run once per fired deadline, not per step.
+        from promisepatch.domain.approvals import (
+            APPROVAL_SUBJECT,
+            STEP_EXPIRE_APPROVAL,
+            approval_timer_case,
+            expire_step_key,
+        )
+        from promisepatch.domain.steps import enqueue_step
 
+        step_key: str | None = None
+        case_id: UUID | None = None
+        if candidate.subject_type == CASE_SUBJECT:
+            case_id = UUID(candidate.subject_id)
             step_key = handlers.timer_step_key(candidate.id)
             await enqueue_step(
-                connection,
-                case_id=UUID(candidate.subject_id),
-                step_key=step_key,
-                kind=StepKind.TIMER_WAKEUP,
+                connection, case_id=case_id, step_key=step_key, kind=StepKind.TIMER_WAKEUP
             )
+        elif candidate.subject_type == APPROVAL_SUBJECT:
+            # A deadline armed against a request rather than a case, because one case may be
+            # waiting on several customers. Firing it therefore has to find its way back to a
+            # case before it can become a step; a request whose rows are gone wakes nothing.
+            request_id = UUID(candidate.subject_id)
+            case_id = await approval_timer_case(connection, request_id)
+            if case_id is not None:
+                step_key = expire_step_key(request_id)
+                await enqueue_step(
+                    connection,
+                    case_id=case_id,
+                    step_key=step_key,
+                    kind=STEP_EXPIRE_APPROVAL,
+                )
 
         fired = (
             await connection.execute(
@@ -164,7 +183,7 @@ async def fire_due_timer(database: RuntimeDatabase, *, worker: str) -> FiredTime
             event_type=EVENT_TIMER_FIRED,
             correlation_id=uuid4(),
             occurred_at=now,
-            case_id=UUID(candidate.subject_id) if candidate.subject_type == CASE_SUBJECT else None,
+            case_id=case_id,
             entity_refs=[{"kind": "timer", "id": str(candidate.id)}],
             payload={
                 "kind": candidate.kind,

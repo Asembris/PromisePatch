@@ -14,6 +14,7 @@ and ``demo_state`` re-checks and reloads when it finds one it did not ask for.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -36,6 +37,8 @@ from promisepatch.config import Settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db import events as ledger
 from promisepatch.db.models import (
+    ApprovalDecision,
+    ApprovalRequest,
     AuditEvent,
     Case,
     CaseReport,
@@ -44,6 +47,7 @@ from promisepatch.db.models import (
     DomainEvent,
     ExceptionClarification,
     ExceptionFact,
+    InboundReply,
     InventoryLedgerEntry,
     Order,
     OrderLine,
@@ -54,13 +58,15 @@ from promisepatch.db.models import (
     RecipeVersion,
     RecoveryOption,
     Reservation,
+    Timer,
     Track,
     TrackPath,
     TrackWatch,
 )
 from promisepatch.db.models import Worker as WorkerRow
 from promisepatch.db.uow import Actor, UnitOfWork
-from promisepatch.domain import analysis, crash, intake, recovery
+from promisepatch.domain import analysis, approvals, crash, handlers, intake, recovery
+from promisepatch.domain import inbox as inbox_ledger
 from promisepatch.domain.adapters import FakeEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
 from promisepatch.domain.observation import INTAKE_STEP_KINDS
@@ -74,6 +80,21 @@ RASPBERRY_LINE = hollow_oak.VP_TODAY_RASPBERRY
 STRAWBERRY_LINE = hollow_oak.VP_TODAY_STRAWBERRY
 STRAWBERRIES = hollow_oak.STRAWBERRIES
 RASPBERRIES = hollow_oak.RASPBERRIES
+
+
+def _channel_for(promise_id: str) -> str:
+    """The approval channel behind one promise, read out of the fixture rather than restated.
+
+    A literal here would be a second copy of the customer's identity, and the day the fixture
+    moved a chat id the tests would keep passing against a customer who no longer exists.
+    """
+    graph = hollow_oak.hollow_oak()
+    order = graph.orders[graph.promises[promise_id].order_id]
+    return graph.customers[order.customer_id].approval_channel
+
+
+TOMAS_CHANNEL = _channel_for(hollow_oak.PROMISE_B)
+"""The only identity whose reply can authorise the change to promise B."""
 
 CANONICAL_REPORT = "today's raspberry delivery didn't arrive"
 RASPBERRY_ONLY = "just raspberries - the strawberries came"
@@ -413,6 +434,11 @@ class Intake:
                 ).all()
             )
 
+    async def latest_audit_seq(self) -> int:
+        async with self.database.connect() as connection:
+            value = await connection.scalar(select(func.coalesce(func.max(AuditEvent.seq), 0)))
+        return int(value or 0)
+
     async def latest_event_seq(self) -> int:
         async with self.database.connect() as connection:
             return await ledger.latest_seq(connection)
@@ -520,6 +546,127 @@ class Intake:
         async with self.database.connect() as connection:
             rows = (await connection.execute(select(ProductionTask))).all()
         return {row.id: (row.state, row.held_by_case_id) for row in rows}
+
+    # ------------------------------------------------------------------ consent protocol
+
+    async def requests(self) -> list[Any]:
+        """Every approval request in the database, oldest first."""
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(ApprovalRequest).order_by(ApprovalRequest.sent_at)
+                    )
+                ).all()
+            )
+
+    async def request_for(self, track_id: UUID) -> Any:
+        async with self.database.connect() as connection:
+            return (
+                await connection.execute(
+                    select(ApprovalRequest).where(ApprovalRequest.track_id == track_id)
+                )
+            ).one_or_none()
+
+    async def decisions(self) -> list[Any]:
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(ApprovalDecision).order_by(ApprovalDecision.received_at)
+                    )
+                ).all()
+            )
+
+    async def replies(self) -> list[Any]:
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(InboundReply).order_by(InboundReply.received_at)
+                    )
+                ).all()
+            )
+
+    async def timers(self) -> list[Any]:
+        async with self.database.connect() as connection:
+            return list((await connection.execute(select(Timer).order_by(Timer.due_at))).all())
+
+    async def deliver_reply(
+        self,
+        request_id: UUID,
+        text_said: str,
+        *,
+        sender: str = TOMAS_CHANNEL,
+        event_id: str | None = None,
+    ) -> str:
+        """Put one customer reply on the transport, exactly as the fake channel would.
+
+        Nothing is decided here and nothing may be: this writes the raw material to
+        ``inbox_events`` and returns the provider's id for it. A test that wanted a decision has
+        to run the worker, which is the only path a reply can take to become one.
+        """
+        delivery = event_id or f"msg-{uuid4()}"
+        async with self.database.begin() as connection:
+            await inbox_ledger.ingest(
+                connection,
+                source=handlers.CUSTOMER_REPLY_SOURCE,
+                provider_event_id=delivery,
+                body=json.dumps(
+                    {
+                        "request_id": str(request_id),
+                        "sender": sender,
+                        "text": text_said,
+                        "provider_message_id": delivery,
+                    }
+                ),
+            )
+        return delivery
+
+    async def close_window(self, request_id: UUID) -> None:
+        """Move an approval deadline into the past, and its timer with it.
+
+        Deterministic where sleeping is not: the deadline is compared against the *database's*
+        clock, so moving the row backwards is exactly equivalent to the window having closed.
+        """
+        async with self.database.begin() as connection:
+            unit_of_work = UnitOfWork(connection)
+            async with unit_of_work.governed(
+                event_type="APPROVAL_TEST_SETUP",
+                actor=Actor(kind="SYSTEM", id="approval-tests"),
+                authority="NONE",
+            ) as write:
+                # ``sent_at`` moves with it: the table's own ``deadline > sent_at`` check is
+                # the record that no request was ever sent into a closed window, and a helper
+                # that could violate it would be rewriting history rather than advancing time.
+                await write.execute(
+                    sa_update(ApprovalRequest)
+                    .where(ApprovalRequest.id == request_id)
+                    .values(
+                        sent_at=text("now() - interval '2 seconds'"),
+                        deadline=text("now() - interval '1 second'"),
+                    )
+                )
+            await connection.execute(
+                sa_update(Timer)
+                .where(Timer.subject_id == str(request_id), Timer.fired_at.is_(None))
+                .values(due_at=text("now() - interval '1 second'"))
+            )
+
+    async def close_planning_window(self, track_id: UUID) -> None:
+        """Move a track's planned approval window into the past, before anything is asked."""
+        async with self.database.begin() as connection:
+            unit_of_work = UnitOfWork(connection)
+            async with unit_of_work.governed(
+                event_type="APPROVAL_TEST_SETUP",
+                actor=Actor(kind="SYSTEM", id="approval-tests"),
+                authority="NONE",
+            ) as write:
+                await write.execute(
+                    sa_update(Track)
+                    .where(Track.id == track_id)
+                    .values(deadline_at=text("now() - interval '1 second'"))
+                )
 
     async def expire_effect_lease(self, effect_id: UUID) -> None:
         """Age an outbox claim out without waiting: leases compare against the DB clock."""
@@ -658,6 +805,53 @@ class Intake:
                 sa_update(CaseStep)
                 .where(CaseStep.id == step_id)
                 .values(next_attempt_at=text("now() + interval '1 hour'"))
+            )
+
+    async def defer_approvals(self, case_id: UUID) -> None:
+        """Push a case's approval work out of reach, leaving only its recovery work runnable.
+
+        A confirmation enqueues the amendment and the ask in one transaction, so both rows carry
+        the same ``created_at`` and the claim order falls through to their ids -- which are
+        random. That is correct for the engine, whose two pieces of work are independent, and
+        useless for a test about one of them: whichever it meant to drive would be decided by a
+        UUID. Deferring the other makes the subject of such a test the thing it names.
+        """
+        await self._shift_approvals(case_id, "now() + interval '1 hour'")
+
+    async def release_approvals(self, case_id: UUID) -> None:
+        """Bring deferred approval work back, to run after the recovery rather than beside it."""
+        await self._shift_approvals(case_id, None)
+
+    async def _shift_approvals(self, case_id: UUID, when: str | None) -> None:
+        async with self.database.begin() as connection:
+            await connection.execute(
+                sa_update(CaseStep)
+                .where(
+                    CaseStep.case_id == case_id,
+                    CaseStep.kind.in_(sorted(approvals.APPROVAL_STEP_KINDS)),
+                )
+                .values(next_attempt_at=None if when is None else text(when))
+            )
+
+    async def requeue(self, step_id: UUID) -> None:
+        """Put a settled step back in the queue, so it genuinely runs a second time.
+
+        Not something the engine does: it is how a test provokes the replay that a crash between
+        two transactions would otherwise have to produce, and asks whether running the same
+        piece of work twice writes the same rows twice.
+        """
+        async with self.database.begin() as connection:
+            await connection.execute(
+                sa_update(CaseStep)
+                .where(CaseStep.id == step_id)
+                .values(
+                    state="PENDING",
+                    attempts=0,
+                    done_at=None,
+                    next_attempt_at=None,
+                    lease_owner=None,
+                    lease_expires_at=None,
+                )
             )
 
     async def release(self, step_id: UUID) -> None:

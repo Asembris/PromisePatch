@@ -36,9 +36,14 @@ from _intake_support import physical as physical
 
 from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import Classification, RuleId
-from promisepatch.db.models import ApprovalRequest, OutboxMessage, RecipeVersion
+from promisepatch.db.models import (
+    ApprovalDecision,
+    ApprovalRequest,
+    OutboxMessage,
+    RecipeVersion,
+)
 from promisepatch.db.uow import Actor
-from promisepatch.domain import crash, intake, outbox, recovery, steps
+from promisepatch.domain import cases, crash, intake, outbox, recovery, steps
 from promisepatch.domain.adapters import FakeEffectAdapter, ProviderBehaviour
 from promisepatch.domain.model import StepResult
 
@@ -76,10 +81,22 @@ async def planned_case(intake_fixture: Intake) -> UUID:
     return opened.case_id
 
 
-async def confirmed_case(intake_fixture: Intake) -> UUID:
-    """The same path, plus Maya's yes, and no worker run yet."""
+async def confirmed_case(intake_fixture: Intake, *, ask: bool = False) -> UUID:
+    """The same path, plus Maya's yes, and no worker run yet.
+
+    A confirmation enqueues two independent pieces of work: A's amendment and the ask that goes
+    to B's customer. They are created in one transaction, so nothing fixes which the worker
+    claims first, and this file is about the amendment. ``ask=False`` therefore defers the
+    approval work, which is what makes a test that runs a single worker cycle a test about the
+    step it names rather than about a random UUID.
+
+    ``ask=True`` leaves both runnable, for the handful of tests here whose subject is precisely
+    that a confirmation authorises the asking as well.
+    """
     case_id = await planned_case(intake_fixture)
     await intake_fixture.confirm(case_id)
+    if not ask:
+        await intake_fixture.defer_approvals(case_id)
     return case_id
 
 
@@ -93,11 +110,29 @@ async def states(intake_fixture: Intake, case_id: UUID) -> dict[str, str]:
     return {track.promise_id: track.state for track in await intake_fixture.tracks(case_id)}
 
 
-async def only_effect(intake_fixture: Intake) -> Any:
-    """The one outbound effect the canonical case produces. Its uniqueness is the assertion."""
-    effects = await intake_fixture.effects()
+async def only_amendment(intake_fixture: Intake) -> Any:
+    """The one order-system effect the canonical case produces. Its uniqueness is the assertion.
+
+    Scoped to amendments rather than to the whole outbox, because the canonical case also sends
+    one message -- to B's customer, asking them. Asking somebody is not amending their order,
+    and conflating the two would make "exactly one order was touched" untestable.
+    """
+    effects = [
+        effect
+        for effect in await intake_fixture.effects()
+        if effect.kind == recovery.EFFECT_ORDER_AMEND
+    ]
     assert len(effects) == 1
     return effects[0]
+
+
+async def amendments_for(intake_fixture: Intake, track_id: Any) -> list[Any]:
+    """Order-system effects for one track, which is what "this promise moved" means."""
+    return [
+        effect
+        for effect in await intake_fixture.effects_for(track_id)
+        if effect.kind == recovery.EFFECT_ORDER_AMEND
+    ]
 
 
 # ------------------------------------------------------------ confirmation: what a yes means
@@ -109,9 +144,24 @@ async def test_a_worker_confirmation_moves_the_case_to_executing(physical: Intak
     outcome = await physical.confirm(case_id)
 
     assert outcome.created is True
-    assert outcome.state == recovery.CASE_EXECUTING
+    assert outcome.state == cases.CASE_EXECUTING
     case = await physical.case(case_id)
-    assert case.state == recovery.CASE_EXECUTING
+    assert case.state == cases.CASE_EXECUTING
+
+
+async def test_confirmation_enqueues_no_recovery_work_for_the_approval_track(
+    physical: Intake,
+) -> None:
+    """``B`` earns approval work and never recovery work, at the moment of the yes itself."""
+    case_id = await confirmed_case(physical)
+    track_b = await track_of(physical, case_id, B)
+
+    kinds = {step.kind for step in await physical.steps(case_id) if step.track_id == track_b.id}
+
+    assert kinds == {"REQUEST_APPROVAL"}
+    assert recovery.STEP_APPLY_RECOVERY not in kinds
+    assert await physical.rows_of(ApprovalRequest) == []
+    assert await physical.effects() == []
 
 
 async def test_confirmation_enqueues_execution_work_only_for_the_automatic_track(
@@ -156,18 +206,24 @@ async def test_confirmation_never_authorises_the_approval_required_track(
 ) -> None:
     """The hard invariant: a worker's yes is not the customer's.
 
-    ``B`` earns no step, no effect and no approval request. This is the assertion that would
-    fail if confirmation were ever widened into blanket authority.
+    What a confirmation authorises for ``B`` is *asking*. The customer is contacted and the
+    track waits for their answer, and until that answer arrives no amendment is enqueued and
+    nothing about their order moves. This is the assertion that would fail if confirmation were
+    ever widened into blanket authority.
     """
-    case_id = await confirmed_case(physical)
+    case_id = await confirmed_case(physical, ask=True)
     track_b = await track_of(physical, case_id, B)
-    await physical.drain(limit=30)
+    await physical.drain(limit=40)
 
     assert track_b.classification == Classification.APPROVAL_REQUIRED.value
-    assert (await track_of(physical, case_id, B)).state == recovery.TRACK_PENDING
-    assert await physical.effects_for(track_b.id) == []
-    assert [step for step in await physical.steps(case_id) if step.track_id == track_b.id] == []
-    assert await physical.rows_of(ApprovalRequest) == []
+    assert (await track_of(physical, case_id, B)).state == "WAITING_FOR_CUSTOMER"
+    amendments = [
+        effect
+        for effect in await physical.effects_for(track_b.id)
+        if effect.kind == recovery.EFFECT_ORDER_AMEND
+    ]
+    assert amendments == []
+    assert await physical.rows_of(ApprovalDecision) == []
 
 
 async def test_blocked_tracks_escalate_and_their_kitchen_work_is_held(
@@ -265,7 +321,7 @@ async def test_a_redelivered_confirmation_is_the_same_confirmation(physical: Int
 
     assert first.created is True
     assert second.created is False
-    assert second.state == recovery.CASE_EXECUTING
+    assert second.state == cases.CASE_EXECUTING
     applying = [
         step for step in await physical.steps(case_id) if step.kind == recovery.STEP_APPLY_RECOVERY
     ]
@@ -275,7 +331,11 @@ async def test_a_redelivered_confirmation_is_the_same_confirmation(physical: Int
 async def test_two_concurrent_deliveries_of_one_confirmation_produce_one_effect(
     physical: Intake,
 ) -> None:
-    """The mandatory concurrency case, and the result comes from the database, not from luck."""
+    """The mandatory concurrency case, and the result comes from the database, not from luck.
+
+    One confirmation, however many times it is delivered, produces one amendment and one ask --
+    never two of either. The count is what a second accepted confirmation would break.
+    """
     case_id = await planned_case(physical)
     command_id = uuid4()
 
@@ -285,9 +345,11 @@ async def test_two_concurrent_deliveries_of_one_confirmation_produce_one_effect(
     )
 
     assert sorted(outcome.created for outcome in outcomes) == [False, True]
-    await physical.drain(limit=30)
-    assert len(await physical.effects()) == 1
-    assert len(await physical.rows_of(OutboxMessage)) == 1
+    await physical.drain(limit=40)
+    effects = await physical.effects()
+    assert [effect.kind for effect in effects].count(recovery.EFFECT_ORDER_AMEND) == 1
+    assert len(effects) == 2
+    assert len(await physical.rows_of(OutboxMessage)) == 2
 
 
 async def test_the_same_command_id_carrying_a_different_request_is_a_conflict(
@@ -328,24 +390,27 @@ async def test_the_canonical_case_recovers_a_and_leaves_everything_else_alone(
     physical: Intake,
 ) -> None:
     """The whole slice, in one run of the real worker against a real database."""
-    case_id = await confirmed_case(physical)
+    case_id = await confirmed_case(physical, ask=True)
     adapter = FakeEffectAdapter()
 
     await physical.drain(worker=physical.worker(adapter=adapter), limit=30)
 
     assert await states(physical, case_id) == {
         A: recovery.TRACK_RECOVERED,
-        B: recovery.TRACK_PENDING,
+        B: "WAITING_FOR_CUSTOMER",
         C: recovery.TRACK_ESCALATED,
         D: recovery.TRACK_ESCALATED,
         E: "UNAFFECTED",
         F: "UNAFFECTED",
     }
-    assert adapter.effect_count == 1
-    # Still executing: B is unresolved, and the approval protocol that resolves it is a
-    # different slice with a different authority. Resolving here would be inventing one.
-    assert (await physical.case(case_id)).state == recovery.CASE_EXECUTING
-    assert await physical.rows_of(ApprovalRequest) == []
+    # Two effects: A's amendment, and the message asking B's customer. The order system heard
+    # about A only, which is the whole of "a worker's yes moved exactly one order".
+    assert adapter.effect_count == 2
+    assert [call.kind for call in adapter.attempts].count(recovery.EFFECT_ORDER_AMEND) == 1
+    # Waiting, not resolved: B's customer has been asked and has not answered, and the
+    # authority that will answer is theirs alone.
+    assert (await physical.case(case_id)).state == cases.CASE_WAITING
+    assert await physical.rows_of(ApprovalDecision) == []
 
 
 async def test_the_effect_names_the_exact_pre_authored_version_planning_chose(
@@ -425,7 +490,7 @@ async def test_the_finalized_track_carries_the_providers_own_reference(physical:
     adapter = FakeEffectAdapter()
     await physical.drain(worker=physical.worker(adapter=adapter), limit=30)
 
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
     completed = next(
         row
         for row in await physical.audits(case_id)
@@ -439,15 +504,22 @@ async def test_the_finalized_track_carries_the_providers_own_reference(physical:
     assert completed.after["provider_ref"] == effect.provider_ref
 
 
-async def test_nothing_but_a_recovers_an_effect(physical: Intake) -> None:
-    """The mandatory zero-effect invariant, asserted per track rather than in aggregate."""
-    case_id = await confirmed_case(physical)
-    await physical.drain(limit=30)
+async def test_nothing_but_a_amends_an_order(physical: Intake) -> None:
+    """The mandatory zero-effect invariant, asserted per track rather than in aggregate.
+
+    ``B`` is allowed exactly one effect and it is a question, not a change: the message that
+    asks its customer. Every other promise the exception reached, and every promise it did not,
+    has nothing outbound at all.
+    """
+    case_id = await confirmed_case(physical, ask=True)
+    await physical.drain(limit=40)
     tracks = {track.promise_id: track for track in await physical.tracks(case_id)}
 
     for promise_id in UNTOUCHED:
+        assert await amendments_for(physical, tracks[promise_id].id) == []
+    for promise_id in (C, D, E, F):
         assert await physical.effects_for(tracks[promise_id].id) == []
-    assert len(await physical.rows_of(OutboxMessage)) == 1
+    assert len(await physical.rows_of(OutboxMessage)) == 2
 
 
 # -------------------------------------------------------------------------- the effect's identity
@@ -462,7 +534,7 @@ async def test_the_idempotency_key_is_derived_from_persisted_identity_alone(
     order = await physical.snapshot()
     await physical.drain(limit=30)
 
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
 
     assert effect.idempotency_key == recovery.amend_idempotency_key(
         track_id=track_a.id,
@@ -478,13 +550,15 @@ async def test_one_logical_recovery_keeps_one_key_across_every_retry(physical: I
     worker = physical.worker(adapter=adapter)
 
     await worker.run_once()
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
     await physical.make_effect_due(effect.id)
     await physical.drain(worker=worker, limit=30)
 
-    assert {attempt.idempotency_key for attempt in adapter.attempts} == {effect.idempotency_key}
-    assert adapter.call_count == 2
-    assert adapter.effect_count == 1
+    amend_calls = [
+        attempt for attempt in adapter.attempts if attempt.idempotency_key == effect.idempotency_key
+    ]
+    assert len(amend_calls) == 2
+    assert adapter.effect_for(effect.idempotency_key) is not None
     assert (await track_of(physical, case_id, A)).state == recovery.TRACK_RECOVERED
 
 
@@ -492,7 +566,7 @@ async def test_the_database_refuses_a_second_effect_under_one_key(physical: Inta
     """Uniqueness, not care, is what stops one recovery from becoming two amendments."""
     await confirmed_case(physical)
     await physical.drain(limit=30)
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
 
     async with physical.database.begin() as connection:
         with pytest.raises(outbox.DuplicateEffectError):
@@ -509,14 +583,14 @@ async def test_a_live_lease_cannot_be_claimed_by_a_second_dispatcher(physical: I
     await confirmed_case(physical)
     with crash.arm(crash.AFTER_TRANSITION_COMMIT), pytest.raises(crash.WorkerDied):
         await physical.worker().run_once()
-    assert (await only_effect(physical)).state == "PENDING"
+    assert (await only_amendment(physical)).state == "PENDING"
 
     first = await outbox.claim_effect(physical.database, worker="dispatcher-a")
     second = await outbox.claim_effect(physical.database, worker="dispatcher-b")
 
     assert first is not None
     assert second is None
-    assert (await only_effect(physical)).lease_owner == "dispatcher-a"
+    assert (await only_amendment(physical)).lease_owner == "dispatcher-a"
 
 
 # ------------------------------------------------------------------ provider failure semantics
@@ -532,7 +606,7 @@ async def test_a_timeout_before_the_provider_applied_keeps_the_effect_retryable(
 
     await worker.run_once()
 
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
     assert effect.state == "PENDING"
     assert effect.next_attempt_at is not None
     assert adapter.effect_count == 0
@@ -546,12 +620,12 @@ async def test_a_recovered_timeout_finishes_the_recovery_under_the_same_key(
     adapter = FakeEffectAdapter(script=[ProviderBehaviour.TIMEOUT_BEFORE_APPLYING])
     worker = physical.worker(adapter=adapter)
     await worker.run_once()
-    first_key = (await only_effect(physical)).idempotency_key
+    first_key = (await only_amendment(physical)).idempotency_key
 
-    await physical.make_effect_due((await only_effect(physical)).id)
+    await physical.make_effect_due((await only_amendment(physical)).id)
     await physical.drain(worker=worker, limit=30)
 
-    assert (await only_effect(physical)).idempotency_key == first_key
+    assert (await only_amendment(physical)).idempotency_key == first_key
     assert (await track_of(physical, case_id, A)).state == recovery.TRACK_RECOVERED
     assert adapter.effect_count == 1
 
@@ -565,7 +639,7 @@ async def test_a_terminal_rejection_escalates_the_track_rather_than_pretending(
 
     await physical.drain(worker=physical.worker(adapter=adapter), limit=30)
 
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
     assert effect.state == "FAILED"
     assert (await track_of(physical, case_id, A)).state == recovery.TRACK_ESCALATED
     assert (await physical.case(case_id)).needs_owner_attention is True
@@ -599,7 +673,7 @@ async def test_a_death_before_the_confirmation_commits_leaves_the_case_planned(
     with crash.arm(crash.BEFORE_CONFIRMATION_COMMIT), pytest.raises(crash.WorkerDied):
         await physical.confirm(case_id)
 
-    assert (await physical.case(case_id)).state == recovery.CASE_PLANNED
+    assert (await physical.case(case_id)).state == cases.CASE_PLANNED
     assert len(await physical.steps(case_id)) == before
     assert await physical.effects() == []
     assert await states(physical, case_id) == {
@@ -620,7 +694,7 @@ async def test_a_death_after_the_confirmation_commits_leaves_work_a_fresh_worker
     with crash.arm(crash.AFTER_CONFIRMATION_COMMIT), pytest.raises(crash.WorkerDied):
         await physical.confirm(case_id)
 
-    assert (await physical.case(case_id)).state == recovery.CASE_EXECUTING
+    assert (await physical.case(case_id)).state == cases.CASE_EXECUTING
     await physical.drain(worker=physical.worker(identity="fresh"), limit=30)
     assert (await track_of(physical, case_id, A)).state == recovery.TRACK_RECOVERED
 
@@ -667,7 +741,7 @@ async def test_a_message_claimed_by_a_dead_dispatcher_is_reclaimed_under_the_sam
     with crash.arm(crash.AFTER_OUTBOX_CLAIM), pytest.raises(crash.WorkerDied):
         await worker.run_once()
 
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
     assert effect.state == "IN_FLIGHT"
     assert adapter.call_count == 0
 
@@ -695,7 +769,7 @@ async def test_a_provider_effect_applied_before_a_crash_becomes_exactly_one_reco
     with crash.arm(crash.AFTER_EXTERNAL_SUCCESS), pytest.raises(crash.WorkerDied):
         await physical.worker(adapter=provider, identity="died").run_once()
 
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
     applied = provider.effect_for(effect.idempotency_key)
     assert applied is not None
     assert effect.state == "IN_FLIGHT"
@@ -707,7 +781,7 @@ async def test_a_provider_effect_applied_before_a_crash_becomes_exactly_one_reco
 
     assert provider.call_count == 2
     assert provider.effect_count == 1
-    settled = await only_effect(physical)
+    settled = await only_amendment(physical)
     assert settled.idempotency_key == effect.idempotency_key
     assert settled.state == "DELIVERED"
     assert settled.provider_ref == applied.provider_ref
@@ -724,7 +798,7 @@ async def test_a_delivered_effect_is_finalized_by_whichever_worker_runs_next(
 
     await physical.worker(adapter=adapter, identity="first").run_once()
 
-    assert (await only_effect(physical)).state == "DELIVERED"
+    assert (await only_amendment(physical)).state == "DELIVERED"
     assert (await track_of(physical, case_id, A)).state == recovery.TRACK_APPLYING
     finalize = await physical.step_named(case_id, recovery.finalize_step_key(track_a.id))
     assert finalize.state == "PENDING"
@@ -758,7 +832,7 @@ async def test_a_worker_stopped_mid_recovery_resumes_without_repair(physical: In
     await physical.drain(worker=physical.worker(identity="after-restart"), limit=30)
 
     assert (await track_of(physical, case_id, A)).state == recovery.TRACK_RECOVERED
-    assert (await only_effect(physical)).state == "DELIVERED"
+    assert (await only_amendment(physical)).state == "DELIVERED"
 
 
 # ------------------------------------------------------------------- stale worker protection
@@ -789,7 +863,7 @@ async def test_a_stale_dispatcher_cannot_overwrite_a_reclaimed_effect(physical: 
     case_id = await confirmed_case(physical)
     with crash.arm(crash.AFTER_TRANSITION_COMMIT), pytest.raises(crash.WorkerDied):
         await physical.worker().run_once()
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
 
     stale = await outbox.claim_effect(physical.database, worker="dispatcher-a")
     assert stale is not None
@@ -916,9 +990,17 @@ async def test_the_execution_audit_names_the_system_and_not_a_new_authorisation(
 
 
 async def test_the_spine_tells_the_story_in_order(physical: Intake) -> None:
-    """Confirmed, applying, delivered, recovered -- and the escalations at confirmation time."""
+    """Confirmed, applying, recovered, asked, waiting -- in the order it actually happened.
+
+    An exact sequence rather than a set: the spine is what a person reads to reconstruct a
+    case, and an assertion that only checked membership would pass on a story told backwards.
+    The two pieces of work a confirmation enqueues are independent, so the run is staged to
+    give the spine one story to tell rather than two interleaved ones at random.
+    """
     case_id = await confirmed_case(physical)
-    await physical.drain(limit=30)
+    await physical.drain(limit=40)
+    await physical.release_approvals(case_id)
+    await physical.drain(limit=40)
 
     events = await physical.events(case_id)
     named = [event for event in events if not event.startswith("workflow.step.")]
@@ -930,6 +1012,10 @@ async def test_the_spine_tells_the_story_in_order(physical: Intake) -> None:
         recovery.EVENT_TRACK_APPLYING,
         "workflow.effect.delivered",
         recovery.EVENT_TRACK_RECOVERED,
+        "approval.requested",
+        "workflow.effect.delivered",
+        "approval.sent",
+        cases.EVENT_CASE_WAITING,
     ]
 
 
@@ -946,7 +1032,7 @@ async def test_the_effect_is_stamped_with_the_event_that_announced_it(
     case_id = await confirmed_case(physical)
     await physical.drain(limit=30)
 
-    effect = await only_effect(physical)
+    effect = await only_amendment(physical)
     appended = {
         event.seq: event.type
         for event in await physical.events_after(before)

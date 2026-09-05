@@ -22,6 +22,12 @@ recoverable rather than invisible.
 would hold a database connection, its locks and its snapshot for the length of a network round
 trip, and a provider that hangs would become a database problem. The claim commits, the adapter
 is called with nothing held, and the result is recorded in a third, fenced transaction.
+
+Between the claim and the call sits exactly one question about what an effect *means*: may this
+still be sent at all. It is asked because one effect genuinely expires -- an approval request may
+not be delivered after the window in which the customer could have answered it has closed -- and
+the answer is recorded as a terminal failure, so the row's own continuation decides what that
+means. The dispatcher stays ignorant of everything else, which is what keeps it a dispatcher.
 """
 
 from __future__ import annotations
@@ -374,6 +380,25 @@ async def _append_failure(
     )
 
 
+async def _still_worth_sending(
+    database: RuntimeDatabase, claim: EffectClaim
+) -> DeliveryOutcome | None:
+    """Whether this claimed effect may be delivered at all, or must be refused unsent.
+
+    The dispatcher's one concession to what an effect *means*, and it is narrow on purpose: the
+    only question it asks is "may this still be sent", never "what should happen next". It exists
+    because one effect really does expire -- an approval request may not be delivered after the
+    window in which the customer could have answered it has closed (§13.6) -- and a generic
+    outbox cannot know that on its own.
+
+    Deferred import, because the consent protocol enqueues the effects this module delivers.
+    Returns ``None`` for every effect that has no such rule, which is all of them but one.
+    """
+    from promisepatch.domain.approvals import refuse_if_window_closed
+
+    return await refuse_if_window_closed(database, kind=claim.kind, payload=claim.payload)
+
+
 async def _continue(connection: AsyncConnection, *, claim: EffectClaim, on: str) -> None:
     """Make the work this answer unblocks runnable, in the transaction that records the answer.
 
@@ -433,6 +458,13 @@ async def dispatch_one(
     claim = await claim_effect(database, worker=worker)
     if claim is None:
         return None
+
+    refusal = await _still_worth_sending(database, claim)
+    if refusal is not None:
+        # Never sent, and recorded as terminal so the row's own failure continuation runs. The
+        # dispatcher is not deciding anything here: it asked whether this effect may still be
+        # attempted at all, and something that knows the rules said no.
+        return await record_delivery(database, claim=claim, outcome=refusal, actor=actor)
 
     outcome = await adapter.deliver(
         kind=claim.kind, payload=claim.payload, idempotency_key=claim.idempotency_key
