@@ -25,6 +25,13 @@ the caller, and both default to the value that leaves the check exactly as it wa
     it; this compares the record behind that claim, so a chain that was corrupted after the fact
     fails closed instead of passing on a denormalised field.
 
+``holding_case_id``
+    The case whose recovery is being revalidated. §14.3's check 6 requires the production task
+    to be ``SCHEDULED`` **or held by this case** -- a task another case put on hold is a task
+    somebody else's blocked promise is waiting on, and starting work on it would take a
+    decision that belongs to that case's owner. A caller that supplies none keeps the plain
+    reading, in which any hold passes.
+
 ``binding``
     Which decision settled this request, and whether it has already been spent. §14.3's check 10
     ("this request id has not already been decided") is enforced at the *decision-commit*
@@ -51,12 +58,12 @@ from promise_graph.model import (
     ApprovalRequestRecord,
     OrderState,
     ParserKind,
+    ProductionTask,
     TaskState,
 )
 from promise_graph.snapshot import GraphSnapshot
 
 _ACCEPTABLE_ORDER_STATES = frozenset({OrderState.ACCEPTED, OrderState.AMENDED})
-_ACCEPTABLE_TASK_STATES = frozenset({TaskState.SCHEDULED, TaskState.HELD})
 _NONE = "<none>"
 
 
@@ -140,14 +147,15 @@ def revalidate(
     track_is_waiting_for_customer: bool,
     case_is_waiting: bool,
     recovered_claims: Sequence[Claim] = (),
+    holding_case_id: str | None = None,
     sender_chain: str | None = None,
     binding: DecisionBinding | None = None,
 ) -> RevalidationResult:
     """Run all ten checks against current state and derive the outcome.
 
-    ``sender_chain`` and ``binding`` are the two persisted-provenance inputs described in the
-    module docstring. Both are optional and both default to leaving their check exactly as the
-    frozen checklist words it.
+    ``holding_case_id``, ``sender_chain`` and ``binding`` are the persisted-state inputs
+    described in the module docstring. All three are optional and all three default to leaving
+    their check exactly as the frozen checklist words it.
     """
     order = snapshot.orders.get(request.order_id)
     order_line = snapshot.order_lines.get(request.order_line_id)
@@ -192,14 +200,16 @@ def revalidate(
             6,
             "production task not started and still ahead",
             task is not None
-            and task.state in _ACCEPTABLE_TASK_STATES
+            and _task_is_ours(task, holding_case_id)
             and task.scheduled_start is not None
             and now < task.scheduled_start,
-            f"SCHEDULED|HELD and start > {now.isoformat()}",
+            f"SCHEDULED|HELD by {holding_case_id or 'anyone'} and start > {now.isoformat()}",
             _NONE
             if task is None
-            else f"{task.state} and start "
-            f"{_NONE if task.scheduled_start is None else task.scheduled_start.isoformat()}",
+            else f"{task.state}"
+            + (f" held by {task.held_by_case_id or _NONE}" if task.state is TaskState.HELD else "")
+            + " and start "
+            + (_NONE if task.scheduled_start is None else task.scheduled_start.isoformat()),
         ),
         _check(
             7,
@@ -236,6 +246,21 @@ def revalidate(
             outcome = _OUTCOME_BY_CHECK[check.index]
             break
     return RevalidationResult(checks=tuple(checks), outcome=outcome)
+
+
+def _task_is_ours(task: ProductionTask, holding_case_id: str | None) -> bool:
+    """Check 6's state half: scheduled, or held by the case whose recovery this is.
+
+    A hold is how §13.5 stops the kitchen starting a cake that cannot be finished, and it is
+    always taken out by a particular case. One case's recovery may proceed against its own hold;
+    it may not proceed against somebody else's, because releasing that would be deciding a
+    blocked promise on behalf of an owner who has not looked at it yet.
+    """
+    if task.state is TaskState.SCHEDULED:
+        return True
+    if task.state is not TaskState.HELD:
+        return False
+    return holding_case_id is None or task.held_by_case_id == holding_case_id
 
 
 def _binding_check(

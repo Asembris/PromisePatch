@@ -499,3 +499,59 @@ def test_check_8_passes_when_the_chain_agrees(anchor: datetime) -> None:
         sender_chain=request.customer_channel,
     )
     assert result.outcome is RevalidationOutcome.PROCEED
+
+
+def held_by(snapshot: GraphSnapshot, case_id: str | None) -> GraphSnapshot:
+    """The same world with B's task on hold, for the case named or for nobody in particular."""
+    tasks = dict(snapshot.tasks)
+    tasks["task-ol-b"] = tasks["task-ol-b"].model_copy(
+        update={"state": TaskState.HELD, "held_by_case_id": case_id}
+    )
+    return snapshot.replace(tasks=tasks)
+
+
+def test_check_6_accepts_a_task_this_case_holds(anchor: datetime) -> None:
+    """§13.5's hold is this case's own; a recovery may proceed against it."""
+    snapshot, request, decision = prepared(anchor)
+    result = revalidate(
+        held_by(snapshot, "case-1"),
+        request,
+        decision,
+        anchor,
+        track_is_waiting_for_customer=True,
+        case_is_waiting=True,
+        holding_case_id="case-1",
+    )
+    assert result.outcome is RevalidationOutcome.PROCEED
+
+
+def test_check_6_refuses_a_task_another_case_holds(anchor: datetime) -> None:
+    """Somebody else's blocked promise is waiting on that oven, and only its owner may release it."""
+    snapshot, request, decision = prepared(anchor)
+    result = revalidate(
+        held_by(snapshot, "case-2"),
+        request,
+        decision,
+        anchor,
+        track_is_waiting_for_customer=True,
+        case_is_waiting=True,
+        holding_case_id="case-1",
+    )
+    assert result.outcome is RevalidationOutcome.STALE
+    assert result.failed[0].index == 6
+    assert "case-2" in result.checks[5].actual
+
+
+def test_check_6_reports_the_holder_it_compared(anchor: datetime) -> None:
+    snapshot, request, decision = prepared(anchor)
+    result = revalidate(
+        held_by(snapshot, None),
+        request,
+        decision,
+        anchor,
+        track_is_waiting_for_customer=True,
+        case_is_waiting=True,
+        holding_case_id="case-1",
+    )
+    assert result.failed[0].index == 6
+    assert "case-1" in result.checks[5].expected
