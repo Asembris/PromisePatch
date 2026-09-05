@@ -47,7 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from promise_graph.classification import AnalysisResult, ClassificationResult, analyze
 from promise_graph.classification import priority_order as engine_priority_order
 from promise_graph.fingerprint import TrackScope, fingerprint, scope_for
-from promise_graph.model import Classification, ExceptionCategory
+from promise_graph.model import ApprovalRequestState, Classification, ExceptionCategory
 from promise_graph.model import PhysicalException as EngineException
 from promise_graph.options import OptionSet, approval_deadline
 from promise_graph.options import RecoveryOption as EngineOption
@@ -71,7 +71,13 @@ from promisepatch.db.models import Promise as PromiseRow
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
-from promisepatch.domain.cases import LockedCase
+from promisepatch.domain.cases import (
+    CASE_RECONCILING,
+    CASE_REVALIDATING,
+    LockedCase,
+    case_events,
+    case_successors,
+)
 from promisepatch.domain.model import (
     EFFECT_TRACK_ID,
     EVENT_STEP_COMPLETED,
@@ -112,6 +118,7 @@ skips rather than inventing an analysis nobody asked for.
 TRACK_PENDING: Final = "PENDING"
 TRACK_UNAFFECTED: Final = "UNAFFECTED"
 TRACK_LINKED: Final = "LINKED"
+TRACK_STALE: Final = "STALE"
 """The three durable postures a track can be in at the end of planning.
 
 ``PENDING`` is the frozen §13.4 vocabulary for a classified track that has not been confirmed:
@@ -125,9 +132,12 @@ not happened.
 
 STEP_ANALYZE_IMPACT: Final = "ANALYZE_IMPACT"
 STEP_PLAN_RECOVERY: Final = "PLAN_RECOVERY"
+STEP_REPLAN_TRACK: Final = "REPLAN_TRACK"
 
-ANALYSIS_STEP_KINDS: Final[frozenset[str]] = frozenset({STEP_ANALYZE_IMPACT, STEP_PLAN_RECOVERY})
-"""Step kinds the worker routes here rather than to a pure handler: both need the graph."""
+ANALYSIS_STEP_KINDS: Final[frozenset[str]] = frozenset(
+    {STEP_ANALYZE_IMPACT, STEP_PLAN_RECOVERY, STEP_REPLAN_TRACK}
+)
+"""Step kinds the worker routes here rather than to a pure handler: all three need the graph."""
 
 
 def analyze_step_key(statement_id: UUID) -> str:
@@ -145,8 +155,24 @@ def plan_step_key(statement_id: UUID) -> str:
     return f"plan:{statement_id}"
 
 
+def replan_step_key(track_id: UUID) -> str:
+    """The re-plan one stale track calls for. §14.4 re-plans *that promise only*.
+
+    Named after the track rather than after a statement, because nothing was said: what asked
+    for this was the world moving under an approval, and the track is the only identity the
+    request has. A second stale transition on the same track proposes the identical key and the
+    unique index declines it.
+    """
+    return f"replan:{track_id}"
+
+
 def statement_of(step_key: str) -> UUID:
     """The statement an analysis step is about, read back out of its key."""
+    return UUID(step_key.partition(":")[2])
+
+
+def track_of(step_key: str) -> UUID:
+    """The track a re-plan step is about, read back out of its key."""
     return UUID(step_key.partition(":")[2])
 
 
@@ -156,6 +182,7 @@ EVENT_CASE_ANALYZED: Final = "case.analyzed"
 EVENT_TRACK_CLASSIFIED: Final = "track.classified"
 EVENT_CASE_PLANNED: Final = "case.planned"
 EVENT_ANALYSIS_SUPERSEDED: Final = "case.analysis_superseded"
+EVENT_TRACK_REPLANNED: Final = "track.replanned"
 """The spine's account of analysis and planning.
 
 Envelopes only, and deliberately silent about promises the exception never reached: a feed
@@ -169,6 +196,7 @@ place nobody looks. The authoritative detail lives in ``tracks``, ``track_paths`
 AUDIT_IMPACT_ANALYZED: Final = "IMPACT_ANALYZED"
 AUDIT_RECOVERY_PLANNED: Final = "RECOVERY_PLANNED"
 AUDIT_PROMISE_ALREADY_IN_CASE: Final = "PROMISE_ALREADY_IN_CASE"
+AUDIT_TRACK_REPLANNED: Final = "TRACK_REPLANNED"
 
 # --------------------------------------------------------------------------- watch entities
 
@@ -200,6 +228,8 @@ async def execute(
     """Run one analysis step against a case whose row this transaction already holds."""
     if kind == STEP_ANALYZE_IMPACT:
         return await _analyze(connection, case=case, step_key=step_key, now=now, worker=worker)
+    if kind == STEP_REPLAN_TRACK:
+        return await _replan(connection, case=case, step_key=step_key, now=now, worker=worker)
     return await _plan(connection, case=case, step_key=step_key, now=now, worker=worker)
 
 
@@ -545,6 +575,190 @@ async def _plan(
     )
 
 
+# ---------------------------------------------------------------------------- re-planning
+
+
+async def _replan(
+    connection: AsyncConnection,
+    *,
+    case: LockedCase,
+    step_key: str,
+    now: datetime,
+    worker: str,
+) -> StepOutcome:
+    """Re-run the engine for one stale promise against the world as it now stands (§14.4).
+
+    Enqueued by a revalidation that refused to execute. It re-runs the same three functions the
+    first pass ran -- ``propagate``, ``enumerate_options``, ``classify`` -- against a freshly
+    loaded snapshot, and writes the answer for *this promise only*. Every other track of the
+    case is left exactly as it is, because the others have already executed, escalated or been
+    found unaffected, and re-deriving a posture somebody has already acted on would be undoing
+    work rather than re-planning it.
+
+    **The old approval does not carry forward.** The request is marked ``SUPERSEDED`` and the
+    track is unbound from it, so the fresh plan starts with no consent at all. The customer
+    agreed to a named change to a world that has since moved; treating that as agreement to
+    whatever the engine produces now would be exactly the substitution the whole slice exists
+    to prevent. If the new plan still needs asking, it is asked again, from ``PLANNED``, after
+    a worker has confirmed it.
+
+    Nothing the customer was told or answered is destroyed: the superseded request keeps the
+    world it captured, its decision keeps their literal word, and the option they were asked
+    about survives even when it is no longer a candidate.
+    """
+    if case.state != CASE_REVALIDATING:
+        return _skipped(STEP_REPLAN_TRACK, case.state)
+
+    track = await _lock_track(connection, track_of(step_key))
+    if track.state != TRACK_STALE:
+        # Somebody already re-planned it, or it was settled another way. Re-planning again would
+        # replace a plan that is now current with one derived a second time from the same rows.
+        return _skipped(STEP_REPLAN_TRACK, f"track={track.state}")
+
+    exception = await _bound_exception(connection, case.id)
+    snapshot = await fresh_snapshot(connection)
+    analysis = analyze(snapshot, exception, now)
+    result = analysis.classifications.get(track.promise_id)
+    if result is None:
+        raise AnalysisStateError(
+            f"promise {track.promise_id} is no longer in the graph; nothing to re-plan"
+        )
+
+    ranks = {
+        promise_id: rank
+        for rank, promise_id in enumerate(engine_priority_order(snapshot, analysis.impact), start=1)
+    }
+    record = _record_for(
+        case_id=case.id,
+        result=result,
+        paths=analysis.impact.paths_by_promise.get(track.promise_id, ()),
+        impact=analysis.impact,
+        rank=ranks.get(track.promise_id, track.priority),
+        linked_to=None,
+    )
+    plan = (
+        _plan_for(snapshot=snapshot, analysis=analysis, track=track, now=now)
+        if record.state == TRACK_PENDING
+        else None
+    )
+    moved_to = CASE_PLANNED if plan is not None else CASE_RECONCILING
+
+    unit_of_work = UnitOfWork(connection)
+    async with unit_of_work.governed(
+        event_type=AUDIT_TRACK_REPLANNED,
+        # A deterministic re-derivation, authorised by nobody. In particular *not* by the
+        # customer whose approval this replaces: their consent was spent on a plan that no
+        # longer describes the world, and recording it here would let it authorise the next one.
+        actor=Actor(kind="SYSTEM", id=worker),
+        authority="NONE",
+        case_id=case.id,
+        track_id=track.id,
+        before={
+            "track_state": track.state,
+            "classification": track.classification,
+            "rule_id": track.rule_id,
+            "fingerprint": track.fingerprint,
+            "chosen_option_id": _optional(track.chosen_option_id),
+            "approval_request_id": _optional(track.approval_request_id),
+        },
+        after={
+            "track_state": record.state,
+            "classification": record.classification,
+            "rule_id": record.rule_id,
+            "reason_detail": record.reason_detail,
+            "fingerprint": None if plan is None else plan.fingerprint,
+            "chosen_option_id": None if plan is None else _optional(plan.chosen_id),
+            "case_state": moved_to,
+            "cited": list(record.cited_constraint_ids),
+        },
+        provenance={
+            "step_key": step_key,
+            "worker": worker,
+            "exception": exception.id,
+            "as_of": snapshot.as_of,
+            "classifications": {
+                promise_id: classification.classification.value
+                for promise_id, classification in analysis.classifications.items()
+            },
+        },
+        occurred_at=now,
+    ) as write:
+        await _supersede_approval(write, track=track)
+        await _write_track(write, record=record)
+        await _replace_paths(write, record=record)
+        if plan is not None:
+            await _replace_options(write, plan=plan)
+            await _replace_watch(write, plan=plan)
+            await _write_plan(write, plan=plan)
+
+    return StepOutcome(
+        disposition=Disposition.DONE,
+        event_type=EVENT_STEP_COMPLETED,
+        case_change=CaseChange(state=moved_to),
+        successors=await case_successors(connection, moved_to, case_id=case.id),
+        events=(
+            AppendEvent(
+                type=EVENT_TRACK_REPLANNED,
+                payload={"classification": record.classification, "rule_id": record.rule_id},
+                entity_refs=({"kind": "track", "id": str(track.id)},),
+            ),
+            *case_events(moved_to, case_id=case.id),
+        ),
+        result={
+            "outcome": "REPLANNED",
+            "track_id": str(track.id),
+            "promise_id": track.promise_id,
+            "as_of": snapshot.as_of,
+            "state": record.state,
+            "classification": record.classification,
+            "rule_id": record.rule_id,
+            "detail": record.reason_detail,
+            "fingerprint": None if plan is None else plan.fingerprint,
+            "options": 0 if plan is None else len(plan.options),
+            "chosen": None if plan is None else _optional(plan.chosen_id),
+            "case_state": moved_to,
+        },
+    )
+
+
+async def _supersede_approval(write: GovernedWrite, *, track: Any) -> None:
+    """§14.4: the old request is marked SUPERSEDED, and the track stops pointing at it.
+
+    An update of two columns and nothing else. The captured world, the option code, the
+    provider reference, the decision and the customer's own words all stay exactly where they
+    are -- what changes is that none of it authorises anything any more.
+    """
+    if track.approval_request_id is None:
+        return
+    await write.execute(
+        update(ApprovalRequest)
+        .where(
+            ApprovalRequest.id == track.approval_request_id,
+            ApprovalRequest.state != ApprovalRequestState.SUPERSEDED.value,
+        )
+        .values(state=ApprovalRequestState.SUPERSEDED.value)
+    )
+    await write.execute(
+        update(Track)
+        .where(Track.id == track.id)
+        .values(approval_request_id=None, version=Track.version + 1)
+    )
+
+
+async def _lock_track(connection: AsyncConnection, track_id: UUID) -> Any:
+    """Take the track row for update. After the case row, and before anything derived from it."""
+    row = (
+        await connection.execute(select(Track).where(Track.id == track_id).with_for_update())
+    ).one_or_none()
+    if row is None:
+        raise AnalysisStateError(f"track {track_id} does not exist")
+    return row
+
+
+def _optional(value: object | None) -> str | None:
+    return None if value is None else str(value)
+
+
 @dataclass(frozen=True, slots=True)
 class _PlanRecord:
     """One live track's plan: the options that validated, the one chosen, and the watch."""
@@ -737,11 +951,11 @@ def _superseded(
     )
 
 
-def _skipped(kind: str, case_state: str) -> StepOutcome:
+def _skipped(kind: str, because: str) -> StepOutcome:
     return StepOutcome(
         disposition=Disposition.SKIPPED,
         event_type=EVENT_STEP_SKIPPED,
-        result={"outcome": "NOT_APPLICABLE", "kind": kind, "case_state": case_state},
+        result={"outcome": "NOT_APPLICABLE", "kind": kind, "case_state": because},
     )
 
 
@@ -802,8 +1016,19 @@ async def _replace_paths(write: GovernedWrite, *, record: _TrackRecord) -> None:
 
 
 async def _replace_options(write: GovernedWrite, *, plan: _PlanRecord) -> None:
+    """The candidates this plan validated, replacing the ones the last plan did.
+
+    With one exception, and it is the frozen one. An option a customer was actually *asked*
+    about is evidence, not a working note: §14.4 marks the old request ``SUPERSEDED`` and keeps
+    it, and a request that pointed at a deleted option would be a record of somebody consenting
+    to nothing. So a candidate any approval request references survives its own supersession,
+    and ``tracks.chosen_option_id`` is what says which one is current.
+    """
     keep = [row["id"] for row in plan.options]
-    statement = delete(RecoveryOption).where(RecoveryOption.track_id == plan.track_id)
+    asked_about = select(ApprovalRequest.option_id).where(ApprovalRequest.track_id == plan.track_id)
+    statement = delete(RecoveryOption).where(
+        RecoveryOption.track_id == plan.track_id, RecoveryOption.id.not_in(asked_about)
+    )
     if keep:
         statement = statement.where(RecoveryOption.id.not_in(keep))
     await write.execute(statement)

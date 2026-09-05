@@ -27,15 +27,39 @@ from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from promise_graph.model import ApprovalRequestState
-from promisepatch.db.models import ApprovalRequest, Case, Track
+from promisepatch.db.models import ApprovalRequest, Case, CaseStep, Track
+from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import GovernedWrite
-from promisepatch.domain.model import AppendEvent, CaseChange
+from promisepatch.domain.model import AppendEvent, CaseChange, CreateStep
 
 CASE_PLANNED: Final = "PLANNED"
 CASE_EXECUTING: Final = "EXECUTING"
 CASE_WAITING: Final = "WAITING"
 CASE_REVALIDATING: Final = "REVALIDATING"
-"""The §14.1 states this slice can write. The rest arrive with the work that reaches them."""
+CASE_RECONCILING: Final = "RECONCILING"
+CASE_RESOLVED: Final = "RESOLVED"
+"""The §14.1 states the engine can write. The rest arrive with the work that reaches them."""
+
+STEP_RECONCILE_CASE: Final = "RECONCILE_CASE"
+"""The work item that finishes a case once nothing consequential is outstanding.
+
+Declared here rather than beside its handler because entering ``RECONCILING`` is what creates
+it, and the transitions that do so live all over the engine. A case that reached the
+reconciling boundary and had nothing enqueued to carry it off again would sit there for ever,
+so the step is a structural consequence of the state rather than something each caller has to
+remember.
+"""
+
+
+def reconcile_step_key(case_id: UUID) -> str:
+    """One reconciliation per case, whatever transition happened to reach the boundary."""
+    return f"reconcile:{case_id}"
+
+
+def case_of(step_key: str) -> UUID:
+    """The case a reconciliation step is about, read back out of its key."""
+    return UUID(step_key.partition(":")[2])
+
 
 RUNNABLE_TRACK_STATES: Final[tuple[str, ...]] = ("PENDING", "APPLYING")
 """Track postures that still have immediate work in them.
@@ -46,6 +70,7 @@ actually sent" has a second half, which is that everything else already ran.
 """
 
 TRACK_WAITING_FOR_CUSTOMER: Final = "WAITING_FOR_CUSTOMER"
+TRACK_ESCALATED: Final = "ESCALATED"
 
 OPEN_APPROVAL_STATES: Final[tuple[str, ...]] = (
     ApprovalRequestState.SENT.value,
@@ -53,8 +78,13 @@ OPEN_APPROVAL_STATES: Final[tuple[str, ...]] = (
 )
 """Request states in which a customer could still answer. Everything else is settled."""
 
+UNSETTLED_STEP_STATES: Final[tuple[str, ...]] = ("PENDING", "RETRYING", "IN_FLIGHT")
+"""Step postures that still have work in them. A case with one of these has not finished."""
+
 EVENT_CASE_WAITING: Final = "case.waiting"
 EVENT_CASE_REVALIDATION_READY: Final = "case.revalidation_ready"
+EVENT_CASE_RECONCILING: Final = "case.reconciling"
+EVENT_CASE_RESOLVED: Final = "case.resolved"
 """The case's own announcements, declared beside the rule that decides when they are true.
 
 Several unrelated transitions can be the one that moves a case, so the event has to be emitted
@@ -135,7 +165,9 @@ async def apply_case_change(
 # ------------------------------------------------------------------- where the case stands now
 
 
-async def settled_case_state(connection: AsyncConnection, *, case: LockedCase) -> str | None:
+async def settled_case_state(
+    connection: AsyncConnection, *, case: LockedCase, except_step_key: str | None = None
+) -> str | None:
     """The state this case should move to now that a transition has finished, or ``None``.
 
     Called by every transition that can be the *last* one -- a recovery finishing, an approval
@@ -144,15 +176,19 @@ async def settled_case_state(connection: AsyncConnection, *, case: LockedCase) -
     state depended on luck. Each of them asks the same question of the same rows, under the case
     lock it already holds, and at most one of them gets an answer.
 
-    Two transitions live here, both from §14.2:
+    The transitions that live here are §14.2's:
 
     * ``EXECUTING -> WAITING``: nothing runnable is left and at least one track is genuinely
       waiting on a customer. A track still ``PENDING`` or ``APPLYING`` blocks it, which is what
       makes "do not wait while A is still applying" structural rather than a matter of ordering.
+    * ``EXECUTING -> REVALIDATING``: the same, except the customer has already answered.
+    * ``EXECUTING -> RECONCILING``: nothing runnable is left and there is nobody to wait for at
+      all -- §14.2's "an all-AUTO/BLOCKED case never waits".
     * ``WAITING -> REVALIDATING``: no approval request can be answered any more, because every
-      one of them has been decided or has expired. Revalidation itself is a later slice; what
-      this does is hand the case to it durably rather than leaving it parked on a customer who
-      has already replied.
+      one of them has been decided or has expired.
+    * ``RECONCILING -> RESOLVED`` / ``RECONCILING -> WAITING``: the reconciling boundary is
+      finished when no track is non-terminal and nothing durable is outstanding; if another
+      track is still waiting on its own customer, the case goes back to waiting instead.
 
     A case that finishes executing to find its request *already* answered goes straight to
     ``REVALIDATING``. §14.2 permits ``EXECUTING`` to skip ``WAITING`` when there is nothing to
@@ -160,24 +196,102 @@ async def settled_case_state(connection: AsyncConnection, *, case: LockedCase) -
     that: entering ``WAITING`` would be waiting for an answer already in the database, and
     nothing would ever come to wake it.
 
+    ``except_step_key`` names the step this transition is itself executing. That step is
+    outstanding right now and will be settled by the same commit, so counting it would make a
+    case permanently unable to resolve through the very step whose job that is.
+
     Read without ``FOR UPDATE`` deliberately: every transition that could move one of these rows
     takes the case row first, and this transaction is holding it.
     """
     if case.state == CASE_EXECUTING:
-        if not await _ready_to_wait(connection, case.id):
+        if await _has_runnable_track(connection, case.id):
             return None
+        if not await _has_waiting_track(connection, case.id):
+            return CASE_RECONCILING
         return CASE_WAITING if await _has_open_approval(connection, case.id) else CASE_REVALIDATING
     if case.state == CASE_WAITING:
         return None if await _has_open_approval(connection, case.id) else CASE_REVALIDATING
+    if case.state == CASE_RECONCILING:
+        return await _settled_reconciling(connection, case.id, except_step_key=except_step_key)
     return None
 
 
-async def _ready_to_wait(connection: AsyncConnection, case_id: UUID) -> bool:
-    """Nothing left to run, and something real to wait for."""
-    states = set(
-        (await connection.execute(select(Track.state).where(Track.case_id == case_id))).scalars()
+async def _settled_reconciling(
+    connection: AsyncConnection, case_id: UUID, *, except_step_key: str | None
+) -> str | None:
+    """§14.2's two exits from ``RECONCILING``, decided from rows alone.
+
+    ``RESOLVED`` requires every track terminal *and* nothing outstanding, which is §23's list
+    read off the database rather than restated: a track still ``PENDING``, ``APPLYING``,
+    ``WAITING_FOR_CUSTOMER`` or ``STALE`` is a non-terminal track, and an undelivered effect or
+    an unfinished re-plan is an unsettled step of the same case.
+    """
+    if await _has_waiting_track(connection, case_id) and await _has_open_approval(
+        connection, case_id
+    ):
+        return CASE_WAITING
+    return (
+        CASE_RESOLVED
+        if await resolvable(connection, case_id, except_step_key=except_step_key)
+        else None
     )
-    return TRACK_WAITING_FOR_CUSTOMER in states and not states & set(RUNNABLE_TRACK_STATES)
+
+
+async def resolvable(
+    connection: AsyncConnection, case_id: UUID, *, except_step_key: str | None = None
+) -> bool:
+    """Whether every track is terminal and no durable work is left.
+
+    The single reading of §23's "do not resolve if": one function, so the reconciler and the
+    transition that happens to finish last cannot disagree about what finished means.
+    """
+    if await non_terminal_tracks(connection, case_id):
+        return False
+    return not await _has_unsettled_work(connection, case_id, except_step_key=except_step_key)
+
+
+async def non_terminal_tracks(connection: AsyncConnection, case_id: UUID) -> tuple[str, ...]:
+    """The states of the tracks that still hold their promise, in §13.4's vocabulary."""
+    rows = (
+        await connection.execute(
+            select(Track.state).where(
+                Track.case_id == case_id, Track.state.not_in(TERMINAL_TRACK_STATES)
+            )
+        )
+    ).scalars()
+    return tuple(sorted(rows))
+
+
+async def any_escalated(connection: AsyncConnection, case_id: UUID) -> bool:
+    """Whether a track was handed to the owner. §14.1's ``needs_owner_attention`` on RESOLVED."""
+    escalated = select(Track.id).where(Track.case_id == case_id, Track.state == TRACK_ESCALATED)
+    return bool(await connection.scalar(select(exists(escalated))))
+
+
+async def _has_unsettled_work(
+    connection: AsyncConnection, case_id: UUID, *, except_step_key: str | None
+) -> bool:
+    """Any step of this case that is still going to do something, other than this one."""
+    statement = select(CaseStep.id).where(
+        CaseStep.case_id == case_id, CaseStep.state.in_(UNSETTLED_STEP_STATES)
+    )
+    if except_step_key is not None:
+        statement = statement.where(CaseStep.step_key != except_step_key)
+    return bool(await connection.scalar(select(exists(statement))))
+
+
+async def _has_runnable_track(connection: AsyncConnection, case_id: UUID) -> bool:
+    runnable = select(Track.id).where(
+        Track.case_id == case_id, Track.state.in_(RUNNABLE_TRACK_STATES)
+    )
+    return bool(await connection.scalar(select(exists(runnable))))
+
+
+async def _has_waiting_track(connection: AsyncConnection, case_id: UUID) -> bool:
+    waiting = select(Track.id).where(
+        Track.case_id == case_id, Track.state == TRACK_WAITING_FOR_CUSTOMER
+    )
+    return bool(await connection.scalar(select(exists(waiting))))
 
 
 async def _has_open_approval(connection: AsyncConnection, case_id: UUID) -> bool:
@@ -196,6 +310,35 @@ async def _has_open_approval(connection: AsyncConnection, case_id: UUID) -> bool
         )
     )
     return bool(await connection.scalar(select(exists(open_request))))
+
+
+async def case_successors(
+    connection: AsyncConnection, moved_to: str | None, *, case_id: UUID
+) -> tuple[CreateStep, ...]:
+    """The work a case's own move makes runnable.
+
+    Two of the states do. Entering ``REVALIDATING`` creates one revalidation per settled
+    approval request; entering ``RECONCILING`` creates the step that finishes the case. Both are
+    enqueued by the transition that reached the boundary rather than by a sweep, so the state
+    and the work that leaves it commit together -- and both keys are derived from rows, so a
+    second transition reaching the same boundary proposes identical rows and the unique index
+    declines them.
+
+    Without this, a case could arrive at a boundary with nothing enqueued to carry it off
+    again: a declined approval would park a finished case in ``REVALIDATING`` for ever, which is
+    the failure mode §44 names.
+
+    The import is deferred because the module that runs those steps reads this one to decide
+    where a case stands, and a module-level import in both directions would be a cycle. It takes
+    no lock this transaction does not already hold.
+    """
+    if moved_to == CASE_RECONCILING:
+        return (CreateStep(step_key=reconcile_step_key(case_id), kind=STEP_RECONCILE_CASE),)
+    if moved_to == CASE_REVALIDATING:
+        from promisepatch.domain.revalidation import work_for_case
+
+        return await work_for_case(connection, case_id)
+    return ()
 
 
 def case_events(moved_to: str | None, *, case_id: UUID) -> tuple[AppendEvent, ...]:
@@ -218,6 +361,22 @@ def case_events(moved_to: str | None, *, case_id: UUID) -> tuple[AppendEvent, ..
             AppendEvent(
                 type=EVENT_CASE_REVALIDATION_READY,
                 payload={"state": CASE_REVALIDATING},
+                entity_refs=({"kind": "case", "id": str(case_id)},),
+            ),
+        )
+    if moved_to == CASE_RECONCILING:
+        return (
+            AppendEvent(
+                type=EVENT_CASE_RECONCILING,
+                payload={"state": CASE_RECONCILING},
+                entity_refs=({"kind": "case", "id": str(case_id)},),
+            ),
+        )
+    if moved_to == CASE_RESOLVED:
+        return (
+            AppendEvent(
+                type=EVENT_CASE_RESOLVED,
+                payload={"state": CASE_RESOLVED},
                 entity_refs=({"kind": "case", "id": str(case_id)},),
             ),
         )

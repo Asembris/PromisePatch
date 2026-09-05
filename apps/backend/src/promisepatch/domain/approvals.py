@@ -96,12 +96,15 @@ from promisepatch.domain import consent, messaging
 from promisepatch.domain.analysis import NAMESPACE, fresh_snapshot
 from promisepatch.domain.cases import (
     CASE_EXECUTING,
+    CASE_RECONCILING,
+    CASE_RESOLVED,
     CASE_REVALIDATING,
     CASE_WAITING,
     OPEN_APPROVAL_STATES,
     TRACK_WAITING_FOR_CUSTOMER,
     LockedCase,
     case_events,
+    case_successors,
     settled_case_state,
 )
 from promisepatch.domain.model import (
@@ -302,7 +305,24 @@ ESCALATION_NO_CHOSEN_OPTION: Final = "NO_CHOSEN_OPTION"
 """Planning left no option to ask about. Unreachable, and failed closed rather than guessed."""
 
 
-LIVE_CASE_STATES: Final[tuple[str, ...]] = (CASE_EXECUTING, CASE_WAITING, CASE_REVALIDATING)
+LIVE_CASE_STATES: Final[tuple[str, ...]] = (
+    CASE_EXECUTING,
+    CASE_WAITING,
+    CASE_REVALIDATING,
+    CASE_RECONCILING,
+    CASE_RESOLVED,
+)
+"""Case states in which an inbound reply is still worth reading.
+
+The last two are there because §14.2's duplicate rule outlives the case: "a second distinct
+reply to an already-answered request is acknowledged to the customer and audited". A customer
+does not know the case has finished, and a reply that arrived one second too late is exactly
+the one somebody will later ask about -- so it is stored and the ledger says what was made of
+it, rather than being dropped because the workflow had moved on.
+
+Reading one cannot become deciding one. Every path to a decision below requires the request to
+be open and undecided, and a case only reaches these states once its requests are settled.
+"""
 """Case states in which a customer's reply is still worth reading.
 
 ``REVALIDATING`` is in the list deliberately. A second reply to a request that has already been
@@ -700,7 +720,8 @@ async def _mark_sent(
             .values(provider_ref=effect.provider_ref, sent_at=now)
         )
         await set_track(write, track=track, state=TRACK_WAITING_FOR_CUSTOMER)
-        moved_to = await settled_case_state(connection, case=case)
+        moved_to = await settled_case_state(connection, case=case, except_step_key=step_key)
+    successors = await case_successors(connection, moved_to, case_id=case.id)
 
     logger.info(
         "approval.sent",
@@ -724,6 +745,7 @@ async def _mark_sent(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to),
+        successors=successors,
         timers=(_deadline_timer(request_id=request.id, deadline=request.deadline, now=now),),
         events=tuple(events),
         result={
@@ -988,7 +1010,12 @@ async def _record_decision(
         )
         if not approved:
             await set_track(write, track=track, state=TRACK_ESCALATED)
-        moved_to = await settled_case_state(context.connection, case=case)
+        moved_to = await settled_case_state(
+            context.connection, case=case, except_step_key=context.step_key
+        )
+    # The revalidation this decision has earned, or the reconciliation a decline has: either
+    # way the case must leave the boundary it has just arrived at under its own power.
+    successors = await case_successors(context.connection, moved_to, case_id=case.id)
 
     # No channel address and no reply text: §26 keeps both in the database, where a reader has
     # to be entitled to look, and out of a log that is shipped, sampled and searchable.
@@ -1028,6 +1055,7 @@ async def _record_decision(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to, needs_owner_attention=None if approved else True),
+        successors=successors,
         events=tuple(events),
         result={
             "outcome": decision.value,
@@ -1250,11 +1278,13 @@ async def _close_request(
         )
         await set_track(write, track=track, state=TRACK_ESCALATED)
         moved_to = await settled_case_state(connection, case=case)
+    successors = await case_successors(connection, moved_to, case_id=case.id)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to, needs_owner_attention=True),
+        successors=successors,
         events=(
             AppendEvent(
                 type=event_type,
@@ -1309,11 +1339,13 @@ async def _escalate(
         await set_track(write, track=track, state=TRACK_ESCALATED)
         held = await hold_tasks(write, track=track, case_id=case.id) if hold else ()
         moved_to = await settled_case_state(connection, case=case)
+    successors = await case_successors(connection, moved_to, case_id=case.id)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to, needs_owner_attention=True),
+        successors=successors,
         events=(
             AppendEvent(
                 type=event_type,

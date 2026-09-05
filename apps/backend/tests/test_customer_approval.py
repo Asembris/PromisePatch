@@ -224,7 +224,9 @@ async def test_a_closed_window_is_never_asked_about(physical: Intake) -> None:
 
     assert await physical.requests() == []
     assert (await track_of(physical, case_id, B)).state == recovery.TRACK_ESCALATED
-    assert (await physical.case(case_id)).state == cases.CASE_EXECUTING
+    # §14.2: a case with nothing left to apply and nobody left to ask never waits. It
+    # reconciles and finishes, carrying the escalation to the owner with it.
+    assert (await physical.case(case_id)).state == cases.CASE_RESOLVED
     assert (await physical.case(case_id)).needs_owner_attention is True
     assert approvals.AUDIT_APPROVAL_NOT_SENT in await audit_types(physical, case_id)
 
@@ -695,14 +697,20 @@ async def test_an_approval_is_bound_to_the_reply_that_carried_it(physical: Intak
 
 
 async def test_an_approval_does_not_execute_the_recovery(physical: Intake) -> None:
-    """Approval is necessary authority; it is not proof the plan is still valid."""
+    """Approval is necessary authority; it is not proof the plan is still valid.
+
+    Asserted at the instant the decision commits, which is the moment the claim is about. What
+    the customer's yes buys is a revalidation, and until those ten checks have run there is no
+    amendment, no applying track and nothing sent -- however long the worker is left running.
+    """
     case_id = await waiting_case(physical)
     request = await the_request(physical)
     track_b = await track_of(physical, case_id, B)
 
     await physical.deliver_reply(request.id, "YES")
-    await physical.drain(limit=30)
+    await physical.drain_until_decided()
 
+    assert len(await physical.decisions()) == 1
     assert await amendments_for(physical, track_b.id) == []
     after = await track_of(physical, case_id, B)
     assert after.state == cases.TRACK_WAITING_FOR_CUSTOMER
@@ -711,13 +719,17 @@ async def test_an_approval_does_not_execute_the_recovery(physical: Intake) -> No
 
 
 async def test_an_approved_case_hands_itself_to_revalidation(physical: Intake) -> None:
-    """§14.2: a literal decision is what takes a case out of WAITING, and no further."""
+    """§14.2: a literal decision is what takes a case out of WAITING, and only to REVALIDATING.
+
+    The decision does not resolve the case, execute anything, or skip a state on the way. It
+    hands the case to the checklist -- and it does so durably, as a step somebody else runs.
+    """
     case_id = await waiting_case(physical)
     request = await the_request(physical)
     seq = await physical.latest_event_seq()
 
     await physical.deliver_reply(request.id, "YES")
-    await physical.drain(limit=30)
+    await physical.drain_until_decided()
 
     assert (await physical.case(case_id)).state == cases.CASE_REVALIDATING
     types = [event.type for event in await physical.events_after(seq)]
@@ -752,7 +764,9 @@ async def test_a_decline_escalates_the_track_to_the_owner(physical: Intake) -> N
 
     assert (await track_of(physical, case_id, B)).state == recovery.TRACK_ESCALATED
     assert (await physical.case(case_id)).needs_owner_attention is True
-    assert (await physical.case(case_id)).state == cases.CASE_REVALIDATING
+    # A declined approval still has to reach an ending: §14.2 takes the case through
+    # REVALIDATING and RECONCILING to RESOLVED, without executing anything on the way.
+    assert (await physical.case(case_id)).state == cases.CASE_RESOLVED
     after = await physical.order_book()
     assert after["orders"] == before["orders"]
     assert after["order_lines"] == before["order_lines"]
@@ -840,10 +854,12 @@ async def test_an_expired_request_hands_the_case_on_as_well(physical: Intake) ->
 
     await physical.drain(limit=30)
 
-    assert (await physical.case(case_id)).state == cases.CASE_REVALIDATING
     types = [event.type for event in await physical.events_after(seq)]
+    assert cases.EVENT_CASE_REVALIDATION_READY in types
     assert approvals.EVENT_APPROVAL_EXPIRED in types
     assert approvals.EVENT_APPROVAL_DECIDED not in types
+    # And having handed itself on, it finishes: an expiry needs no approved execution to end.
+    assert (await physical.case(case_id)).state == cases.CASE_RESOLVED
 
 
 async def test_a_decision_that_committed_first_makes_the_timer_a_no_op(physical: Intake) -> None:
@@ -861,7 +877,11 @@ async def test_a_decision_that_committed_first_makes_the_timer_a_no_op(physical:
     assert decisions[0].decision == "APPROVE"
     after = await the_request(physical)
     assert after.state == ApprovalRequestState.ANSWERED.value
-    assert (await track_of(physical, case_id, B)).state == cases.TRACK_WAITING_FOR_CUSTOMER
+    # The deadline did nothing: the request was never expired and the track was never
+    # escalated for want of an answer -- it went on to be revalidated and recovered.
+    assert after.state != ApprovalRequestState.EXPIRED.value
+    assert approvals.AUDIT_APPROVAL_EXPIRED not in await audit_types(physical, case_id)
+    assert (await track_of(physical, case_id, B)).state == recovery.TRACK_RECOVERED
 
 
 async def test_an_expiry_that_committed_first_refuses_a_later_yes(physical: Intake) -> None:
@@ -1013,7 +1033,9 @@ async def test_the_canonical_trace_from_confirmation_to_approval(physical: Intak
     """The whole slice, with a worker that is stopped and replaced in the middle of it.
 
     Confirmation, execution, a real wait, a restart, a sentence that decides nothing, and then
-    one word that does -- ending exactly where the next slice begins.
+    one word that does -- stopped at the boundary the consent protocol owns. What the yes has
+    bought at that point is a revalidation and nothing else; where the checklist takes it from
+    there is proved in ``test_recovery_revalidation``.
     """
     case_id = await confirmed_case(physical)
     adapter = FakeEffectAdapter()
@@ -1045,7 +1067,7 @@ async def test_the_canonical_trace_from_confirmation_to_approval(physical: Intak
     assert (await track_of(physical, case_id, B)).state == cases.TRACK_WAITING_FOR_CUSTOMER
 
     await physical.deliver_reply(request.id, "YES")
-    await physical.drain(worker=restarted, limit=30)
+    await physical.drain_until_decided(worker=restarted)
 
     decisions = await physical.decisions()
     assert len(decisions) == 1
@@ -1116,7 +1138,7 @@ async def test_the_operator_view_shows_the_ask_and_its_answer(physical: Intake) 
     assert answered.approval.decision == "APPROVE"
     assert answered.approval.parser == ParserKind.LITERAL.value
     assert answered.approval.replies == 2
-    assert decided.state == cases.CASE_REVALIDATING
+    assert decided.state == cases.CASE_RESOLVED
     # Tracks the exception never reached carry no approval at all.
     assert all(
         track.approval is None for track in decided.tracks if track.promise_id in (A, C, D, E, F)

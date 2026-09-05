@@ -58,6 +58,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Final
 from uuid import UUID, uuid4
 
@@ -67,11 +68,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from promise_graph.fingerprint import fingerprint
-from promise_graph.model import Classification
+from promise_graph.model import (
+    ApprovalDecisionKind,
+    ApprovalRequestState,
+    Classification,
+    ParserKind,
+)
 from promise_graph.snapshot import GraphSnapshot
 from promisepatch.db.clock import database_now
 from promisepatch.db.events import append_event
 from promisepatch.db.models import (
+    ApprovalDecision,
+    ApprovalRequest,
     Case,
     CaseStep,
     Order,
@@ -90,10 +98,16 @@ from promisepatch.domain.analysis import fresh_snapshot, scope_from_watch
 from promisepatch.domain.cases import (
     CASE_EXECUTING,
     CASE_PLANNED,
+    CASE_RECONCILING,
+    CASE_REVALIDATING,
+    STEP_RECONCILE_CASE,
+    TRACK_WAITING_FOR_CUSTOMER,
     LockedCase,
     apply_case_change,
     case_events,
+    case_successors,
     lock_case,
+    reconcile_step_key,
     settled_case_state,
 )
 from promisepatch.domain.intake import actor_for, require_permitted, require_worker
@@ -145,6 +159,18 @@ STEP_ABANDON_RECOVERY: Final = "ABANDON_RECOVERY"
 RECOVERY_STEP_KINDS: Final[frozenset[str]] = frozenset(
     {STEP_APPLY_RECOVERY, STEP_FINALIZE_RECOVERY, STEP_ABANDON_RECOVERY}
 )
+
+_APPLICABLE_CASE_STATES: Final[frozenset[str]] = frozenset(
+    {CASE_EXECUTING, CASE_REVALIDATING, CASE_RECONCILING}
+)
+"""Case postures in which a recovery step is doing work somebody asked for.
+
+``EXECUTING`` is the automatic path, released by a worker's confirmation. ``RECONCILING`` is the
+approved path, released by a revalidation that passed. ``REVALIDATING`` is the same case a
+moment earlier, when another track's checks are still outstanding. Everything else -- planned,
+waiting, resolved, cancelled -- means the step is describing work on a case that has moved past
+it, and it skips rather than amending an order nobody is expecting.
+"""
 """Step kinds the worker routes here: each one reads the graph or the outbox to decide."""
 
 
@@ -444,6 +470,18 @@ async def _confirm(
                 step_key=request_step_key(track.id),
                 kind=STEP_REQUEST_APPROVAL,
             )
+        if not plan.auto and not plan.approval:
+            # §14.2: a case with nothing to apply and nobody to ask never waits. It has one
+            # thing left to do, which is finish, and that is a row like everything else --
+            # otherwise an all-BLOCKED case would sit in ``EXECUTING`` for ever with an empty
+            # ledger, looking busy.
+            await _enqueue(
+                connection,
+                case_id=case_id,
+                track_id=None,
+                step_key=reconcile_step_key(case_id),
+                kind=STEP_RECONCILE_CASE,
+            )
 
         # Last: from here the transaction holds the spine's ordering lock, and everything
         # above has already taken every lock this transaction will ever need.
@@ -690,32 +728,30 @@ async def _apply(
     one transaction, so a crash on either side of the commit is recoverable: before it, there
     is no effect and no ``APPLYING`` track; after it, both, and the dispatcher finds the row.
     """
-    if case.state != CASE_EXECUTING:
+    if case.state not in _APPLICABLE_CASE_STATES:
         return skipped(STEP_APPLY_RECOVERY, {"case_state": case.state})
 
     track = await lock_track(connection, track_of(step_key))
-    if track.state != TRACK_PENDING:
-        # Somebody already moved it: reclaimed and applied, escalated, or withdrawn. Applying
-        # again would be a second amendment for one plan.
-        return skipped(STEP_APPLY_RECOVERY, {"track_state": track.state})
-    if track.classification != Classification.AUTO_RECOVERABLE.value:
-        # Unreachable from a confirmation, and refused anyway. A worker's yes never authorises
-        # a change a customer has not agreed to, whatever enqueued the step.
-        return skipped(STEP_APPLY_RECOVERY, {"classification": track.classification})
-
     option = await chosen_option(connection, track)
-    if option is None or option.requires_approval:
+    authority = await authorization_for(connection, track=track, option=option)
+    if authority is None:
+        # Either somebody already moved this track -- reclaimed and applied, escalated,
+        # withdrawn -- or nothing in the database permits the change it describes. Both are
+        # refusals to apply, and neither is an error: applying anyway would be a second
+        # amendment for one plan, or a first one nobody authorised.
+        return skipped(
+            STEP_APPLY_RECOVERY,
+            {"track_state": track.state, "classification": track.classification},
+        )
+    if option is None:
         return await mark_stale(
             connection,
             case=case,
             track=track,
             now=now,
             worker=worker,
-            detail=(
-                "the chosen option is gone"
-                if option is None
-                else "the chosen option now requires approval"
-            ),
+            step_key=step_key,
+            detail="the chosen option is gone",
         )
 
     planned, current = track.fingerprint, await current_fingerprint(connection, track)
@@ -726,6 +762,7 @@ async def _apply(
             track=track,
             now=now,
             worker=worker,
+            step_key=step_key,
             detail=f"fingerprint {planned} -> {current}",
         )
 
@@ -740,10 +777,11 @@ async def _apply(
         event_type=AUDIT_RECOVERY_APPLIED,
         # The system executed an action a human already authorised; it did not invent the
         # authorisation. The authority named is what permits this change to this customer's
-        # order -- their own pre-approval, or the policy that authored the variant -- and the
-        # worker whose confirmation released it is on the provenance.
+        # order -- their own literal approval, their own pre-approval, or the policy that
+        # authored the variant -- and the worker whose confirmation released it is on the
+        # provenance beside it.
         actor=Actor(kind="SYSTEM", id=worker),
-        authority="CONSTRAINT" if option.cited_constraint_ids else "POLICY",
+        authority=authority.value,
         rule_id=option.approval_rule,
         case_id=case.id,
         track_id=track.id,
@@ -762,6 +800,7 @@ async def _apply(
             "fingerprint": planned,
             "order_external_version": order.external_version,
             "cited_constraint_ids": list(option.cited_constraint_ids),
+            **(await authorization_provenance(connection, track=track, authority=authority)),
         },
         occurred_at=now,
     ) as write:
@@ -784,6 +823,7 @@ async def _apply(
             "option_id": str(option.id),
             "idempotency_key": key,
             "fingerprint": planned,
+            "authority": authority.value,
         },
     )
 
@@ -820,6 +860,144 @@ def _amend_payload(*, track: Any, option: Any, order: Any) -> Mapping[str, Any]:
     }
 
 
+class Authority(StrEnum):
+    """What permits one recovery to touch one customer's order. Read, never assumed.
+
+    The three values are the frozen ``audit_events.authority`` vocabulary, and which of them
+    applies is decided by rows: a policy that authored the variant, a constraint this customer
+    recorded on this order, or the customer's own literal consent plus a revalidation that
+    found the plan still true. There is no fourth, and there is deliberately no "the worker
+    said so": a worker's confirmation permits *asking*, and is on the provenance of all three.
+    """
+
+    POLICY = "POLICY"
+    CONSTRAINT = "CONSTRAINT"
+    HUMAN_APPROVAL = "HUMAN_APPROVAL"
+
+
+async def authorization_for(
+    connection: AsyncConnection, *, track: Any, option: Any
+) -> Authority | None:
+    """What permits applying this track's plan right now, or ``None`` if nothing does.
+
+    Two shapes, and keeping them apart is the whole authority model.
+
+    *Automatic.* A ``PENDING`` track classified ``AUTO_RECOVERABLE`` whose chosen option needs
+    no approval. The worker's confirmation released it, and the order's own constraints already
+    allowed it.
+
+    *Approved.* A ``WAITING_FOR_CUSTOMER`` track classified ``APPROVAL_REQUIRED`` whose
+    ``approval_requests`` row carries exactly one ``APPROVE`` decision from the literal parser
+    for **this** option, and whose revalidation has recorded a ``PROCEED``. Each conjunct is a
+    row: the request binds the option, the decision binds the request, and the revalidation
+    binds the moment. Take any one away and this returns ``None``, so the amendment is refused
+    rather than sent.
+
+    A track in any other posture authorises nothing, whatever enqueued the step -- which is what
+    makes "a worker's yes never authorises a change a customer has not agreed to" structural
+    rather than a matter of which branch ran.
+    """
+    if option is None:
+        return None
+    if (
+        track.state == TRACK_PENDING
+        and track.classification == Classification.AUTO_RECOVERABLE.value
+        and not option.requires_approval
+    ):
+        return Authority.CONSTRAINT if option.cited_constraint_ids else Authority.POLICY
+    if (
+        track.state == TRACK_WAITING_FOR_CUSTOMER
+        and track.classification == Classification.APPROVAL_REQUIRED.value
+        and await _approved_and_revalidated(connection, track=track, option=option)
+    ):
+        return Authority.HUMAN_APPROVAL
+    return None
+
+
+async def _approved_and_revalidated(
+    connection: AsyncConnection, *, track: Any, option: Any
+) -> bool:
+    """The persisted chain from this option back to a customer's word and forward to a PROCEED."""
+    from promisepatch.domain.revalidation import revalidate_step_key
+
+    request = (
+        await connection.execute(
+            select(ApprovalRequest).where(
+                ApprovalRequest.id == track.approval_request_id,
+                ApprovalRequest.track_id == track.id,
+                ApprovalRequest.option_id == option.id,
+                ApprovalRequest.state == ApprovalRequestState.ANSWERED.value,
+                ApprovalRequest.decided.is_(True),
+            )
+        )
+    ).one_or_none()
+    if request is None:
+        return False
+
+    decision = (
+        await connection.execute(
+            select(ApprovalDecision).where(
+                ApprovalDecision.request_id == request.id,
+                ApprovalDecision.decision == ApprovalDecisionKind.APPROVE.value,
+                ApprovalDecision.parser == ParserKind.LITERAL.value,
+                ApprovalDecision.sender_identity == request.customer_channel,
+            )
+        )
+    ).one_or_none()
+    if decision is None:
+        return False
+
+    revalidated = (
+        await connection.execute(
+            select(CaseStep.result).where(
+                CaseStep.case_id == track.case_id,
+                CaseStep.step_key == revalidate_step_key(track.id),
+                CaseStep.state == "DONE",
+            )
+        )
+    ).one_or_none()
+    if revalidated is None or not revalidated.result:
+        return False
+    return bool(revalidated.result.get("outcome") == "PROCEED")
+
+
+async def authorization_provenance(
+    connection: AsyncConnection, *, track: Any, authority: Authority
+) -> Mapping[str, Any]:
+    """The chain behind a customer-approved amendment, for the audit row that applies it.
+
+    §46: worker confirmed the plan, customer approved this specific change, revalidation passed.
+    An audit row that said only "SYSTEM" would leave a reader unable to answer who permitted the
+    only write in the system that touches somebody's order without a person present.
+    """
+    if authority is not Authority.HUMAN_APPROVAL:
+        return {}
+    row = (
+        await connection.execute(
+            select(
+                ApprovalDecision.id,
+                ApprovalDecision.decision,
+                ApprovalDecision.parser,
+                ApprovalDecision.sender_identity,
+                ApprovalDecision.provider_message_id,
+                ApprovalRequest.id.label("request_id"),
+            )
+            .join(ApprovalRequest, ApprovalRequest.id == ApprovalDecision.request_id)
+            .where(ApprovalRequest.track_id == track.id)
+        )
+    ).one_or_none()
+    if row is None:  # pragma: no cover - authorisation proved it a statement ago
+        return {}
+    return {
+        "approval_request_id": str(row.request_id),
+        "approval_decision_id": str(row.id),
+        "customer_decision": row.decision,
+        "parser": row.parser,
+        "provider_message_id": row.provider_message_id,
+        "sender_identity": row.sender_identity,
+    }
+
+
 async def mark_stale(
     connection: AsyncConnection,
     *,
@@ -828,6 +1006,7 @@ async def mark_stale(
     now: datetime,
     worker: str,
     detail: str,
+    step_key: str | None = None,
 ) -> StepOutcome:
     """The plan no longer describes the world. Write that down, and send nothing.
 
@@ -849,12 +1028,14 @@ async def mark_stale(
         occurred_at=now,
     ) as write:
         await set_track(write, track=track, state=TRACK_STALE)
-        moved_to = await settled_case_state(connection, case=case)
+        moved_to = await settled_case_state(connection, case=case, except_step_key=step_key)
+    successors = await case_successors(connection, moved_to, case_id=case.id)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to),
+        successors=successors,
         events=(
             AppendEvent(
                 type=EVENT_TRACK_STALE,
@@ -885,7 +1066,7 @@ async def _finalize(
     that answer was written down, and a track marked ``RECOVERED`` on the strength of it would
     be claiming an effect nobody could show afterwards.
     """
-    if case.state != CASE_EXECUTING:
+    if case.state not in _APPLICABLE_CASE_STATES:
         return skipped(STEP_FINALIZE_RECOVERY, {"case_state": case.state})
 
     track = await lock_track(connection, track_of(step_key))
@@ -930,13 +1111,16 @@ async def _finalize(
     ) as write:
         await set_track(write, track=track, state=TRACK_RECOVERED)
         # After the write, so the answer includes it: this may have been the last runnable
-        # piece of work, and the case is then waiting on a customer somebody else contacted.
-        moved_to = await settled_case_state(connection, case=case)
+        # piece of work, and the case is then waiting on a customer somebody else contacted --
+        # or reconciling, with nothing left but to finish.
+        moved_to = await settled_case_state(connection, case=case, except_step_key=step_key)
+    successors = await case_successors(connection, moved_to, case_id=case.id)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to),
+        successors=successors,
         events=(
             AppendEvent(
                 type=EVENT_TRACK_RECOVERED,
@@ -989,12 +1173,14 @@ async def _abandon(
         occurred_at=now,
     ) as write:
         await set_track(write, track=track, state=TRACK_ESCALATED)
-        moved_to = await settled_case_state(connection, case=case)
+        moved_to = await settled_case_state(connection, case=case, except_step_key=step_key)
+    successors = await case_successors(connection, moved_to, case_id=case.id)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to, needs_owner_attention=True),
+        successors=successors,
         events=(
             AppendEvent(
                 type=EVENT_TRACK_ESCALATED,
@@ -1135,7 +1321,7 @@ async def set_track(
 
 
 async def _enqueue(
-    connection: AsyncConnection, *, case_id: UUID, track_id: UUID, step_key: str, kind: str
+    connection: AsyncConnection, *, case_id: UUID, track_id: UUID | None, step_key: str, kind: str
 ) -> None:
     """Create a recovery step, or do nothing because it already exists.
 

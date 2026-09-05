@@ -297,15 +297,15 @@ class StepExecutor(Protocol):
 def _executor_for(kind: str) -> StepExecutor | None:
     """The module that runs this kind of step, or ``None`` for a pure handler.
 
-    Intake, analysis, recovery and the consent protocol all read the graph, the plan, the outbox
-    or a stored reply to decide, so they read and write inside the execution transaction instead
-    of returning directives for one.
+    Intake, analysis, recovery, the consent protocol and revalidation all read the graph, the
+    plan, the outbox or a stored reply to decide, so they read and write inside the execution
+    transaction instead of returning directives for one.
 
     The import is deferred because each of those modules names step keys *this* module
     enqueues, and a module-level import in both directions would be a cycle. Resolved once per
     step rather than once per process, which costs a dictionary lookup in ``sys.modules``.
     """
-    from promisepatch.domain import analysis, approvals, physical, recovery
+    from promisepatch.domain import analysis, approvals, physical, recovery, revalidation
 
     if kind in INTAKE_STEP_KINDS:
         return physical.execute
@@ -315,6 +315,8 @@ def _executor_for(kind: str) -> StepExecutor | None:
         return recovery.execute
     if kind in approvals.APPROVAL_STEP_KINDS:
         return approvals.execute
+    if kind in revalidation.REVALIDATION_STEP_KINDS:
+        return revalidation.execute
     return None
 
 

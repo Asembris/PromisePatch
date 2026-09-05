@@ -19,6 +19,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -50,6 +51,7 @@ from promisepatch.db.models import (
     InboundReply,
     InventoryLedgerEntry,
     Order,
+    OrderConstraint,
     OrderLine,
     OutboxMessage,
     PhysicalException,
@@ -229,6 +231,20 @@ class Intake:
             worker_id=worker_id,
             raw_text=text_said,
         )
+
+    async def drain_until_decided(self, *, limit: int = 30, worker: Worker | None = None) -> None:
+        """Run cycles until a customer decision exists, and stop on that boundary.
+
+        The instant after consent is recorded and before anything has been revalidated is a real
+        moment in the workflow, and several guarantees are about exactly it: an approval is
+        authority, not application. A plain drain runs straight past it, so this stops there.
+        """
+        runner = worker or self.worker()
+        for _ in range(limit):
+            if await self.decisions():
+                return
+            if not await runner.run_once():
+                return
 
     async def drain_intake(
         self, case_id: UUID, *, worker: Worker | None = None, limit: int = 16
@@ -726,12 +742,19 @@ class Intake:
                 captured[table.name] = [tuple(row) for row in rows]
         return captured
 
-    async def repin_order_line(self, line_id: str, version_id: str) -> None:
+    async def repin_order_line(
+        self, line_id: str, version_id: str, *, bump_order: bool = True
+    ) -> None:
         """Re-pin one line to another authored version, the way the order system will.
 
         Reservations are recomputed through the engine's own derivation rather than written by
         hand, so the mutated database still satisfies invariant 11.4.3: a line's reservations
         are its pinned version times its quantity.
+
+        ``bump_order`` is on by default because a real order-system amendment moves the order's
+        version with it. A revalidation test that wants to prove the *pinned version* check on
+        its own turns it off, so the lower-numbered order check cannot claim the failure first
+        and leave the interesting one untested.
         """
         graph = await self.snapshot()
         order_line = graph.order_lines[line_id]
@@ -764,15 +787,141 @@ class Intake:
                             source_recipe_version_id=reservation.source_recipe_version_id,
                         )
                     )
-                await write.execute(
-                    sa_update(Order)
-                    .where(Order.id == order_line.order_id)
-                    .values(
-                        external_version=Order.external_version + 1,
-                        state="AMENDED",
-                        updated_at=datetime.now(UTC),
+                if bump_order:
+                    await write.execute(
+                        sa_update(Order)
+                        .where(Order.id == order_line.order_id)
+                        .values(
+                            external_version=Order.external_version + 1,
+                            state="AMENDED",
+                            updated_at=datetime.now(UTC),
+                        )
                     )
+
+    async def set_constraint_kind(self, constraint_id: str, kind: str) -> None:
+        """Rewrite one snapshotted order constraint, the way an owner amending an order would.
+
+        A governed write like any other, so the mutated row still carries its provenance and the
+        constraint hash still describes something a human recorded.
+        """
+        await self._governed(
+            sa_update(OrderConstraint)
+            .where(OrderConstraint.id == constraint_id)
+            .values(kind=kind, recorded_at=datetime.now(UTC))
+        )
+
+    async def consume_stock(self, resource_id: str, quantity: str) -> None:
+        """Post a negative physical movement, as a correcting attestation would.
+
+        The ledger is append-only and this is a row on it, which is the only way a quantity ever
+        changes: nothing edits ``on_hand`` because there is no such column.
+        """
+        await self._governed(
+            insert(InventoryLedgerEntry).values(
+                resource_id=resource_id,
+                delta=Decimal(quantity),
+                source_kind="CORRECTION",
+                source_id=f"test-consumption-{uuid4()}",
+                recorded_at=datetime.now(UTC),
+            )
+        )
+
+    async def set_task_state(self, line_id: str, state: str) -> None:
+        """Move one production task on, the way the kitchen starting work would."""
+        await self._governed(
+            sa_update(ProductionTask)
+            .where(ProductionTask.order_line_id == line_id)
+            .values(state=state)
+        )
+
+    async def bring_task_start_forward(self, line_id: str) -> None:
+        """Put a task's scheduled start in the past, against the database's own clock."""
+        await self._governed(
+            sa_update(ProductionTask)
+            .where(ProductionTask.order_line_id == line_id)
+            .values(scheduled_start=text("now() - interval '1 minute'"))
+        )
+
+    async def task_of_line(self, line_id: str) -> Any:
+        async with self.database.connect() as connection:
+            return (
+                await connection.execute(
+                    select(ProductionTask).where(ProductionTask.order_line_id == line_id)
                 )
+            ).one_or_none()
+
+    async def constraints_of(self, order_id: str) -> list[Any]:
+        async with self.database.connect() as connection:
+            return list(
+                (
+                    await connection.execute(
+                        select(OrderConstraint)
+                        .where(OrderConstraint.order_id == order_id)
+                        .order_by(OrderConstraint.id)
+                    )
+                ).all()
+            )
+
+    # ------------------------------------------------- deliberately corrupted consent records
+
+    async def corrupt_decision_sender(self, request_id: UUID, sender: str) -> None:
+        """Rewrite the sender a persisted decision claims, leaving its reply untouched.
+
+        There is no operator path that can do this, and there must not be: it exists to prove
+        that revalidation checks the record rather than trusting it, so a row edited behind the
+        application's back still cannot authorise an amendment.
+        """
+        await self._governed(
+            sa_update(ApprovalDecision)
+            .where(ApprovalDecision.request_id == request_id)
+            .values(sender_identity=sender)
+        )
+
+    async def corrupt_reply_sender(self, request_id: UUID, sender: str) -> None:
+        """Rewrite the stored reply behind a decision, leaving the decision's own copy intact."""
+        await self._governed(
+            sa_update(InboundReply)
+            .where(InboundReply.request_id == request_id)
+            .values(sender_identity=sender)
+        )
+
+    async def supersede_request(self, request_id: UUID) -> None:
+        """Mark a request superseded without re-planning, so check 10 can be provoked alone."""
+        await self._governed(
+            sa_update(ApprovalRequest)
+            .where(ApprovalRequest.id == request_id)
+            .values(state="SUPERSEDED")
+        )
+
+    async def rebind_chosen_option(self, track_id: UUID, option_id: UUID) -> None:
+        """Point a track at a different option than the one its customer was asked about."""
+        await self._governed(
+            sa_update(Track)
+            .where(Track.id == track_id)
+            .values(chosen_option_id=option_id, version=Track.version + 1)
+        )
+
+    async def reopen_for_revalidation(self, case_id: UUID, step_key: str) -> None:
+        """Put a case back at the revalidation boundary and make its checklist runnable again.
+
+        Not something the engine does. It is how a test reaches the one-consumption check
+        directly, rather than through the earlier guard that would otherwise refuse first.
+        """
+        await self._governed(sa_update(Case).where(Case.id == case_id).values(state="REVALIDATING"))
+        step = await self.step_named(case_id, step_key)
+        assert step is not None
+        await self.requeue(step.id)
+
+    async def _governed(self, statement: Any) -> None:
+        """One privileged fixture write, audited like everything else."""
+        async with self.database.begin() as connection:
+            unit_of_work = UnitOfWork(connection)
+            async with unit_of_work.governed(
+                event_type="REVALIDATION_TEST_SETUP",
+                actor=Actor(kind="SYSTEM", id="revalidation-tests"),
+                authority="NONE",
+            ) as write:
+                await write.execute(statement)
 
     async def bump_order_version(self, order_id: str) -> None:
         """One fingerprint input moved, and nothing else."""
