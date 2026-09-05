@@ -268,6 +268,11 @@ async def _record_delivered(
             state="DELIVERED",
             values={
                 "provider_ref": outcome.provider_ref,
+                # What the provider reported it did, if it is a system of record and reported
+                # anything. Persisted with the acceptance rather than beside it: a process that
+                # died in between would otherwise leave a delivered effect whose authoritative
+                # result nobody could name afterwards.
+                "result": None if outcome.result is None else dict(outcome.result),
                 "delivered_at": now,
                 "last_error": None,
             },

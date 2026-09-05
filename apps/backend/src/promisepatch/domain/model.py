@@ -103,6 +103,14 @@ bookkeeping up as a decision somebody made.
 
 WAKEUP_TIMER_KIND: Final = "WORKFLOW_WAKEUP"
 FAKE_EFFECT_KIND: Final = "FAKE_EFFECT"
+EFFECT_ORDER_AMEND: Final = "ORDER_AMEND"
+"""The §13.3 outbox kind for a governed recovery amendment pushed at the order system.
+
+Named here, beside the other effect vocabulary, because three parties have to agree on the
+string: the transition that enqueues it, the dispatcher that routes it and the adapter that
+sends it. The adapter is deliberately unable to import the transition -- it may not reach a
+database -- so the shared word has to live somewhere neither of them owns.
+"""
 CASE_SUBJECT: Final = "CASE"
 
 EFFECT_CASE_ID: Final = "case_id"
@@ -274,3 +282,11 @@ class DeliveryOutcome:
     status: DeliveryStatus
     provider_ref: str | None = None
     error: str | None = None
+    result: Mapping[str, Any] | None = None
+    """What the provider reported it did, for a provider that is a system of record.
+
+    Absent for one that is not. That absence is meaningful rather than incidental: an effect
+    whose provider made no authoritative statement has nothing for PromisePatch to later
+    verify, and one that did must be verified before the work it belongs to may claim to be
+    finished.
+    """

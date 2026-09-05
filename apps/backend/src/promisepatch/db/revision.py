@@ -14,5 +14,5 @@ from __future__ import annotations
 
 from typing import Final
 
-HEAD_REVISION: Final = "0006_physical_exception_intake"
+HEAD_REVISION: Final = "0007_external_effect_results"
 """The Alembic revision a database must be at for this code to be ready to serve."""

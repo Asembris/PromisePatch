@@ -337,6 +337,10 @@ EXPECTED_COLUMNS = {
         "last_error",
         "delivered_at",
         "created_at",
+        # What the provider reported it did, for a provider that is a system of record. A
+        # reference proves acceptance; this is what a recovery later has to see reflected in
+        # the mirror, so it has to outlive the process that received it.
+        "result",
     },
 }
 

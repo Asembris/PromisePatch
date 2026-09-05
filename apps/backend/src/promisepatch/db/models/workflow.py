@@ -234,6 +234,14 @@ class OutboxMessage(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     next_attempt_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
     provider_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    """What the provider reported it did, when it had something to report.
+
+    A reference says an effect was accepted; this says what the acceptance *was* -- for an
+    order amendment, the version the order system is now at and the variant it put on the line.
+    A recovery is later required to see that reflected in the mirror before it may complete, so
+    the statement has to be durable rather than something the dispatcher remembers.
+    """
     created_in_tx_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     lease_owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(Timestamp, nullable=True)
