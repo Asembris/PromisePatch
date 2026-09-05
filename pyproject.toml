@@ -215,3 +215,32 @@ name = "the engine never learns about the application"
 type = "forbidden"
 source_modules = ["promise_graph"]
 forbidden_modules = ["promisepatch", "sqlalchemy"]
+
+# Consent is read from the customer's own words and nothing else. The literal parser and the
+# message it answers are values in, values out: no database, no provider, no model, no clock.
+# That is what makes "only a literal reply authorises a change" checkable rather than reviewed --
+# and what stops "just look up the request here" from ever being the easy fix in the one place
+# where looking something up could turn a sentence into a signature.
+[[tool.importlinter.contracts]]
+name = "consent is decided by literal text alone"
+type = "forbidden"
+source_modules = [
+    "promisepatch.domain.consent",
+    "promisepatch.domain.messaging",
+]
+forbidden_modules = [
+    "asyncio",
+    "fastapi",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.domain.approvals",
+    "promisepatch.main",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "urllib",
+]

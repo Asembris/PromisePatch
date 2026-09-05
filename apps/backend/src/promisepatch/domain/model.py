@@ -248,7 +248,14 @@ class InboundOutcome:
     normalized: Mapping[str, Any] | None = None
     case_id: UUID | None = None
     step_key: str | None = None
-    step_kind: StepKind | None = None
+    step_kind: StepKind | str | None = None
+    """The work this record makes runnable, if any.
+
+    A plain string as well as a :class:`StepKind`, for the same reason
+    :class:`CreateStep` accepts one: a customer's reply is executed by a step that reads rows to
+    decide, which is dispatched by name rather than by one of the synthetic handlers.
+    """
+
     error: str | None = None
 
 

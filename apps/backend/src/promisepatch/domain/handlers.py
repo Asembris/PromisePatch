@@ -56,12 +56,39 @@ and the point of the fixture is a workflow that demonstrably does.
 """
 
 SYNTHETIC_SOURCE: Final = "synthetic"
-"""The only inbound source this slice understands.
+"""The source that exercises the ledger itself, and carries no business meaning.
 
-Telegram, the order simulator and HTTP webhooks are later slices with their own signature and
-normalisation rules. What is being proven here is the ledger underneath them: that a duplicate
-delivery is deduplicated by the database, and that a crash mid-processing leaves the record
-retriable rather than half-consumed.
+What it proves is what sits underneath every real source: that a duplicate delivery is
+deduplicated by the database, and that a crash mid-processing leaves the record retriable rather
+than half-consumed.
+"""
+
+CUSTOMER_REPLY_SOURCE: Final = "customer-reply"
+"""A reply that arrived on a customer's own channel.
+
+Telegram's ingress, its secret-header check and its ``update_id`` are a later slice; what they
+will change is who fills this row in, never what is done with it. Normalisation here reads the
+*stored* body and reaches nothing outside its arguments, so the same record read back in a year
+produces the same reading it produced on the day -- which is what makes a consent protocol
+auditable rather than merely logged.
+"""
+
+REQUIRED_REPLY_FIELDS: Final[tuple[str, ...]] = (
+    "request_id",
+    "sender",
+    "text",
+    "provider_message_id",
+)
+"""What a reply must carry to be actionable at all.
+
+``sender`` is the customer channel identity the transport observed, and it is data rather than
+a claim of authority: whether it is *the* channel this request was sent to is decided later,
+against the persisted request, by the step that could act on it.
+
+``provider_message_id`` is required rather than derived. It is what makes one stored reply out
+of one message, and a fallback that reused the request id would make every reply after the first
+collide with the first -- silently discarding exactly the second reply the consent protocol
+exists to read.
 """
 
 
@@ -249,15 +276,17 @@ def normalize_inbound(source: str, body: str | None) -> InboundOutcome:
     build can read would mean returning to it forever; failing it leaves the raw material on
     the row for a later build to replay deliberately.
     """
-    if source != SYNTHETIC_SOURCE:
+    if source not in (SYNTHETIC_SOURCE, CUSTOMER_REPLY_SOURCE):
         return InboundOutcome(state="FAILED", error=f"no handler for inbound source {source!r}")
 
     try:
         parsed = json.loads(body or "")
     except (TypeError, ValueError) as error:
-        return InboundOutcome(state="FAILED", error=f"unreadable synthetic body: {error}")
+        return InboundOutcome(state="FAILED", error=f"unreadable {source} body: {error}")
     if not isinstance(parsed, dict):
-        return InboundOutcome(state="FAILED", error="synthetic body is not an object")
+        return InboundOutcome(state="FAILED", error=f"{source} body is not an object")
+    if source == CUSTOMER_REPLY_SOURCE:
+        return _customer_reply(parsed)
 
     raw_case = parsed.get("case_id")
     if raw_case is None:
@@ -278,8 +307,40 @@ def normalize_inbound(source: str, body: str | None) -> InboundOutcome:
     )
 
 
+def _customer_reply(parsed: Mapping[str, object]) -> InboundOutcome:
+    """Read one customer reply out of a stored record, and decide nothing else about it.
+
+    Deliberately incomplete: it produces the normalised material and no ``case_id``, because
+    which case a reply belongs to is a question about persisted rows and this function may not
+    ask one. :func:`promisepatch.domain.approvals.bind_customer_reply` answers it, and the step
+    that follows is what checks whether the sender was entitled to say anything at all.
+
+    The reply text is carried through untouched -- not trimmed, not lowered, not interpreted.
+    The literal parser normalises its own copy when it compares; the stored words stay the
+    customer's.
+    """
+    missing = [field for field in REQUIRED_REPLY_FIELDS if not str(parsed.get(field, "")).strip()]
+    if missing:
+        return InboundOutcome(
+            state="FAILED", error=f"customer reply is missing {', '.join(sorted(missing))}"
+        )
+
+    return InboundOutcome(
+        state="PROCESSED",
+        normalized={
+            "source": CUSTOMER_REPLY_SOURCE,
+            "request_id": str(parsed["request_id"]),
+            "sender": str(parsed["sender"]),
+            "text": str(parsed["text"]),
+            "provider_message_id": str(parsed["provider_message_id"]),
+        },
+    )
+
+
 __all__ = [
     "CHAIN_LENGTH",
+    "CUSTOMER_REPLY_SOURCE",
+    "REQUIRED_REPLY_FIELDS",
     "SYNTHETIC_SOURCE",
     "UnknownStepKindError",
     "effect_key",
