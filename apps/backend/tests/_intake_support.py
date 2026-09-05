@@ -842,6 +842,14 @@ class Intake:
             .values(scheduled_start=text("now() - interval '1 minute'"))
         )
 
+    async def hold_task_for(self, line_id: str, case_id: UUID) -> None:
+        """Put a task on hold in the name of one case, the way a blocked promise does (§13.5)."""
+        await self._governed(
+            sa_update(ProductionTask)
+            .where(ProductionTask.order_line_id == line_id)
+            .values(state="HELD", held_by_case_id=case_id)
+        )
+
     async def task_of_line(self, line_id: str) -> Any:
         async with self.database.connect() as connection:
             return (
@@ -864,25 +872,42 @@ class Intake:
 
     # ------------------------------------------------- deliberately corrupted consent records
 
-    async def corrupt_decision_sender(self, request_id: UUID, sender: str) -> None:
-        """Rewrite the sender a persisted decision claims, leaving its reply untouched.
+    async def rewrite_decision_sender(self, request_id: UUID, sender: str) -> None:
+        """Try to rewrite the sender a persisted decision claims. Nothing may do this.
 
-        There is no operator path that can do this, and there must not be: it exists to prove
-        that revalidation checks the record rather than trusting it, so a row edited behind the
-        application's back still cannot authorise an amendment.
+        Attempted through the *migration* role, which is as much authority as exists anywhere in
+        the deployment, so what refuses it is the append-only trigger rather than a grant. The
+        caller is expected to catch the refusal: that is the assertion.
         """
-        await self._governed(
+        await self._privileged(
             sa_update(ApprovalDecision)
             .where(ApprovalDecision.request_id == request_id)
             .values(sender_identity=sender)
         )
 
     async def corrupt_reply_sender(self, request_id: UUID, sender: str) -> None:
-        """Rewrite the stored reply behind a decision, leaving the decision's own copy intact."""
-        await self._governed(
+        """Rewrite the stored reply behind a decision, leaving the decision's own copy intact.
+
+        ``inbound_replies`` is not an append-only ledger -- a later slice attaches a model's
+        non-authoritative reading to it -- so this is genuinely reachable, and revalidation has
+        to survive a provenance chain that no longer joins up.
+        """
+        await self._privileged(
             sa_update(InboundReply)
             .where(InboundReply.request_id == request_id)
             .values(sender_identity=sender)
+        )
+
+    async def move_customer_channel(self, request_id: UUID, channel: str) -> None:
+        """Point a request's approval channel somewhere else, as an amended order would.
+
+        The realistic shape of a check 8 failure: the decision is exactly as the customer left
+        it, and the channel the order says to trust has moved out from under it.
+        """
+        await self._governed(
+            sa_update(ApprovalRequest)
+            .where(ApprovalRequest.id == request_id)
+            .values(customer_channel=channel)
         )
 
     async def supersede_request(self, request_id: UUID) -> None:
@@ -901,19 +926,28 @@ class Intake:
             .values(chosen_option_id=option_id, version=Track.version + 1)
         )
 
-    async def reopen_for_revalidation(self, case_id: UUID, step_key: str) -> None:
+    async def reopen_for_revalidation(
+        self, case_id: UUID, step_key: str, *, track_id: UUID | None = None
+    ) -> None:
         """Put a case back at the revalidation boundary and make its checklist runnable again.
 
-        Not something the engine does. It is how a test reaches the one-consumption check
-        directly, rather than through the earlier guard that would otherwise refuse first.
+        Not something the engine does. It is how a test reaches a check that a lower-numbered
+        one would otherwise claim first -- ``track_id`` also winds the track back to waiting, so
+        the checklist gets past check 1 and has to answer for itself.
         """
         await self._governed(sa_update(Case).where(Case.id == case_id).values(state="REVALIDATING"))
+        if track_id is not None:
+            await self._governed(
+                sa_update(Track)
+                .where(Track.id == track_id)
+                .values(state="WAITING_FOR_CUSTOMER", version=Track.version + 1)
+            )
         step = await self.step_named(case_id, step_key)
         assert step is not None
         await self.requeue(step.id)
 
     async def _governed(self, statement: Any) -> None:
-        """One privileged fixture write, audited like everything else."""
+        """One fixture write through the runtime connection, audited like everything else."""
         async with self.database.begin() as connection:
             unit_of_work = UnitOfWork(connection)
             async with unit_of_work.governed(
@@ -922,6 +956,25 @@ class Intake:
                 authority="NONE",
             ) as write:
                 await write.execute(statement)
+
+    async def _privileged(self, statement: Any) -> None:
+        """The same, through the migration role, for a table the application may only append to.
+
+        Still audited: the boundary being reached past is the privilege grant, not the ledger.
+        """
+        settings = Settings()
+        engine = build_engine(settings.require_migration_database_url(), pool_size=1)
+        try:
+            async with engine.begin() as connection:
+                unit_of_work = UnitOfWork(connection)
+                async with unit_of_work.governed(
+                    event_type="REVALIDATION_TEST_SETUP",
+                    actor=Actor(kind="SYSTEM", id="revalidation-tests"),
+                    authority="NONE",
+                ) as write:
+                    await write.execute(statement)
+        finally:
+            await engine.dispose()
 
     async def bump_order_version(self, order_id: str) -> None:
         """One fingerprint input moved, and nothing else."""
