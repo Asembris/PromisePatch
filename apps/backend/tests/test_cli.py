@@ -300,6 +300,7 @@ def test_case_status_delegates_to_the_domain_read_service(
         linked_track_id=None,
         paths=1,
         watched_entities=9,
+        revalidation=None,
         options=(
             analysis.OptionStatus(
                 id=UUID(int=4),
@@ -360,6 +361,7 @@ def test_case_status_shows_the_effect_a_recovery_produced(
         linked_track_id=None,
         paths=1,
         watched_entities=9,
+        revalidation=None,
         options=(),
         effects=(
             analysis.EffectStatus(
@@ -395,6 +397,81 @@ def test_case_status_shows_the_effect_a_recovery_produced(
     assert "DELIVERED" in result.output
     assert "pp:amend:track:option:1" in result.output
     assert "fake-abc123" in result.output
+
+
+def test_case_status_shows_the_ten_checks_with_the_values_they_compared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """§22's checklist, on a terminal: each check named, each with its two values.
+
+    The one screen a judge is shown for Proof F, and the one place an operator can see *why* a
+    customer's approval was or was not acted on -- so it prints the comparison, not a verdict.
+    """
+    track = analysis.TrackStatus(
+        track_id=UUID(int=3),
+        promise_id="pr-b",
+        order_external_id="EXT-B",
+        customer_name="Tomas Nowak",
+        state=recovery.TRACK_STALE,
+        classification="APPROVAL_REQUIRED",
+        rule_id="R-VISIBLE-ASK",
+        reason_detail="VISIBLE_CHANGE",
+        priority=2,
+        fingerprint="f" * 64,
+        deadline_at=None,
+        linked_track_id=None,
+        paths=1,
+        watched_entities=9,
+        revalidation=analysis.RevalidationStatus(
+            outcome="STALE",
+            deciding_check=2,
+            detail="check 2: ACCEPTED @ v1 != AMENDED @ v2",
+            fingerprint=None,
+            checks=(
+                analysis.RevalidationCheck(
+                    index=1,
+                    name="track and case are waiting",
+                    passed=True,
+                    expected="track=WAITING_FOR_CUSTOMER case=WAITING",
+                    actual="track=WAITING_FOR_CUSTOMER case=WAITING",
+                ),
+                analysis.RevalidationCheck(
+                    index=2,
+                    name="order state and version unchanged",
+                    passed=False,
+                    expected="ACCEPTED|AMENDED @ v1",
+                    actual="AMENDED @ v2",
+                ),
+            ),
+        ),
+        options=(),
+        effects=(),
+    )
+
+    async def fake(database: object, *, case_id: UUID) -> analysis.CaseStatus:
+        return analysis.CaseStatus(
+            case_id=case_id,
+            state=cases.CASE_REVALIDATING,
+            needs_owner_attention=False,
+            exception_id=UUID(int=2),
+            category="SUPPLY_NOT_RECEIVED",
+            tracks=(track,),
+        )
+
+    monkeypatch.setattr(
+        cli, "_read_case_status", lambda settings, case_id: fake(None, case_id=case_id)
+    )
+
+    result = runner.invoke(app, ["case-status", "--case", str(UUID(int=1))])
+
+    assert result.exit_code == 0, result.output
+    assert "revalidation STALE" in result.output
+    assert "failed at 2" in result.output
+    assert "order state and version unchanged" in result.output
+    assert "ACCEPTED|AMENDED @ v1" in result.output
+    assert "AMENDED @ v2" in result.output
+    assert "FAIL" in result.output
+    assert "pass" in result.output
 
 
 def test_case_status_refuses_an_unparseable_identifier() -> None:
@@ -616,6 +693,7 @@ def test_case_status_shows_the_approval_without_the_customers_words(
         linked_track_id=None,
         paths=1,
         watched_entities=4,
+        revalidation=None,
         options=(),
         approval=approval,
     )

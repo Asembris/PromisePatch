@@ -399,6 +399,19 @@ def case_status_command(
                 f"ref {approval.provider_ref or '-'}, replies {approval.replies}"
             )
             typer.echo(f"      decision {approval.decision or '-'} via {approval.parser or '-'}")
+        if track.revalidation is not None:
+            checked = track.revalidation
+            deciding = (
+                "" if checked.deciding_check is None else f", failed at {checked.deciding_check}"
+            )
+            typer.echo(f"    revalidation {checked.outcome}{deciding}")
+            if checked.detail:
+                typer.echo(f"      {checked.detail}")
+            for check in checked.checks:
+                mark = "pass" if check.passed else "FAIL"
+                typer.echo(f"      {check.index:>2}. {mark}  {check.name}")
+                typer.echo(f"          expected {check.expected}")
+                typer.echo(f"          actual   {check.actual}")
         for effect in track.effects:
             typer.echo(
                 f"    effect {effect.kind} {effect.state} "

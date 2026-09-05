@@ -57,6 +57,7 @@ from promisepatch.db.models import (
     ApprovalDecision,
     ApprovalRequest,
     Case,
+    CaseStep,
     Customer,
     InboundReply,
     Order,
@@ -77,6 +78,7 @@ from promisepatch.domain.cases import (
     LockedCase,
     case_events,
     case_successors,
+    revalidate_step_key,
 )
 from promisepatch.domain.model import (
     EFFECT_TRACK_ID,
@@ -1215,6 +1217,34 @@ class ApprovalStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class RevalidationCheck:
+    """One of §14.3's ten, with the two values it compared."""
+
+    index: int
+    name: str
+    passed: bool
+    expected: str
+    actual: str
+
+
+@dataclass(frozen=True, slots=True)
+class RevalidationStatus:
+    """What the checklist concluded about one track, and on what evidence.
+
+    Read from the step ledger rather than recomputed, which is the point: an operator screen
+    that ran the checks again would be showing what is true *now*, and the question a person is
+    asking is what was true when the system decided. The audit ledger holds the same values as
+    individual rows; this is the same evidence in the shape a status view needs.
+    """
+
+    outcome: str
+    deciding_check: int | None
+    detail: str | None
+    fingerprint: str | None
+    checks: tuple[RevalidationCheck, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class TrackStatus:
     """One promise's posture in one case."""
 
@@ -1232,6 +1262,7 @@ class TrackStatus:
     linked_track_id: UUID | None
     paths: int
     watched_entities: int
+    revalidation: RevalidationStatus | None
     options: tuple[OptionStatus, ...]
     effects: tuple[EffectStatus, ...] = ()
     approval: ApprovalStatus | None = None
@@ -1308,6 +1339,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                 )
             ).all()
             approval = await _approval_status(connection, track.id)
+            revalidated = await _revalidation_status(connection, track.case_id, track.id)
             tracks.append(
                 TrackStatus(
                     track_id=track.id,
@@ -1324,6 +1356,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                     linked_track_id=track.linked_track_id,
                     paths=int(paths or 0),
                     watched_entities=int(watched or 0),
+                    revalidation=revalidated,
                     options=tuple(
                         OptionStatus(
                             id=option.id,
@@ -1365,6 +1398,40 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
     )
 
 
+async def _revalidation_status(
+    connection: AsyncConnection, case_id: UUID, track_id: UUID
+) -> RevalidationStatus | None:
+    """The ten checks this track was put through, as the step that ran them recorded them."""
+    row = (
+        await connection.execute(
+            select(CaseStep.result).where(
+                CaseStep.case_id == case_id,
+                CaseStep.step_key == revalidate_step_key(track_id),
+                CaseStep.state.in_(("DONE", "SKIPPED")),
+            )
+        )
+    ).one_or_none()
+    if row is None or not row.result:
+        return None
+    result = row.result
+    return RevalidationStatus(
+        outcome=str(result.get("outcome", "")),
+        deciding_check=result.get("deciding_check"),
+        detail=result.get("detail"),
+        fingerprint=result.get("fingerprint"),
+        checks=tuple(
+            RevalidationCheck(
+                index=int(check["index"]),
+                name=str(check["name"]),
+                passed=bool(check["passed"]),
+                expected=str(check["expected"]),
+                actual=str(check["actual"]),
+            )
+            for check in result.get("checks", [])
+        ),
+    )
+
+
 async def _approval_status(connection: AsyncConnection, track_id: UUID) -> ApprovalStatus | None:
     """The approval request on one track, with its decision if it has one.
 
@@ -1373,9 +1440,11 @@ async def _approval_status(connection: AsyncConnection, track_id: UUID) -> Appro
     """
     request = (
         await connection.execute(
-            select(ApprovalRequest).where(ApprovalRequest.track_id == track_id)
+            select(ApprovalRequest)
+            .where(ApprovalRequest.track_id == track_id)
+            .order_by(ApprovalRequest.sent_at.desc(), ApprovalRequest.id)
         )
-    ).one_or_none()
+    ).first()
     if request is None:
         return None
 
