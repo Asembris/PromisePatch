@@ -51,9 +51,23 @@ remember.
 """
 
 
+STEP_REVALIDATE_RECOVERY: Final = "REVALIDATE_RECOVERY"
+"""One track's ten checks, created by the transition that hands a case to ``REVALIDATING``.
+
+Declared beside the reconciliation step for the same reason: the transitions that create these
+are spread across the engine, and several modules need to read a track's checklist back without
+importing the module that runs it.
+"""
+
+
 def reconcile_step_key(case_id: UUID) -> str:
     """One reconciliation per case, whatever transition happened to reach the boundary."""
     return f"reconcile:{case_id}"
+
+
+def revalidate_step_key(track_id: UUID) -> str:
+    """One revalidation per track. A second delivery collides on ``(case_id, step_key)``."""
+    return f"revalidate:{track_id}"
 
 
 def case_of(step_key: str) -> UUID:

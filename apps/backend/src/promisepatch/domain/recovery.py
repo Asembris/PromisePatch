@@ -108,6 +108,7 @@ from promisepatch.domain.cases import (
     case_successors,
     lock_case,
     reconcile_step_key,
+    revalidate_step_key,
     settled_case_state,
 )
 from promisepatch.domain.intake import actor_for, require_permitted, require_worker
@@ -918,8 +919,6 @@ async def _approved_and_revalidated(
     connection: AsyncConnection, *, track: Any, option: Any
 ) -> bool:
     """The persisted chain from this option back to a customer's word and forward to a PROCEED."""
-    from promisepatch.domain.revalidation import revalidate_step_key
-
     request = (
         await connection.execute(
             select(ApprovalRequest).where(

@@ -83,12 +83,14 @@ from promisepatch.domain.cases import (
     CASE_WAITING,
     OPEN_APPROVAL_STATES,
     STEP_RECONCILE_CASE,
+    STEP_REVALIDATE_RECOVERY,
     TRACK_WAITING_FOR_CUSTOMER,
     LockedCase,
     any_escalated,
     case_events,
     case_successors,
     non_terminal_tracks,
+    revalidate_step_key,
     settled_case_state,
 )
 from promisepatch.domain.model import (
@@ -106,18 +108,10 @@ logger = get_logger(__name__)
 
 # ------------------------------------------------------------------------------- step naming
 
-STEP_REVALIDATE_RECOVERY: Final = "REVALIDATE_RECOVERY"
-"""One track's ten checks. Named after the track, so a redelivery is the same row."""
-
 REVALIDATION_STEP_KINDS: Final[frozenset[str]] = frozenset(
     {STEP_REVALIDATE_RECOVERY, STEP_RECONCILE_CASE}
 )
 """Step kinds the worker routes here: both read the graph or the ledger to decide."""
-
-
-def revalidate_step_key(track_id: UUID) -> str:
-    """One revalidation per track. A second delivery collides on ``(case_id, step_key)``."""
-    return f"revalidate:{track_id}"
 
 
 def track_of(step_key: str) -> UUID:
