@@ -258,6 +258,16 @@ def test_line_quantities_are_whole_units(api: TestClient) -> None:
             assert line.quantity > 0
 
 
+WRITEABLE_PREFIXES = ("/api/auth", "/api/integrations")
+"""The only two families of route in this application that a caller may write to.
+
+``/api/auth`` is a person signing in or out. ``/api/integrations`` is another *system* handing
+us something it has already done -- authenticated with a shared secret rather than a session,
+and storing the delivery rather than acting on it. Neither of them is an order editor, and the
+list is written here so that adding a third is a decision somebody has to make on purpose.
+"""
+
+
 def test_no_write_route_exists_for_orders_or_promises(api: TestClient) -> None:
     """The external order system is the system of record; there is no order editor."""
     schema = api.get("/openapi.json").json()
@@ -267,7 +277,26 @@ def test_no_write_route_exists_for_orders_or_promises(api: TestClient) -> None:
             continue
         methods = {method.upper() for method in operations}
         mutating = methods & {"POST", "PUT", "PATCH", "DELETE"}
-        assert not mutating or path.startswith("/api/auth"), (path, mutating)
+        assert not mutating or path.startswith(WRITEABLE_PREFIXES), (path, mutating)
+
+
+def test_the_integration_ingress_is_the_only_route_an_order_can_arrive_through(
+    api: TestClient,
+) -> None:
+    """And it is not an editor: it takes an event from the system of record, not a command.
+
+    The distinction matters more than the count. A route that let a caller *state* what an
+    order should say would be an order editor whatever it was called; this one accepts only
+    what the order system has already committed, proves it with a signature over the exact
+    bytes, and changes no order in the request that answers -- which is asserted directly in
+    ``test_order_mirror``.
+    """
+    schema = api.get("/openapi.json").json()
+
+    integrations = {path for path in schema["paths"] if path.startswith("/api/integrations")}
+
+    assert integrations == {"/api/integrations/order-system/events"}
+    assert set(schema["paths"]["/api/integrations/order-system/events"]) == {"post"}
 
 
 def test_the_read_endpoints_are_get_only(api: TestClient) -> None:

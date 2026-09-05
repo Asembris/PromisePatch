@@ -92,6 +92,36 @@ class Settings(BaseSettings):
     on is a statement by whoever configured the deployment, which is the only party that knows.
     """
 
+    order_system_base_url: str | None = None
+    """Where the external order system answers, or ``None`` when none is configured.
+
+    The order system is the system of record for orders, so this is the address of another
+    application rather than a feature flag. With it unset the amendment adapter has nowhere to
+    send a governed recovery amendment, and the deployment falls back to the fake provider that
+    proves the outbox's own guarantees and nothing about an order.
+
+    Deliberately not defaulted to a local address. A default here would mean a deployment that
+    forgot to configure its order system would quietly try to amend somebody's orders on
+    whatever answered on that port.
+    """
+
+    order_system_webhook_secret: SecretStr | None = None
+    """The shared secret an inbound order event is signed with.
+
+    Service-to-service authentication, not a session: the sender is a server, it holds no
+    cookie, and the ingress verifies an HMAC over the exact request body before it parses
+    anything. A :class:`~pydantic.SecretStr` so it cannot reach a log line or a traceback, and
+    with it unset the webhook endpoint refuses every delivery rather than accepting unsigned
+    ones.
+    """
+
+    order_system_timeout_seconds: float = 10.0
+    """How long one amendment call may take before it is treated as an uncertain delivery.
+
+    Uncertain, not failed: the order system may well have applied it. The retry presents the
+    same idempotency key, and the order system decides whether that is one effect or two.
+    """
+
     bakery_tz: str = "Africa/Tunis"
     """The bakery's local timezone.
 
@@ -143,6 +173,28 @@ class Settings(BaseSettings):
     def require_demo_worker_password(self) -> str:
         """The demo baker's password, or a precise failure naming what to configure."""
         return _required(self.demo_worker_password, "PP_DEMO_WORKER_PASSWORD")
+
+    def require_order_system_base_url(self) -> str:
+        """The order system's address, or a precise failure naming what to configure."""
+        if self.order_system_base_url is None:
+            raise RuntimeError(
+                "PP_ORDER_SYSTEM_BASE_URL is not configured; set it to the external order "
+                "system's base URL before pushing a recovery amendment at it."
+            )
+        return self.order_system_base_url.rstrip("/")
+
+    def require_order_system_webhook_secret(self) -> str:
+        """The webhook signing secret, or a precise failure naming what to configure.
+
+        There is deliberately no generated fallback and no unsigned mode. A webhook endpoint
+        that accepted deliveries without a secret would accept them from anyone.
+        """
+        return _required(self.order_system_webhook_secret, "PP_ORDER_SYSTEM_WEBHOOK_SECRET")
+
+    @property
+    def order_system_configured(self) -> bool:
+        """Whether this deployment has an external order system to talk to at all."""
+        return self.order_system_base_url is not None
 
     def require_demo_owner_password(self) -> str:
         """The demo owner's password, or a precise failure naming what to configure."""

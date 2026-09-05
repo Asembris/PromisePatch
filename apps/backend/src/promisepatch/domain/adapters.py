@@ -32,6 +32,7 @@ from typing import Any
 from uuid import uuid4
 
 from promisepatch.domain.model import DeliveryOutcome, DeliveryStatus
+from promisepatch.domain.outbox import EffectAdapter
 
 
 class ProviderBehaviour(StrEnum):
@@ -146,3 +147,28 @@ class FakeEffectAdapter:
 
     def effect_for(self, idempotency_key: str) -> LogicalEffect | None:
         return self.effects.get(idempotency_key)
+
+
+@dataclass(frozen=True, slots=True)
+class RoutedEffectAdapter:
+    """One provider per kind of effect, chosen once, at the edge.
+
+    The dispatcher deliberately knows nothing about what an effect *means*, and the recovery
+    saga deliberately knows nothing about which provider answered. Something has to know that a
+    recovery amendment goes to the order system and a customer message does not, and this is it:
+    one table, built where the process is composed, rather than a conditional in the transitions
+    that decided on the effects.
+
+    ``default`` is the honest answer for a kind with no configured provider yet -- today, the
+    customer channel, whose real provider is a later slice. It is a fake one, it says so, and
+    routing to it is a statement about this deployment rather than a claim about the effect.
+    """
+
+    routes: Mapping[str, EffectAdapter]
+    default: EffectAdapter
+
+    async def deliver(
+        self, *, kind: str, payload: Mapping[str, Any], idempotency_key: str
+    ) -> DeliveryOutcome:
+        adapter = self.routes.get(kind, self.default)
+        return await adapter.deliver(kind=kind, payload=payload, idempotency_key=idempotency_key)

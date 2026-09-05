@@ -21,6 +21,7 @@ from promisepatch.api.routers import (
     auth_router,
     events_router,
     health_router,
+    integrations_router,
     promises_router,
     resources_router,
 )
@@ -116,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(promises_router)
     app.include_router(resources_router)
     app.include_router(events_router)
+    app.include_router(integrations_router)
     return app
 
 

@@ -67,6 +67,7 @@ PROJECTED_TABLES: Final[tuple[str, ...]] = (
     "recipe_version_equipment",
     "substitution_policies",
     "equipment_alternatives",
+    "order_line_mappings",
     "customers",
     "orders",
     "order_lines",
@@ -104,6 +105,7 @@ def project(snapshot: GraphSnapshot, *, mirrored_at: datetime) -> tuple[TableRow
         _recipe_version_equipment(snapshot),
         _substitution_policies(snapshot),
         _equipment_alternatives(snapshot),
+        _order_line_mappings(snapshot),
         _customers(snapshot),
         _orders(snapshot, mirrored_at=mirrored_at),
         _order_lines(snapshot),
@@ -314,6 +316,28 @@ def _equipment_alternatives(snapshot: GraphSnapshot) -> TableRows:
                 "alternative_equipment_id": alternative.alternative_equipment_id,
             }
             for alternative in snapshot.equipment_alternatives.values()
+        ),
+    )
+
+
+def _order_line_mappings(snapshot: GraphSnapshot) -> TableRows:
+    """The catalogue an external order system names its products by, as PromisePatch maps it.
+
+    PromisePatch owns this translation, and nothing at runtime adds to it: an event naming an
+    item with no row here is a data problem the owner fixes, never a recipe version invented to
+    make the event fit.
+
+    The demo contract is an identity map -- the order system's catalogue uses the same variant
+    identifiers the bakery authored -- so it is derived from the versions in the snapshot rather
+    than typed out, exactly like every other row this module emits. A provider with a catalogue
+    of its own (a point of sale, say) would populate the same table with its own item ids, and
+    nothing else in the system would change.
+    """
+    return TableRows(
+        table="order_line_mappings",
+        rows=tuple(
+            {"external_item_id": version.id, "recipe_version_id": version.id}
+            for version in snapshot.versions.values()
         ),
     )
 

@@ -72,6 +72,7 @@ from promisepatch.domain import inbox as inbox_ledger
 from promisepatch.domain.adapters import FakeEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
 from promisepatch.domain.observation import INTAKE_STEP_KINDS
+from promisepatch.domain.outbox import EffectAdapter
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import reset_demo_state
 from promisepatch.worker import Worker
@@ -163,18 +164,24 @@ class Intake:
     # ---------------------------------------------------------------------------- driving
 
     def worker(
-        self, *, identity: str | None = None, adapter: FakeEffectAdapter | None = None
+        self,
+        *,
+        identity: str | None = None,
+        adapter: EffectAdapter | None = None,
+        fetch: Any = None,
     ) -> Worker:
         """A worker process of its own, so two of them can be made to contend deliberately.
 
         The adapter is injectable because the provider's memory is where half of the
         crash-safety assertions live: how many transport calls it saw, and how many logical
-        effects those became.
+        effects those became. ``fetch`` is the authoritative order read, present only for a
+        deployment that has an order system to ask.
         """
         return Worker(
             database=self.database,
             adapter=adapter or FakeEffectAdapter(),
             identity=WorkerIdentity(identity) if identity else WorkerIdentity.create(),
+            fetch_order=fetch,
         )
 
     async def drain(self, *, worker: Worker | None = None, limit: int = 16) -> None:
@@ -464,6 +471,25 @@ class Intake:
             return list(await ledger.read_after(connection, after_seq=seq, limit=500))
 
     # ---------------------------------------------------------------------------- nudging
+
+    async def make_work_due(self) -> None:
+        """Bring every backed-off step and effect forward to now.
+
+        A retry ladder is a real wait measured against the database clock, and a test that slept
+        through one would be slow and, worse, timing-dependent. What the tests here are about is
+        what happens *when* the retry runs, so the delay is removed rather than waited out.
+        """
+        async with self.database.begin() as connection:
+            await connection.execute(
+                sa_update(CaseStep)
+                .where(CaseStep.state == "RETRYING")
+                .values(next_attempt_at=text("now()"))
+            )
+            await connection.execute(
+                sa_update(OutboxMessage)
+                .where(OutboxMessage.state == "PENDING")
+                .values(next_attempt_at=text("now()"))
+            )
 
     async def expire_lease(self, step_id: UUID) -> None:
         """Age a claim out without waiting for it: leases are compared against the DB clock."""

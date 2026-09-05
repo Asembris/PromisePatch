@@ -173,6 +173,7 @@ layers = [
     "promisepatch.main",
     "promisepatch.worker",
     "promisepatch.api",
+    "promisepatch.integrations",
     "promisepatch.domain",
     "promisepatch.fixtures",
     "promisepatch.graph",
@@ -294,4 +295,22 @@ forbidden_modules = [
     "promisepatch",
     "sqlalchemy",
     "starlette",
+]
+
+# An adapter reaches another system; it must not be able to reach ours. This is the structural
+# half of Proof A: an outbound amendment cannot quietly write PromisePatch's own copy of the
+# order it just asked somebody else to change, because the module that sends it holds no
+# database handle and no model it could write one with. The mirror moves in
+# `promisepatch.domain.order_mirror`, on the strength of an event or an authoritative read.
+[[tool.importlinter.contracts]]
+name = "an outbound adapter cannot write the mirror"
+type = "forbidden"
+source_modules = ["promisepatch.integrations"]
+forbidden_modules = [
+    "alembic",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.fixtures",
+    "promisepatch.graph",
+    "sqlalchemy",
 ]

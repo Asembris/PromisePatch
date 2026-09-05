@@ -17,6 +17,12 @@ LOCKED``, hand its stored material to a pure normaliser, write the verdict, crea
 deterministic successor, append the event, commit. A worker killed in the middle of that rolls
 back to ``RECEIVED``, which is retriable, rather than to a half-consumed state that is not.
 
+**One source is deliberately not swept here.** An external order system's events are applied by
+:mod:`promisepatch.domain.order_mirror`, because repairing a mirror that has fallen behind needs
+an authoritative read over the network and this sweep may hold no transaction open across one.
+Excluding them is also what stops an unreachable order system from parking a record at the head
+of this queue and starving every customer reply behind it.
+
 **Nothing is decided here.** Processing an inbound record works out which case, if any, the
 record is about, and creates the step that will decide what to do with it under its own lock and
 its own audit. A customer's reply in particular is only *bound* here; whether the sender was
@@ -39,7 +45,7 @@ from promisepatch.db.clock import database_now
 from promisepatch.db.events import append_event
 from promisepatch.db.models import InboxEvent
 from promisepatch.db.runtime import RuntimeDatabase
-from promisepatch.domain import crash, handlers
+from promisepatch.domain import crash, handlers, order_mirror
 from promisepatch.domain.model import EVENT_INBOX_FAILED, EVENT_INBOX_PROCESSED
 from promisepatch.observability import get_logger
 
@@ -102,7 +108,10 @@ async def process_one(database: RuntimeDatabase, *, worker: str) -> ProcessedInb
         row = (
             await connection.execute(
                 select(InboxEvent.id, InboxEvent.source, InboxEvent.raw_body)
-                .where(InboxEvent.state == "RECEIVED")
+                .where(
+                    InboxEvent.state == "RECEIVED",
+                    InboxEvent.source.not_in(order_mirror.sources()),
+                )
                 .order_by(InboxEvent.received_at, InboxEvent.id)
                 .limit(1)
                 .with_for_update(skip_locked=True)

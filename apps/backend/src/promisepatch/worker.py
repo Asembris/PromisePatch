@@ -32,10 +32,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from promisepatch.config import Settings
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor
-from promisepatch.domain import inbox, outbox, steps, timers
-from promisepatch.domain.adapters import FakeEffectAdapter
+from promisepatch.domain import inbox, order_mirror, outbox, steps, timers
+from promisepatch.domain.adapters import FakeEffectAdapter, RoutedEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
+from promisepatch.domain.model import EFFECT_ORDER_AMEND
+from promisepatch.domain.order_mirror import AuthoritativeFetch
 from promisepatch.domain.outbox import EffectAdapter
+from promisepatch.integrations.order_system import OrderSystemAdapter, OrderSystemClient
 from promisepatch.observability import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -66,6 +69,14 @@ class Worker:
     adapter: EffectAdapter
     identity: WorkerIdentity = field(default_factory=WorkerIdentity.create)
     idle_interval: float = IDLE_INTERVAL
+    fetch_order: AuthoritativeFetch | None = None
+    """How to read an order whole from the system that owns it, when there is one.
+
+    Injected rather than constructed, because the module that applies an external change to the
+    mirror may not open a socket: it decides what the mirror should say, and the worker supplies
+    the one call that has to leave the process -- made, like every other provider call, with no
+    transaction held.
+    """
 
     @property
     def actor(self) -> Actor:
@@ -79,6 +90,12 @@ class Worker:
         cycle can execute; then steps, because executing one is what enqueues effects; then
         dispatch and ingestion, which are the edges of the system. A cycle therefore carries a
         deadline all the way to an outbound attempt rather than taking four cycles to do it.
+
+        The order system's own events are swept last and separately. Separately because applying
+        one can need an authoritative read over the network, which the general inbox sweep must
+        not hold a transaction across; last because an event that arrives while this cycle is
+        running is picked up by the next one anyway, and the ordering it does need -- amendment
+        first, echo afterwards -- is decided by durable state rather than by sweep order.
         """
         fired = await timers.fire_due_timer(self.database, worker=self.identity.value)
         stepped = await self._execute_one_step()
@@ -86,7 +103,10 @@ class Worker:
             self.database, self.adapter, worker=self.identity.value, actor=self.actor
         )
         ingested = await inbox.process_one(self.database, worker=self.identity.value)
-        return any(item is not None for item in (fired, stepped, dispatched, ingested))
+        mirrored = await order_mirror.process_one(
+            self.database, worker=self.identity.value, fetch=self.fetch_order
+        )
+        return any(item is not None for item in (fired, stepped, dispatched, ingested, mirrored))
 
     async def _execute_one_step(self) -> str | None:
         claim = await steps.claim_step(self.database, worker=self.identity.value)
@@ -163,13 +183,46 @@ async def run(settings: Settings, adapter: EffectAdapter | None = None) -> None:
     The connection is ``PP_DATABASE_URL`` -- ``promisepatch_app``, the same least-privileged
     role the API uses. A worker holds no migration credential and can no more disable a trigger
     or rewrite a ledger than a request handler can.
+
+    Which provider each kind of effect reaches is a deployment question, answered once here and
+    nowhere else. With an order system configured, amendments go to it and the mirror is
+    reconciled against what it says; without one, the fake provider proves the outbox's own
+    guarantees and makes no claim about anybody's order. Everything else -- today, only the
+    customer message, whose real channel is a later slice -- goes to the fake provider either
+    way. The recovery saga is identical in every case: it reads what the row says the provider
+    did, and does not know which one answered.
     """
     configure_logging(settings)
     database = RuntimeDatabase.from_settings(settings)
     stop = asyncio.Event()
     _install_signal_handlers(stop)
-    worker = Worker(database=database, adapter=adapter or FakeEffectAdapter())
+
+    client = (
+        OrderSystemClient(
+            base_url=settings.require_order_system_base_url(),
+            timeout=settings.order_system_timeout_seconds,
+        )
+        if settings.order_system_configured
+        else None
+    )
+    if adapter is None:
+        adapter = (
+            RoutedEffectAdapter(
+                routes={EFFECT_ORDER_AMEND: OrderSystemAdapter(client)},
+                default=FakeEffectAdapter(),
+            )
+            if client is not None
+            else FakeEffectAdapter()
+        )
+
+    worker = Worker(
+        database=database,
+        adapter=adapter,
+        fetch_order=None if client is None else client.fetch_order,
+    )
     try:
         await worker.run_forever(stop)
     finally:
+        if client is not None:
+            await client.aclose()
         await database.dispose()

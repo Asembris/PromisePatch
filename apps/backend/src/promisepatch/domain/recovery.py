@@ -23,7 +23,9 @@ Outbox dispatch
 ``FINALIZE_RECOVERY``
     Enqueued by the delivery acknowledgement itself, so it exists only once the provider's
     acceptance is durable. It proves the acknowledgement from the row -- never from something
-    an adapter said in memory -- and only then does the track become ``RECOVERED``.
+    an adapter said in memory -- and, where the provider is a system of record, waits until the
+    mirror shows the change that provider says it made. Only then does the track become
+    ``RECOVERED``.
 
 ``ABANDON_RECOVERY``
     The same shape for the other ending. A delivery that failed terminally escalates its track
@@ -44,6 +46,14 @@ chose, read back by id. If the world has moved -- the fingerprint no longer matc
 planned against -- the track goes ``STALE`` and *nothing* is sent. There is deliberately no
 branch here that picks a different option, because a plan silently replaced by another plan is
 the one failure a worker could not have caught by reading the screen.
+
+**Recovered means observed, not acknowledged.** The order system owns the order; PromisePatch
+keeps a mirror of it. An acknowledgement says the order system accepted the amendment, which is
+not the same as PromisePatch having seen the result -- and until it has, every read model and
+every later plan still describes the order as it was. So a recovery whose provider made an
+authoritative statement waits, durably, until the mirror agrees with it. The two orderings that
+can happen -- the echo arriving before the acknowledgement, or after it -- converge on one
+finish, because both are decided from rows rather than from what arrived first.
 
 **The honest guarantee is unchanged.** At-least-once delivery under a stable idempotency key.
 The key is derived once from persisted identity (§12.3) and stored on the outbox row, so every
@@ -83,6 +93,7 @@ from promisepatch.db.models import (
     Case,
     CaseStep,
     Order,
+    OrderLine,
     OutboxMessage,
     ProductionTask,
     RecoveryOption,
@@ -93,7 +104,7 @@ from promisepatch.db.models import (
 from promisepatch.db.models import Promise as PromiseRow
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
-from promisepatch.domain import crash
+from promisepatch.domain import crash, retry
 from promisepatch.domain.analysis import fresh_snapshot, scope_from_watch
 from promisepatch.domain.cases import (
     CASE_EXECUTING,
@@ -112,6 +123,9 @@ from promisepatch.domain.cases import (
     settled_case_state,
 )
 from promisepatch.domain.intake import actor_for, require_permitted, require_worker
+from promisepatch.domain.model import (
+    EFFECT_ORDER_AMEND as _EFFECT_ORDER_AMEND,
+)
 from promisepatch.domain.model import (
     EFFECT_TRACK_ID,
     EVENT_STEP_COMPLETED,
@@ -202,8 +216,13 @@ def track_of(step_key: str) -> UUID:
 
 # ------------------------------------------------------------------------------ effect naming
 
-EFFECT_ORDER_AMEND: Final = "ORDER_AMEND"
-"""The §13.3 outbox kind for a governed recovery amendment pushed at the order system."""
+EFFECT_ORDER_AMEND: Final = _EFFECT_ORDER_AMEND
+"""The §13.3 outbox kind for a governed recovery amendment pushed at the order system.
+
+Declared in :mod:`promisepatch.domain.model` and re-exported here, so the adapter that sends one
+can name it without importing this module -- which reads the database, and which an adapter is
+structurally forbidden from reaching.
+"""
 
 CONTINUATION: Final = "continuation"
 """Payload key naming the steps that a delivered or terminally failed effect makes runnable.
@@ -256,6 +275,7 @@ AUDIT_RECOVERY_ABANDONED: Final = "RECOVERY_ABANDONED"
 ESCALATION_BLOCKED: Final = "BLOCKED"
 ESCALATION_NO_CHOSEN_OPTION: Final = "NO_CHOSEN_OPTION"
 ESCALATION_DOWNSTREAM_UNAVAILABLE: Final = "DOWNSTREAM_UNAVAILABLE"
+ESCALATION_MIRROR_NOT_RECONCILED: Final = "MIRROR_NOT_RECONCILED"
 """Why a track was handed to the owner.
 
 Recorded on the audit row and the domain event rather than on ``tracks.reason_detail``, which
@@ -1090,6 +1110,17 @@ async def _finalize(
         )
 
     option = await chosen_option(connection, track)
+    outstanding = await mirror_reconciliation(connection, effect=effect, option=option)
+    if outstanding is not None:
+        return await _await_mirror(
+            connection,
+            case=case,
+            track=track,
+            step_key=step_key,
+            now=now,
+            worker=worker,
+            detail=outstanding,
+        )
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
         event_type=AUDIT_RECOVERY_COMPLETED,
@@ -1135,6 +1166,154 @@ async def _finalize(
             "idempotency_key": key,
         },
     )
+
+
+async def mirror_reconciliation(
+    connection: AsyncConnection, *, effect: Any, option: Any
+) -> str | None:
+    """What still stands between a delivered amendment and a recovery that may claim to be done.
+
+    ``None`` means nothing does. Anything else is a sentence saying which part of the world has
+    not caught up yet, and the recovery waits for it.
+
+    **Why waiting is the correct default with a real order system.** The order system owns the
+    order; PromisePatch owns a mirror of it. A provider acknowledgement says the order system
+    accepted the change -- it does not say PromisePatch has *seen* it, and until it has, every
+    read model, every fingerprint and every later plan is still describing the order as it was.
+    Marking the track ``RECOVERED`` there would be claiming reconciliation on the strength of a
+    message rather than of observed state.
+
+    **Why an effect with no authoritative result reconciles immediately.** Not every provider is
+    a system of record. One that merely accepted a call has made no statement there is anything
+    to observe, so requiring an echo from it would mean waiting for a message nobody will ever
+    send. The presence of ``result`` is what distinguishes the two, and it is on the row, which
+    is why the distinction survives a crash.
+
+    Three things are compared, and each is read from a different place on purpose: the order the
+    provider says it changed, the version it says that order is now at, and the variant *the
+    plan* chose. The last one is the one that matters most -- it ties the mirror to the option a
+    worker confirmed and a customer may have approved, not merely to whatever the order system
+    most recently said.
+    """
+    result = effect.result
+    if not result:
+        return None
+
+    external_id = str(result.get("external_order_id"))
+    order = (
+        await connection.execute(select(Order).where(Order.external_id == external_id))
+    ).one_or_none()
+    if order is None:
+        return f"no mirrored order for external id {external_id!r}"
+
+    expected_version = int(result.get("external_version", 0))
+    if order.external_version < expected_version:
+        return (
+            f"the mirror of {external_id} is at external version {order.external_version}, "
+            f"behind the {expected_version} the order system reported"
+        )
+
+    if option is None:
+        return "the chosen option is gone"
+    line = (
+        await connection.execute(select(OrderLine).where(OrderLine.id == option.order_line_id))
+    ).one_or_none()
+    if line is None:
+        return f"no mirrored line {option.order_line_id!r}"
+    if line.recipe_version_id != option.to_version_id:
+        return (
+            f"the mirror pins line {option.order_line_id} to {line.recipe_version_id}, "
+            f"not the {option.to_version_id} this recovery applied"
+        )
+    return None
+
+
+async def _await_mirror(
+    connection: AsyncConnection,
+    *,
+    case: LockedCase,
+    track: Any,
+    step_key: str,
+    now: datetime,
+    worker: str,
+    detail: str,
+) -> StepOutcome:
+    """Wait for the order system's own account of the change, durably and with a bound.
+
+    Waiting is a ``next_attempt_at`` on the step row, so a process that dies while waiting loses
+    nothing and no worker holds anything in memory. The event that ends the wait arrives on a
+    completely separate path -- a signed webhook, the inbox, the mirror -- so the two orderings
+    converge on the same finish: an echo that arrives before the acknowledgement finds this step
+    reconciling on its first attempt, and one that arrives after finds it on a later one.
+
+    The bound is what stops a track sitting in ``APPLYING`` for ever when the echo never comes.
+    A recovery that cannot be observed is not a recovery, so it is handed to the owner with the
+    reason spelled out rather than left looking as though it were still trying.
+    """
+    if not retry.is_exhausted(await _attempts_of(connection, case.id, step_key)):
+        return StepOutcome(
+            disposition=Disposition.RETRYING,
+            event_type=EVENT_STEP_FAILED,
+            error=f"awaiting the order system's own account of this change: {detail}",
+        )
+
+    unit_of_work = UnitOfWork(connection)
+    async with unit_of_work.governed(
+        event_type=AUDIT_RECOVERY_ABANDONED,
+        actor=Actor(kind="SYSTEM", id=worker),
+        authority="NONE",
+        case_id=case.id,
+        track_id=track.id,
+        before={"track_state": track.state, "track_version": track.version},
+        after={
+            "track_state": TRACK_ESCALATED,
+            "track_version": track.version + 1,
+            "reason": ESCALATION_MIRROR_NOT_RECONCILED,
+        },
+        provenance={"step_key": step_key, "worker": worker, "detail": detail},
+        occurred_at=now,
+    ) as write:
+        await set_track(write, track=track, state=TRACK_ESCALATED)
+        moved_to = await settled_case_state(connection, case=case, except_step_key=step_key)
+    successors = await case_successors(connection, moved_to, case_id=case.id)
+
+    return StepOutcome(
+        disposition=Disposition.DONE,
+        event_type=EVENT_STEP_COMPLETED,
+        case_change=CaseChange(state=moved_to, needs_owner_attention=True),
+        successors=successors,
+        events=(
+            AppendEvent(
+                type=EVENT_TRACK_ESCALATED,
+                payload={"reason": ESCALATION_MIRROR_NOT_RECONCILED},
+                entity_refs=({"kind": "track", "id": str(track.id)},),
+            ),
+            *case_events(moved_to, case_id=case.id),
+        ),
+        result={
+            "outcome": "ESCALATED",
+            "track_id": str(track.id),
+            "reason": ESCALATION_MIRROR_NOT_RECONCILED,
+            "detail": detail,
+        },
+    )
+
+
+async def _attempts_of(connection: AsyncConnection, case_id: UUID, step_key: str) -> int:
+    """How many times this step has been claimed, read from the row this transaction holds.
+
+    Read rather than passed in, because the executor contract deliberately gives a step the
+    world it locked and not the bookkeeping of its own claim. One statement against a row
+    already locked by this transaction is cheaper than widening that contract for one caller.
+    """
+    attempts = (
+        await connection.execute(
+            select(CaseStep.attempts).where(
+                CaseStep.case_id == case_id, CaseStep.step_key == step_key
+            )
+        )
+    ).scalar_one_or_none()
+    return int(attempts or 1)
 
 
 async def _abandon(
