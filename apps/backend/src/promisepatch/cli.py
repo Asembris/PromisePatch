@@ -373,6 +373,13 @@ def case_status_command(
             f"    track {track.state}, priority {track.priority}, "
             f"{track.paths} path(s), {track.watched_entities} watched"
         )
+        # The mirror, as it stands. An amendment the order system has accepted but not yet
+        # echoed leaves the track waiting, and this is what it is waiting for: the external
+        # version below has to reach the one the effect reports, with the line pinned to the
+        # variant the plan chose. Read-only, like everything else this command prints.
+        typer.echo(f"    mirror external version {track.order_external_version}")
+        for line_id, version_id in sorted(track.mirrored_versions.items()):
+            typer.echo(f"      {line_id} -> {version_id}")
         if track.fingerprint:
             typer.echo(f"    fingerprint {track.fingerprint}")
         if track.linked_track_id:
@@ -418,6 +425,11 @@ def case_status_command(
                 f"(attempt {effect.attempts}, ref {effect.provider_ref or '-'})"
             )
             typer.echo(f"      key {effect.idempotency_key}")
+            if effect.result:
+                reported = ", ".join(
+                    f"{name} {value}" for name, value in sorted(effect.result.items())
+                )
+                typer.echo(f"      provider reported: {reported}")
             if effect.last_error:
                 typer.echo(f"      last error: {effect.last_error}")
 

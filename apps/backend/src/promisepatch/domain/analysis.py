@@ -61,6 +61,7 @@ from promisepatch.db.models import (
     Customer,
     InboundReply,
     Order,
+    OrderLine,
     OutboxMessage,
     PhysicalException,
     RecoveryOption,
@@ -1191,6 +1192,14 @@ class EffectStatus:
     idempotency_key: str
     provider_ref: str | None
     attempts: int
+    result: Mapping[str, Any] | None
+    """What the provider reported it did, when the provider is a system of record.
+
+    A reference proves the call was accepted; this says what was accepted -- for an order
+    amendment, the version the order system is now at and the variant it put on the line. Read
+    beside the mirror's own version below, it is how an operator answers "has the change come
+    back yet" without opening a database.
+    """
     delivered_at: datetime | None
     last_error: str | None
 
@@ -1251,6 +1260,20 @@ class TrackStatus:
     track_id: UUID
     promise_id: str
     order_external_id: str
+    order_external_version: int
+    """How current PromisePatch's mirror of that order is, in the order system's own numbering.
+
+    Here rather than in a separate view because the question it answers is a question about
+    this track: an amendment that has been accepted but not yet observed leaves the track
+    waiting, and this is the number that has to move before it can stop.
+    """
+    mirrored_versions: Mapping[str, str]
+    """What the mirror currently pins each of this promise's order lines to.
+
+    The other half of the comparison. Together with an effect's reported result it makes
+    "delivered but not yet reconciled" readable rather than something to infer from a track
+    that has been ``APPLYING`` for a suspiciously long time.
+    """
     customer_name: str
     state: str
     classification: str | None
@@ -1305,7 +1328,9 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
             await connection.execute(
                 select(
                     Track.__table__,
+                    Order.id.label("order_id"),
                     Order.external_id.label("order_external_id"),
+                    Order.external_version.label("order_external_version"),
                     Customer.name.label("customer_name"),
                 )
                 .join(PromiseRow, PromiseRow.id == Track.promise_id)
@@ -1338,6 +1363,13 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                     .order_by(OutboxMessage.created_at)
                 )
             ).all()
+            mirrored = (
+                await connection.execute(
+                    select(OrderLine.id, OrderLine.recipe_version_id).where(
+                        OrderLine.order_id == track.order_id
+                    )
+                )
+            ).all()
             approval = await _approval_status(connection, track.id)
             revalidated = await _revalidation_status(connection, track.case_id, track.id)
             tracks.append(
@@ -1345,6 +1377,8 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                     track_id=track.id,
                     promise_id=track.promise_id,
                     order_external_id=track.order_external_id,
+                    order_external_version=track.order_external_version,
+                    mirrored_versions={row.id: row.recipe_version_id for row in mirrored},
                     customer_name=track.customer_name,
                     state=track.state,
                     classification=track.classification,
@@ -1379,6 +1413,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                             idempotency_key=effect.idempotency_key,
                             provider_ref=effect.provider_ref,
                             attempts=effect.attempts,
+                            result=effect.result,
                             delivered_at=effect.delivered_at,
                             last_error=effect.last_error,
                         )
