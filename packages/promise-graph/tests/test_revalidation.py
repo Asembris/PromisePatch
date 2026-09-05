@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -18,7 +19,7 @@ from promise_graph.model import (
     TaskState,
 )
 from promise_graph.options import approval_deadline
-from promise_graph.revalidation import RevalidationOutcome, revalidate
+from promise_graph.revalidation import DecisionBinding, RevalidationOutcome, revalidate
 from promise_graph.snapshot import GraphSnapshot
 from tests.fixtures import settle, settle_and_analyze
 
@@ -387,3 +388,114 @@ def test_each_check_has_a_distinct_index_and_name(index: int, anchor: datetime) 
     )
     matching = [check for check in result.checks if check.index == index]
     assert len(matching) == 1
+
+
+# ------------------------------------------------- the two persisted-provenance inputs
+
+
+def intact(request: ApprovalRequestRecord) -> DecisionBinding:
+    """The binding a healthy consent record produces: one decision, this plan, unspent."""
+    return DecisionBinding(
+        request_id=request.id,
+        track_id=request.track_id,
+        option_id=request.option_id,
+        decision_count=1,
+        superseded=False,
+        consumed=False,
+    )
+
+
+def test_a_bound_decision_passes_check_10_even_though_the_request_is_decided(
+    anchor: datetime,
+) -> None:
+    """The durable workflow's reading: decided *by this decision* is not "already decided"."""
+    snapshot, request, decision = prepared(anchor)
+    answered = request.model_copy(update={"decided": True})
+    result = revalidate(
+        snapshot,
+        answered,
+        decision,
+        anchor,
+        track_is_waiting_for_customer=True,
+        case_is_waiting=True,
+        binding=intact(answered),
+    )
+    assert result.outcome is RevalidationOutcome.PROCEED
+    assert result.checks[9].passed
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"decision_count": 0},
+        {"decision_count": 2},
+        {"request_id": "req-other"},
+        {"track_id": "trk-other"},
+        {"option_id": "opt-other"},
+        {"superseded": True},
+        {"consumed": True},
+    ],
+)
+def test_check_10_fails_closed_on_any_broken_binding(
+    anchor: datetime, change: dict[str, object]
+) -> None:
+    snapshot, request, decision = prepared(anchor)
+    answered = request.model_copy(update={"decided": True})
+    result = revalidate(
+        snapshot,
+        answered,
+        decision,
+        anchor,
+        track_is_waiting_for_customer=True,
+        case_is_waiting=True,
+        binding=dataclasses.replace(intact(answered), **change),  # type: ignore[arg-type]
+    )
+    assert result.outcome is RevalidationOutcome.NOOP
+    assert result.failed[0].index == 10
+
+
+def test_check_10_reports_the_binding_it_compared(anchor: datetime) -> None:
+    snapshot, request, decision = prepared(anchor)
+    result = revalidate(
+        snapshot,
+        request,
+        decision,
+        anchor,
+        track_is_waiting_for_customer=True,
+        case_is_waiting=True,
+        binding=dataclasses.replace(intact(request), consumed=True),
+    )
+    check = result.checks[9]
+    assert "already consumed" in check.actual
+    assert request.option_id in check.expected
+
+
+def test_check_8_follows_the_persisted_sender_chain(anchor: datetime) -> None:
+    """A decision whose stored reply came from somewhere else is not authority."""
+    snapshot, request, decision = prepared(anchor)
+    result = revalidate(
+        snapshot,
+        request,
+        decision,
+        anchor,
+        track_is_waiting_for_customer=True,
+        case_is_waiting=True,
+        sender_chain="tg:9999",
+    )
+    assert result.outcome is RevalidationOutcome.UNAUTHORIZED
+    assert result.failed[0].index == 8
+    assert "tg:9999" in result.checks[7].actual
+
+
+def test_check_8_passes_when_the_chain_agrees(anchor: datetime) -> None:
+    snapshot, request, decision = prepared(anchor)
+    result = revalidate(
+        snapshot,
+        request,
+        decision,
+        anchor,
+        track_is_waiting_for_customer=True,
+        case_is_waiting=True,
+        sender_chain=request.customer_channel,
+    )
+    assert result.outcome is RevalidationOutcome.PROCEED

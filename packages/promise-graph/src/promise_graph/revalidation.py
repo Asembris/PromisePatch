@@ -12,8 +12,28 @@ check failure outcome   meaning
 7     ``EXPIRED``       the approval window closed
 8     ``UNAUTHORIZED``  the reply did not come from the order's approval channel
 9     ``NOOP``          not produced by the literal parser (unreachable by construction)
-10    ``NOOP``          this request was already decided
+10    ``NOOP``          this request was already decided, or its decision is not this one
 ===== ================= ==========================================================
+
+Two of the ten cannot be answered from the graph, because what they ask about is the
+*provenance* of an answer rather than the state of the kitchen. Both are therefore supplied by
+the caller, and both default to the value that leaves the check exactly as it was:
+
+``sender_chain``
+    The sender identity the persisted chain resolves to -- decision -> stored inbound reply ->
+    the channel it arrived on. Check 8 already compares the decision's own claim about who sent
+    it; this compares the record behind that claim, so a chain that was corrupted after the fact
+    fails closed instead of passing on a denormalised field.
+
+``binding``
+    Which decision settled this request, and whether it has already been spent. §14.3's check 10
+    ("this request id has not already been decided") is enforced at the *decision-commit*
+    boundary by the one-decision-per-request constraint; by the time a durable revalidation runs,
+    the request is legitimately decided -- by the very decision being consumed. A caller that can
+    prove which decision that was supplies a :class:`DecisionBinding`, and the check then asks the
+    question that is still open: is this the one decision recorded against this request, does it
+    belong to this track and this chosen option, has it been superseded, and has it already
+    authorised an execution. A caller that supplies none keeps the plain reading.
 """
 
 from __future__ import annotations
@@ -63,6 +83,36 @@ _OUTCOME_BY_CHECK: dict[int, RevalidationOutcome] = {
 
 
 @dataclass(frozen=True)
+class DecisionBinding:
+    """Which decision settled a request, and whether it is still spendable.
+
+    Assembled by the caller from persisted rows, because every field of it is a fact about what
+    the database holds rather than about the graph. Supplying one turns check 10 from "has this
+    request been answered at all" into the question a durable workflow actually has to answer:
+    *is the answer being consumed here the one and only answer this request received, does it
+    still describe this track's chosen option, and has it already been spent.*
+    """
+
+    request_id: str
+    """The request the persisted decision was recorded against."""
+
+    track_id: str
+    """The track that request belongs to, read back from the request rather than assumed."""
+
+    option_id: str
+    """The option the track has chosen *now*. A plan that moved makes this differ."""
+
+    decision_count: int
+    """Decisions recorded against the request. Anything but one is a broken consent record."""
+
+    superseded: bool
+    """The request was withdrawn by a re-plan (§14.4), so its answer authorises nothing."""
+
+    consumed: bool
+    """This decision has already authorised an execution. One consent, one recovery."""
+
+
+@dataclass(frozen=True)
 class CheckResult:
     index: int
     name: str
@@ -90,8 +140,15 @@ def revalidate(
     track_is_waiting_for_customer: bool,
     case_is_waiting: bool,
     recovered_claims: Sequence[Claim] = (),
+    sender_chain: str | None = None,
+    binding: DecisionBinding | None = None,
 ) -> RevalidationResult:
-    """Run all ten checks against current state and derive the outcome."""
+    """Run all ten checks against current state and derive the outcome.
+
+    ``sender_chain`` and ``binding`` are the two persisted-provenance inputs described in the
+    module docstring. Both are optional and both default to leaving their check exactly as the
+    frozen checklist words it.
+    """
     order = snapshot.orders.get(request.order_id)
     order_line = snapshot.order_lines.get(request.order_line_id)
     task = None if order_line is None else snapshot.task_of_line(order_line.id)
@@ -154,9 +211,14 @@ def revalidate(
         _check(
             8,
             "sender is the order's approval channel",
-            decision is not None and decision.sender_identity == request.customer_channel,
+            decision is not None
+            and decision.sender_identity == request.customer_channel
+            and (sender_chain is None or sender_chain == request.customer_channel),
             request.customer_channel,
-            _NONE if decision is None else decision.sender_identity,
+            _NONE
+            if decision is None
+            else decision.sender_identity
+            + ("" if sender_chain is None else f" via {sender_chain}"),
         ),
         _check(
             9,
@@ -165,13 +227,7 @@ def revalidate(
             str(ParserKind.LITERAL),
             _NONE if decision is None else str(decision.parser),
         ),
-        _check(
-            10,
-            "request not already decided",
-            not request.decided,
-            "decided=False",
-            f"decided={request.decided}",
-        ),
+        _binding_check(request, decision, binding),
     ]
 
     outcome = RevalidationOutcome.PROCEED
@@ -180,6 +236,42 @@ def revalidate(
             outcome = _OUTCOME_BY_CHECK[check.index]
             break
     return RevalidationResult(checks=tuple(checks), outcome=outcome)
+
+
+def _binding_check(
+    request: ApprovalRequestRecord,
+    decision: ApprovalDecisionRecord | None,
+    binding: DecisionBinding | None,
+) -> CheckResult:
+    """Check 10, in whichever of its two readings the caller has the evidence for."""
+    if binding is None:
+        return _check(
+            10,
+            "request not already decided",
+            not request.decided,
+            "decided=False",
+            f"decided={request.decided}",
+        )
+    expected = (
+        f"one decision for {request.id} on track {request.track_id} option {request.option_id}"
+    )
+    actual = (
+        f"{binding.decision_count} decision(s) for {binding.request_id} "
+        f"on track {binding.track_id} option {binding.option_id}"
+        f"{', superseded' if binding.superseded else ''}"
+        f"{', already consumed' if binding.consumed else ''}"
+        f"{'' if decision is not None else ', no decision'}"
+    )
+    passed = (
+        decision is not None
+        and binding.decision_count == 1
+        and binding.request_id == request.id
+        and binding.track_id == request.track_id
+        and binding.option_id == request.option_id
+        and not binding.superseded
+        and not binding.consumed
+    )
+    return _check(10, "one unspent decision, bound to this plan", passed, expected, actual)
 
 
 def _substitute_check(
