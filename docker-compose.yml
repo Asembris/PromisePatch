@@ -4,6 +4,15 @@
 #     postgres  ──healthy──▶  migrate  ──exit 0──▶  seed  ────┤
 #                                                            └──▶  worker
 #
+#     order-simulator ────signed webhook────▶  api
+#                     ◀───order amendment───
+#
+# The order system is a separate service on purpose, and it is separate in every way that
+# matters: its own image, its own process, its own SQLite volume, its own published port and
+# its own window. It shares no environment file with PromisePatch and holds no PostgreSQL
+# credential. The only thing between them is the `order-contract` distribution and two HTTP
+# calls, one in each direction.
+#
 # Every arrow is a condition rather than a hope. `depends_on` with `service_healthy` and
 # `service_completed_successfully` is what makes "the stack is up" mean the schema is at head
 # and the fixture is loaded: a failed migration leaves the API unstarted instead of leaving a
@@ -136,6 +145,47 @@ services:
     stop_grace_period: 20s
     restart: unless-stopped
 
+  order-simulator:
+    # The External Order System — simulator. Not Square, not a production point of sale, and
+    # not a real customer system: a stand-in that owns demo order state so that a change made
+    # *outside* PromisePatch can be watched arriving inside it.
+    #
+    # It does not depend on `seed` and it must not: it seeds its own store on boot, from its
+    # own hand-authored order book, and a parity test in the backend suite is what keeps the
+    # two datasets describing the same six orders. Waiting for PromisePatch's fixture would be
+    # this system asking PromisePatch what its orders are.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.simulator
+      secrets: [extra_ca]
+    image: promisepatch-order-simulator:local
+    env_file: [docker/env/order-simulator.env]
+    ports:
+      # Its own high port, and deliberately far from the API's: on camera these are two
+      # windows, and two systems that answered on adjacent ports would invite the reading that
+      # they are one.
+      - "127.0.0.1:58100:8100"
+    volumes:
+      # Its own volume. The SQLite file never goes anywhere near the PostgreSQL one -- the
+      # whole claim of Proof A is that these two systems do not share storage.
+      - order-simulator-data:/data
+    healthcheck:
+      # `/readyz`, not `/healthz`: readiness says the store is open and its order book is
+      # loaded, which is what the browser suite needs before it can edit an order.
+      test:
+        - CMD
+        - python
+        - -c
+        - 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8100/readyz", timeout=5)'
+      interval: 3s
+      timeout: 6s
+      retries: 20
+      start_period: 10s
+    # Restarting is a real recovery mechanism here, not a way to hide a crash: an order event
+    # committed before the process died is a row, and the delivery loop finds it on boot.
+    stop_grace_period: 20s
+    restart: unless-stopped
+
   frontend:
     build:
       context: .
@@ -168,6 +218,7 @@ services:
 
 volumes:
   pgdata:
+  order-simulator-data:
 
 secrets:
   extra_ca:

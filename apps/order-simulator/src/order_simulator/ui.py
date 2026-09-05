@@ -86,8 +86,11 @@ def _order_row(
         for item in items
     )
     name = "unknown item" if current is None else current.name
+    # The order this row is about, named on the row itself. It is what an operator's eye
+    # follows down the table, and it is what anything driving this screen addresses -- a
+    # locator matching "the row mentioning EXT-D" would also match the event log below.
     return f"""
-      <tr>
+      <tr data-order-row="{escape(order.external_id)}">
         <td><strong>{escape(order.external_id)}</strong><br><span style="color:#8d97a9">
           {escape(line.external_line_id)}</span></td>
         <td>{escape(order.customer.name)}<br><span style="color:#8d97a9">
@@ -115,7 +118,7 @@ def _delivery_row(delivery: DeliveryStatus) -> str:
         else f"<br><span style='color:#8d97a9'>{escape(delivery.last_error)}</span>"
     )
     return f"""
-      <tr>
+      <tr data-event-row="{escape(str(delivery.event_id))}">
         <td>{escape(delivery.external_order_id)}</td>
         <td>{escape(delivery.type)}</td>
         <td class="version">{delivery.version}</td>

@@ -39,15 +39,19 @@ RUN --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.crt \
 # Dependencies before source. The manifests change rarely and the source changes constantly,
 # so resolving them in their own layer means an ordinary code edit does not re-resolve the
 # whole graph. `--no-install-workspace` is what keeps the two apart: it installs everything
-# the workspace depends on and none of the workspace itself.
+# the workspace depends on and none of the workspace itself. Every member's manifest is copied
+# because the lockfile describes the workspace as a whole; `--package` is what decides which
+# of them is actually built into this image.
 #
 # `--frozen`: the lockfile is the input, never something the build is allowed to update. A
 # build that could relock would be a build that could ship a dependency nobody reviewed.
 COPY pyproject.toml uv.lock .python-version ./
 COPY packages/promise-graph/pyproject.toml packages/promise-graph/pyproject.toml
+COPY packages/order-contract/pyproject.toml packages/order-contract/pyproject.toml
 COPY apps/backend/pyproject.toml apps/backend/pyproject.toml
+COPY apps/order-simulator/pyproject.toml apps/order-simulator/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable --no-install-workspace
+    uv sync --frozen --no-dev --no-editable --no-install-workspace --package promisepatch
 
 # `--no-dev`: pytest, mypy, ruff and Hypothesis are how this code is verified, not how it
 # runs, and a test runner in a serving image is attack surface with no counterpart benefit.
@@ -55,9 +59,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # `--no-editable`: the workspace members are built into real wheels and installed, so the
 # runtime stage needs the virtual environment and not the source tree it was built from.
 COPY packages/promise-graph packages/promise-graph
+COPY packages/order-contract packages/order-contract
 COPY apps/backend apps/backend
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+    uv sync --frozen --no-dev --no-editable --package promisepatch
 
 # ----------------------------------------------------------------------------- runtime stage
 

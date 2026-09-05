@@ -1,8 +1,8 @@
 """Generate the local stack's environment files from their committed templates.
 
 The templates in ``docker/env/*.env.example`` are the documentation and the shape; this fills
-in the values that must not be committed and writes the four files compose and the host
-tooling read.
+in the values that must not be committed and writes the files compose, the order system and
+the host tooling read.
 
 Three things follow from what these credentials are:
 
@@ -12,7 +12,9 @@ Three things follow from what these credentials are:
 * **One secret, one placeholder, every file.** The superuser password appears in the
   PostgreSQL container's configuration and in the administrative URL; the runtime role's
   password appears in the migration environment that creates the role and in the URL the API
-  connects with. They are substituted together so the files cannot disagree.
+  connects with; the order-system webhook secret appears in both applications' environments,
+  because a shared secret only works if both sides were given the same one. They are
+  substituted together so the files cannot disagree.
 * **Existing files are left alone.** Regenerating in place would rotate the runtime role's
   password out from under a database that already has the old one, so a rewrite has to be
   asked for with ``--force`` and paired with removing the volume.
@@ -24,14 +26,28 @@ mechanism, and a deployed environment gets its secrets from a secret manager ins
 from __future__ import annotations
 
 import argparse
+import re
 import secrets
 import sys
 from pathlib import Path
 
+_PLACEHOLDER = re.compile(r"__[A-Z0-9_]+__")
+"""What an unsubstituted template value looks like, whatever prefix its variable carries.
+
+Matched against every rendered line rather than against the ones starting ``PP_``: two
+applications read these files now, and a guard that only knew one of their prefixes would let
+the other ship a file with a placeholder in it."""
+
 ROOT = Path(__file__).resolve().parents[1]
 ENV_DIR = ROOT / "docker" / "env"
 
-FILES: tuple[str, ...] = ("postgres.env", "migrate.env", "api.env", "host.env")
+FILES: tuple[str, ...] = (
+    "postgres.env",
+    "migrate.env",
+    "api.env",
+    "host.env",
+    "order-simulator.env",
+)
 
 EXTRA_CA = "extra-ca.crt"
 """An optional additional root CA the container builds trust, created empty.
@@ -55,6 +71,9 @@ def generated_secrets() -> dict[str, str]:
         "__SESSION_SECRET__": secrets.token_urlsafe(48),
         "__WORKER_PASSWORD__": secrets.token_urlsafe(12),
         "__OWNER_PASSWORD__": secrets.token_urlsafe(12),
+        # Shared by two applications rather than held by one, which is what makes it a
+        # shared secret: PromisePatch verifies exactly what the order system signs.
+        "__ORDER_WEBHOOK_SECRET__": secrets.token_urlsafe(32),
     }
 
 
@@ -63,7 +82,7 @@ def render(template: str, values: dict[str, str]) -> str:
     rendered = template
     for placeholder, value in values.items():
         rendered = rendered.replace(placeholder, value)
-    remaining = [line for line in rendered.splitlines() if "__" in line and line.startswith("PP_")]
+    remaining = [line for line in rendered.splitlines() if _PLACEHOLDER.search(line)]
     if remaining:
         raise SystemExit(
             "a template placeholder was not substituted; "
@@ -91,6 +110,14 @@ def main(argv: list[str] | None = None) -> int:
     existing = [name for name in FILES if (ENV_DIR / name).exists()]
     if existing and not args.force:
         print(f"already present, leaving untouched: {', '.join(existing)}")
+        missing = [name for name in FILES if name not in existing]
+        if missing:
+            # Named explicitly rather than quietly generated. A file that is missing because
+            # the stack gained a service holds a *shared* secret, and generating one side of a
+            # shared secret while the other side keeps its old one produces a stack that comes
+            # up healthy and cannot talk to itself.
+            print(f"missing, and not generated: {', '.join(missing)}")
+            print("these hold secrets shared with the files above; regenerate all of them:")
         print("re-generate with --force, then: docker compose down --volumes")
         return 0
 

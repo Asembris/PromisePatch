@@ -64,3 +64,35 @@ export function resetDemoState(): void {
   const command = process.env.E2E_RESET_COMMAND ?? DEFAULT_RESET_COMMAND
   execSync(command, { cwd: REPOSITORY_ROOT, stdio: 'inherit' })
 }
+
+/**
+ * The External Order System, which is a different system on a different port.
+ *
+ * Deliberately not derived from the PromisePatch base URL. The whole claim these tests exist to
+ * check is that the two are separate, and a helper that computed one from the other would be
+ * quietly asserting the opposite.
+ */
+export function orderSystemURL(): string {
+  return process.env.E2E_ORDER_SYSTEM_URL ?? 'http://localhost:58100'
+}
+
+/** PromisePatch's own API, read directly rather than through the browser's proxy. */
+export function promisePatchAPI(): string {
+  return process.env.E2E_API_URL ?? 'http://localhost:58000'
+}
+
+/**
+ * Put the order system's book back, through its own admin route.
+ *
+ * Its reset, not PromisePatch's: this empties the order system's SQLite store and touches no
+ * PromisePatch row at all. Nothing here needs a credential, because the order system is a local
+ * stand-in on a private network and holds nothing worth protecting.
+ */
+export function resetOrderSystem(): void {
+  const response = execSync(
+    `node -e "fetch('${orderSystemURL()}/admin/reset', { method: 'POST' })` +
+      `.then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"`,
+    { cwd: REPOSITORY_ROOT },
+  )
+  void response
+}

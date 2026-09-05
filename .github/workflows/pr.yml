@@ -51,7 +51,11 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync --frozen --all-packages
-      - run: uv run mypy packages/promise-graph apps/backend
+      # Two invocations, not one: both test directories contain a `conftest`, and mypy
+      # resolves a module by name rather than by path. Checking them together would be
+      # ambiguous, and excluding one of them would be checking less.
+      - run: uv run mypy packages/promise-graph packages/order-contract apps/backend
+      - run: uv run mypy apps/order-simulator
 
   tests:
     name: pytest + coverage
@@ -69,6 +73,20 @@ jobs:
           --cov-branch
           --cov-report=term-missing
           --cov-fail-under=95
+
+  contract:
+    name: order contract + order system
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      # No database, no network and no credential of any kind: the order system owns a SQLite
+      # file it creates in a temporary directory, and the wire contract is pure Pydantic.
+      - run: uv run pytest packages/order-contract apps/order-simulator
 
   properties:
     name: hypothesis (ci profile)
@@ -161,6 +179,11 @@ jobs:
 
       # One process, no parallelism: several of these tests reload the fixture, which
       # truncates every table PromisePatch owns.
+      #
+      # The order-system tests run here too, and they run both applications for real: the
+      # order system over its own SQLite file in a temporary directory, PromisePatch over this
+      # job's PostgreSQL, and signed HTTP between them. Nothing about them needs a credential
+      # that is not generated above.
       - name: Backend suite, integration tests included
         run: uv run pytest apps/backend
 
