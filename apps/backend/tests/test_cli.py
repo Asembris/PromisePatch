@@ -16,6 +16,7 @@ from promisepatch.cli import app, resolve_anchor
 from promisepatch.config import Settings, get_settings
 from promisepatch.domain import analysis, cases, intake, recovery
 from promisepatch.fixtures.reset import ResetOutcome
+from promisepatch.semantic import SemanticProviderError
 
 runner = CliRunner()
 
@@ -565,6 +566,67 @@ def test_confirm_plan_refuses_an_unparseable_identifier() -> None:
 
     assert result.exit_code == 1
     assert "not a UUID" in result.output
+
+
+# ---------------------------------------------------------------- semantic diagnostics
+
+
+def test_semantic_smoke_is_a_subcommand() -> None:
+    assert "semantic-smoke" in runner.invoke(app, ["--help"]).stdout
+
+
+def test_semantic_smoke_reports_the_reading_and_says_it_authorises_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A diagnostic: the configured provider answers, and the answer decides nothing.
+
+    Runs against the fake, because that is what an unconfigured machine has. It opens no
+    database connection, which is why there is nothing to stub here but the environment.
+    """
+    monkeypatch.setenv("PP_LLM_PROVIDER", "fake")
+    get_settings.cache_clear()
+    try:
+        result = runner.invoke(app, ["semantic-smoke", "--text", "Strawberries work"])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.exit_code == 0, result.output
+    assert "provider: fake" in result.output
+    assert "job:      classify_reply_intent" in result.output
+    assert "APPARENT" in result.output or "UNCLEAR" in result.output
+    assert "authority: none" in result.output
+
+
+def test_semantic_smoke_reports_a_failure_instead_of_a_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A machine with no AWS access should be told what to configure, not shown a stack."""
+
+    def unavailable(settings: object) -> object:
+        raise SemanticProviderError(
+            "Bedrock refused the call: AccessDeniedException", retryable=False
+        )
+
+    monkeypatch.setenv("PP_LLM_PROVIDER", "bedrock")
+    monkeypatch.setattr(cli, "build_semantic_provider", unavailable)
+    get_settings.cache_clear()
+    try:
+        result = runner.invoke(app, ["semantic-smoke"])
+    finally:
+        get_settings.cache_clear()
+
+    assert result.exit_code == 1
+    assert "AccessDeniedException" in result.output
+    assert "AWS_PROFILE" in result.output
+
+
+def test_there_is_no_diagnostic_that_changes_anything() -> None:
+    """A semantic command may look; none of them may act."""
+    names = {command.name or "" for command in app.registered_commands}
+    semantic = {name for name in names if name.startswith("semantic")}
+
+    assert semantic == {"semantic-smoke"}
+    assert not [name for name in semantic if "apply" in name or "interpret-and" in name]
 
 
 # ------------------------------------------------------------------ customer channel

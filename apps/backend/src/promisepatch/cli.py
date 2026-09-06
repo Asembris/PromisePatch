@@ -22,12 +22,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 
-from promisepatch.config import Settings, get_settings
+from promisepatch.config import LlmProvider, Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
 from promisepatch.domain import analysis, handlers, inbox, intake, recovery
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
+from promisepatch.integrations import build_semantic_provider
+from promisepatch.semantic import ClassifyReplyIntentRequest, SemanticError, UntrustedText
 
 app = typer.Typer(
     name="pp",
@@ -432,6 +434,62 @@ def case_status_command(
                 typer.echo(f"      provider reported: {reported}")
             if effect.last_error:
                 typer.echo(f"      last error: {effect.last_error}")
+
+
+@app.command(name="semantic-smoke")
+def semantic_smoke_command(
+    text: str = typer.Option(
+        "Strawberries work",
+        "--text",
+        help="The reply to read. Treated as data; it decides nothing.",
+    ),
+) -> None:
+    """Put one small, safe question to the configured semantic provider and print the answer.
+
+    A diagnostic, and only a diagnostic. It opens no database connection, touches no case and
+    writes nothing anywhere: it exists to answer "can this machine reach the model, and does
+    the model come back inside the schema" without staging a demo to find out.
+
+    Against Bedrock it needs AWS credentials, which come from the SDK's own chain -- a profile,
+    an SSO session, a task role. None of them is read by PromisePatch and none of them is
+    printed here. If there are none, the SDK says so and this reports it.
+    """
+    settings = get_settings()
+    request = ClassifyReplyIntentRequest(reply=UntrustedText(text=text))
+
+    typer.echo(f"provider: {settings.llm_provider.value}")
+    typer.echo(f"job:      {request.job.value}")
+    try:
+        # Construction is inside the guard as well as the call. Missing configuration and an
+        # unreachable model are the same question for whoever ran this -- "why can I not talk
+        # to the model" -- and both deserve a sentence rather than a stack trace.
+        provider = build_semantic_provider(settings)
+        result = asyncio.run(provider.run(request))
+    except (RuntimeError, SemanticError) as error:
+        # Credentials, model access and Region come from outside PromisePatch, so a failure
+        # here is usually somebody's AWS setup rather than a bug. Name what to check, and
+        # print no credential: the provider's message already carries the service's own code.
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        if settings.llm_provider is LlmProvider.BEDROCK:
+            typer.secho(
+                "check that credentials are available to the AWS SDK (AWS_PROFILE, an SSO "
+                f"session or a task role) and that this account may invoke "
+                f"{settings.bedrock_model_id} in {settings.aws_region}.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+        raise typer.Exit(code=1) from error
+
+    telemetry = result.telemetry
+    typer.echo(f"model:    {telemetry.model_id or '-'}")
+    typer.echo(f"attempts: {telemetry.attempts}")
+    typer.echo(f"result:   {result.value.model_dump_json()}")
+    typer.echo(
+        f"usage:    in {telemetry.usage.input_tokens or '-'} "
+        f"out {telemetry.usage.output_tokens or '-'} "
+        f"latency {telemetry.usage.latency_ms or '-'} ms"
+    )
+    typer.echo("authority: none. This reading cannot approve, decline or record anything.")
 
 
 async def _read_case_status(settings: Settings, case_id: UUID) -> analysis.CaseStatus:
