@@ -114,6 +114,7 @@ from promisepatch.domain.model import (
     AppendEvent,
     ArmTimer,
     CaseChange,
+    CreateStep,
     DeliveryOutcome,
     DeliveryStatus,
     Disposition,
@@ -161,6 +162,24 @@ APPROVAL_STEP_KINDS: Final[frozenset[str]] = frozenset(
 )
 """Step kinds the worker routes here. Every one of them reads rows to decide."""
 
+STEP_INTERPRET_CUSTOMER_REPLY: Final = "INTERPRET_CUSTOMER_REPLY"
+"""The sixth transaction of the consent protocol, and the only one a model touches.
+
+Named here, with the rest of the protocol's vocabulary, and *implemented* in
+:mod:`promisepatch.domain.customer_intent`, which imports no decision machinery at all. The
+split is the boundary: the module that can ask a model what a sentence looked like cannot
+reach :class:`~promisepatch.db.models.ApprovalDecision`, and the module that records consent
+never calls a provider.
+
+It exists only for a reply that reached the literal parser and was not a decision, on a request
+that is open, undecided, in date and from the right channel -- which is why no unauthorised
+sender, expired window, duplicate delivery or literal ``YES`` ever costs a model call: the step
+that would make one is never created.
+"""
+
+CUSTOMER_INTENT_STEP_KINDS: Final[frozenset[str]] = frozenset({STEP_INTERPRET_CUSTOMER_REPLY})
+"""Kinds the worker routes to the semantic half, which is a different module on purpose."""
+
 
 def request_step_key(track_id: UUID) -> str:
     """One approval request per track, whatever happens to the process that enqueued it."""
@@ -182,8 +201,25 @@ def expire_step_key(request_id: UUID) -> str:
     return f"approval-expired:{request_id}"
 
 
+def interpret_step_key(reply_id: UUID) -> str:
+    """One semantic reading per stored reply, whatever the transport did.
+
+    Keyed on the reply rather than on the request, because a request may legitimately receive
+    more than one reply and each of them is its own question. Keyed on the *stored* reply -- a
+    value derived from the provider's message id -- so a redelivered message that somehow
+    reached the protocol twice proposes the identical step key and the unique index on
+    ``(case_id, step_key)`` declines the second.
+    """
+    return f"interpret-reply:{reply_id}"
+
+
 def request_of(step_key: str) -> UUID:
     """The request an expiry step is about, read back out of its key."""
+    return UUID(step_key.partition(":")[2])
+
+
+def reply_of(step_key: str) -> UUID:
+    """The stored reply a semantic interpretation step is about."""
     return UUID(step_key.partition(":")[2])
 
 
@@ -231,6 +267,18 @@ def message_idempotency_key(request_id: UUID) -> str:
     return f"pp:approval:{request_id}"
 
 
+def confirmation_idempotency_key(request_id: UUID, reply_id: UUID) -> str:
+    """§12.3's ``pp:confirm:{approval_request_id}:{inbound_reply_id}``, exactly.
+
+    Both halves are server-derived and neither moves: the request id is a ``uuid5`` of the
+    track and option, and the reply id is a ``uuid5`` of the provider's message id. So every
+    retry of one logical confirmation -- after a crash, after a lost acknowledgement, after a
+    worker was replaced mid-flight -- presents the identical key, and the outbox's unique index
+    turns any number of transport attempts into one message the customer should see.
+    """
+    return f"pp:confirm:{request_id}:{reply_id}"
+
+
 # ------------------------------------------------------------------------------ effect naming
 
 EFFECT_MESSAGE_SEND: Final = "MESSAGE_SEND"
@@ -266,6 +314,9 @@ EVENT_APPROVAL_REPLY_RECEIVED: Final = "approval.reply_received"
 EVENT_APPROVAL_REPLY_UNRECOGNIZED: Final = "approval.reply_unrecognized"
 EVENT_APPROVAL_REPLY_UNAUTHORIZED: Final = "approval.reply_unauthorized"
 EVENT_APPROVAL_REPLY_IGNORED: Final = "approval.reply_ignored"
+EVENT_APPROVAL_INTERPRETATION_REQUESTED: Final = "approval.semantic_interpretation_requested"
+EVENT_APPROVAL_INTERPRETATION_RESOLVED: Final = "approval.semantic_interpretation_resolved"
+EVENT_APPROVAL_CONFIRMATION_REQUESTED: Final = "approval.confirmation_requested"
 EVENT_APPROVAL_DECIDED: Final = "approval.decided"
 """Envelopes, not content.
 
@@ -286,6 +337,8 @@ AUDIT_APPROVAL_REPLY_RECORDED: Final = "APPROVAL_REPLY_RECORDED"
 AUDIT_UNAUTHORIZED_APPROVAL: Final = "UNAUTHORIZED_APPROVAL_ATTEMPT"
 AUDIT_APPROVAL_REPLY_LATE: Final = "APPROVAL_REPLY_TOO_LATE"
 AUDIT_APPROVAL_ALREADY_DECIDED: Final = "APPROVAL_ALREADY_DECIDED"
+AUDIT_APPROVAL_CONFIRMATION_REQUESTED: Final = "APPROVAL_CONFIRMATION_REQUESTED"
+AUDIT_APPROVAL_CONFIRMATION_UNANSWERED: Final = "APPROVAL_CONFIRMATION_UNANSWERED"
 
 # -------------------------------------------------------------------------- escalation reasons
 
@@ -303,6 +356,16 @@ ESCALATION_MESSAGE_UNDELIVERABLE: Final = "MESSAGE_UNDELIVERABLE"
 
 ESCALATION_NO_CHOSEN_OPTION: Final = "NO_CHOSEN_OPTION"
 """Planning left no option to ask about. Unreachable, and failed closed rather than guessed."""
+
+ESCALATION_CONFIRMATION_UNANSWERED: Final = "CONFIRMATION_UNANSWERED"
+"""§13.6's ending for a second reply that is still not one of the two words.
+
+The customer was asked, in the plainest sentence the protocol has, to answer ``YES`` or ``NO``,
+and answered something else again. Reading further is not the system's to do: a second
+classification would be a second guess, and a second prompt would be a loop with a person at
+one end of it. The track goes to the owner with the raw text attached, which is the one reading
+of those words anybody is entitled to make.
+"""
 
 
 LIVE_CASE_STATES: Final[tuple[str, ...]] = (
@@ -933,16 +996,128 @@ async def _reply(
     decision = consent.read_literal(reply.text)
     if decision is None:
         # The one branch the whole authority model turns on. "Strawberries work" is a sentence
-        # about strawberries; it is stored, and it decides nothing. A later slice may read it as
-        # apparent intent and ask the customer to confirm in words that count.
-        return await _record_reply(
-            context,
-            audit_type=AUDIT_APPROVAL_REPLY_RECORDED,
-            event_type=EVENT_APPROVAL_REPLY_UNRECOGNIZED,
-            actor=Actor(kind="CUSTOMER", id=customer_id),
-            outcome="NOT_LITERAL",
-        )
+        # about strawberries; it is stored, and it decides nothing here or anywhere after here.
+        return await _unrecognized(context)
+    # Literal, and therefore authoritative -- whatever a model said about an earlier reply on
+    # this request. A stored apparent intent is provenance; it is not an input to this line.
     return await _record_decision(context, decision=decision)
+
+
+async def _unrecognized(context: _ReplyContext) -> StepOutcome:
+    """What §13.6 does with words that are not one of the two: ask once, then hand over.
+
+    The rule is the request's own state, and it is deliberately a counter of one:
+
+    * **First** non-literal reply, request ``SENT``: store it, and enqueue the durable work that
+      reads it and asks the customer to answer in words that count. Nothing is decided, nothing
+      is mutated, and the track keeps waiting.
+    * **Second** non-literal reply, request ``CONFIRMATION_PENDING``: the plainest sentence the
+      protocol has was already sent and was answered with something else. The track escalates
+      with the raw text attached rather than being classified again.
+
+    That is also the whole of the duplicate-confirmation defence, and it is deterministic: the
+    condition that permits a prompt is a state the prompt itself removes, so there is exactly
+    one outstanding confirmation per request and no number of further replies produces a second.
+    """
+    if context.request.state == ApprovalRequestState.CONFIRMATION_PENDING.value:
+        return await _escalate_unconfirmed(context)
+
+    reply_id = reply_id_for(context.reply.provider_message_id)
+    return await _record_reply(
+        context,
+        audit_type=AUDIT_APPROVAL_REPLY_RECORDED,
+        event_type=EVENT_APPROVAL_REPLY_UNRECOGNIZED,
+        actor=Actor(kind="CUSTOMER", id=context.customer_id),
+        outcome="NOT_LITERAL",
+        # Enqueued in the same transaction that stores the reply, so a crash between the two is
+        # not a shape the database can hold: either there is no reply and no work, or there is
+        # a reply and the durable work that reads it.
+        successors=(
+            CreateStep(
+                step_key=interpret_step_key(reply_id),
+                kind=STEP_INTERPRET_CUSTOMER_REPLY,
+            ),
+        ),
+        events=(
+            AppendEvent(
+                type=EVENT_APPROVAL_INTERPRETATION_REQUESTED,
+                payload={"reason": "NOT_LITERAL"},
+                entity_refs=({"kind": "approval_request", "id": str(context.request.id)},),
+            ),
+        ),
+    )
+
+
+async def _escalate_unconfirmed(context: _ReplyContext) -> StepOutcome:
+    """§13.6's "a second non-literal reply -> ESCALATED with the raw text attached".
+
+    The same ending as an expired window, reached for a different reason and named differently
+    so the ledger says which: the customer was reachable and answered twice, and neither answer
+    was consent. No decision is written and none is implied -- a person picks this up holding
+    exactly what the customer wrote.
+    """
+    case, track, request = context.case, context.track, context.request
+    unit_of_work = UnitOfWork(context.connection)
+    async with unit_of_work.governed(
+        event_type=AUDIT_APPROVAL_CONFIRMATION_UNANSWERED,
+        actor=Actor(kind="SYSTEM", id=context.worker),
+        authority="NONE",
+        case_id=case.id,
+        track_id=track.id,
+        before={"track_state": track.state, "request_state": request.state},
+        after={
+            "track_state": TRACK_ESCALATED,
+            "request_state": ApprovalRequestState.EXPIRED.value,
+            "reason": ESCALATION_CONFIRMATION_UNANSWERED,
+        },
+        provenance={
+            "request_id": str(request.id),
+            "provider_message_id": context.reply.provider_message_id,
+            "inbound_reply_id": str(reply_id_for(context.reply.provider_message_id)),
+            "inbox_event_id": str(context.reply.inbox_id),
+            "sender_identity": context.reply.sender,
+            "executed_by": context.worker,
+            "step_key": context.step_key,
+        },
+        occurred_at=context.now,
+    ) as write:
+        await _insert_reply(write, context)
+        await write.execute(
+            update(ApprovalRequest)
+            .where(ApprovalRequest.id == request.id, ApprovalRequest.decided.is_(False))
+            .values(state=ApprovalRequestState.EXPIRED.value)
+        )
+        await set_track(write, track=track, state=TRACK_ESCALATED)
+        moved_to = await settled_case_state(
+            context.connection, case=case, except_step_key=context.step_key
+        )
+    successors = await case_successors(context.connection, moved_to, case_id=case.id)
+
+    return StepOutcome(
+        disposition=Disposition.DONE,
+        event_type=EVENT_STEP_COMPLETED,
+        case_change=CaseChange(state=moved_to, needs_owner_attention=True),
+        successors=successors,
+        events=(
+            AppendEvent(
+                type=EVENT_APPROVAL_REPLY_UNRECOGNIZED,
+                payload={"outcome": "SECOND_NOT_LITERAL"},
+                entity_refs=({"kind": "approval_request", "id": str(request.id)},),
+            ),
+            AppendEvent(
+                type=EVENT_TRACK_ESCALATED,
+                payload={"reason": ESCALATION_CONFIRMATION_UNANSWERED},
+                entity_refs=({"kind": "track", "id": str(track.id)},),
+            ),
+            *case_events(moved_to, case_id=case.id),
+        ),
+        result={
+            "outcome": "ESCALATED",
+            "track_id": str(track.id),
+            "request_id": str(request.id),
+            "reason": ESCALATION_CONFIRMATION_UNANSWERED,
+        },
+    )
 
 
 async def _record_decision(
@@ -1075,6 +1250,8 @@ async def _record_reply(
     actor: Actor,
     outcome: str,
     needs_owner_attention: bool | None = None,
+    successors: tuple[CreateStep, ...] = (),
+    events: tuple[AppendEvent, ...] = (),
 ) -> StepOutcome:
     """Store a reply that decided nothing, and say in the ledger why it decided nothing.
 
@@ -1108,12 +1285,14 @@ async def _record_reply(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(needs_owner_attention=needs_owner_attention),
+        successors=successors,
         events=(
             AppendEvent(
                 type=event_type,
                 payload={"outcome": outcome},
                 entity_refs=({"kind": "approval_request", "id": str(request.id)},),
             ),
+            *events,
         ),
         result={
             "outcome": outcome,

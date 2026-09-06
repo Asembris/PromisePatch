@@ -344,6 +344,19 @@ forbidden_modules = [
     "urllib",
 ]
 
+# The module that can ask a model what a customer's sentence looked like does not hold the
+# parser that reads a literal yes. Direct imports only, and deliberately so: the step ledger
+# reaches every executor, so a whole-graph ban would say nothing about any module in the domain.
+# What this does say is that `customer_intent` names no parser and no decision, which -- with
+# the source assertions in `test_customer_intent` -- is the two halves of "the model understands;
+# the deterministic protocol authorizes" written where a build can check them.
+[[tool.importlinter.contracts]]
+name = "apparent intent does not hold the literal parser"
+type = "forbidden"
+source_modules = ["promisepatch.domain.customer_intent"]
+forbidden_modules = ["promisepatch.domain.consent"]
+allow_indirect_imports = true
+
 # The order system is a different system, and this is what makes that structural rather than
 # stated. It cannot import PromisePatch, cannot import PromisePatch's engine, and holds no
 # SQLAlchemy model or Alembic revision: its storage is its own SQLite file and nothing else.

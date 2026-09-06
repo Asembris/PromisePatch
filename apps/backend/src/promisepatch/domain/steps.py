@@ -305,7 +305,14 @@ def _executor_for(kind: str) -> StepExecutor | None:
     enqueues, and a module-level import in both directions would be a cycle. Resolved once per
     step rather than once per process, which costs a dictionary lookup in ``sys.modules``.
     """
-    from promisepatch.domain import analysis, approvals, physical, recovery, revalidation
+    from promisepatch.domain import (
+        analysis,
+        approvals,
+        customer_intent,
+        physical,
+        recovery,
+        revalidation,
+    )
 
     if kind in INTAKE_STEP_KINDS:
         return physical.execute
@@ -315,6 +322,9 @@ def _executor_for(kind: str) -> StepExecutor | None:
         return recovery.execute
     if kind in approvals.APPROVAL_STEP_KINDS:
         return approvals.execute
+    if kind in approvals.CUSTOMER_INTENT_STEP_KINDS:
+        # The consent protocol names this step; a module that cannot record a decision runs it.
+        return customer_intent.execute
     if kind in revalidation.REVALIDATION_STEP_KINDS:
         return revalidation.execute
     return None
