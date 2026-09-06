@@ -25,7 +25,7 @@ import typer
 from promisepatch.config import LlmProvider, Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
-from promisepatch.domain import analysis, handlers, inbox, intake, recovery
+from promisepatch.domain import analysis, handlers, inbox, intake, observation, recovery
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 from promisepatch.integrations import build_semantic_provider
@@ -364,6 +364,7 @@ def case_status_command(
     typer.echo(f"state:     {status.state}")
     typer.echo(f"exception: {status.exception_id or '-'} ({status.category or '-'})")
     typer.echo(f"attention: {'yes' if status.needs_owner_attention else 'no'}")
+    _echo_interpretation(status.interpretation)
     for track in status.tracks:
         typer.echo("")
         typer.echo(f"  {track.promise_id}  {track.customer_name} / {track.order_external_id}")
@@ -434,6 +435,43 @@ def case_status_command(
                 typer.echo(f"      provider reported: {reported}")
             if effect.last_error:
                 typer.echo(f"      last error: {effect.last_error}")
+
+
+def _echo_interpretation(reading: analysis.InterpretationStatus | None) -> None:
+    """How this case's sentence was read, and who is on the record for what it said.
+
+    Two lines for an ordinary case and four for one a model helped with. The second block
+    exists to answer one question quickly -- *was a model involved, and did that change who
+    attested the facts* -- and the answer to the second half never varies: the attestor is the
+    person who spoke.
+
+    No prompt and no model output is printed here, because neither is evidence of anything and
+    the row does not hold them.
+    """
+    if reading is None:
+        typer.echo("reading:   not yet interpreted")
+        return
+
+    typer.echo(f"reading:   {reading.source.lower().replace('_', '-')} ({reading.outcome or '-'})")
+    typer.echo(f"  attestor {reading.attestor or '-'}, intake step {reading.step_state or '-'}")
+    if reading.source == observation.SOURCE_SEMANTIC_ASSISTED:
+        offered = ", ".join(f"{name} {count}" for name, count in sorted(reading.candidates.items()))
+        typer.echo(
+            f"  semantic {reading.provider or '-'} / {reading.model_id or '-'}, "
+            f"asked because {reading.deterministic_reason or '-'}"
+        )
+        typer.echo(f"  candidates offered: {offered or 'none'}")
+        typer.echo(
+            f"  grounded {', '.join(reading.grounded) or 'nothing'}; "
+            f"not supported by the report: {', '.join(reading.rejected) or 'nothing'}"
+        )
+        if reading.failure and reading.failure != "NONE":
+            # Named apart from `asked because` above, which is the *deterministic* stop. This
+            # one is what the reading itself failed on, and printing both under one word would
+            # send somebody looking at the wrong thing.
+            typer.echo(f"  the reading was refused: {reading.failure}")
+    if reading.last_error:
+        typer.echo(f"  last error: {reading.last_error}")
 
 
 @app.command(name="semantic-smoke")

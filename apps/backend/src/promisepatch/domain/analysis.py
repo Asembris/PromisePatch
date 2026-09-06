@@ -34,7 +34,7 @@ which nothing rewrites.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Final
@@ -90,6 +90,11 @@ from promisepatch.domain.model import (
     CreateStep,
     Disposition,
     StepOutcome,
+)
+from promisepatch.domain.observation import (
+    INTAKE_STEP_KINDS,
+    SOURCE_DETERMINISTIC,
+    STEP_BEGIN_INTERPRETATION,
 )
 from promisepatch.graph.loader import load_snapshot, snapshot_session
 
@@ -1292,6 +1297,46 @@ class TrackStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class InterpretationStatus:
+    """How this case's sentence came to be understood, and who attested what it said.
+
+    Read off the step ledger rather than recomputed. Two questions an operator asks about a
+    case that involved a model -- *did a model read this, and did that change who is
+    responsible for the facts* -- and the answer to the second is always the same: the person
+    who spoke. ``attestor`` is read from the exception row, so it is the stored answer rather
+    than a restatement of the intention.
+
+    Deliberately small. Identifiers, statuses and counts; no prompt, no model output, and
+    nothing a person said that is not already visible on the case.
+    """
+
+    source: str
+    """``DETERMINISTIC`` or ``SEMANTIC_ASSISTED``. Provenance, never authority."""
+
+    outcome: str | None
+    """What intake concluded: resolved, a question, an escalation, or a reading in flight."""
+
+    attestor: str | None
+    """Who is on the record as having observed the physical facts. Never a model."""
+
+    step_state: str | None = None
+    provider: str | None = None
+    model_id: str | None = None
+    deterministic_reason: str | None = None
+    """The stop that made a second reading worth asking for."""
+
+    grounded: tuple[str, ...] = ()
+    """Identifiers the reading proposed that deterministic code went on to use."""
+
+    rejected: tuple[str, ...] = ()
+    """Identifiers it proposed that the worker's own words do not support."""
+
+    failure: str | None = None
+    candidates: Mapping[str, int] = field(default_factory=dict)
+    last_error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CaseStatus:
     """What one case currently concludes. A read, and only a read."""
 
@@ -1301,6 +1346,7 @@ class CaseStatus:
     exception_id: UUID | None
     category: str | None
     tracks: tuple[TrackStatus, ...]
+    interpretation: InterpretationStatus | None = None
 
 
 class CaseNotFoundError(RuntimeError):
@@ -1341,6 +1387,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
             )
         ).all()
 
+        interpretation = await _interpretation_status(connection, case_id, case.exception_id)
         tracks: list[TrackStatus] = []
         for track in rows:
             options = (
@@ -1430,6 +1477,59 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
         exception_id=case.exception_id,
         category=category,
         tracks=tuple(tracks),
+        interpretation=interpretation,
+    )
+
+
+def _mapping(value: object) -> dict[str, Any]:
+    """A stored JSON object, or an empty one. A ledger row shaped by an older build reads blank."""
+    return dict(value) if isinstance(value, dict) else {}
+
+
+async def _interpretation_status(
+    connection: AsyncConnection, case_id: UUID, exception_id: UUID | None
+) -> InterpretationStatus | None:
+    """The last thing intake decided about this case's sentence, and how it decided it.
+
+    The newest intake step that concluded something -- the resolve step, or the semantic step
+    that followed it -- because that is the step whose result describes the binding the case is
+    currently running on. ``None`` before either has run.
+    """
+    rows = (
+        await connection.execute(
+            select(CaseStep)
+            .where(CaseStep.case_id == case_id, CaseStep.kind.in_(sorted(INTAKE_STEP_KINDS)))
+            .order_by(CaseStep.created_at, CaseStep.id)
+        )
+    ).all()
+    concluding = [row for row in rows if row.kind != STEP_BEGIN_INTERPRETATION]
+    if not concluding:
+        return None
+
+    step = concluding[-1]
+    result = _mapping(step.result)
+    semantic = _mapping(result.get("semantic"))
+    grounding = _mapping(semantic.get("grounding"))
+    attestor = (
+        None
+        if exception_id is None
+        else await connection.scalar(
+            select(PhysicalException.reported_by).where(PhysicalException.id == exception_id)
+        )
+    )
+    return InterpretationStatus(
+        source=str(result.get("interpretation_source") or SOURCE_DETERMINISTIC),
+        outcome=result.get("outcome"),
+        attestor=attestor,
+        step_state=step.state,
+        provider=semantic.get("provider"),
+        model_id=semantic.get("model_id"),
+        deterministic_reason=semantic.get("deterministic_reason") or semantic.get("reason"),
+        grounded=tuple(str(item) for item in grounding.get("accepted", ())),
+        rejected=tuple(str(item) for item in grounding.get("dropped", ())),
+        failure=grounding.get("failure") or semantic.get("failure"),
+        candidates=dict(semantic.get("candidates") or {}),
+        last_error=step.error,
     )
 
 

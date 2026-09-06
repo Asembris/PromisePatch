@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 from promisepatch import cli
 from promisepatch.cli import app, resolve_anchor
 from promisepatch.config import Settings, get_settings
-from promisepatch.domain import analysis, cases, intake, recovery
+from promisepatch.domain import analysis, cases, intake, observation, recovery
 from promisepatch.fixtures.reset import ResetOutcome
 from promisepatch.semantic import SemanticProviderError
 
@@ -343,6 +343,99 @@ def test_case_status_delegates_to_the_domain_read_service(
     assert analysis.CASE_PLANNED in result.output
     assert "AUTO_RECOVERABLE" in result.output
     assert "rv-raspberry-almond-4" in result.output
+
+
+def _status_with(
+    monkeypatch: pytest.MonkeyPatch, reading: analysis.InterpretationStatus | None
+) -> str:
+    """Run ``case-status`` against a case whose interpretation is exactly this."""
+
+    async def fake(database: object, *, case_id: UUID) -> analysis.CaseStatus:
+        return analysis.CaseStatus(
+            case_id=case_id,
+            state=analysis.CASE_PLANNED,
+            needs_owner_attention=False,
+            exception_id=UUID(int=2),
+            category="SUPPLY_NOT_RECEIVED",
+            tracks=(),
+            interpretation=reading,
+        )
+
+    monkeypatch.setattr(
+        cli, "_read_case_status", lambda settings, case_id: fake(None, case_id=case_id)
+    )
+    result = runner.invoke(app, ["case-status", "--case", str(UUID(int=1))])
+    assert result.exit_code == 0, result.output
+    return result.output
+
+
+def test_case_status_says_who_attested_a_semantic_assisted_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The operator's version of the trust line: a model read it, a person attested it."""
+    output = _status_with(
+        monkeypatch,
+        analysis.InterpretationStatus(
+            source=observation.SOURCE_SEMANTIC_ASSISTED,
+            outcome="RESOLVED",
+            attestor="maya",
+            step_state="DONE",
+            provider="bedrock",
+            model_id="us.amazon.nova-2-lite-v1:0",
+            deterministic_reason="NO_CATEGORY",
+            grounded=("res-deck-oven",),
+            rejected=("res-raspberries",),
+            failure="NONE",
+            candidates={"resources": 16, "equipment": 2},
+        ),
+    )
+
+    assert "semantic-assisted" in output
+    assert "attestor maya" in output
+    assert "us.amazon.nova-2-lite-v1:0" in output
+    assert "asked because NO_CATEGORY" in output
+    assert "grounded res-deck-oven" in output
+    assert "not supported by the report: res-raspberries" in output
+    assert "resources 16" in output
+
+
+def test_case_status_prints_no_prompt_and_no_model_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Evidence, not a transcript. There is nothing here for a prompt to be printed from."""
+    output = _status_with(
+        monkeypatch,
+        analysis.InterpretationStatus(
+            source=observation.SOURCE_SEMANTIC_ASSISTED,
+            outcome="CLARIFICATION_REQUIRED",
+            attestor=None,
+            provider="fake",
+        ),
+    )
+
+    assert "CANDIDATES" not in output
+    assert "WORKER STATEMENT" not in output
+    assert "delivery didn" not in output
+
+
+def test_case_status_says_when_a_reading_was_purely_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = _status_with(
+        monkeypatch,
+        analysis.InterpretationStatus(
+            source=observation.SOURCE_DETERMINISTIC, outcome="RESOLVED", attestor="maya"
+        ),
+    )
+
+    assert "deterministic (RESOLVED)" in output
+    assert "semantic" not in output
+
+
+def test_case_status_says_when_nothing_has_read_the_sentence_yet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert "not yet interpreted" in _status_with(monkeypatch, None)
 
 
 def test_case_status_shows_the_effect_a_recovery_produced(
