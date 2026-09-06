@@ -175,6 +175,7 @@ layers = [
     "promisepatch.api",
     "promisepatch.integrations",
     "promisepatch.domain",
+    "promisepatch.semantic",
     "promisepatch.fixtures",
     "promisepatch.graph",
     "promisepatch.db",
@@ -234,6 +235,51 @@ forbidden_modules = [
     "starlette",
     "subprocess",
     "urllib",
+]
+
+# A model may propose; only PromisePatch decides. This is that sentence as a build failure.
+# The semantic contracts are values in and values out: no database, no session, no HTTP client,
+# no AWS SDK, no clock, no environment. A provider that could open a connection could act on
+# what a model said before anything deterministic had looked at it, and the audit ledger would
+# record a write nobody authorised. It cannot, so it doesn't.
+[[tool.importlinter.contracts]]
+name = "the semantic boundary proposes and cannot act"
+type = "forbidden"
+source_modules = ["promisepatch.semantic"]
+forbidden_modules = [
+    "alembic",
+    "asyncio",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "httpx2",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.domain",
+    "promisepatch.fixtures",
+    "promisepatch.graph",
+    "promisepatch.integrations",
+    "promisepatch.main",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "urllib",
+]
+
+[[tool.importlinter.contracts]]
+name = "semantic module layering"
+type = "layers"
+layers = [
+    "promisepatch.semantic.fake",
+    "promisepatch.semantic.provider",
+    "promisepatch.semantic.jobs",
+    "promisepatch.semantic.prompts",
+    "promisepatch.semantic.contracts",
+    "promisepatch.semantic.errors",
 ]
 
 [[tool.importlinter.contracts]]
