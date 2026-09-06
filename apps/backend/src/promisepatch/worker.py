@@ -32,14 +32,17 @@ from sqlalchemy.exc import SQLAlchemyError
 from promisepatch.config import Settings
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor
-from promisepatch.domain import inbox, order_mirror, outbox, steps, timers
+from promisepatch.domain import inbox, order_mirror, outbox, semantic_intake, steps, timers
 from promisepatch.domain.adapters import FakeEffectAdapter, RoutedEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
 from promisepatch.domain.model import EFFECT_ORDER_AMEND
+from promisepatch.domain.observation import STEP_INTERPRET_SEMANTICALLY
 from promisepatch.domain.order_mirror import AuthoritativeFetch
 from promisepatch.domain.outbox import EffectAdapter
+from promisepatch.integrations import build_semantic_provider
 from promisepatch.integrations.order_system import OrderSystemAdapter, OrderSystemClient
 from promisepatch.observability import configure_logging, get_logger
+from promisepatch.semantic import FakeSemanticProvider, SemanticProvider
 
 logger = get_logger(__name__)
 
@@ -69,6 +72,14 @@ class Worker:
     adapter: EffectAdapter
     identity: WorkerIdentity = field(default_factory=WorkerIdentity.create)
     idle_interval: float = IDLE_INTERVAL
+    semantic: SemanticProvider = field(default_factory=FakeSemanticProvider)
+    """Where a sentence the deterministic lexicon cannot read is sent to be read.
+
+    Injected, and the fake by default, so a worker started by a test, by CI or by
+    ``docker compose up`` reaches no network and needs no credential. The fake's unscripted
+    answer binds nothing, which means a deployment that forgot to configure a provider
+    escalates visibly to a person instead of proceeding on invented understanding.
+    """
     fetch_order: AuthoritativeFetch | None = None
     """How to read an order whole from the system that owns it, when there is one.
 
@@ -112,6 +123,14 @@ class Worker:
         claim = await steps.claim_step(self.database, worker=self.identity.value)
         if claim is None:
             return None
+        if claim.kind == STEP_INTERPRET_SEMANTICALLY:
+            # The one provider call in the step path, made here rather than inside the
+            # execution transaction. Between the claim and the execution is the only moment in
+            # the cycle when this process holds a lease on the work and no database
+            # transaction at all, which is exactly what a call to somebody else's service
+            # needs. What it leaves behind is a row; what decides anything is the transaction
+            # below, which locks the case and checks that row against a kitchen it re-reads.
+            await semantic_intake.prepare(self.database, self.semantic, claim=claim)
         result = await steps.execute_step(self.database, claim=claim, actor=self.actor)
         logger.info(
             "worker.step.executed",
@@ -218,6 +237,9 @@ async def run(settings: Settings, adapter: EffectAdapter | None = None) -> None:
     worker = Worker(
         database=database,
         adapter=adapter,
+        # One place reads `PP_LLM_PROVIDER`, and it is not here: the worker asks for whatever
+        # this deployment configured and cannot behave differently depending on the answer.
+        semantic=build_semantic_provider(settings),
         fetch_order=None if client is None else client.fetch_order,
     )
     try:

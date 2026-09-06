@@ -27,6 +27,7 @@ once, which is the only assumption a durable engine may not make.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Final
@@ -67,6 +68,7 @@ from promisepatch.config import get_settings
 from promisepatch.db.models import (
     Case,
     CaseReport,
+    CaseStep,
     CommitmentLine,
     EquipmentOutage,
     ExceptionClarification,
@@ -79,10 +81,12 @@ from promisepatch.db.models import (
     SupplierCommitment,
 )
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
-from promisepatch.domain import analysis, interpretation
+from promisepatch.domain import analysis, grounding, interpretation, retry
 from promisepatch.domain.cases import LockedCase
 from promisepatch.domain.model import (
     EVENT_STEP_COMPLETED,
+    EVENT_STEP_FAILED,
+    EVENT_STEP_SKIPPED,
     AppendEvent,
     CaseChange,
     CreateStep,
@@ -94,18 +98,25 @@ from promisepatch.domain.observation import (
     AUDIT_NEEDS_HUMAN_INTERPRETATION,
     AUDIT_PHYSICAL_FACT_CORRECTED,
     AUDIT_PHYSICAL_FACT_RECORDED,
+    AUDIT_SEMANTIC_INTERPRETATION_REQUESTED,
     CASE_CLARIFYING,
+    CASE_INTERPRETING,
     CASE_NEEDS_HUMAN,
     EVENT_CLARIFICATION_REQUIRED,
     EVENT_FACT_CORRECTED,
     EVENT_FACT_RECORDED,
     EVENT_NEEDS_HUMAN,
     EVENT_READY_FOR_ANALYSIS,
+    EVENT_SEMANTIC_REQUESTED,
+    EVENT_SEMANTIC_RESOLVED,
     FACT_TARGET_COMMITMENT_LINE,
     FACT_TARGET_EQUIPMENT,
     FACT_TARGET_RESOURCE,
     RULE_PHYSICAL_FACT_ATTESTED,
+    SOURCE_DETERMINISTIC,
+    SOURCE_SEMANTIC_ASSISTED,
     STEP_BEGIN_INTERPRETATION,
+    STEP_INTERPRET_SEMANTICALLY,
     BoundExceptionView,
     ClarificationOption,
     ClarificationRequired,
@@ -114,12 +125,15 @@ from promisepatch.domain.observation import (
     CommitmentLineView,
     CommitmentView,
     CorrectionResolved,
+    EscalationReason,
     HumanInterpretationRequired,
+    InterpretationOutcome,
     ObservationContext,
     ReportKind,
     ResolvedObservation,
     ResourceView,
     Statement,
+    semantic_step_key,
     statement_id_of,
 )
 
@@ -177,6 +191,10 @@ async def execute(
     """Run one intake step against a case whose row this transaction already holds."""
     if kind == STEP_BEGIN_INTERPRETATION:
         return interpretation.begin(case_state=case.state, step_key=step_key)
+    if kind == STEP_INTERPRET_SEMANTICALLY:
+        return await _consume_semantic(
+            connection, case=case, step_key=step_key, now=now, worker=worker
+        )
     return await _resolve(
         connection, case=case, statement_id=statement_id_of(step_key), now=now, worker=worker
     )
@@ -193,16 +211,297 @@ async def _resolve(
     context = await hydrate(connection, case_id=case.id, statement_id=statement_id, now=now)
     outcome = interpretation.interpret(context)
 
-    if isinstance(outcome, ClarificationRequired):
-        return await _ask(
+    if isinstance(outcome, HumanInterpretationRequired) and grounding.is_fallback_eligible(
+        context, outcome
+    ):
+        return await _defer_to_semantic(
             connection, case=case, context=context, outcome=outcome, now=now, worker=worker
         )
+    return await _settle_outcome(
+        connection, case=case, context=context, outcome=outcome, now=now, worker=worker
+    )
+
+
+async def _settle_outcome(
+    connection: AsyncConnection,
+    *,
+    case: LockedCase,
+    context: ObservationContext,
+    outcome: InterpretationOutcome,
+    now: datetime,
+    worker: str,
+    semantic: Mapping[str, Any] | None = None,
+) -> StepOutcome:
+    """Persist whatever a reading concluded, by the one path every reading takes.
+
+    ``semantic`` is provenance and nothing else: it names who helped read the sentence, and it
+    changes none of the four branches below. A fact reached with a model's help is written by
+    the same function, into the same table, under the same rule id, attributed to the same
+    person -- which is what "downstream cannot tell" means in practice.
+    """
+    if isinstance(outcome, ClarificationRequired):
+        return await _ask(
+            connection,
+            case=case,
+            context=context,
+            outcome=outcome,
+            now=now,
+            worker=worker,
+            semantic=semantic,
+        )
     if isinstance(outcome, ResolvedObservation):
-        return await _record(connection, case=case, context=context, outcome=outcome, now=now)
+        return await _record(
+            connection, case=case, context=context, outcome=outcome, now=now, semantic=semantic
+        )
     if isinstance(outcome, CorrectionResolved):
         return await _correct(connection, case=case, context=context, outcome=outcome, now=now)
     return await _escalate(
-        connection, case=case, context=context, outcome=outcome, now=now, worker=worker
+        connection,
+        case=case,
+        context=context,
+        outcome=outcome,
+        now=now,
+        worker=worker,
+        semantic=semantic,
+    )
+
+
+# ------------------------------------------------------------------- semantic fallback
+
+
+def _semantic_provenance(semantic: Mapping[str, Any] | None) -> dict[str, Any]:
+    """How a reading was arrived at, in the shape every intake audit row carries.
+
+    Always present, always one of two values, so "was a model involved" is answerable by
+    looking rather than by noticing an absent key. When one was, what is recorded is the
+    provider, the model, how many candidates it was offered and which identifiers survived --
+    never a prompt, never model prose, and never a claim that the model observed anything.
+    """
+    if semantic is None:
+        return {"interpretation_source": SOURCE_DETERMINISTIC}
+    return {
+        "interpretation_source": SOURCE_SEMANTIC_ASSISTED,
+        "semantic": dict(semantic),
+    }
+
+
+async def _defer_to_semantic(
+    connection: AsyncConnection,
+    *,
+    case: LockedCase,
+    context: ObservationContext,
+    outcome: HumanInterpretationRequired,
+    now: datetime,
+    worker: str,
+) -> StepOutcome:
+    """The lexicon could not read this sentence. Enqueue a second reading and stop here.
+
+    Nothing is concluded and nothing is written: the case stays in ``INTERPRETING``, no fact
+    exists, no question has been asked, and the successor step is the only thing that changed.
+    A worker that dies immediately after this leaves a case whose next claim is the semantic
+    step, which is the whole reason this is a durable step rather than a call in a branch.
+    """
+    unit_of_work = UnitOfWork(connection)
+    async with unit_of_work.governed(
+        event_type=AUDIT_SEMANTIC_INTERPRETATION_REQUESTED,
+        # The worker *process*, because what happened is that PromisePatch decided to ask.
+        # Nothing here is attributed to the person who spoke, or to whatever answers.
+        actor=Actor(kind="SYSTEM", id=worker),
+        authority="NONE",
+        case_id=case.id,
+        before={"case_state": case.state},
+        after={"case_state": case.state, "reason": outcome.reason.value},
+        provenance={
+            "statement": str(context.current.id),
+            "detail": outcome.detail,
+            "deterministic_outcome": "NEEDS_HUMAN_INTERPRETATION",
+        },
+        occurred_at=now,
+    ):
+        pass
+
+    return StepOutcome(
+        disposition=Disposition.DONE,
+        event_type=EVENT_STEP_COMPLETED,
+        successors=(
+            CreateStep(
+                step_key=semantic_step_key(context.current.id),
+                kind=STEP_INTERPRET_SEMANTICALLY,
+            ),
+        ),
+        events=(
+            AppendEvent(
+                type=EVENT_SEMANTIC_REQUESTED,
+                payload={"reason": outcome.reason.value},
+                entity_refs=({"kind": "case", "id": str(case.id)},),
+            ),
+        ),
+        result={
+            "outcome": "SEMANTIC_INTERPRETATION_REQUESTED",
+            "reason": outcome.reason.value,
+            "detail": outcome.detail,
+        },
+    )
+
+
+async def _consume_semantic(
+    connection: AsyncConnection,
+    *,
+    case: LockedCase,
+    step_key: str,
+    now: datetime,
+    worker: str,
+) -> StepOutcome:
+    """Decide what the reading fetched outside this transaction is worth, under the case lock.
+
+    Deterministic first, again. The lexicon is re-run here because the case may have moved
+    since the model was asked -- a clarification answered, a delivery corrected -- and a
+    sentence it can now read is a sentence whose reading is not a model's to influence.
+
+    Then the fingerprint. A reading is an answer to one question about one kitchen, and if the
+    kitchen that question described is not the kitchen this transaction is looking at, the
+    answer is discarded and the work is done again. Nothing stale is ever committed.
+    """
+    from promisepatch.domain import semantic_intake
+
+    if case.state != CASE_INTERPRETING:
+        # The case moved on while the model was being asked -- clarified by another statement,
+        # bound by an owner, retracted. A reading is only ever about a case that is still
+        # trying to understand its own sentence, so this one is dropped rather than applied.
+        return StepOutcome(
+            disposition=Disposition.SKIPPED,
+            event_type=EVENT_STEP_SKIPPED,
+            result={"skipped_because": case.state},
+        )
+
+    statement_id = statement_id_of(step_key)
+    context = await hydrate(connection, case_id=case.id, statement_id=statement_id, now=now)
+    outcome = interpretation.interpret(context)
+
+    if not (
+        isinstance(outcome, HumanInterpretationRequired)
+        and grounding.is_fallback_eligible(context, outcome)
+    ):
+        # The deterministic reading concluded while the model was being asked. Its answer is
+        # not consulted at all: understanding that did not need buying is not paid for.
+        return await _settle_outcome(
+            connection, case=case, context=context, outcome=outcome, now=now, worker=worker
+        )
+
+    # The row this transaction is executing, read for the reading somebody left on it and
+    # for the attempt count that says whether the retry budget has anything left.
+    row = (
+        await connection.execute(
+            select(CaseStep.result, CaseStep.attempts).where(
+                CaseStep.case_id == case.id, CaseStep.step_key == step_key
+            )
+        )
+    ).one()
+    stored = semantic_intake.stored_reading(row.result)
+    status = None if stored is None else stored.get("status")
+
+    if status == semantic_intake.STATUS_REJECTED:
+        # The model answered and the answer was refused. Asking again would produce the same
+        # refusal, so this stops now, under the reason the sentence was unread for all along.
+        return await _escalate(
+            connection,
+            case=case,
+            context=context,
+            outcome=outcome,
+            now=now,
+            worker=worker,
+            semantic=dict(stored or {}),
+        )
+    if status != semantic_intake.STATUS_READ:
+        if not retry.is_exhausted(row.attempts):
+            return _retry_semantic(stored)
+        return await _escalate(
+            connection,
+            case=case,
+            context=context,
+            outcome=HumanInterpretationRequired(
+                reason=EscalationReason.SEMANTIC_UNAVAILABLE,
+                detail=(
+                    "no semantic provider could be reached to read this sentence; the report "
+                    "is unchanged and nothing has been concluded from it"
+                ),
+            ),
+            now=now,
+            worker=worker,
+            semantic=dict(stored or {"status": "MISSING"}),
+        )
+
+    reading = stored or {}
+    fingerprint = grounding.request_fingerprint(grounding.build_request(context), context)
+    if reading.get("request_hash") != fingerprint:
+        return _stale_semantic()
+
+    resolution = grounding.resolve_semantic_observation(
+        context, semantic_intake.reading_of(reading), deterministic_reason=outcome.reason
+    )
+    settled = await _settle_outcome(
+        connection,
+        case=case,
+        context=context,
+        outcome=resolution.outcome,
+        now=now,
+        worker=worker,
+        semantic={
+            "provider": reading.get("provider"),
+            "model_id": reading.get("model_id"),
+            "provider_attempts": reading.get("provider_attempts"),
+            "candidates": reading.get("candidates"),
+            "request_hash": reading.get("request_hash"),
+            "deterministic_reason": outcome.reason.value,
+            # The normalised proposal itself, kept because "what did the model actually
+            # say, and what did we do with it" is the question this whole record exists to
+            # answer. Identifiers, a category and where in the sentence they were seen.
+            "reading": reading.get("reading"),
+            "grounding": resolution.grounding.as_payload(),
+        },
+    )
+    return replace(
+        settled,
+        events=(
+            *settled.events,
+            AppendEvent(
+                type=EVENT_SEMANTIC_RESOLVED,
+                payload={
+                    "grounded": resolution.grounding.grounded,
+                    "failure": resolution.grounding.failure.value,
+                },
+                entity_refs=({"kind": "case", "id": str(case.id)},),
+            ),
+        ),
+    )
+
+
+def _retry_semantic(stored: Mapping[str, Any] | None) -> StepOutcome:
+    """A provider that could not be reached has said nothing about the sentence.
+
+    So the step waits on the ordinary ladder and asks again. Nothing is concluded from silence,
+    and in particular a temporary outage never becomes a case a person has to bind by hand
+    while the retry budget still has room in it.
+    """
+    detail = "no reading was prepared for this step"
+    if stored is not None:
+        detail = str(stored.get("detail") or stored.get("status") or detail)
+    return StepOutcome(
+        disposition=Disposition.RETRYING,
+        event_type=EVENT_STEP_FAILED,
+        error=f"semantic interpretation unavailable: {detail}",
+    )
+
+
+def _stale_semantic() -> StepOutcome:
+    """The question this answer belongs to is no longer the question that would be asked."""
+    return StepOutcome(
+        disposition=Disposition.RETRYING,
+        event_type=EVENT_STEP_FAILED,
+        error=(
+            "the semantic reading was produced against an interpretation context that has "
+            "since changed; it is discarded and the sentence will be read again"
+        ),
     )
 
 
@@ -370,9 +669,22 @@ async def _clarifications(
             question=row.question,
             options=tuple(_option(item) for item in row.options),
             answer_text=row.answer_text,
+            category=_stored_category(row.context),
+            resource_id=(row.context or {}).get("resource_id"),
+            commitment_id=(row.context or {}).get("commitment_id"),
         )
         for row in rows
     )
+
+
+def _stored_category(context: Mapping[str, Any] | None) -> ExceptionCategory | None:
+    """The category a question was asked about, read back through the closed enum.
+
+    Through the enum rather than as a string, so a value that is not a category this build
+    knows fails here instead of travelling on as one.
+    """
+    value = (context or {}).get("category")
+    return None if value is None else ExceptionCategory(value)
 
 
 def _option(raw: Mapping[str, Any]) -> ClarificationOption:
@@ -415,6 +727,7 @@ async def _ask(
     worker: str,
     outcome: ClarificationRequired,
     now: datetime,
+    semantic: Mapping[str, Any] | None = None,
 ) -> StepOutcome:
     """Persist the question and stop. No fact, no settlement, no ledger row, no guess.
 
@@ -440,6 +753,7 @@ async def _ask(
         provenance={
             "statement": str(context.current.id),
             "derived_from": outcome.context,
+            **_semantic_provenance(semantic),
         },
         occurred_at=now,
     ) as write:
@@ -475,6 +789,7 @@ async def _ask(
             "question": outcome.question,
             "options": [option.code for option in outcome.options],
             "clarification_id": str(clarification_id),
+            **_semantic_provenance(semantic),
         },
     )
 
@@ -499,6 +814,7 @@ async def _record(
     context: ObservationContext,
     outcome: ResolvedObservation,
     now: datetime,
+    semantic: Mapping[str, Any] | None = None,
 ) -> StepOutcome:
     """The moment the binding becomes attested, and physical reality is written down.
 
@@ -555,6 +871,12 @@ async def _record(
             "raw_utterance": context.report.raw_text,
             "observed_at": context.report.observed_at.isoformat(),
             "clarified": context.clarifications_asked > 0,
+            # Who helped *read* the sentence, beside the person who attested what it says.
+            # The actor above is the worker and the authority is `NONE`, and neither moves
+            # because a model was involved: a model that parses a phrasing has observed
+            # nothing, and an audit row implying otherwise would be the one lie this whole
+            # design exists to make impossible.
+            **_semantic_provenance(semantic),
         },
         occurred_at=now,
     ) as write:
@@ -617,6 +939,7 @@ async def _record(
         result={
             "outcome": "RESOLVED",
             "ready_for_analysis": True,
+            **_semantic_provenance(semantic),
             "exception_id": str(exception_id),
             "category": outcome.category.value,
             "scope_line_ids": list(outcome.scope_line_ids),
@@ -1048,6 +1371,7 @@ async def _escalate(
     worker: str,
     outcome: HumanInterpretationRequired,
     now: datetime,
+    semantic: Mapping[str, Any] | None = None,
 ) -> StepOutcome:
     """Stop, write nothing, and say why. The worker's words are already on the case."""
     unit_of_work = UnitOfWork(connection)
@@ -1062,6 +1386,7 @@ async def _escalate(
             "statement": str(context.current.id),
             "raw_utterance": context.current.raw_text,
             "detail": outcome.detail,
+            **_semantic_provenance(semantic),
         },
         occurred_at=now,
     ):
@@ -1082,6 +1407,7 @@ async def _escalate(
             "outcome": "NEEDS_HUMAN_INTERPRETATION",
             "reason": outcome.reason.value,
             "detail": outcome.detail,
+            **_semantic_provenance(semantic),
         },
     )
 
