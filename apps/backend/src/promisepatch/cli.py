@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 
+from promise_graph.model import ApprovalRequestState
 from promisepatch.config import LlmProvider, Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
@@ -408,6 +409,16 @@ def case_status_command(
                 f"      sent {approval.sent_at.isoformat()} "
                 f"ref {approval.provider_ref or '-'}, replies {approval.replies}"
             )
+            if approval.apparent_intents:
+                # Printed above the decision and worded so the two cannot be confused: a
+                # reading is what a model made of somebody's words, and an operator looking at
+                # this line has to be able to see at a glance that nothing was authorised by it.
+                typer.echo(
+                    f"      apparent intent (a reading, not consent): "
+                    f"{', '.join(approval.apparent_intents)}"
+                )
+            if approval.state == ApprovalRequestState.CONFIRMATION_PENDING.value:
+                typer.echo("      a confirmation was requested; waiting for a literal YES or NO")
             typer.echo(f"      decision {approval.decision or '-'} via {approval.parser or '-'}")
         if track.revalidation is not None:
             checked = track.revalidation

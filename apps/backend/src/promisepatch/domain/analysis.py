@@ -1228,6 +1228,15 @@ class ApprovalStatus:
     decision: str | None
     parser: str | None
     replies: int
+    apparent_intents: tuple[str, ...] = ()
+    """A model's non-authoritative readings of this request's replies, oldest first.
+
+    Present so an operator can see *why* a second message went out without having to open the
+    ledger, and deliberately separate from ``decision`` and ``parser``: those two say what the
+    customer authorised, and these say what somebody's software thought they meant. A request
+    can carry several of these and no decision at all, which is exactly the state this field
+    exists to make visible.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -1593,6 +1602,16 @@ async def _approval_status(connection: AsyncConnection, track_id: UUID) -> Appro
     replies = await connection.scalar(
         select(func.count()).select_from(InboundReply).where(InboundReply.request_id == request.id)
     )
+    intents = (
+        await connection.execute(
+            select(InboundReply.apparent_intent)
+            .where(
+                InboundReply.request_id == request.id,
+                InboundReply.apparent_intent.is_not(None),
+            )
+            .order_by(InboundReply.received_at, InboundReply.id)
+        )
+    ).scalars()
     return ApprovalStatus(
         request_id=request.id,
         option_code=request.option_code,
@@ -1604,6 +1623,7 @@ async def _approval_status(connection: AsyncConnection, track_id: UUID) -> Appro
         decision=None if decision is None else decision.decision,
         parser=None if decision is None else decision.parser,
         replies=int(replies or 0),
+        apparent_intents=tuple(str(label) for label in intents),
     )
 
 
