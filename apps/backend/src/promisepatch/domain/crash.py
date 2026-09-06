@@ -34,6 +34,8 @@ TIMER_ARMED: Final = "timer_armed"
 BEFORE_TIMER_COMMIT: Final = "before_timer_commit"
 AFTER_OUTBOX_CLAIM: Final = "after_outbox_claim"
 AFTER_EXTERNAL_SUCCESS: Final = "after_external_success"
+BEFORE_SEMANTIC_CALL: Final = "before_semantic_call"
+AFTER_SEMANTIC_CALL: Final = "after_semantic_call"
 DURING_INBOX_PROCESSING: Final = "during_inbox_processing"
 """The boundaries a worker can be killed at.
 
@@ -55,6 +57,8 @@ ALL_BOUNDARIES: Final[tuple[str, ...]] = (
     BEFORE_TIMER_COMMIT,
     AFTER_OUTBOX_CLAIM,
     AFTER_EXTERNAL_SUCCESS,
+    BEFORE_SEMANTIC_CALL,
+    AFTER_SEMANTIC_CALL,
     DURING_INBOX_PROCESSING,
 )
 

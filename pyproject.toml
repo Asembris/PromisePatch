@@ -221,11 +221,15 @@ forbidden_modules = [
 # The reading of a worker's sentence is decided by values alone. It gets resources, deliveries
 # and quantities as arguments and returns a conclusion, so "what did the system understand" is
 # answerable without a database -- and "just read the row here" can never be the easy fix in the
-# one place where reading a row would let a guess become a settled delivery.
+# one place where reading a row would let a guess become a settled delivery. `grounding` is in
+# the list for the same reason and one more: what a model's reading is worth has to be decidable
+# without a model, or the rule that refuses an ungrounded binding could only be reviewed, never
+# run.
 [[tool.importlinter.contracts]]
 name = "physical interpretation decides without doing"
 type = "forbidden"
 source_modules = [
+    "promisepatch.domain.grounding",
     "promisepatch.domain.interpretation",
     "promisepatch.domain.observation",
 ]

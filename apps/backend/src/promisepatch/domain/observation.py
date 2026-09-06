@@ -96,6 +96,14 @@ class EscalationReason(StrEnum):
     CLARIFICATION_CEILING_REACHED = "CLARIFICATION_CEILING_REACHED"
     CORRECTION_UNRESOLVED = "CORRECTION_UNRESOLVED"
     NOT_BOUND = "NOT_BOUND"
+    SEMANTIC_UNAVAILABLE = "SEMANTIC_UNAVAILABLE"
+    """No model could be reached inside the retry bound, so nobody has read the sentence yet.
+
+    The only member here that is about PromisePatch rather than about the words. It is kept
+    apart from the others because an operator seeing it should go and look at a provider, not
+    at what the worker said -- and because a reading that never happened must never be
+    reported as a reading that found nothing.
+    """
 
 
 WHOLE_DELIVERY_CODE: Final = "WHOLE_DELIVERY"
@@ -116,15 +124,23 @@ def just_code(resource_name: str) -> str:
 
 STEP_BEGIN_INTERPRETATION: Final = "BEGIN_INTERPRETATION"
 STEP_RESOLVE_OBSERVATION: Final = "RESOLVE_OBSERVATION"
+STEP_INTERPRET_SEMANTICALLY: Final = "INTERPRET_SEMANTICALLY"
+"""The step that exists only because the deterministic reading could not conclude.
+
+A third intake step rather than a branch inside the second, because the model call has to
+happen with no transaction held. The step is claimed, its reading is fetched and persisted
+outside the governed block, and the transaction that consumes it holds the case lock like
+every other transition. A case that never needs it never grows one.
+"""
 
 INTAKE_STEP_KINDS: Final[frozenset[str]] = frozenset(
-    {STEP_BEGIN_INTERPRETATION, STEP_RESOLVE_OBSERVATION}
+    {STEP_BEGIN_INTERPRETATION, STEP_RESOLVE_OBSERVATION, STEP_INTERPRET_SEMANTICALLY}
 )
 """Step kinds the worker routes to the intake executor rather than to a pure handler.
 
 Deliberately *not* members of :class:`~promisepatch.domain.model.StepKind`. That enum is the
-set of synthetic handlers that decide from a context alone; these two need the graph, so they
-are named separately and a stored step naming one is dispatched by name.
+set of synthetic handlers that decide from a context alone; these three need the graph, so
+they are named separately and a stored step naming one is dispatched by name.
 """
 
 
@@ -140,6 +156,15 @@ def begin_step_key(command_id: UUID) -> str:
 def resolve_step_key(command_id: UUID) -> str:
     """The step that actually interprets. Successor of :func:`begin_step_key`, same identity."""
     return f"resolve:{command_id}"
+
+
+def semantic_step_key(command_id: UUID) -> str:
+    """The step that asks a model what the deterministic reader could not work out.
+
+    Same identity as the two before it, so a resolve step that ran, failed to commit and ran
+    again proposes the identical successor and the unique index refuses the second.
+    """
+    return f"semantic:{command_id}"
 
 
 def statement_id_of(step_key: str) -> UUID:
@@ -158,6 +183,8 @@ EVENT_FACT_RECORDED: Final = "physical_fact.recorded"
 EVENT_FACT_CORRECTED: Final = "physical_fact.corrected"
 EVENT_NEEDS_HUMAN: Final = "case.needs_human_interpretation"
 EVENT_READY_FOR_ANALYSIS: Final = "case.ready_for_analysis"
+EVENT_SEMANTIC_REQUESTED: Final = "exception.semantic_interpretation_requested"
+EVENT_SEMANTIC_RESOLVED: Final = "exception.semantic_interpretation_resolved"
 """The spine's account of intake.
 
 Envelopes only: the type, the case and the entities touched. The authoritative detail lives in
@@ -175,6 +202,23 @@ AUDIT_CORRECTION_REPORTED: Final = "CORRECTION_REPORTED"
 AUDIT_PHYSICAL_FACT_RECORDED: Final = "PHYSICAL_FACT_RECORDED"
 AUDIT_PHYSICAL_FACT_CORRECTED: Final = "PHYSICAL_FACT_CORRECTED"
 AUDIT_NEEDS_HUMAN_INTERPRETATION: Final = "NEEDS_HUMAN_INTERPRETATION"
+AUDIT_SEMANTIC_INTERPRETATION_REQUESTED: Final = "SEMANTIC_INTERPRETATION_REQUESTED"
+"""The deterministic reading stopped and a model was asked to help read the sentence.
+
+Its actor is the worker *process*, never the model and never the person: what happened is
+that PromisePatch decided a sentence was worth a second reading. Nothing about the kitchen is
+claimed by this row, and nothing downstream may treat it as evidence that anything is.
+"""
+
+SOURCE_DETERMINISTIC: Final = "DETERMINISTIC"
+SOURCE_SEMANTIC_ASSISTED: Final = "SEMANTIC_ASSISTED"
+"""How a binding was arrived at, recorded beside every intake outcome.
+
+Provenance, not authority. A fact reached with a model's help is the same domain object as one
+reached without: same table, same attestor, same rule id, and the same thing downstream reads.
+The distinction exists so an operator can answer "who read this sentence", never so that a
+rule can behave differently depending on the answer.
+"""
 
 RULE_PHYSICAL_FACT_ATTESTED: Final = "R-PHYSICAL-FACT-ATTESTED"
 """The rule a physical fact is recorded under, named by the architecture.
@@ -271,7 +315,13 @@ class ClarificationOption:
 
 @dataclass(frozen=True, slots=True)
 class ClarificationView:
-    """A question that has been asked, and the answer to it if one has arrived."""
+    """A question that has been asked, the answer if one arrived, and what it was asked about.
+
+    The last three fields are the binding the question was derived from, persisted with it. A
+    question is only ever asked once the category and the resource are settled, so an answer to
+    it resolves against those rather than against a fresh reading of the original sentence --
+    which matters most for a sentence whose reading was hard-won in the first place.
+    """
 
     id: UUID
     ordinal: int
@@ -279,6 +329,9 @@ class ClarificationView:
     question: str
     options: tuple[ClarificationOption, ...]
     answer_text: str | None = None
+    category: ExceptionCategory | None = None
+    resource_id: str | None = None
+    commitment_id: str | None = None
 
     def option(self, code: str) -> ClarificationOption | None:
         for candidate in self.options:
@@ -418,6 +471,7 @@ __all__: Sequence[str] = [
     "AUDIT_NEEDS_HUMAN_INTERPRETATION",
     "AUDIT_PHYSICAL_FACT_CORRECTED",
     "AUDIT_PHYSICAL_FACT_RECORDED",
+    "AUDIT_SEMANTIC_INTERPRETATION_REQUESTED",
     "CASE_CLARIFYING",
     "CASE_INTERPRETING",
     "CASE_NEEDS_HUMAN",
@@ -431,12 +485,17 @@ __all__: Sequence[str] = [
     "EVENT_FACT_RECORDED",
     "EVENT_NEEDS_HUMAN",
     "EVENT_READY_FOR_ANALYSIS",
+    "EVENT_SEMANTIC_REQUESTED",
+    "EVENT_SEMANTIC_RESOLVED",
     "FACT_TARGET_COMMITMENT_LINE",
     "FACT_TARGET_EQUIPMENT",
     "FACT_TARGET_RESOURCE",
     "INTAKE_STEP_KINDS",
     "RULE_PHYSICAL_FACT_ATTESTED",
+    "SOURCE_DETERMINISTIC",
+    "SOURCE_SEMANTIC_ASSISTED",
     "STEP_BEGIN_INTERPRETATION",
+    "STEP_INTERPRET_SEMANTICALLY",
     "STEP_RESOLVE_OBSERVATION",
     "WHOLE_DELIVERY_CODE",
     "BoundExceptionView",
@@ -459,5 +518,6 @@ __all__: Sequence[str] = [
     "begin_step_key",
     "just_code",
     "resolve_step_key",
+    "semantic_step_key",
     "statement_id_of",
 ]

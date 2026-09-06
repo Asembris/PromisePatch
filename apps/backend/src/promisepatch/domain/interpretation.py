@@ -138,7 +138,7 @@ _CATEGORY_MARKERS: Final[Mapping[ExceptionCategory, tuple[str, ...]]] = {
     ExceptionCategory.EQUIPMENT_UNAVAILABLE: EQUIPMENT_MARKERS,
 }
 
-_CATEGORY_KINDS: Final[Mapping[ExceptionCategory, ResourceKind]] = {
+CATEGORY_KINDS: Final[Mapping[ExceptionCategory, ResourceKind]] = {
     ExceptionCategory.SUPPLY_NOT_RECEIVED: ResourceKind.INGREDIENT,
     ExceptionCategory.STOCK_UNUSABLE: ResourceKind.INGREDIENT,
     ExceptionCategory.EQUIPMENT_UNAVAILABLE: ResourceKind.EQUIPMENT,
@@ -288,6 +288,55 @@ def interpret(context: ObservationContext) -> InterpretationOutcome:
     return _interpret_report(context)
 
 
+def interpret_grounded(
+    context: ObservationContext,
+    *,
+    category: ExceptionCategory,
+    resource: ResourceView,
+) -> InterpretationOutcome:
+    """Read the report again, with the category and the resource already settled.
+
+    The entry point for a reading that something else worked out the *identity* of. Everything
+    after the identity is the same code the ordinary path runs: which delivery, whether the
+    delivery held anything else, whether a quantity was attested, and the clarification ceiling.
+
+    So there is no second interpreter and no second set of rules. Whatever established that the
+    worker meant the raspberries -- the lexicon, or a model's reading of a phrasing the lexicon
+    does not contain -- the delivery is chosen, the scope is questioned and the outcome is
+    reached by exactly the function that reached them for the canonical sentence.
+
+    ``resource`` must be a member of ``context.resources``; a caller that has one from anywhere
+    else has skipped the check that makes this safe.
+    """
+    outcome = _resolve(
+        context,
+        pinned_commitment=None,
+        pinned_scope=None,
+        pinned_category=category,
+        pinned_resource=resource,
+    )
+    if isinstance(outcome, ClarificationRequired) and not context.may_ask_again:
+        return HumanInterpretationRequired(
+            reason=EscalationReason.CLARIFICATION_CEILING_REACHED,
+            detail=(
+                f"still ambiguous after {context.clarifications_asked} clarifications; "
+                f"the {outcome.slot.value.lower()} needs an owner to bind it"
+            ),
+        )
+    return outcome
+
+
+def mentions(context: ObservationContext, resource: ResourceView) -> bool:
+    """Whether the report's own words contain a stored term for this resource.
+
+    The bakery's vocabulary, asked as a question. It is what lets a caller holding a proposed
+    identity check that the identity is present in the sentence rather than supplied from
+    somewhere the bakery never authored -- a resource's name or one of its recorded aliases,
+    matched whole-word against the same normalisation everything else here uses.
+    """
+    return _mentions(normalize(context.report.raw_text), resource)
+
+
 # --------------------------------------------------------------------------------- reports
 
 
@@ -295,6 +344,8 @@ def _interpret_report(context: ObservationContext) -> InterpretationOutcome:
     """The original report, optionally narrowed by an answer to a question we asked."""
     pinned_commitment: str | None = None
     pinned_scope: tuple[str, ...] | None = None
+    pinned_category: ExceptionCategory | None = None
+    pinned_resource: ResourceView | None = None
 
     if context.current.kind is ReportKind.CLARIFICATION_ANSWER:
         clarification = context.open_clarification
@@ -307,8 +358,24 @@ def _interpret_report(context: ObservationContext) -> InterpretationOutcome:
         if chosen is not None:
             pinned_commitment = chosen.commitment_id
             pinned_scope = chosen.scope_line_ids or None
+        # What the question was about, read back off the question rather than re-derived from
+        # the original sentence. For the canonical report the two agree; for a report the
+        # lexicon could not parse, only the persisted binding exists at all -- and an answer
+        # must never be lost because the sentence that prompted it is still unreadable.
+        pinned_category = clarification.category
+        pinned_resource = (
+            None
+            if clarification.resource_id is None
+            else context.resource(clarification.resource_id)
+        )
 
-    outcome = _resolve(context, pinned_commitment=pinned_commitment, pinned_scope=pinned_scope)
+    outcome = _resolve(
+        context,
+        pinned_commitment=pinned_commitment,
+        pinned_scope=pinned_scope,
+        pinned_category=pinned_category,
+        pinned_resource=pinned_resource,
+    )
     if isinstance(outcome, ClarificationRequired) and not context.may_ask_again:
         return HumanInterpretationRequired(
             reason=EscalationReason.CLARIFICATION_CEILING_REACHED,
@@ -325,14 +392,22 @@ def _resolve(
     *,
     pinned_commitment: str | None,
     pinned_scope: tuple[str, ...] | None,
+    pinned_category: ExceptionCategory | None = None,
+    pinned_resource: ResourceView | None = None,
 ) -> InterpretationOutcome:
+    """Read the report, with any part of the binding somebody has already settled taken as given.
+
+    A pin is never a shortcut past a rule; it is a rule's own earlier answer, arriving from a
+    persisted row or from a reading that has already been grounded. Everything a pin does not
+    cover is derived here exactly as it always was.
+    """
     normalized = normalize(context.report.raw_text)
 
-    category = _category(context, normalized)
+    category = pinned_category or _category(context, normalized)
     if isinstance(category, HumanInterpretationRequired):
         return category
 
-    resource = _resource(context, normalized, category)
+    resource = pinned_resource or _resource(context, normalized, category)
     if isinstance(resource, HumanInterpretationRequired):
         return resource
 
@@ -372,7 +447,7 @@ def _category(
         return candidates[0]
 
     kinds = {item.kind for item in _matched_resources(context, normalized)}
-    narrowed = [item for item in candidates if _CATEGORY_KINDS[item] in kinds]
+    narrowed = [item for item in candidates if CATEGORY_KINDS[item] in kinds]
     if len(narrowed) == 1:
         return narrowed[0]
     return HumanInterpretationRequired(
@@ -385,7 +460,7 @@ def _resource(
     context: ObservationContext, normalized: str, category: ExceptionCategory
 ) -> ResourceView | HumanInterpretationRequired:
     matched = _matched_resources(context, normalized)
-    wanted = _CATEGORY_KINDS[category]
+    wanted = CATEGORY_KINDS[category]
     of_kind = [item for item in matched if item.kind is wanted]
 
     if not of_kind:
@@ -805,6 +880,7 @@ def _day_word(context: ObservationContext, commitment: CommitmentView) -> str:
 
 
 __all__ = [
+    "CATEGORY_KINDS",
     "EQUIPMENT_MARKERS",
     "PARTIAL_MARKERS",
     "STOCK_MARKERS",
@@ -812,6 +888,8 @@ __all__ = [
     "ScopeReading",
     "begin",
     "interpret",
+    "interpret_grounded",
+    "mentions",
     "normalize",
     "read_scope",
 ]
