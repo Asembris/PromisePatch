@@ -19,8 +19,10 @@ env:
 
 # Every job here tests something that exists. The engine and its static gates came first; the
 # backend, the database and the frontend were added as each became real code that a change to
-# another part of the repository could break. There is still no AWS or LLM job, because there
-# is still nothing for one to test, and a job that always passes is worse than no job.
+# another part of the repository could break. There is still no AWS job and no AWS secret: the
+# semantic boundary is tested against its deterministic fake and a stub at the Bedrock
+# transport, and the one test that calls Bedrock for real is marked `bedrock_live`, deselected
+# by default, and deliberately not run here.
 #
 # Each database-backed job brings its own disposable PostgreSQL, on its own runner. Nothing
 # here reaches a hosted database, and no two jobs share one -- the fixture reset truncates
@@ -87,6 +89,26 @@ jobs:
       # No database, no network and no credential of any kind: the order system owns a SQLite
       # file it creates in a temporary directory, and the wire contract is pure Pydantic.
       - run: uv run pytest packages/order-contract apps/order-simulator
+
+  semantic:
+    name: semantic boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      # No database, no network and no AWS credential. That is the claim this job exists to
+      # keep true: the model boundary is proved against a deterministic fake and a stub at the
+      # Bedrock transport, so a repository nobody has authenticated to AWS from still tests
+      # every rule that stops a model's answer becoming a write.
+      - run: >
+          uv run pytest
+          apps/backend/tests/test_semantic_contracts.py
+          apps/backend/tests/test_semantic_provider.py
+          apps/backend/tests/test_bedrock_semantic.py
 
   properties:
     name: hypothesis (ci profile)
