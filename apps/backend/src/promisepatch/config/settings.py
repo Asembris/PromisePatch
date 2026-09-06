@@ -26,6 +26,18 @@ class Environment(StrEnum):
     AWS = "aws"
 
 
+class LlmProvider(StrEnum):
+    """Which semantic provider answers a bounded semantic job.
+
+    A closed enum rather than a free string, so a deployment that misspells the value fails
+    when its settings are parsed. There is no fallback branch: a process that cannot tell
+    which provider it was configured with does not get to pick one.
+    """
+
+    FAKE = "fake"
+    BEDROCK = "bedrock"
+
+
 class Settings(BaseSettings):
     """The full configuration surface of the backend as it stands today."""
 
@@ -122,6 +134,48 @@ class Settings(BaseSettings):
     same idempotency key, and the order system decides whether that is one effect or two.
     """
 
+    llm_provider: LlmProvider = LlmProvider.FAKE
+    """Which provider answers a semantic job. ``fake`` unless a deployment says otherwise.
+
+    Defaulted to the fake on purpose, and not inferred from :attr:`env`. Every test, every CI
+    job and the whole local Docker stack run without an AWS account, and they do so because
+    the default is a provider that cannot reach one -- not because something noticed no
+    credentials were configured and quietly degraded.
+    """
+
+    aws_region: str = "us-east-1"
+    """The Region the Bedrock client is built for.
+
+    Not a credential. Which account and which identity the call is made as is resolved by the
+    AWS SDK's own credential chain at call time -- a profile, an SSO session, a task role --
+    and PromisePatch holds no AWS key in any environment.
+    """
+
+    bedrock_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    """The one model, as the architecture fixes it: Claude Haiku 4.5 via a cross-Region profile.
+
+    One model for every job. No router, no tier ladder, no automatic escalation: five closed
+    jobs do not need one, and a fallback chain would mean the answer a demo gets and the answer
+    an eval measured came from different models.
+    """
+
+    bedrock_timeout_seconds: float = 10.0
+    """How long one semantic call may take before it is abandoned.
+
+    A bound rather than a target -- these calls sit inside a spoken turn and are expected in
+    well under two seconds. What matters is that there is a ceiling at all: a workflow unit
+    that could wait indefinitely on a model is a case that never resumes and a worker standing
+    in a kitchen with no answer.
+    """
+
+    bedrock_max_attempts: int = 3
+    """How many times the AWS SDK may retry one throttled or failed call, counting the first.
+
+    Transport only. A malformed answer is not retried by this number: it gets exactly one
+    corrective retry from the semantic gateway, because repeating an identical request until
+    the schema happens to be satisfied is how invented data becomes accepted data.
+    """
+
     bakery_tz: str = "Africa/Tunis"
     """The bakery's local timezone.
 
@@ -190,6 +244,32 @@ class Settings(BaseSettings):
         that accepted deliveries without a secret would accept them from anyone.
         """
         return _required(self.order_system_webhook_secret, "PP_ORDER_SYSTEM_WEBHOOK_SECRET")
+
+    def require_bedrock_model_id(self) -> str:
+        """The configured model, or a precise failure naming what to configure.
+
+        Checked when the Bedrock provider is built, never when settings are parsed. A process
+        configured for the fake has no business being asked for a model id, and a process on
+        AWS should fail at construction with the variable's name rather than at the first
+        spoken turn with a stack trace.
+        """
+        model_id = self.bedrock_model_id.strip()
+        if not model_id:
+            raise RuntimeError(
+                "PP_BEDROCK_MODEL_ID is not configured; set it to the Bedrock model or "
+                "cross-Region inference profile id before using PP_LLM_PROVIDER=bedrock."
+            )
+        return model_id
+
+    def require_aws_region(self) -> str:
+        """The Region for the Bedrock client, or a precise failure naming what to configure."""
+        region = self.aws_region.strip()
+        if not region:
+            raise RuntimeError(
+                "PP_AWS_REGION is not configured; set it to the Region whose Bedrock "
+                "endpoint this deployment should call."
+            )
+        return region
 
     @property
     def order_system_configured(self) -> bool:
