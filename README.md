@@ -14,8 +14,8 @@ An active hackathon build. What exists today is the deterministic engine
 (`packages/promise-graph`), the backend with its audited PostgreSQL write boundary, the durable
 case engine, the Live Operations screen, the external order-system integration — a separate
 order system that owns order state, a signed event ingress, and governed recovery amendments
-pushed back at it — and the semantic boundary an Amazon Bedrock model will later answer
-through. No workflow calls a model yet, and there is no deployment.
+pushed back at it — and the semantic boundary an Amazon Bedrock model answers through, now
+wired into exception intake. There is no deployment.
 
 ## The deterministic engine
 
@@ -36,8 +36,21 @@ select a recovery — the import graph forbids it, not a convention.
 The default provider is a deterministic fake, so the suites, the local stack and CI all run
 with **no AWS credentials of any kind**. Switching to Amazon Bedrock is an environment change
 plus whatever the AWS SDK already uses to authenticate on that machine; PromisePatch holds no
-AWS key in any environment. [docs/semantic-boundary.md](docs/semantic-boundary.md) has the
-trust line, the failure semantics, the prompt-injection posture and the opt-in live smoke.
+AWS key in any environment.
+
+One workflow uses it. When the deterministic interpreter cannot read a worker's report — "the
+deck oven packed up", "Valley only brought part of the raspberries today" — a model is asked
+which of the bakery's own things the sentence was about, and nothing else. It contributes a
+category and one identity; which delivery, what arrived and how much stay with deterministic
+code and the worker's answers. An identity is accepted only when the worker's sentence contains
+that resource's stored name or one of its aliases, so a model may parse a phrasing but may not
+supply vocabulary the bakery never authored. The canonical raspberry report is understood by
+the lexicon and costs **zero** model calls, which is asserted rather than assumed.
+
+The worker remains the physical attestor throughout: `PHYSICAL_FACT_RECORDED` names the person
+who spoke, and the model appears only as provenance beside it.
+[docs/semantic-boundary.md](docs/semantic-boundary.md) has the trust line, the fallback
+condition, the failure semantics, the prompt-injection posture and the opt-in live acceptance.
 
 ## Prerequisites
 
@@ -150,14 +163,26 @@ uv run python scripts/with_local_env.py -- uv run pytest apps/backend/tests/test
 The semantic boundary needs neither a database nor an AWS account:
 
 ```bash
-uv run pytest apps/backend/tests/test_semantic_contracts.py apps/backend/tests/test_semantic_provider.py apps/backend/tests/test_bedrock_semantic.py
+uv run pytest apps/backend/tests/test_semantic_contracts.py \
+  apps/backend/tests/test_semantic_provider.py \
+  apps/backend/tests/test_semantic_grounding.py \
+  apps/backend/tests/test_bedrock_semantic.py
 ```
 
-The one test that calls Amazon Bedrock for real is marked `bedrock_live` and is deselected by
-default. It needs credentials available to the AWS SDK and access to the configured model:
+The semantic intake workflow needs the database but still no AWS account — every one of its
+scenarios runs against a scripted model:
+
+```bash
+uv run python scripts/with_local_env.py -- uv run pytest apps/backend/tests/test_semantic_intake.py
+```
+
+The tests that call Amazon Bedrock for real are marked `bedrock_live` and are deselected by
+default. They need credentials available to the AWS SDK and access to the configured model:
 
 ```bash
 PP_LLM_PROVIDER=bedrock uv run pytest -m bedrock_live
+AWS_PROFILE=promisepatch PP_LLM_PROVIDER=bedrock \
+  uv run python scripts/with_local_env.py -- uv run pytest -m "bedrock_live and integration"
 ```
 
 The order system's own suite needs nothing but Python:

@@ -60,11 +60,12 @@ what the model is shown and what the answer is checked against cannot drift apar
 
 ## Fake and Bedrock
 
-`FakeSemanticProvider` is the default. It is deterministic, reaches no network, holds no
-credential and imports no SDK, and its answers go through the same validator as a real
-model's — so a test proving that an invented identifier is refused is proving it about the
-production acceptance path. Its unscripted defaults are the cautious answer for each job: an
-interpretation that binds nothing, `UNCLEAR`, a one-word verbalisation.
+`FakeSemanticProvider` is the default, in the worker as well as everywhere else. It is
+deterministic, reaches no network, holds no credential and imports no SDK, and its answers go
+through the same validator as a real model's — so a test proving that an invented identifier
+is refused is proving it about the production acceptance path. Its unscripted defaults are
+the cautious answer for each job: an interpretation that binds nothing, `UNCLEAR`, and a
+one-word verbalisation.
 
 `BedrockSemanticProvider` calls the boto3 `bedrock-runtime` **Converse** API with one tool per
 job and `toolChoice` forcing it, temperature 0 and a per-job output cap. A response that
@@ -134,6 +135,13 @@ PP_LLM_PROVIDER=bedrock uv run pp semantic-smoke
 PP_LLM_PROVIDER=bedrock uv run pytest -m bedrock_live
 ```
 
+The workflow's own live acceptance is two cases and needs a database as well:
+
+```bash
+AWS_PROFILE=promisepatch PP_LLM_PROVIDER=bedrock \
+  uv run python scripts/with_local_env.py -- uv run pytest -m "bedrock_live and integration"
+```
+
 Both need credentials available to the AWS SDK and access to the configured model in the
 configured Region. Neither writes anything: `pp semantic-smoke` opens no database connection,
 touches no case, and prints the provider, the job, the validated result and its telemetry.
@@ -148,15 +156,127 @@ is telemetry only; no decision reads it.
 The worker's sentence and the customer's reply are **not** logged, and correlation identifiers
 are never put in a prompt.
 
+## Where it is wired: reading a worker's sentence
+
+One workflow uses the boundary today. When the deterministic interpreter cannot read a worker's
+report, a model is asked what the sentence was about — and the answer is a proposal like every
+other answer here.
+
+```text
+worker report                     durable, in case_reports
+      |
+deterministic interpreter         the fixed lexicon, unchanged
+      |
+      +-- resolved, or a question  -> no model is called, ever
+      |
+      +-- stopped, and the stop is a *parse* failure
+                |
+      INTERPRET_SEMANTICALLY step  durable; the model call holds no transaction
+                |
+      candidate set + interpret_utterance
+                |
+      strict schema + candidate grounding
+                |
+      deterministic semantic resolution   (promisepatch.domain.grounding, pure)
+                |
+      the ordinary intake machinery       the same fact, question or escalation as always
+```
+
+### When a model is asked
+
+Only when the deterministic reading stopped, the statement is the **original report**, and the
+stop is one of four *parse* failures: `NO_CATEGORY`, `AMBIGUOUS_CATEGORY`, `NO_RESOURCE`,
+`RESOURCE_KIND_MISMATCH`. Those are the cases where the lexicon did not recognise a phrasing.
+
+It is not asked for anything else, and the exclusions are the interesting half:
+
+| Not asked | Because |
+|---|---|
+| A sentence the lexicon read | Understanding that did not need buying is not paid for. This is asserted: the canonical raspberry report is expected to produce **zero** provider calls. |
+| `AMBIGUOUS_RESOURCE` | Two of the bakery's ingredients are named. Both readings are right; choosing between them is the worker's to do. |
+| `NO_OPEN_COMMITMENT` | No amount of understanding creates a delivery that does not exist. |
+| `UNKNOWN_QUANTITY` | A number the worker did not say. Supplying one would be attesting. |
+| A clarification answer | It says which lines arrived — a physical outcome. It never leaves the building. |
+| A correction | Same, and it is resolved against lines that are already bound. |
+
+### What the model contributes
+
+**A category and one identity. Nothing else.** Not which delivery, not the scope, not a
+quantity, and not a physical outcome. Everything after the identity is decided by
+`interpret_grounded`, which is the same code that decides it for the canonical sentence — so
+there is one interpreter, and a reading a model helped with faces every question a reading it
+did not help with faces, including the clarification that makes the demo consequential.
+
+Three rules make that hold:
+
+- **Identity must be in the bakery's own words.** A proposed resource is accepted only if the
+  worker's sentence contains that resource's stored name or one of its recorded aliases. This
+  separates parsing from knowing: a model may work out that "packed up" is an equipment failure
+  and that "the deck oven" is the deck oven, because the deck oven is written in the sentence.
+  It may not work out that "the berries" means raspberries — nothing the bakery authored says
+  so, and that sentence fails closed to a person exactly as it did before.
+- **Candidates are constructed deterministically, and checked twice.** Ingredients on an open
+  delivery line or with a counted balance; deliveries with at least one line still expected,
+  carrying only those lines; equipment. No quantities, no customers, no orders, no promises, no
+  prices. The grounding check runs at the boundary against the set that was sent, and again at
+  consumption against the set as it stands then — so an identifier that exists but was not
+  offered for *this* reading is refused exactly like an invented one.
+- **Advice is advice.** `clarification_needed`, `confidence`, `scope_hint` and `quantity_hint`
+  are never read by the resolver. A reading that says clarification is unnecessary and offers
+  its own scope still produces the frozen scope question when the delivery holds a second open
+  line.
+
+### Who attested what
+
+`PHYSICAL_FACT_RECORDED` is written with the **worker** as actor and `NONE` as authority,
+whether a model was involved or not. The model appears once, under `provenance.semantic`:
+provider, model id, how many candidates it was offered, which identifiers grounded and which
+were dropped, and the normalised proposal. Every intake audit row also carries
+`interpretation_source`, which is `DETERMINISTIC` or `SEMANTIC_ASSISTED`.
+
+There is no audit type, no field and no value anywhere that says a model observed a delivery,
+an ingredient or a piece of equipment. Downstream analysis cannot tell the difference and has
+no branch that could: the fact is the same domain object either way.
+
+`pp case-status` prints the same evidence — source, attestor, provider, model, candidate
+counts, what grounded and what did not — and no prompt or model output, because the row does
+not hold them.
+
+### Durability
+
+The model call is made in the worker's cycle **between** claiming the step and executing it:
+the one moment it holds a lease and no transaction. The reading is written to
+`case_steps.result` under the claim's own fence, and the transaction that consumes it locks the
+case, re-runs the deterministic reader, and recomputes the request fingerprint before believing
+a word of it.
+
+- Dies before the call: the lease expires, the step is reclaimed, the model is asked again.
+- Dies after the call, before the reading is stored: the same. A model call moves nothing in
+  anybody's world, so there is no exactly-once to fake here; two readings still become one
+  question, one fact and one settlement.
+- Dies after the reading is stored: the next claim consumes it without calling anybody.
+- Dies after the transition commits: the step is `DONE` and is not claimable.
+- The context changed while the model was answering: the fingerprint no longer matches, the
+  reading is discarded, and the sentence is read again against the kitchen as it now is.
+
+A provider that cannot be reached retries on the ordinary ladder and, at the bound, escalates
+under `SEMANTIC_UNAVAILABLE` — a reason that points an operator at a provider rather than at
+the worker. A model that answered something the boundary refused is *not* retried: the content
+was wrong in a way that repeats, so the case escalates under the reason the sentence was unread
+for all along.
+
+No migration was needed for any of this. The step ledger already had a fenced result column,
+and the audit ledger already had provenance.
+
 ## What is not wired yet
 
-This is the boundary only. Nothing in the canonical workflow calls a model:
-
-- The deterministic physical interpreter is unchanged. "Today's raspberry delivery didn't
-  arrive" is read by `promisepatch.domain.interpretation` exactly as before, and no
-  physical-fact test needs Bedrock.
 - The consent protocol is unchanged. "Strawberries work" still produces no decision and no
-  apparent intent; the literal parser remains the only source of an `ApprovalDecision`.
+  apparent intent; the literal parser remains the only source of an `ApprovalDecision`. Nothing
+  on the intake path can reach approval machinery, and a test asserts that no sequence of
+  semantic readings produces a decision or a request.
+- `phrase_clarification` is not used. Clarification wording stays deterministic, and its
+  candidates come from the graph — which is what the frozen policy requires whether or not a
+  model phrases the sentence.
 - No explanation text reaches the UI.
 
 Wiring each of those is its own change, with its own tests.
