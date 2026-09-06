@@ -75,6 +75,7 @@ from promisepatch.domain.observation import INTAKE_STEP_KINDS
 from promisepatch.domain.outbox import EffectAdapter
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import reset_demo_state
+from promisepatch.semantic import FakeSemanticProvider, SemanticProvider
 from promisepatch.worker import Worker
 
 BAKER = hollow_oak.BAKER
@@ -169,18 +170,22 @@ class Intake:
         identity: str | None = None,
         adapter: EffectAdapter | None = None,
         fetch: Any = None,
+        semantic: SemanticProvider | None = None,
     ) -> Worker:
         """A worker process of its own, so two of them can be made to contend deliberately.
 
         The adapter is injectable because the provider's memory is where half of the
         crash-safety assertions live: how many transport calls it saw, and how many logical
         effects those became. ``fetch`` is the authoritative order read, present only for a
-        deployment that has an order system to ask.
+        deployment that has an order system to ask. ``semantic`` is where a sentence the
+        deterministic lexicon cannot read is sent; unscripted, it binds nothing, so a test that
+        does not mention a model gets a worker whose model understands nothing.
         """
         return Worker(
             database=self.database,
             adapter=adapter or FakeEffectAdapter(),
             identity=WorkerIdentity(identity) if identity else WorkerIdentity.create(),
+            semantic=semantic or FakeSemanticProvider(),
             fetch_order=fetch,
         )
 

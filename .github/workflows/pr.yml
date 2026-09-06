@@ -104,10 +104,17 @@ jobs:
       # keep true: the model boundary is proved against a deterministic fake and a stub at the
       # Bedrock transport, so a repository nobody has authenticated to AWS from still tests
       # every rule that stops a model's answer becoming a write.
+      #
+      # `test_semantic_grounding.py` is here for the same reason and is the newer half of it:
+      # what a reading is *worth* is decided by a pure function, so the rule that refuses an
+      # ungrounded binding is exercised with no infrastructure of any kind. The workflow those
+      # rules live in needs PostgreSQL and runs in the integration job below; the two live
+      # Bedrock suites are marked `bedrock_live` and are deselected by default everywhere.
       - run: >
           uv run pytest
           apps/backend/tests/test_semantic_contracts.py
           apps/backend/tests/test_semantic_provider.py
+          apps/backend/tests/test_semantic_grounding.py
           apps/backend/tests/test_bedrock_semantic.py
 
   properties:
