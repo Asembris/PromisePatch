@@ -131,9 +131,24 @@ class BedrockSemanticProvider(StructuredSemanticProvider):
         return cls(open_transport=open_transport, model_id=model_id)
 
     def transport(self) -> ConverseTransport:
-        """The client, opened once. Called from the event loop, so there is no race to lose."""
+        """The client, opened once. Called from the event loop, so there is no race to lose.
+
+        Opening it is where the AWS SDK resolves who we are, so this is where "there is no
+        profile", "that profile needs a dependency you have not installed" and "no Region"
+        surface. They are configuration, not weather: none of them is retryable, and all of
+        them deserve the SDK's own sentence rather than a traceback through a call that never
+        reached the network.
+        """
+        from botocore.exceptions import BotoCoreError, ClientError
+
         if self._opened is None:
-            self._opened = self._open_transport()
+            try:
+                self._opened = self._open_transport()
+            except (BotoCoreError, ClientError) as error:
+                raise SemanticProviderError(
+                    f"the AWS SDK could not be prepared for Bedrock: {error}",
+                    retryable=False,
+                ) from error
         return self._opened
 
     async def invoke(self, spec: JobSpec, content: str, *, correction: str | None) -> Attempt:

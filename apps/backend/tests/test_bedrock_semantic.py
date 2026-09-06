@@ -19,6 +19,7 @@ from botocore.exceptions import (
     ConnectTimeoutError,
     EndpointConnectionError,
     NoCredentialsError,
+    ProfileNotFound,
 )
 
 from promise_graph.model import ExceptionCategory
@@ -362,6 +363,21 @@ async def test_the_client_is_opened_once_and_reused() -> None:
     await semantic.run(request)
     await semantic.run(request)
     assert len(opened) == 1
+
+
+async def test_a_client_that_cannot_be_opened_is_a_typed_failure_not_a_traceback() -> None:
+    """Resolving who we are is where local AWS setup goes wrong, so it fails like everything
+    else here: one sentence naming the cause, no retry, and no value."""
+
+    def refuse() -> ConverseTransport:
+        raise ProfileNotFound(profile="does-not-exist")
+
+    semantic = BedrockSemanticProvider(open_transport=refuse, model_id=MODEL)
+    with pytest.raises(SemanticProviderError) as raised:
+        await semantic.run(ClassifyReplyIntentRequest(reply=UntrustedText(text="ok")))
+
+    assert raised.value.retryable is False
+    assert "does-not-exist" in str(raised.value)
 
 
 def test_settings_carry_the_bedrock_client_configuration() -> None:
