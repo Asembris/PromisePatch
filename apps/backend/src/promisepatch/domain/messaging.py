@@ -38,6 +38,19 @@ It is the only instruction the customer is given, and it is what the literal par
 the other side: the two words it invites are the two words that mean anything.
 """
 
+CONFIRMATION_INSTRUCTION: Final = "To confirm this change, reply YES. Reply NO to decline."
+"""The frozen confirmation sentence, quoted from §13.6 and reproduced exactly.
+
+Sent after a reply the literal parser could not read, and identical whatever a model made of
+that reply. §13.6 gives all three apparent-intent labels -- and the deterministic fallback for
+that job -- the same single prompt, so the words a customer sees do not vary with a model's
+opinion of them. That is not a simplification of the protocol; it is the protocol, and it is
+what stops the message from teaching the customer that something already read their mind.
+
+It names the two words that count, because a prompt that asked for confirmation without saying
+in what form would invite a second sentence nobody can act on.
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class ApprovalMessage:
@@ -101,6 +114,36 @@ def build_approval_request(message: ApprovalMessage) -> str:
     return "\n".join(lines)
 
 
+def build_confirmation_prompt(message: ApprovalMessage) -> str:
+    """Compose the one confirmation prompt §13.6 allows per request.
+
+    Deliberately short, deliberately incurious, and deliberately the same for every reply that
+    reached it. It says that the reply was not recorded as an answer, names the change reference
+    so the customer knows which conversation this is, and asks for one of the two words.
+
+    Three things it never does, each of them a rule rather than a preference:
+
+    * **It does not quote the customer back at themselves.** Repeating "you said strawberries
+      work" would put a reading of their words in a message they might answer NO to.
+    * **It does not say what PromisePatch thinks they meant.** "It sounds like you approve" is
+      an anchor, and an anchor placed by a model's label is a model influencing consent.
+    * **It does not restate the change.** The original request named the exact substitution and
+      is the message this one is about; a second description is a second chance to get it wrong.
+    """
+    return "\n".join(
+        [
+            f"Hello {message.customer_name},",
+            "",
+            f"We could not record your last message about order {message.order_reference} "
+            "as an answer.",
+            "",
+            f"Change reference: {message.option_code}",
+            "",
+            CONFIRMATION_INSTRUCTION,
+        ]
+    )
+
+
 def _change(message: ApprovalMessage) -> str:
     """One sentence naming what the customer would receive instead, however much we know.
 
@@ -125,10 +168,23 @@ def carries_required_literals(text: str, *, option_code: str) -> bool:
     return CONSENT_INSTRUCTION in text and option_code in text
 
 
+def carries_confirmation_literals(text: str, *, option_code: str) -> bool:
+    """Whether a confirmation prompt may be sent at all.
+
+    The same pre-send shape as :func:`carries_required_literals`, against the sentence §13.6
+    fixes for this message. Separate rather than parameterised, because the two messages invite
+    different words and a single guard that accepted either would accept the wrong one.
+    """
+    return CONFIRMATION_INSTRUCTION in text and option_code in text
+
+
 __all__ = [
+    "CONFIRMATION_INSTRUCTION",
     "CONSENT_INSTRUCTION",
     "ApprovalMessage",
     "build_approval_request",
+    "build_confirmation_prompt",
+    "carries_confirmation_literals",
     "carries_required_literals",
     "render_due",
 ]
