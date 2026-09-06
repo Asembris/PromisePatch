@@ -923,11 +923,15 @@ def test_the_semantic_module_cannot_record_a_decision() -> None:
             named.update(part for part in (node.name, node.asname) if part)
         elif isinstance(node, ast.ImportFrom) and node.module:
             named.add(node.module)
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+        elif (
             # String constants too, so a raw table name in a statement is caught as surely as
-            # an imported model class would be.
-            if node not in docstrings:
-                named.add(node.value)
+            # an imported model class would be -- but not the prose, which is where this
+            # module explains the very things it refuses to name.
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node not in docstrings
+        ):
+            named.add(node.value)
 
     forbidden = {
         "ApprovalDecision",
