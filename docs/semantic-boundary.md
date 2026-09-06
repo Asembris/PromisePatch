@@ -268,15 +268,88 @@ for all along.
 No migration was needed for any of this. The step ledger already had a fenced result column,
 and the audit ledger already had provenance.
 
+## Where it is wired: reading a customer's reply
+
+The second place a model is asked anything is the consent protocol, and it is the place where
+the boundary matters most, because the thing on the other side of it is somebody's consent.
+
+### The order of the two readers
+
+Every inbound reply goes to the literal parser first, always, and a reply that is exactly `YES`
+or exactly `NO` becomes an `ApprovalDecision` without a model being asked. That is asserted as a
+count rather than described: the customer-intent suite proves **zero** provider calls for each
+of them. Consent does not depend on a network, and a slow model cannot delay an answer.
+
+Only a reply that the parser could not read — on a request that is open, undecided, in date and
+from the customer's own channel — becomes a candidate for `classify_reply_intent`. Every one of
+those conditions is checked by the reply step *before* the semantic work exists, so an
+unauthorised sender, a closed window, a settled request and a redelivered message each cost
+nothing at all. The step that would make a model call is never created.
+
+### What the reading buys
+
+One message. `§13.6` gives all three labels — `APPARENT_APPROVE`, `APPARENT_DECLINE`,
+`UNCLEAR` — the same response, and so does `§14.3`'s deterministic fallback for the job, which
+is `UNCLEAR`. So the protocol is:
+
+```text
+reply the parser cannot read, request SENT
+  → classify_reply_intent (non-authoritative)
+  → store apparent_intent on inbound_replies
+  → one confirmation prompt: "To confirm this change, reply YES. Reply NO to decline."
+  → request CONFIRMATION_PENDING; track WAITING_FOR_CUSTOMER; case WAITING
+```
+
+A model that answered `APPARENT_APPROVE`, a model that answered `APPARENT_DECLINE`, a model that
+returned malformed JSON and a model that could not be reached at all produce the *identical*
+message and the *identical* state. The label changes what the ledger records; it changes nothing
+about what happens. That is why a prompt-injected reply buys nothing: a model complying with it
+perfectly still results in the customer being asked to type `YES` or `NO`.
+
+A second reply the parser cannot read is not classified again. `§13.6` escalates the track with
+the raw text attached, which is also the whole of the duplicate-prompt defence — the state that
+permits a prompt is the state the prompt removes.
+
+### The structural half
+
+`promisepatch.domain.customer_intent` is a separate module from `promisepatch.domain.approvals`
+for one reason: it names no decision. It does not import the literal parser (an import-linter
+contract), and its source contains no `ApprovalDecision`, no `approval_decisions`, no
+`ParserKind` and no `ApprovalDecisionKind` (a test reads the file and asserts it). There is no
+line in it to review for safety, because there is no line in it that could be unsafe.
+
+### The races, and who wins them
+
+- A literal `YES` arriving while the model is still reading an earlier reply decides the
+  request. The reading comes back, finds it answered, and no-ops — no prompt, no second
+  transition, nothing disturbed.
+- A deadline that closes during the call sends no prompt. The consuming transaction compares
+  against the database's clock, so a model that took its time cannot extend a customer's window.
+- A decision that lands before the queued prompt is dispatched stops it going out, through the
+  same pre-flight that refuses a late approval request. The customer is never asked about
+  something they have already answered. (The refusal is a terminal outbox failure, so the case
+  is flagged for owner attention — a message we composed was not sent, and the ledger says so.)
+- A crash before the call leaves the work to be redone; a crash after it leaves the answer on
+  the step row, so a restart consumes it rather than paying for it twice.
+
+Provenance runs `InboundReply → parser miss → classify_reply_intent → label → confirmation
+requested → outbound prompt → later literal YES/NO → ApprovalDecision`. The audit row for the
+confirmation is `actor = SYSTEM`, `authority = NONE`, `parser = null`; the audit row for the
+decision is `actor = CUSTOMER`, `authority = HUMAN_APPROVAL`, `parser = LITERAL`, and carries no
+semantic provenance at all. The ledger never says a model approved anything, because it did not.
+
+No migration was needed. `approval_requests.state` already permitted `CONFIRMATION_PENDING` and
+`inbound_replies.apparent_intent` already existed — both were written into the baseline schema
+by the slice that froze the protocol, long before anything could fill them in.
+
 ## What is not wired yet
 
-- The consent protocol is unchanged. "Strawberries work" still produces no decision and no
-  apparent intent; the literal parser remains the only source of an `ApprovalDecision`. Nothing
-  on the intake path can reach approval machinery, and a test asserts that no sequence of
-  semantic readings produces a decision or a request.
 - `phrase_clarification` is not used. Clarification wording stays deterministic, and its
   candidates come from the graph — which is what the frozen policy requires whether or not a
   model phrases the sentence.
+- `draft_customer_change_phrase` is not used. Both customer-facing messages are composed from
+  column values, and the sentences that tell a customer which words count are fixed strings in
+  the message builder, guarded by a pre-send check that predates any drafter.
 - No explanation text reaches the UI.
 
 Wiring each of those is its own change, with its own tests.
