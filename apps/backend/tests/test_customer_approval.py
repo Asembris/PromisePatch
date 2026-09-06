@@ -46,6 +46,7 @@ from promisepatch.db.models import ApprovalDecision, ApprovalRequest, InboundRep
 from promisepatch.domain import approvals, cases, messaging, recovery
 from promisepatch.domain.adapters import FakeEffectAdapter, ProviderBehaviour
 from promisepatch.domain.model import DeliveryOutcome, DeliveryStatus
+from promisepatch.semantic import ApparentIntent
 
 pytestmark = pytest.mark.integration
 
@@ -497,7 +498,14 @@ async def test_a_waiting_case_does_not_stall_unrelated_work(physical: Intake) ->
 
 
 async def test_a_non_literal_reply_decides_nothing(physical: Intake) -> None:
-    """The canonical proof. ``Strawberries work`` is a sentence about strawberries."""
+    """The canonical proof. ``Strawberries work`` is a sentence about strawberries.
+
+    The request moves to ``CONFIRMATION_PENDING`` because §13.6 answers an unreadable reply
+    with one prompt asking for a word that counts. That is a change to the *conversation* and
+    to nothing else: no decision exists, the track is still waiting on its customer, and the
+    case has not left ``WAITING``. What a model made of the sentence is asserted in
+    ``test_customer_intent``; what matters here is that none of it is consent.
+    """
     case_id = await waiting_case(physical)
     request = await the_request(physical)
 
@@ -507,13 +515,19 @@ async def test_a_non_literal_reply_decides_nothing(physical: Intake) -> None:
     assert await physical.decisions() == []
     after = await the_request(physical)
     assert after.decided is False
-    assert after.state == ApprovalRequestState.SENT.value
+    assert after.state == ApprovalRequestState.CONFIRMATION_PENDING.value
     assert (await track_of(physical, case_id, B)).state == cases.TRACK_WAITING_FOR_CUSTOMER
     assert (await physical.case(case_id)).state == cases.CASE_WAITING
 
 
 async def test_a_non_literal_reply_is_kept_exactly_as_it_was_written(physical: Intake) -> None:
-    """Stored as data for the later semantic slice, and never as an instruction."""
+    """Stored as data, read as data, and never as an instruction.
+
+    The unscripted fake reads every reply as ``UNCLEAR``, which is also §14.3's deterministic
+    fallback for the job -- so this is the shape a deployment with no reachable model produces,
+    and it is the same shape as one with a confident model: a label beside the words, and no
+    decision anywhere near either of them.
+    """
     await waiting_case(physical)
     request = await the_request(physical)
 
@@ -525,9 +539,8 @@ async def test_a_non_literal_reply_is_kept_exactly_as_it_was_written(physical: I
     assert replies[0].raw_text == NON_LITERAL
     assert replies[0].request_id == request.id
     assert replies[0].sender_identity == TOMAS_CHANNEL
-    # Nothing read it. An apparent intent recorded here would be indistinguishable later from
-    # one a classifier had actually produced.
-    assert replies[0].apparent_intent is None
+    assert replies[0].apparent_intent == ApparentIntent.UNCLEAR.value
+    assert await physical.decisions() == []
 
 
 async def test_a_non_literal_reply_is_announced_as_unrecognised(physical: Intake) -> None:
