@@ -12,9 +12,10 @@ while leaving every unaffected promise untouched.
 
 An active hackathon build. What exists today is the deterministic engine
 (`packages/promise-graph`), the backend with its audited PostgreSQL write boundary, the durable
-case engine, the Live Operations screen, and the external order-system integration — a
-separate order system that owns order state, a signed event ingress, and governed recovery
-amendments pushed back at it. There is no LLM and no deployment yet.
+case engine, the Live Operations screen, the external order-system integration — a separate
+order system that owns order state, a signed event ingress, and governed recovery amendments
+pushed back at it — and the semantic boundary an Amazon Bedrock model will later answer
+through. No workflow calls a model yet, and there is no deployment.
 
 ## The deterministic engine
 
@@ -23,6 +24,20 @@ availability, allocation, impact classification, recovery-option validation, sna
 fingerprinting and the revalidation checklist. It performs no I/O, reads no environment, and
 never calls the wall clock — time is passed in explicitly — so every decision that could
 affect a customer is testable with zero cloud access.
+
+## The semantic boundary
+
+The model understands; the deterministic protocol authorizes. `promisepatch.semantic` is the
+narrow, pure boundary a model answers through: three bounded jobs, strict schemas, and a check
+that every identifier in an answer came from the candidates PromisePatch supplied. A model can
+propose a reading; it cannot write a row, record a consent decision, attest a physical fact or
+select a recovery — the import graph forbids it, not a convention.
+
+The default provider is a deterministic fake, so the suites, the local stack and CI all run
+with **no AWS credentials of any kind**. Switching to Amazon Bedrock is an environment change
+plus whatever the AWS SDK already uses to authenticate on that machine; PromisePatch holds no
+AWS key in any environment. [docs/semantic-boundary.md](docs/semantic-boundary.md) has the
+trust line, the failure semantics, the prompt-injection posture and the opt-in live smoke.
 
 ## Prerequisites
 
@@ -130,6 +145,19 @@ proof for the whole boundary is one file:
 
 ```bash
 uv run python scripts/with_local_env.py -- uv run pytest apps/backend/tests/test_order_system_boundary.py
+```
+
+The semantic boundary needs neither a database nor an AWS account:
+
+```bash
+uv run pytest apps/backend/tests/test_semantic_contracts.py apps/backend/tests/test_semantic_provider.py apps/backend/tests/test_bedrock_semantic.py
+```
+
+The one test that calls Amazon Bedrock for real is marked `bedrock_live` and is deselected by
+default. It needs credentials available to the AWS SDK and access to the configured model:
+
+```bash
+PP_LLM_PROVIDER=bedrock uv run pytest -m bedrock_live
 ```
 
 The order system's own suite needs nothing but Python:
