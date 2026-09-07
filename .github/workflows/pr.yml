@@ -159,6 +159,37 @@ jobs:
       - name: The live composition root refuses to spend without being told to
         run: uv run pytest scripts/tests
 
+      # The same suite again, in the environment that would make an accident possible.
+      #
+      # This job needs no AWS credential and is given none. That is not what keeps it safe, and
+      # the point of running this step is to stop anybody believing it is: a benchmark once
+      # became live from inside a test, and the only thing that stopped it spending was AWS
+      # denying access to the model. A safety property resting on a missing credential, an
+      # unpriced model or an IAM denial is a property somebody can remove on purpose one
+      # afternoon without realising what they removed.
+      #
+      # So every variable a spending machine would carry is set here, to syntactically valid
+      # nonsense, and the suite must still pass. What refuses is the harness: --live buys
+      # nothing without a scope-bound authorisation typed at the invocation, and a process
+      # running under pytest cannot construct a paid provider at all. If a future change to
+      # this workflow, or to a runner image, starts injecting real AWS variables, the interlock
+      # is what still protects it -- and this step is what proves that claim rather than
+      # asserting it.
+      - name: A credentialed environment still cannot buy inference from a test
+        env:
+          AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+          AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+          AWS_SESSION_TOKEN: FwoGZXIvYXdzEEYaDEXAMPLESESSIONTOKEN
+          AWS_REGION: us-east-1
+          AWS_DEFAULT_REGION: us-east-1
+          PP_LLM_PROVIDER: bedrock
+          PP_BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
+        run: >
+          uv run pytest
+          scripts/tests/test_spend_interlock.py
+          evals/tests/test_authorisation.py
+          evals/tests/test_provider_failure.py
+
       # Type-checked here rather than in the `mypy` job: that job installs no evaluation
       # dependencies, and this is the only job that has the framework the adapter imports.
       - run: uv run mypy evals scripts
