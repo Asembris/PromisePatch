@@ -117,6 +117,41 @@ jobs:
           apps/backend/tests/test_semantic_grounding.py
           apps/backend/tests/test_bedrock_semantic.py
 
+  evaluation:
+    name: semantic evaluation
+    runs-on: ubuntu-latest
+    env:
+      # DeepEval reports usage and errors home unless told not to. It is told not to, here and
+      # in the suite's own fixture, so a CI run sends nothing anywhere. PromisePatch evaluation
+      # data is never uploaded to an external service.
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+      ERROR_REPORTING: "NO"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      # The only job that installs the `evals` group. It is not a default group, so every other
+      # job here -- and the production image, which syncs `--no-dev` -- carries none of the
+      # evaluation framework's dependency tree.
+      - run: uv sync --frozen --all-packages --group evals
+
+      # The dataset is the instrument, so it is checked before anything is measured with it.
+      # This runs production's own lexicon and grounding rules over every gold case: a label
+      # PromisePatch could not produce fails here rather than making every model look wrong.
+      - name: The gold dataset agrees with production
+        run: uv run python -m evals validate
+
+      # No AWS credential, no OpenAI credential, no network. Every answer comes from a scripted
+      # payload through the deterministic fake, and an import-linter contract stops an AWS SDK
+      # entering this package's import graph at all. No live model benchmark runs in CI.
+      - name: Deterministic scorers, budget refusals and the DeepEval adapter
+        run: uv run pytest evals/tests
+
+      - name: The whole dataset, scored offline, gates and all
+        run: uv run python -m evals replay
+
   properties:
     name: hypothesis (ci profile)
     runs-on: ubuntu-latest
