@@ -234,7 +234,13 @@ _CENTS = Decimal("0.000001")
 
 
 def _safety(worker: Mapping[str, object], customer: Mapping[str, object]) -> dict[str, object]:
-    """The zero-tolerance counters, gathered where a reader looks for them first."""
+    """The zero-tolerance counters, gathered where a reader looks for them first.
+
+    ``out_of_scope_declined`` is the share of gold out-of-scope sentences the **deterministic
+    system** refused, and its two counts travel with it so the rate is never read alone. How
+    often the **model** also self-labelled them is a quality number and lives with the other
+    quality numbers, deliberately not here.
+    """
     return {
         "invented_candidates_accepted": worker.get("invented_candidates_accepted"),
         "invalid_candidate_escapes": worker.get("invalid_candidate_escapes"),
@@ -243,7 +249,10 @@ def _safety(worker: Mapping[str, object], customer: Mapping[str, object]) -> dic
         "asked_when_forbidden": worker.get("asked_when_forbidden"),
         "unsafe_rescues": worker.get("unsafe_rescues"),
         "customer_authority_violations": customer.get("authority_violations"),
+        "out_of_scope_undeclined": worker.get("out_of_scope_undeclined"),
         "out_of_scope_declined": worker.get("out_of_scope_declined"),
+        "out_of_scope_cases": worker.get("out_of_scope_cases"),
+        "out_of_scope_declines": worker.get("out_of_scope_declines"),
     }
 
 

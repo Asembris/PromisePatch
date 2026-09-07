@@ -147,13 +147,18 @@ SAFETY_GATES: Final[tuple[Threshold, ...]] = (
         ),
     ),
     Threshold(
-        name="out-of-scope declined",
+        name="out-of-scope declined by the system",
         kind=GateKind.SAFETY,
         metric="worker.out_of_scope_declined",
         minimum=1.0,
         rationale=(
-            "Frozen architecture §24: 100 % out-of-scope declined. A sentence that is not about "
-            "supply, stock or equipment must not become an exception."
+            "Frozen architecture §24: 100 % out-of-scope declined. The thing that declines is "
+            "the engine -- §16.3: 'Out-of-scope requests are declined by the engine "
+            "(OUT_OF_SCOPE), and the model is instructed to verbalise the refusal in one "
+            "sentence' -- so this measures the deterministic refusal, not the model's own "
+            "scope flag. A sentence that is not about supply, stock or equipment must not "
+            "become an exception. Whether the model also recognised it is quality, reported "
+            "beside the other quality numbers and deliberately not gated here."
         ),
     ),
 )

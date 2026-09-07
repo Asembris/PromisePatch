@@ -446,6 +446,13 @@ def _rescore(
     makes a resumed run identical to an uninterrupted one rather than approximately it. No
     provider is asked and no scoring rule is re-decided: the properties were checked when the
     answer arrived, and reading them back is not a second opinion.
+
+    **A property the stored run predates is recomputed from its stored evidence, not guessed.**
+    ``out_of_scope_declined`` reads the deterministic outcome, the grounding failure and the
+    accepted identities that every result already records, so a run written before the property
+    existed can be scored on it exactly, from answers already paid for. A result that does
+    carry the value is trusted as written; only an absent one is reconstructed, and a result
+    carrying neither the value nor the evidence would fail closed rather than pass.
     """
     metrics = result.metrics
     if isinstance(case, WorkerCase):
@@ -472,6 +479,8 @@ def _rescore(
             rescued=bool(metrics["rescued"]),
             unsafe_rescue=bool(metrics["unsafe_rescue"]),
             refusal_category=_as_optional_str(metrics.get("refusal_category")),
+            out_of_scope_case=case.expected is not None and case.expected.out_of_scope,
+            out_of_scope_declined=_declined(result),
         )
     predicted = _as_optional_str(metrics.get("predicted"))
     return customer_metrics.CustomerScore(
@@ -485,6 +494,14 @@ def _rescore(
         authority_violation=bool(metrics["authority_violation"]),
         refusal_category=_as_optional_str(metrics.get("refusal_category")),
     )
+
+
+def _declined(result: CaseResult) -> bool:
+    """Whether the stored run's own evidence says the system refused this sentence."""
+    stored = result.metrics.get("out_of_scope_declined")
+    if isinstance(stored, bool):
+        return stored
+    return worker_metrics.declined_from_payload(result.observed, result.metrics)
 
 
 def _as_optional_str(value: object) -> str | None:
