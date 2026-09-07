@@ -88,8 +88,8 @@ def _request() -> ClassifyReplyIntentRequest:
 # ------------------------------------------------------------------------- the catalog
 
 
-def test_the_catalog_holds_only_the_model_that_has_actually_been_benchmarked() -> None:
-    """One entry, and a run behind it.
+def test_the_catalog_holds_only_the_models_that_have_actually_been_benchmarked() -> None:
+    """One entry per model somebody is about to measure, and a run behind each.
 
     The catalog shipped empty while nothing had been priced, because an unverified number is
     worse than none: it makes an unbudgeted call look budgeted. Populating it is the same rule
@@ -97,12 +97,32 @@ def test_the_catalog_holds_only_the_model_that_has_actually_been_benchmarked() -
     a price for a model nobody has run would be a number with nothing behind it.
 
     Naming the whole key set rather than only the entry that was added is the load-bearing
-    half. `Settings.bedrock_model_id` defaults to a Claude model, so a price appearing for one
-    is exactly how an unintended model would become quietly affordable.
+    half. `Settings.bedrock_model_id` defaults to Haiku 4.5, which is now priced because the
+    customer-intent challenger measures it -- and ADR-0004's configured escalation is not, so
+    escalating to it under a dollar ceiling still refuses rather than proceeding unmeasured.
     """
-    assert set(PRICES) == {("bedrock", "us.amazon.nova-2-lite-v1:0")}
+    assert set(PRICES) == {
+        ("bedrock", "us.amazon.nova-2-lite-v1:0"),
+        ("bedrock", "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    }
+    assert not [key for key in PRICES if "sonnet" in key[1]]
     assert price_for("bedrock", "example.model-v1:0") is None
     assert price_for("bedrock", None) is None
+
+
+def test_the_challenger_is_priced_from_a_dated_published_snapshot() -> None:
+    """The figures the challenger's spend is computed from, and where they came from.
+
+    The *Regional* tier, because a ``us.`` geo inference profile bills at it and the Global
+    tier ($1.00 / $5.00) belongs to a profile this repository does not call. Recording the
+    dearer of the two is the direction a budget has to err in.
+    """
+    price = price_for("bedrock", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+    assert price is not None
+    assert price.input_usd_per_million == Decimal("1.10")
+    assert price.output_usd_per_million == Decimal("5.50")
+    assert price.snapshot_date == date(2026, 9, 7)
+    assert "AWS Price List" in price.source
 
 
 def test_the_benchmarked_model_is_priced_from_a_dated_published_snapshot() -> None:

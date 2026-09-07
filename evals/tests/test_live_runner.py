@@ -198,13 +198,20 @@ async def test_the_wrapper_refuses_the_call_that_would_cross_the_cap(
 
 
 async def test_a_dollar_cap_on_an_unpriced_model_refuses_before_the_first_call() -> None:
-    """The Haiku case, structurally: an unpriced model cannot be run under a dollar budget."""
+    """An unpriced model cannot be run under a dollar budget, whatever else is in the catalog.
+
+    Not Haiku 4.5 any more: it is priced, because the customer-intent challenger measures it.
+    What the rule stands between a run and is every model nobody has benchmarked, which is
+    every id that is not a key in the catalog.
+    """
     from evals.budget import PricingUnavailableError
 
+    unpriced = "example.unbenchmarked-model-v1:0"
+    assert price_for("bedrock", unpriced) is None
     with pytest.raises(PricingUnavailableError):
         BudgetGuard(
             EvalBudget(max_estimated_usd=Decimal("0.20")),
-            price=price_for("bedrock", "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
+            price=price_for("bedrock", unpriced),
             live=True,
         )
 

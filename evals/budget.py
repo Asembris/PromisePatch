@@ -83,16 +83,47 @@ checked rather than believed.
 """
 
 
+CLAUDE_HAIKU_4_5 = ModelPrice(
+    provider="bedrock",
+    model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    input_usd_per_million=Decimal("1.10"),
+    output_usd_per_million=Decimal("5.50"),
+    snapshot_date=date(2026, 9, 7),
+    source=(
+        "AWS Price List bulk API, offer AmazonBedrockFoundationModels version 20260901183649 "
+        "(published 2026-09-01T18:36:49Z), servicename 'Claude Haiku 4.5 (Amazon Bedrock "
+        "Edition)', us-east-1, SKU JQDUC8Q4K8C6GSGH 'Million Input Tokens Regional' and SKU "
+        "X629GDA2GXAP6R54 'Million Response Tokens Regional', read 2026-09-07"
+    ),
+)
+"""The challenger's price, at the tier the challenger is actually called through.
+
+Two tiers are published for this model in ``us-east-1`` and they are not the same money. The
+*Regional* pair priced here is the one a geo cross-Region inference profile
+(``us.anthropic....``) bills at; the *Global* pair is $1.00 / $5.00 and belongs to
+``global.anthropic....``, which is not what this repository calls. The dearer of the two is
+recorded because it is the one that applies, and because a budget that guesses low is a budget
+that does not hold.
+
+Both SKUs describe the charge as *AWS Marketplace software usage*: this is a third-party model
+billed through AWS Marketplace, which is a different billing surface from
+:data:`NOVA_2_LITE`'s first-party Bedrock usage. That distinction is a cost fact, not a
+quality one, and it is recorded here because it is the reason a spend against this model
+cannot be assumed to be covered by whatever covers the other.
+"""
+
+
 PRICES: Mapping[tuple[str, str], ModelPrice] = {
     (NOVA_2_LITE.provider, NOVA_2_LITE.model_id): NOVA_2_LITE,
+    (CLAUDE_HAIKU_4_5.provider, CLAUDE_HAIKU_4_5.model_id): CLAUDE_HAIKU_4_5,
 }
-"""Verified prices, by ``(provider, model id)``. One entry, and deliberately only one.
+"""Verified prices, by ``(provider, model id)``. One entry per model somebody has run.
 
 Nothing is written here from memory. A stale price silently understates a budget, which is the
 one failure mode this whole module exists to prevent, so an unverified number is worse than no
 number: with none, :func:`estimate_usd` returns ``None`` and a dollar budget refuses to start.
 
-The catalog holds the model a run has actually been priced and executed against and nothing
+The catalog holds the models a run has actually been priced and executed against and nothing
 else. A price for a model nobody has benchmarked would be a number with no run behind it, and
 the first thing it would do is make an unbudgeted call look budgeted.
 """
@@ -455,6 +486,7 @@ def utc_now_iso() -> str:
 
 
 __all__ = [
+    "CLAUDE_HAIKU_4_5",
     "NOVA_2_LITE",
     "PRICES",
     "TOKENS_PER_PRICE_UNIT",

@@ -36,6 +36,7 @@ from scripts.run_semantic_benchmark import (
 
 NOVA = "us.amazon.nova-2-lite-v1:0"
 HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+UNPRICED = "example.unbenchmarked-model-v1:0"
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -136,23 +137,27 @@ def test_importing_the_composition_root_loads_no_aws_sdk() -> None:
 def test_a_model_with_no_verified_price_cannot_be_benchmarked(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The structural guard against an unintended model, named by the model it guards against.
+    """The structural guard against an unintended model: no price, no enforceable ceiling.
 
-    ``Settings.bedrock_model_id`` defaults to Claude Haiku 4.5. This slice benchmarks Nova 2
-    Lite and calls Haiku zero times, and the mechanism is not care -- it is that an unpriced
-    model has no enforceable dollar ceiling, so the run refuses before a client is opened.
+    It used to be demonstrated with Haiku 4.5, which was then unpriced. Haiku is priced now
+    -- the customer-intent challenger measures it, deliberately and under its own ceiling --
+    so the demonstration moves to a model nobody has benchmarked. The rule is unchanged: an
+    id that is not a key in the catalog refuses before a client is opened.
     """
     assert (
-        main(["--live", "--split", "development", "--provider", "bedrock", "--model", HAIKU]) == 2
+        main(["--live", "--split", "development", "--provider", "bedrock", "--model", UNPRICED])
+        == 2
     )
     error = capsys.readouterr().err
     assert "has no verified price" in error
-    assert HAIKU in error
+    assert UNPRICED in error
 
 
-def test_the_benchmarked_model_is_the_one_with_a_price() -> None:
+def test_only_benchmarked_models_carry_a_price() -> None:
+    """Nova for this benchmark, Haiku for the customer-intent challenger, and nothing else."""
     assert price_for("bedrock", NOVA) is not None
-    assert price_for("bedrock", HAIKU) is None
+    assert price_for("bedrock", HAIKU) is not None
+    assert price_for("bedrock", UNPRICED) is None
 
 
 # ------------------------------------------------------------------ the holdout protocol
