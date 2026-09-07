@@ -126,13 +126,42 @@ def test_the_challenger_is_priced_from_a_dated_published_snapshot() -> None:
 
 
 def test_the_benchmarked_model_is_priced_from_a_dated_published_snapshot() -> None:
-    """The figures the Nova benchmark's spend is computed from, and where they came from."""
+    """The figures the Nova benchmark's spend is computed from, and where they came from.
+
+    The Regional pair, not the Global one. ``us.amazon.nova-2-lite-v1:0`` is a US geo
+    cross-Region inference profile and bills at the source Region's own on-demand rate;
+    ``us-east-1`` publishes a second, cheaper pair whose usage type says
+    ``-cross-region-global`` and which belongs to ``global.amazon....``. The entry held that
+    cheaper pair until 2026-09-08 and now holds the one that applies. Pinned here with the
+    SKU in the source string so a future correction has to be a deliberate edit.
+    """
     price = price_for("bedrock", "us.amazon.nova-2-lite-v1:0")
     assert price is not None
-    assert price.input_usd_per_million == Decimal("0.30")
-    assert price.output_usd_per_million == Decimal("2.50")
-    assert price.snapshot_date == date(2026, 9, 7)
-    assert "Nova 2 Lite" in price.source
+    assert price.input_usd_per_million == Decimal("0.33")
+    assert price.output_usd_per_million == Decimal("2.75")
+    assert price.snapshot_date == date(2026, 9, 8)
+    assert "FY8T82UUN7VZR55K" in price.source
+    assert "DY69Q8C3F88CHA2Q" in price.source
+
+
+def test_neither_benchmarked_model_is_priced_at_its_global_tier() -> None:
+    """Both catalog entries are called through a ``us.`` profile, so both take the dearer pair.
+
+    The two mistakes are the same mistake, and one of them was made: a published price list
+    shows two figures for one model in one Region, and the cheaper is the one for a profile
+    this repository does not call. A budget that guesses low is a budget that does not hold.
+    """
+    nova = price_for("bedrock", "us.amazon.nova-2-lite-v1:0")
+    haiku = price_for("bedrock", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+    assert nova is not None and haiku is not None
+    assert (nova.input_usd_per_million, nova.output_usd_per_million) != (
+        Decimal("0.30"),
+        Decimal("2.50"),
+    )
+    assert (haiku.input_usd_per_million, haiku.output_usd_per_million) != (
+        Decimal("1.00"),
+        Decimal("5.00"),
+    )
 
 
 def test_an_unknown_price_makes_cost_unavailable_and_never_zero() -> None:

@@ -627,7 +627,7 @@ def test_the_price_used_for_a_live_run_is_the_recorded_nova_snapshot() -> None:
             usage=SemanticUsage(input_tokens=1_000_000, output_tokens=1_000_000),
         )
     )
-    assert guard.spend.estimated_usd == Decimal("2.80")
+    assert guard.spend.estimated_usd == Decimal("3.08")
 
 
 def test_the_budgeted_provider_is_the_only_thing_the_runner_asks() -> None:

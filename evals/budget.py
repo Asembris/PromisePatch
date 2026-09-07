@@ -70,16 +70,37 @@ class ModelPrice:
 NOVA_2_LITE = ModelPrice(
     provider="bedrock",
     model_id="us.amazon.nova-2-lite-v1:0",
-    input_usd_per_million=Decimal("0.30"),
-    output_usd_per_million=Decimal("2.50"),
-    snapshot_date=date(2026, 9, 7),
-    source="AWS published Amazon Nova 2 Lite on-demand pricing, read 2026-09-07",
+    input_usd_per_million=Decimal("0.33"),
+    output_usd_per_million=Decimal("2.75"),
+    snapshot_date=date(2026, 9, 8),
+    source=(
+        "AWS Price List bulk API, offer AmazonBedrock version 20260901205051 (published "
+        "2026-09-01T20:50:51Z), us-east-1, SKU FY8T82UUN7VZR55K usagetype "
+        "'USE1-Nova2.0Lite-input-tokens' at $0.00033 per 1K and SKU DY69Q8C3F88CHA2Q "
+        "usagetype 'USE1-Nova2.0Lite-output-tokens' at $0.00275 per 1K, both feature "
+        "'On-demand Inference', read 2026-09-08"
+    ),
 )
-"""The one model this repository has benchmarked, at the price it was benchmarked against.
+"""The model this repository benchmarked, at the tier it is actually called through.
+
+**Corrected on 2026-09-08 from $0.30 / $2.50, which was the Global tier.** The catalog is
+called with ``us.amazon.nova-2-lite-v1:0``, a US geo cross-Region inference profile, and
+``us-east-1`` publishes exactly two on-demand tiers for this model. The plain pair priced here
+-- ``USE1-Nova2.0Lite-input-tokens`` / ``-output-tokens``, $0.33 and $2.75 per million -- is
+the Region's own on-demand rate, which is what a ``us.*`` geo profile bills at. The other pair
+carries ``-cross-region-global`` in its usage type, is $0.30 / $2.50, and belongs to
+``global.amazon....``, which this repository does not call. There is no third, ``us``-specific
+usage type; that absence is itself the evidence that a geo profile bills at the source
+Region's rate.
+
+This is the same distinction :data:`CLAUDE_HAIKU_4_5` was already recorded against, applied
+consistently: the earlier entry took the cheaper of the two tiers, and the cheaper one was the
+wrong one. The correction moves an estimate up by 10 %, changes arithmetic only, and changes no
+model output, no reading and no quality number anywhere.
 
 An *estimated pricing snapshot*, not billing truth. AWS Billing is the truth; this is a number
-somebody read on a day, recorded with that day, so a spend figure computed from it can be
-checked rather than believed.
+somebody read on a day, recorded with that day and with the SKU it came from, so a spend figure
+computed from it can be checked rather than believed.
 """
 
 
