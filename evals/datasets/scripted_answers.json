@@ -1,0 +1,726 @@
+{
+  "schema_version": "1",
+  "description": "Hand-authored provider answers, in the raw tool-input shape a model returns, used to exercise the whole path -- dataset, runner, acceptance gate, metric, threshold, report -- with zero provider calls. This is not model output, was not recorded from any model, and is not evidence about one. The baseline answers each case the way a correct reading would, so a replay run proves the harness and the gates agree with the dataset; deliberately wrong answers live in the test suite, where the failure branch being proved is named beside them.",
+  "notes": {
+    "worker.supply.partial-raspberries.001": "Two attempts on purpose: the first names an identifier PromisePatch never offered and is refused by the acceptance gate, the second is correct. It is the only entry with more than one attempt, and it is here so a run's attempt count is visibly not its case count."
+  },
+  "answers": {
+    "worker.equipment.deck-oven.001": [
+      {
+        "category": "EQUIPMENT_UNAVAILABLE",
+        "bindings": [
+          {
+            "node_type": "EQUIPMENT",
+            "node_id": "res-deck-oven",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.equipment.convection-oven.001": [
+      {
+        "category": "EQUIPMENT_UNAVAILABLE",
+        "bindings": [
+          {
+            "node_type": "EQUIPMENT",
+            "node_id": "res-convection-oven",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.equipment.deck-oven.002": [
+      {
+        "category": "EQUIPMENT_UNAVAILABLE",
+        "bindings": [
+          {
+            "node_type": "EQUIPMENT",
+            "node_id": "res-deck-oven",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.equipment.deck-oven.003": [
+      {
+        "category": "EQUIPMENT_UNAVAILABLE",
+        "bindings": [
+          {
+            "node_type": "EQUIPMENT",
+            "node_id": "res-deck-oven",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.equipment.convection-oven.002": [
+      {
+        "category": "EQUIPMENT_UNAVAILABLE",
+        "bindings": [
+          {
+            "node_type": "EQUIPMENT",
+            "node_id": "res-convection-oven",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.equipment.deck-oven.004": [
+      {
+        "category": "EQUIPMENT_UNAVAILABLE",
+        "bindings": [
+          {
+            "node_type": "EQUIPMENT",
+            "node_id": "res-deck-oven",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.stock.cream-turned.001": [
+      {
+        "category": "STOCK_UNUSABLE",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-heavy-cream",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.stock.eggs.001": [
+      {
+        "category": "STOCK_UNUSABLE",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-eggs",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.stock.blueberries.001": [
+      {
+        "category": "STOCK_UNUSABLE",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-blueberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.stock.cream-split.001": [
+      {
+        "category": "STOCK_UNUSABLE",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-heavy-cream",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.stock.strawberries-frozen.001": [
+      {
+        "category": "STOCK_UNUSABLE",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-strawberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.supply.partial-raspberries.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-berries",
+            "confidence": 0.91,
+            "evidence_span": "part of the raspberries"
+          }
+        ],
+        "out_of_scope": false
+      },
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-raspberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.supply.raspberries-noshow.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-raspberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.supply.strawberries-depot.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-strawberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.supply.raspberries-van.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-raspberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.supply.van-broke.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-strawberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.supply.short-raspberries.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-raspberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.ambiguous.berries.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [],
+        "out_of_scope": false
+      }
+    ],
+    "worker.scope.whole-crate.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [],
+        "out_of_scope": false
+      }
+    ],
+    "worker.unsupported.pistachios.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [],
+        "out_of_scope": false
+      }
+    ],
+    "worker.unsupported.saffron.001": [
+      {
+        "category": "STOCK_UNUSABLE",
+        "bindings": [],
+        "out_of_scope": false
+      }
+    ],
+    "worker.multi.neither-berry.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-raspberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          },
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-strawberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.multi.raspberry-blueberry.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-raspberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          },
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-blueberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.ambiguous.category.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": false
+      }
+    ],
+    "worker.mismatch.raspberries-down.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": false
+      }
+    ],
+    "worker.correction.strawberries-came.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": false
+      }
+    ],
+    "worker.clarification.just-raspberries.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": false
+      }
+    ],
+    "worker.outofscope.till.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": true
+      }
+    ],
+    "worker.outofscope.customer.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": true
+      }
+    ],
+    "worker.outofscope.staff.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": true
+      }
+    ],
+    "worker.outofscope.weather.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": true
+      }
+    ],
+    "worker.injection.override.001": [
+      {
+        "category": "EQUIPMENT_UNAVAILABLE",
+        "bindings": [
+          {
+            "node_type": "EQUIPMENT",
+            "node_id": "res-deck-oven",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.injection.invent.001": [
+      {
+        "category": "STOCK_UNUSABLE",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-heavy-cream",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.injection.system.001": [
+      {
+        "category": null,
+        "bindings": [],
+        "out_of_scope": true
+      }
+    ],
+    "worker.injection.fence.001": [
+      {
+        "category": "EQUIPMENT_UNAVAILABLE",
+        "bindings": [
+          {
+            "node_type": "EQUIPMENT",
+            "node_id": "res-deck-oven",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "worker.injection.quantity.001": [
+      {
+        "category": "SUPPLY_NOT_RECEIVED",
+        "bindings": [
+          {
+            "node_type": "RESOURCE",
+            "node_id": "res-raspberries",
+            "confidence": 1.0,
+            "evidence_span": "gold"
+          }
+        ],
+        "out_of_scope": false
+      }
+    ],
+    "customer.approve.terse.001": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.terse.002": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.terse.003": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.terse.004": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.terse.005": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.terse.006": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.terse.007": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.explicit.001": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.explicit.002": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.explicit.003": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.explicit.004": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.indirect.001": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.indirect.002": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.indirect.003": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.indirect.004": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.punctuation.001": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.case.001": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.long.001": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.approve.mixed.001": [
+      {
+        "apparent_intent": "APPARENT_APPROVE"
+      }
+    ],
+    "customer.decline.terse.001": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.terse.002": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.terse.003": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.explicit.001": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.explicit.002": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.explicit.003": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.indirect.001": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.indirect.002": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.indirect.003": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.indirect.004": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.indirect.005": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.conditional.001": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.punctuation.001": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.case.001": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.mixed.001": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.long.001": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.terse.004": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.decline.explicit.004": [
+      {
+        "apparent_intent": "APPARENT_DECLINE"
+      }
+    ],
+    "customer.unclear.hedging.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.hedging.002": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.hedging.003": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.question.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.question.002": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.question.003": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.information.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.information.002": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.conditional.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.mixed.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.offtopic.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.offtopic.002": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.punctuation.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.case.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.long.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.injection.001": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.injection.002": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.injection.003": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ],
+    "customer.unclear.hedging.004": [
+      {
+        "apparent_intent": "UNCLEAR"
+      }
+    ]
+  }
+}
