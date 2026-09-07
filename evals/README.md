@@ -103,7 +103,10 @@ evals/
 ├── context.py                   the frozen kitchen every worker case is read against
 ├── dataset.py                   loading, and validation against production
 ├── metrics/                     deterministic scorers, plus the DeepEval adapter
+├── authorisation.py             scope-bound spend consent, and the pytest interlock
 ├── budget.py                    cost catalog, budget guards, cost ledger
+├── store.py                     result files, and the log of attempts nobody answered
+├── challenger.py                the targeted challenger: selection, taxonomy, materiality
 ├── runner.py                    the offline runner
 ├── summary.py                   result assembly and gate evaluation
 ├── report.py                    human-readable report
@@ -132,11 +135,15 @@ stronger than a flag defaulting to off, and it stays true.
 
 The live benchmark lives outside this package, in `scripts/run_semantic_benchmark.py` -- it has
 to, because production must not import `evals` and `evals` must not import an AWS SDK, so the
-place the two meet is in neither. Spending takes three explicit flags:
+place the two meet is in neither.
+
+**`--live` is not permission to spend.** It names a code path. Being charged additionally takes
+a scope-bound authorisation phrase typed at the invocation:
 
 ```bash
 uv run python -m scripts.run_semantic_benchmark --split development --model <id>          # preflight only
-uv run python -m scripts.run_semantic_benchmark --live --provider bedrock --model <id> --split development
+uv run python -m scripts.run_semantic_benchmark --live --provider bedrock --model <id> --split development \
+    --authorise-paid-inference AUTHORISE-PAID-INFERENCE-SPLIT-DEVELOPMENT
 uv run python -m scripts.run_semantic_benchmark --from-results .eval-results/<file>.jsonl  # rebuild, no calls
 ```
 
@@ -146,6 +153,46 @@ asking it anything. A factory cannot hand in a provider that escapes the account
 
 The first benchmark run under this surface is written up in
 [`docs/semantic-benchmark.md`](../docs/semantic-benchmark.md).
+
+### Spending is authorised, not merely enabled
+
+`evals/authorisation.py` exists because a test once became a live benchmark. It had asserted
+that an unpriced model is refused, and it had asserted it by running the real command with
+`--live`; the day that model was priced, the assertion became a purchase, and the only thing
+that stopped it was AWS denying access to the model.
+
+So four things are true now, and none of them depends on a credential being absent:
+
+- **The phrase is required and names one scope.** `AUTHORISE-PAID-INFERENCE-STAGE-A` does not
+  pay for Stage B. Approval for a bounded probe is not approval for the rest of a split.
+- **It is command-line only.** Never `.env`, never `Settings`, never an environment variable,
+  never a default. There is no long-lived setting to leave switched on.
+- **A pytest process cannot construct a paid provider at all.** Checked before the Bedrock
+  import, and it consults neither the phrase nor the credentials nor the price.
+- **Authorisation is not a budget.** Both are required: a deliberate decision, and a hard
+  ceiling that refuses the call which would cross it.
+
+The full account of the defect and the guards is in
+[`docs/challenger-harness-hardening.md`](../docs/challenger-harness-hardening.md).
+
+### A call nobody answered is not a reading
+
+`CaseResult.execution_status` is `ANSWERED`, `PROVIDER_FAILURE` or `NOT_INVOKED`, derived from
+what the result already records. A model that answered something the acceptance gate refused
+was reached and is graded; a model nobody could reach was not, and is not.
+
+`PROVIDER_FAILURE` is its own paired outcome, so a failure is never `REPAIRED`,
+`UNCHANGED_FAILURE`, `CONTROL_PRESERVED` or `CONTROL_REGRESSION` -- each of those words asserts
+that a model read a sentence. It is excluded from the repair-rate denominator, from
+wins/losses/ties, from cluster recall and from the quality aggregates, and it leaves a stage
+*incomplete*, which is what stops an outage opening the next one. The report says
+`STAGE A INVALID FOR A QUALITY DECISION -- EXECUTION FAILURE`, never "not material".
+
+Failures are written to an attempt log beside the results file rather than into it, so a
+resumed run asks the case again instead of reading an outage back as an answer -- and the
+refusal survives as evidence either way. The log holds identifiers, a coarse category and
+timings: no credential, no token, no header, no prompt, no provider message. Token counts and
+cost stay *absent*, never zero.
 
 ## Safety and quality are different numbers
 
@@ -255,11 +302,17 @@ Phase 4 spends real money on purpose. The rules exist before the spending does.
 - **Unknown pricing is never zero.** A model with no verified price has an *unavailable*
   estimated cost. If a live run declares a dollar budget and the model has no configured price,
   the guard refuses before the first call.
-- **Prices live in one catalog** with a snapshot date and a source, and it holds exactly the
-  models that have been benchmarked -- today, one. Nothing is written into it from memory: a
-  stale price silently understates a budget, which is the failure this whole module exists to
-  prevent. A model with no verified price cannot be run under a dollar ceiling at all, which is
-  what stands between `Settings.bedrock_model_id`'s default and an unintended bill.
+- **Prices live in one catalog** with a snapshot date, a source and the SKU it came from.
+  Nothing is written into it from memory: a stale price silently understates a budget, which is
+  the failure this module exists to prevent. A model with no verified price cannot be run under
+  a dollar ceiling at all. That guard is independent of the spend authorisation above, and it
+  is no longer what stands between a test and a bill -- it never should have been.
+- **The tier matters as much as the number.** `us-east-1` publishes two on-demand prices for
+  each of these models, and a `us.` geo inference profile bills at the Region's own rate rather
+  than at the cheaper `global.` one. Both catalog entries hold the Regional pair. The Nova entry
+  held the Global pair until 2026-09-08 and understated its estimates by about 10 %; the
+  correction is recorded in
+  [`docs/challenger-harness-hardening.md`](../docs/challenger-harness-hardening.md).
 - **The cost ledger** is a local JSONL artifact under `.eval-results/`. It records run id,
   timestamp, commit, dataset version and hash, provider, model, mode, calls, attempts, tokens
   and estimated spend. It carries no credential, no session token and no prompt. It is not
@@ -283,6 +336,11 @@ The evaluation job needs **no AWS credential, no OpenAI credential and no networ
 validates the dataset against production, runs the deterministic scorers, exercises the
 DeepEval adapter and the budget refusals, and runs the whole offline replay. No live model
 benchmark runs in CI, and no GitHub secret is required for any of it.
+
+It then runs the spend-interlock suite a second time with a complete, syntactically valid set
+of AWS variables in the environment. Needing no credential and *being safe because it has none*
+are different claims, and only the first one was ever true: the second step is what shows the
+harness would refuse anyway.
 
 ## How a future model comparison must be run
 
