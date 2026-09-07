@@ -248,6 +248,32 @@ def test_the_evaluation_package_pulls_in_no_aws_sdk() -> None:
     assert completed.stdout.strip() == ""
 
 
+async def test_an_aws_configured_environment_changes_nothing(
+    dataset: GoldDataset, answers: ScriptedAnswers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A machine set up for Bedrock still spends nothing by running an evaluation.
+
+    ``PP_LLM_PROVIDER=bedrock`` in a developer's ``.env`` is the realistic way an eval run would
+    become an expensive surprise: application settings say "use the model", so a harness that
+    consulted them would. This one does not consult them at all. The provider it answers from is
+    the deterministic fake, chosen in code, and there is no branch reachable from here that
+    reads ``Settings.llm_provider``.
+    """
+    monkeypatch.setenv("PP_LLM_PROVIDER", "bedrock")
+    monkeypatch.setenv("PP_BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_PROFILE", "promisepatch")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLENOTREAL")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "not-a-real-secret")
+
+    outcome = await run_offline(dataset, answers)
+
+    assert outcome.provider == "fake"
+    assert outcome.model_id is None
+    assert build_summary(dataset, outcome).gate_status == "pass"
+    assert "boto3" not in sys.modules
+
+
 def test_the_core_of_the_package_works_without_deepeval() -> None:
     """The runner, the metrics and the dataset never import the framework."""
     for name in (
