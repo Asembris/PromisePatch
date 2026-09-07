@@ -152,6 +152,10 @@ jobs:
       - name: The whole dataset, scored offline, gates and all
         run: uv run python -m evals replay
 
+      # Type-checked here rather than in the `mypy` job: that job installs no evaluation
+      # dependencies, and this is the only job that has the framework the adapter imports.
+      - run: uv run mypy evals
+
   properties:
     name: hypothesis (ci profile)
     runs-on: ubuntu-latest
@@ -175,7 +179,11 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - run: uv sync --frozen --all-packages
+      # The evaluation group is installed here alone among the static-gate jobs, because two of
+      # the contracts are about it: that no production package can reach the evaluation code or
+      # the framework behind it, and that the framework stays one module wide inside it. A
+      # contract checked against a package that is not present is not a contract.
+      - run: uv sync --frozen --all-packages --group evals
       - run: uv run lint-imports
 
   backend:
