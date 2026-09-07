@@ -26,6 +26,18 @@ looks at the results, and there is no flag here that opens the holdout.
 names a different commit, so a tracked change between Stage A and Stage B stops the run rather
 than blending two versions of the harness into one comparison.
 
+**``--live`` is not permission to spend.** It names a code path. Buying inference additionally
+takes a scope-bound authorisation phrase typed at the invocation, and the stage it names is the
+stage it pays for: an operator who approved Stage A has not approved Stage B. Nothing here
+reads that phrase from the environment or from ``.env``, no default supplies it, and a process
+running under pytest cannot construct a paid provider whatever it was handed. See
+:mod:`evals.authorisation`.
+
+**A call nobody answered is not a reading.** A provider failure is written to a separate
+attempt log rather than into the results file, so a resumed run asks the case again instead of
+reading an outage back as an answer -- and the paired taxonomy classifies it as
+``PROVIDER_FAILURE`` rather than as an unrepaired failure or a control regression.
+
 Plan the set without calling anything::
 
     uv run python -m scripts.run_intent_challenger --stage a --model <id> --plan
@@ -33,7 +45,7 @@ Plan the set without calling anything::
 Run Stage A::
 
     uv run python -m scripts.run_intent_challenger --live --provider bedrock --model <id> \\
-        --stage a
+        --stage a --authorise-paid-inference AUTHORISE-PAID-INFERENCE-STAGE-A
 
 Rebuild any report from what a run already paid for::
 
@@ -46,10 +58,18 @@ import argparse
 import asyncio
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from decimal import Decimal
 from pathlib import Path
 
+from evals.authorisation import (
+    SpendAuthorisation,
+    SpendNotAuthorisedError,
+    SpendScope,
+    authorise,
+    refuse_real_inference_under_test,
+    required_phrase,
+)
 from evals.budget import (
     BudgetExhaustedError,
     BudgetGuard,
@@ -61,7 +81,7 @@ from evals.budget import (
     remaining_budget,
     utc_now_iso,
 )
-from evals.cases import EvalSplit, ModelInput
+from evals.cases import EvalJob, EvalSplit, ModelInput
 from evals.challenger import (
     ChallengerError,
     SourceRun,
@@ -76,6 +96,7 @@ from evals.challenger import (
     latency_profile,
     pair_all,
     select_stage_a,
+    unread_result,
     usage_profile,
 )
 from evals.challenger_report import render_cost, render_stage_a, render_stage_b
@@ -84,11 +105,17 @@ from evals.preflight import render_preflight
 from evals.report import render
 from evals.results import CaseResult, RunSummary
 from evals.runner import LIVE_MODE, RunOutcome, StopPolicy, run_cases
-from evals.store import ResultStore, RunHeader, read_run
+from evals.store import (
+    ProviderFailureLog,
+    ProviderFailureRecord,
+    ResultStore,
+    RunHeader,
+    StoreError,
+    read_run,
+)
 from evals.summary import build_summary, git_sha, ledger_entry
 
 from promisepatch.config import LlmProvider, Settings
-from promisepatch.integrations.semantic_provider import build_semantic_provider
 from promisepatch.semantic import SemanticJob, SemanticProvider
 
 RESULTS_DIR = Path(".eval-results")
@@ -127,8 +154,38 @@ never appears.
 """
 
 
+STAGE_SCOPES = {"a": SpendScope.STAGE_A, "b": SpendScope.STAGE_B}
+"""Which authorisation each stage costs. Two entries, and no key that opens both."""
+
+
 class ChallengerRefusedError(RuntimeError):
     """A precondition for spending is not met, so nothing was spent."""
+
+
+# ------------------------------------------------------------------ the paid provider seam
+
+
+type ProviderBuilder = Callable[[Settings, SpendAuthorisation], SemanticProvider]
+"""How this command gets something that can be charged for. A parameter, never a branch."""
+
+
+def bedrock_provider(settings: Settings, authorisation: SpendAuthorisation) -> SemanticProvider:
+    """Production's own provider factory, behind the two guards that gate paid inference.
+
+    The authorisation is taken as an argument rather than looked up, so there is no way to
+    reach this function without one having been produced by :func:`evals.authorisation
+    .authorise` from a phrase somebody typed. The test interlock is checked here rather than
+    at the call site because this is the last line before money: whatever route got here, a
+    pytest process does not pass it.
+
+    The Bedrock import is deferred into the body for the same reason it is in production --
+    so that merely importing this module pulls in no AWS SDK -- and now for a second one: a
+    test that never reaches this line never even loads the integration package.
+    """
+    refuse_real_inference_under_test(authorisation.scope)
+    from promisepatch.integrations.semantic_provider import build_semantic_provider
+
+    return build_semantic_provider(settings)
 
 
 # ------------------------------------------------------------------------ reading the source
@@ -187,8 +244,66 @@ def _prompt_identities() -> tuple[dict[str, str], ...]:
     )
 
 
+def refuse_ineligible_cases(selected: GoldDataset) -> None:
+    """Refuse before the provider exists unless every case is a customer development case.
+
+    :func:`narrow` already builds a dataset that cannot contain anything else, so this should
+    never fire. It is here because "should never fire" is what was believed about the path
+    that put three worker sentences to a model: the guarantee was a property of one function
+    nobody re-read, and there was no check standing between a mistake in it and a purchase.
+
+    Checked on the value actually handed to the runner, and raised rather than filtered. A
+    filter would make an ineligible case cheap to introduce and invisible once introduced;
+    a refusal makes it a stop.
+    """
+    if selected.worker:
+        offenders = ", ".join(case.id for case in selected.worker[:5])
+        raise ChallengerRefusedError(
+            f"{len(selected.worker)} worker case(s) reached the challenger set ({offenders}). "
+            f"This slice buys customer-intent readings only, and a worker call here would be "
+            f"spend nobody authorised on a job nobody is comparing."
+        )
+    wrong_job = [case.id for case in selected.customer if case.job is not EvalJob.CUSTOMER_INTENT]
+    if wrong_job:
+        raise ChallengerRefusedError(
+            f"case(s) outside the customer-intent job reached the challenger set: "
+            f"{', '.join(wrong_job)}."
+        )
+    holdout = [case.id for case in selected.customer if case.split is not EvalSplit.DEVELOPMENT]
+    if holdout:
+        raise ChallengerRefusedError(
+            f"{len(holdout)} case(s) outside the development split reached the challenger set: "
+            f"{', '.join(holdout)}. The holdout is read once, to decide, and nothing here "
+            f"opens it."
+        )
+    if not selected.customer:
+        raise ChallengerRefusedError(
+            "the challenger set is empty, so there is nothing to buy and nothing to compare"
+        )
+
+
+def refuse_challenging_a_model_with_itself(source: SourceRun, model: str) -> None:
+    """The source model is evidence, not a participant. It is never called from here.
+
+    Its answers come from a file. Re-running it would buy a second reading of cases that
+    already have one, and comparing a model with itself would be an expensive way to measure
+    sampling noise.
+    """
+    if source.model_id is not None and source.model_id == model:
+        raise ChallengerRefusedError(
+            f"{model!r} is the model this comparison is challenging. Its readings are read "
+            f"from {DEFAULT_SOURCE.name} and it is never called from here: a challenger has "
+            f"to be a different model for the comparison to mean anything."
+        )
+
+
 def results_path(model: str) -> Path:
     return RESULTS_DIR / f"challenger-{model.replace(':', '_')}.jsonl"
+
+
+def failures_path(model: str) -> Path:
+    """Where attempts that produced no reading are kept, beside the readings and not among them."""
+    return RESULTS_DIR / f"challenger-{model.replace(':', '_')}-provider-failures.jsonl"
 
 
 def selection_path(model: str) -> Path:
@@ -212,8 +327,18 @@ def write_selection(path: Path, selection: StageASelection, model: str, region: 
 # -------------------------------------------------------------------------------- the run
 
 
-async def run(namespace: argparse.Namespace) -> int:
-    """Plan, preflight, and -- only with ``--live`` -- buy the stage that was asked for."""
+async def run(
+    namespace: argparse.Namespace,
+    *,
+    provider_builder: ProviderBuilder = bedrock_provider,
+) -> int:
+    """Plan, preflight, and -- only with an authorisation -- buy the stage that was asked for.
+
+    ``provider_builder`` is the seam. It defaults to the one thing here that can be charged
+    for, and a test that needs the orchestration passes a builder that cannot: there is no
+    branch to set, no environment to arrange and no mock to install over a real client,
+    because the real client is a value this function was handed rather than one it makes.
+    """
     full = load_dataset()
     problems = [*validate_dataset(full), *manifest_problems(full, full.manifest())]
     if problems:
@@ -223,6 +348,7 @@ async def run(namespace: argparse.Namespace) -> int:
         )
 
     source = load_source(Path(namespace.source), full)
+    refuse_challenging_a_model_with_itself(source, namespace.model)
     try:
         selection = select_stage_a(full, source)
     except ChallengerError as error:
@@ -236,8 +362,9 @@ async def run(namespace: argparse.Namespace) -> int:
             f"with the day it was read, before challenging with it."
         )
 
+    attempts = ProviderFailureLog(failures_path(namespace.model))
     stored = _stored_results(results_path(namespace.model))
-    stage_a = build_stage_a(full, selection, source, stored)
+    stage_a = build_stage_a(full, selection, source, _with_attempts(full, stored, attempts))
     verdict = evaluate_materiality(stage_a)
 
     if namespace.stage == "b":
@@ -247,6 +374,7 @@ async def run(namespace: argparse.Namespace) -> int:
         wanted = selection.case_ids
 
     selected = narrow(full, wanted)
+    refuse_ineligible_cases(selected)
     spent = ledger_totals(LEDGER, mode=LIVE_MODE, model_id=namespace.model)
     budget = remaining_budget(CHALLENGER_CEILING, spent)
 
@@ -272,18 +400,30 @@ async def run(namespace: argparse.Namespace) -> int:
             "PLAN ONLY. No provider was constructed and nothing was spent.\n"
             f"The challenger set is written to {selection_path(namespace.model)} and is "
             f"reproducible from stored results with zero model calls.\n"
-            "Add --live to buy the stage named above."
+            f"Buying the stage above takes --live and --authorise-paid-inference "
+            f"{required_phrase(STAGE_SCOPES[namespace.stage])}."
         )
         return 0
 
     _refuse_an_exhausted_allowance(budget, spent)
+
+    # Re-demanded at the point of spending rather than trusted from the parse. The phrase was
+    # checked once already; this is the assertion that the stage about to be bought is the one
+    # it named, and it is what stops a Stage-A approval paying for Stage B.
+    authorisation: SpendAuthorisation = namespace.authorisation
+    authorisation.require(STAGE_SCOPES[namespace.stage])
+    print(
+        f"\nSPEND AUTHORISED  scope {authorisation.scope.value}  "
+        f"granted {authorisation.granted_at}  "
+        f"caps {authorisation.max_calls} call(s) / ${authorisation.max_estimated_usd}\n"
+    )
 
     settings = Settings(
         llm_provider=LlmProvider.BEDROCK,
         bedrock_model_id=namespace.model,
         aws_region=namespace.region,
     )
-    provider = build_semantic_provider(settings)
+    provider = provider_builder(settings, authorisation)
 
     def factory(_: ModelInput) -> SemanticProvider:
         return provider
@@ -314,8 +454,30 @@ async def run(namespace: argparse.Namespace) -> int:
         )
 
     def persist(result: CaseResult) -> None:
-        """A refused answer is a fact about the model and is kept; an outage is not."""
-        if result.provider_error:
+        """A refused answer is a fact about the model; an outage is a fact about the weather.
+
+        Both are written down and they go to different files. The reading file is what a
+        resumed run reads back to avoid buying a case twice, so nothing without a reading may
+        enter it -- an outage recorded there would be replayed for ever as an answer. The
+        attempt log is where the outage goes instead: kept as evidence, never scored, and
+        leaving the case eligible to be asked again once the infrastructure is fixed.
+        """
+        if not result.has_reading:
+            attempts.record(
+                ProviderFailureRecord(
+                    run_id=store.header.run_id,
+                    recorded_at=utc_now_iso(),
+                    git_sha=store.header.git_sha,
+                    case_id=result.case_id,
+                    job=result.job.value,
+                    split=result.split.value,
+                    provider=result.provider,
+                    model_id=result.model_id or namespace.model,
+                    attempt=attempts.attempts_for(result.case_id) + 1,
+                    category=result.error_category,
+                    e2e_latency_ms=result.e2e_latency_ms,
+                )
+            )
             return
         store.record(result)
 
@@ -348,6 +510,31 @@ def _new_run_id() -> str:
     from evals.runner import new_run_id
 
     return new_run_id()
+
+
+def _with_attempts(
+    full: GoldDataset,
+    stored: Sequence[CaseResult],
+    attempts: ProviderFailureLog,
+) -> tuple[CaseResult, ...]:
+    """Stored readings, plus one no-reading record for every case whose only history is a refusal.
+
+    The join a report needs. A case that was asked and not answered has to appear in the
+    comparison -- leaving it out would make the stage look merely unfinished rather than
+    blocked -- but it appears carrying its execution status, so the taxonomy classifies it as
+    an execution failure and no quality number counts it. Reading the log calls nothing.
+    """
+    cases = {case.id: case for case in full.customer}
+    known = {result.case_id for result in stored}
+    latest: dict[str, ProviderFailureRecord] = {}
+    for record in attempts.records:
+        if record.case_id in known or record.case_id not in cases:
+            continue
+        latest[record.case_id] = record
+    return (
+        *stored,
+        *(unread_result(record, cases[case_id]) for case_id, record in sorted(latest.items())),
+    )
 
 
 def _stored_results(path: Path) -> tuple[CaseResult, ...]:
@@ -483,16 +670,23 @@ def report(
     namespace: argparse.Namespace,
     summary: RunSummary | None = None,
 ) -> int:
-    """Print whichever report the readings on disk can support, and name the outcome."""
+    """Print whichever report the evidence on disk can support, and name the outcome.
+
+    Reads files and renders. It builds no provider, opens no client and makes no call, which
+    is why a report that failed to render is a formatting problem rather than a second bill.
+    """
+    attempts = ProviderFailureLog(failures_path(namespace.model))
+    joined = _with_attempts(full, results, attempts)
     selection = select_stage_a(full, source)
-    stage_a = build_stage_a(full, selection, source, results)
+    stage_a = build_stage_a(full, selection, source, joined)
     verdict = evaluate_materiality(stage_a)
     print("\n" + render_stage_a(stage_a, verdict))
+    results = joined
 
     development = frozenset(
         case.id for case in full.customer if case.split is EvalSplit.DEVELOPMENT
     )
-    answered = {result.case_id for result in results}
+    answered = {result.case_id for result in results if result.has_reading}
     complete = development <= answered
 
     if complete:
@@ -512,9 +706,21 @@ def report(
         print(_cost_block(full, source, results, namespace))
     else:
         print(_cost_block(full, source, results, namespace))
+        unanswered = len(development - answered)
+        blocked = len(stage_a.provider_failures)
         print(
-            f"STAGE B NOT OPENED. {len(development - answered)} customer development case(s) "
-            f"have no challenger reading."
+            f"STAGE B NOT OPENED. {unanswered} customer development case(s) have no challenger "
+            f"reading"
+            + (
+                "."
+                if blocked == 0
+                else (
+                    f", of which {blocked} in the Stage-A set were asked and not answered. "
+                    f"Those are execution failures, recorded in "
+                    f"{failures_path(namespace.model)}. They are not model-quality evidence "
+                    f"and are not counted as unrepaired failures."
+                )
+            )
         )
 
     print(_verdict(stage_a, verdict, complete, summary))
@@ -542,13 +748,31 @@ def _cost_block(
 def _verdict(
     stage_a: StageAOutcome, verdict: object, complete: bool, summary: RunSummary | None
 ) -> str:
-    """One sentence naming what this run decided, in the vocabulary the slice is judged in."""
+    """One sentence naming what this run decided, in the vocabulary the slice is judged in.
+
+    The first thing it separates is whether anything was measured at all. A stage stopped by
+    provider failures has no quality verdict to report, and saying "not material" about it
+    would be a claim about a model derived from an account.
+    """
     materiality = evaluate_materiality(stage_a)
     if stage_a.authority_violations:
         return (
             "\nSEMANTIC SAFETY GATE FAILED - REVIEW REQUIRED\n"
             "  A label outside the closed non-authoritative set was accepted. This is an "
             "architecture or evaluator question first, not a model one."
+        )
+    if stage_a.provider_failures:
+        blocked = len(stage_a.provider_failures)
+        return (
+            "\nSTAGE A INVALID FOR A QUALITY DECISION - EXECUTION FAILURE\n"
+            f"  {blocked} of {len(stage_a.selection.case_ids)} selected case(s) were asked and "
+            f"produced no reading.\n"
+            f"  Readings obtained: {stage_a.provider_completion}. Challenger quality: NOT "
+            f"MEASURED.\n"
+            "  This is an infrastructure outcome, not a model outcome. Stage B is closed, no "
+            "materiality\n"
+            "  verdict is available, and nothing here says the challenger is or is not "
+            "material."
         )
     if not materiality.passed:
         if not stage_a.complete:
@@ -601,6 +825,11 @@ def rebuild(namespace: argparse.Namespace) -> int:
         )
     source = load_source(Path(namespace.source), full)
     namespace.model = header.model_id or namespace.model
+    if not namespace.model:
+        raise ChallengerRefusedError(
+            f"{path.name} names no model and none was given, so the attempt log and the price "
+            f"for this run cannot be identified. Pass --model."
+        )
     namespace.provider = header.provider
     price = price_for(header.provider, header.model_id)
     guard = BudgetGuard(EvalBudget(), price=price, live=False)
@@ -648,8 +877,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--live",
         action="store_true",
         help=(
-            "actually call the challenger. Without it this prints the plan, constructs no "
-            "client and spends nothing."
+            "take the live code path. Necessary and NOT sufficient: buying inference also "
+            "takes --authorise-paid-inference. Without --live this prints the plan, "
+            "constructs no client and spends nothing."
+        ),
+    )
+    parser.add_argument(
+        "--authorise-paid-inference",
+        metavar="PHRASE",
+        default=None,
+        help=(
+            "authorise external paid inference for exactly one stage of this one invocation. "
+            f"{required_phrase(SpendScope.STAGE_A)} for --stage a, "
+            f"{required_phrase(SpendScope.STAGE_B)} for --stage b. Typed here and nowhere "
+            "else: never read from the environment, never from .env, never defaulted, and "
+            "never carried from one stage to the next. It is not a secret and not "
+            "authentication -- it is the difference between running the live code path and "
+            "deciding to be charged."
         ),
     )
     parser.add_argument(
@@ -692,10 +936,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _validate(namespace: argparse.Namespace) -> None:
-    """Refuse an incoherent invocation before anything is loaded, let alone called."""
+    """Refuse an incoherent invocation before anything is loaded, let alone called.
+
+    The authorisation is resolved here, at the very front of the command, so a run that may
+    not spend stops before the dataset is read -- long before a price is looked up, a budget
+    is computed or a client could exist. That ordering is the point: "refused before the
+    provider factory" should be true by construction rather than by careful sequencing later.
+    """
+    namespace.authorisation = None
     if namespace.from_results:
         if not namespace.provider:
             namespace.provider = LlmProvider.BEDROCK.value
+        if namespace.authorise_paid_inference:
+            raise ChallengerRefusedError(
+                "--from-results rebuilds a report from stored evidence and makes no provider "
+                "call, so there is nothing here to authorise. Drop "
+                "--authorise-paid-inference."
+            )
         return
     if not namespace.stage:
         raise ChallengerRefusedError("--stage is required: a or b, never both")
@@ -711,16 +968,41 @@ def _validate(namespace: argparse.Namespace) -> None:
         raise ChallengerRefusedError(
             "--model is required, even for a plan: the preflight names what it would measure"
         )
+    if namespace.authorise_paid_inference and not namespace.live:
+        raise ChallengerRefusedError(
+            "--authorise-paid-inference without --live authorises a command that does not "
+            "call anything. Say what is intended: drop the authorisation, or add --live."
+        )
+    if namespace.live:
+        namespace.authorisation = authorise(
+            namespace.authorise_paid_inference,
+            STAGE_SCOPES[namespace.stage],
+            max_calls=CHALLENGER_CEILING.max_calls,
+            max_estimated_usd=CHALLENGER_CEILING.max_estimated_usd,
+        )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    provider_builder: ProviderBuilder = bedrock_provider,
+) -> int:
+    """Parse, refuse or run. ``provider_builder`` is the only way a paid client enters."""
     namespace = build_parser().parse_args(argv)
     try:
         _validate(namespace)
         if namespace.from_results:
             return rebuild(namespace)
-        return asyncio.run(run(namespace))
-    except (ChallengerRefusedError, ChallengerError) as error:
+        return asyncio.run(run(namespace, provider_builder=provider_builder))
+    except (
+        ChallengerRefusedError,
+        ChallengerError,
+        SpendNotAuthorisedError,
+        StoreError,
+    ) as error:
+        # A result file that cannot be continued is a refusal like any other, not a crash. It
+        # is reported the same way and, like every refusal here, no case was bought: the
+        # identity is checked before the first question is put to anything.
         print(f"refused: {error}", file=sys.stderr)
         return 2
 

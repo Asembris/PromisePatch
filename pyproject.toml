@@ -484,6 +484,7 @@ forbidden_modules = [
 name = "DeepEval is one module wide"
 type = "forbidden"
 source_modules = [
+    "evals.authorisation",
     "evals.budget",
     "evals.cases",
     "evals.challenger",
@@ -498,6 +499,7 @@ source_modules = [
     "evals.report",
     "evals.results",
     "evals.runner",
+    "evals.store",
     "evals.summary",
     "evals.thresholds",
 ]

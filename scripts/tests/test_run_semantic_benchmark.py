@@ -21,6 +21,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from evals.authorisation import SpendScope, required_phrase
 from evals.budget import BudgetGuard, EvalBudget, price_for
 from evals.cases import EvalSplit
 from evals.dataset import GoldDataset, load_dataset
@@ -37,6 +38,7 @@ from scripts.run_semantic_benchmark import (
 NOVA = "us.amazon.nova-2-lite-v1:0"
 HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 UNPRICED = "example.unbenchmarked-model-v1:0"
+DEV_PHRASE = required_phrase(SpendScope.SPLIT_DEVELOPMENT)
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -145,7 +147,19 @@ def test_a_model_with_no_verified_price_cannot_be_benchmarked(
     id that is not a key in the catalog refuses before a client is opened.
     """
     assert (
-        main(["--live", "--split", "development", "--provider", "bedrock", "--model", UNPRICED])
+        main(
+            [
+                "--live",
+                "--split",
+                "development",
+                "--provider",
+                "bedrock",
+                "--model",
+                UNPRICED,
+                "--authorise-paid-inference",
+                DEV_PHRASE,
+            ]
+        )
         == 2
     )
     error = capsys.readouterr().err
@@ -167,7 +181,19 @@ def test_the_holdout_is_not_opened_without_saying_development_passed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Read once, to decide. A holdout opened casually is a second development set."""
-    code = main(["--live", "--split", "holdout", "--provider", "bedrock", "--model", NOVA])
+    code = main(
+        [
+            "--live",
+            "--split",
+            "holdout",
+            "--provider",
+            "bedrock",
+            "--model",
+            NOVA,
+            "--authorise-paid-inference",
+            required_phrase(SpendScope.SPLIT_HOLDOUT),
+        ]
+    )
     assert code == 2
     assert "the holdout is opened once" in capsys.readouterr().err
 

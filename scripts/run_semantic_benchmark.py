@@ -7,12 +7,15 @@ be inside either of them. It is here, outside both, and it is orchestration only
 nothing about what a good answer is, computes no metric and owns no threshold. Every number in
 its output is produced by :mod:`evals`.
 
-**Spending is opt-in, explicitly and unmistakably.** ``--live`` is required, ``--provider`` and
-``--model`` are required with it, and neither is defaulted. Without ``--live`` this prints the
-preflight and stops, having constructed no client. Nothing here reads ``PP_LLM_PROVIDER`` to
-decide whether to call a model: a machine whose ``.env`` says ``bedrock`` still spends nothing
-unless somebody types the flag. That is the same guarantee ``python -m evals`` has, kept rather
-than traded away for a live surface.
+**Spending is opt-in, explicitly and unmistakably, and ``--live`` is not the opt-in.** The flag
+names a code path. Being charged for inference additionally takes a split-bound authorisation
+phrase typed at the invocation -- see :mod:`evals.authorisation` -- because a flag a test can
+pass is a flag a test did pass: a case asserting that an unpriced model is refused once became
+a live benchmark the day that model was priced, and the only thing that stopped it was AWS
+denying access. ``--provider`` and ``--model`` are required with ``--live`` and neither is
+defaulted. Nothing here reads ``PP_LLM_PROVIDER`` to decide whether to call a model, and
+nothing reads the authorisation from the environment or from ``.env``. A process running under
+pytest cannot construct a paid provider at all, whatever it was handed.
 
 **The model is named, never inherited.** ``Settings.bedrock_model_id`` defaults to a Claude
 model, which is not the model this benchmark is about. The id is passed on the command line,
@@ -32,7 +35,8 @@ so a formatting failure costs nothing and a lost terminal costs nothing.
 Run the development split::
 
     uv run python scripts/run_semantic_benchmark.py --live \\
-        --provider bedrock --model us.amazon.nova-2-lite-v1:0 --split development
+        --provider bedrock --model us.amazon.nova-2-lite-v1:0 --split development \\
+        --authorise-paid-inference AUTHORISE-PAID-INFERENCE-SPLIT-DEVELOPMENT
 
 Rebuild a report from what a run already paid for::
 
@@ -45,10 +49,18 @@ import argparse
 import asyncio
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from decimal import Decimal
 from pathlib import Path
 
+from evals.authorisation import (
+    SpendAuthorisation,
+    SpendNotAuthorisedError,
+    SpendScope,
+    authorise,
+    refuse_real_inference_under_test,
+    required_phrase,
+)
 from evals.budget import (
     BudgetExhaustedError,
     BudgetGuard,
@@ -64,14 +76,20 @@ from evals.cases import EvalSplit, ModelInput
 from evals.dataset import GoldDataset, load_dataset, manifest_problems, validate_dataset
 from evals.preflight import render_preflight
 from evals.report import render
-from evals.results import CaseResult, RunSummary
+from evals.results import CaseResult, ExecutionStatus, RunSummary
 from evals.runner import LIVE_MODE, RunOutcome, StopPolicy, new_run_id, run_cases
-from evals.store import ResultStore, RunHeader, read_run
+from evals.store import (
+    ProviderFailureLog,
+    ProviderFailureRecord,
+    ResultStore,
+    RunHeader,
+    StoreError,
+    read_run,
+)
 from evals.summary import build_summary, dataset_identity, git_sha, ledger_entry
 from evals.thresholds import SAFETY_GATES
 
 from promisepatch.config import LlmProvider, Settings
-from promisepatch.integrations.semantic_provider import build_semantic_provider
 from promisepatch.semantic import SemanticProvider
 
 RESULTS_DIR = Path(".eval-results")
@@ -98,6 +116,12 @@ retry. This is the bound on how long a benchmark keeps paying to discover that i
 is not answering.
 """
 
+SPLIT_SCOPES = {
+    EvalSplit.DEVELOPMENT.value: SpendScope.SPLIT_DEVELOPMENT,
+    EvalSplit.HOLDOUT.value: SpendScope.SPLIT_HOLDOUT,
+}
+"""Which authorisation each split costs. Approving one does not approve the other."""
+
 
 class BenchmarkRefusedError(RuntimeError):
     """A precondition for spending money is not met, so nothing was spent."""
@@ -106,23 +130,44 @@ class BenchmarkRefusedError(RuntimeError):
 # ------------------------------------------------------------------- the live provider
 
 
-def bedrock_provider(settings: Settings) -> SemanticProvider:
-    """Production's own provider factory, read once, for every case in the run.
+type ProviderBuilder = Callable[[Settings, SpendAuthorisation], SemanticProvider]
+"""How this command gets something that can be charged for. A parameter, never a branch."""
+
+
+def bedrock_provider(settings: Settings, authorisation: SpendAuthorisation) -> SemanticProvider:
+    """Production's own provider factory, read once, behind the guards that gate paid inference.
 
     One provider for the whole run rather than one per case: opening a client per case would
     resolve the credential chain fifty times and measure connection setup as model latency.
     It is production's ``build_semantic_provider``, so the request this benchmark sends is the
     request the worker sends -- prompts, tool schema, forced tool choice, temperature, output
     ceiling, corrective retry and all.
+
+    Two things stand in front of it. The authorisation is an argument, so this cannot be
+    reached without one having been produced from a phrase somebody typed. And the test
+    interlock is checked on the line before the import, so a pytest process is refused here
+    whatever flags, credentials or model access it happens to have -- which is the guard that
+    would have stopped the accident that made this module take arguments at all.
     """
+    refuse_real_inference_under_test(authorisation.scope)
+    from promisepatch.integrations.semantic_provider import build_semantic_provider
+
     return build_semantic_provider(settings)
 
 
 # ------------------------------------------------------------------------- the run
 
 
-async def run_live(namespace: argparse.Namespace) -> int:
-    """Preflight, then -- only with ``--live`` -- the split, one case at a time."""
+async def run_live(
+    namespace: argparse.Namespace,
+    *,
+    provider_builder: ProviderBuilder = bedrock_provider,
+) -> int:
+    """Preflight, then -- only with an authorisation -- the split, one case at a time.
+
+    ``provider_builder`` is the seam a test uses. It defaults to the one thing here that can
+    be charged for, and a test that needs the orchestration passes one that cannot.
+    """
     splits = [EvalSplit(namespace.split)]
     full = load_dataset()
     problems = [*validate_dataset(full), *manifest_problems(full, full.manifest())]
@@ -162,7 +207,8 @@ async def run_live(namespace: argparse.Namespace) -> int:
     if not namespace.live:
         print(
             "DRY RUN. No provider was constructed and nothing was spent.\n"
-            "Add --live to run this split against the model named above."
+            f"Running this split takes --live and --authorise-paid-inference "
+            f"{required_phrase(SPLIT_SCOPES[namespace.split])}."
         )
         return 0
 
@@ -173,12 +219,22 @@ async def run_live(namespace: argparse.Namespace) -> int:
             "Pass --development-passed to say that it did, or run --split development first."
         )
 
+    # Re-demanded at the point of spending rather than trusted from the parse: the split about
+    # to be bought must be the one the phrase named.
+    authorisation: SpendAuthorisation = namespace.authorisation
+    authorisation.require(SPLIT_SCOPES[namespace.split])
+    print(
+        f"\nSPEND AUTHORISED  scope {authorisation.scope.value}  "
+        f"granted {authorisation.granted_at}  "
+        f"caps {authorisation.max_calls} call(s) / ${authorisation.max_estimated_usd}\n"
+    )
+
     settings = Settings(
         llm_provider=LlmProvider.BEDROCK,
         bedrock_model_id=namespace.model,
         aws_region=namespace.region,
     )
-    provider = bedrock_provider(settings)
+    provider = provider_builder(settings, authorisation)
     provider_name = provider.name
 
     def factory(_: ModelInput) -> SemanticProvider:
@@ -201,6 +257,7 @@ async def run_live(namespace: argparse.Namespace) -> int:
         pricing_snapshot=price.snapshot_date.isoformat(),
     )
     path = RESULTS_DIR / f"{namespace.split}-{namespace.model.replace(':', '_')}.jsonl"
+    attempts = ProviderFailureLog(_failures_path(path))
     store = ResultStore(path, header)
     (RESULTS_DIR / f"{store.header.run_id}-preflight.txt").write_text(preflight, encoding="utf-8")
     if store.existing:
@@ -210,16 +267,35 @@ async def run_live(namespace: argparse.Namespace) -> int:
         )
 
     def persist(result: CaseResult) -> None:
-        """Write down what was measured, and only what was measured.
+        """Write down what was measured, and where it belongs.
 
-        A refusal by the acceptance gate is a fact about the model and is kept: it cost a call,
-        it cost two attempts, and "the answer did not satisfy the schema twice" is a result. A
-        transport failure is not a fact about the model at all -- nobody was reached -- and
-        freezing one into the file would mean a resumed run reported an outage as a reading and
-        never asked the case again. Those are left unwritten, so re-running after diagnosing
-        the infrastructure asks them and nothing else.
+        A refusal by the acceptance gate is a fact about the model and goes in the result
+        file: it cost a call, it cost two attempts, and "the answer did not satisfy the schema
+        twice" is a result. A transport failure is not a fact about the model at all -- nobody
+        was reached -- and freezing one into that file would mean a resumed run reported an
+        outage as a reading and never asked the case again.
+
+        So it goes to the attempt log beside it instead. The case stays unanswered and will be
+        asked again once the infrastructure is diagnosed, and the refusal is still on record
+        rather than thrown away: "we tried and were refused" is evidence, and a run that
+        discards it can only ever report model quality.
         """
-        if result.provider_error:
+        if result.execution_status is ExecutionStatus.PROVIDER_FAILURE:
+            attempts.record(
+                ProviderFailureRecord(
+                    run_id=store.header.run_id,
+                    recorded_at=utc_now_iso(),
+                    git_sha=store.header.git_sha,
+                    case_id=result.case_id,
+                    job=result.job.value,
+                    split=result.split.value,
+                    provider=result.provider,
+                    model_id=result.model_id or namespace.model,
+                    attempt=attempts.attempts_for(result.case_id) + 1,
+                    category=result.error_category,
+                    e2e_latency_ms=result.e2e_latency_ms,
+                )
+            )
             return
         store.record(result)
 
@@ -249,6 +325,11 @@ async def run_live(namespace: argparse.Namespace) -> int:
     _emit(summary, namespace)
     append_to_ledger(LEDGER, ledger_entry(summary))
     return _exit_code(summary)
+
+
+def _failures_path(results: Path) -> Path:
+    """Where attempts that produced no reading go: beside the readings, never among them."""
+    return results.with_name(f"{results.stem}-provider-failures.jsonl")
 
 
 def _refuse_an_exhausted_allowance(budget: EvalBudget, spent: LedgerTotals) -> None:
@@ -445,8 +526,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--live",
         action="store_true",
         help=(
-            "actually call the provider. Without it this prints the preflight, constructs no "
-            "client and spends nothing."
+            "take the live code path. Necessary and NOT sufficient: calling the provider also "
+            "takes --authorise-paid-inference. Without --live this prints the preflight, "
+            "constructs no client and spends nothing."
+        ),
+    )
+    parser.add_argument(
+        "--authorise-paid-inference",
+        metavar="PHRASE",
+        default=None,
+        help=(
+            "authorise external paid inference for exactly one split of this one invocation. "
+            f"{required_phrase(SpendScope.SPLIT_DEVELOPMENT)} for --split development, "
+            f"{required_phrase(SpendScope.SPLIT_HOLDOUT)} for --split holdout. Typed here and "
+            "nowhere else: never read from the environment, never from .env, never defaulted, "
+            "and never carried from one split to the other."
         ),
     )
     parser.add_argument(
@@ -487,8 +581,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _validate(namespace: argparse.Namespace) -> None:
-    """Refuse an incoherent invocation before anything is loaded, let alone called."""
+    """Refuse an incoherent invocation before anything is loaded, let alone called.
+
+    The authorisation is resolved here, at the very front, so an unauthorised run stops before
+    the dataset is read -- long before a price is looked up, a budget is computed or a client
+    could exist. "Refused before the provider factory" is then true by construction.
+    """
+    namespace.authorisation = None
     if namespace.from_results:
+        if namespace.authorise_paid_inference:
+            raise BenchmarkRefusedError(
+                "--from-results rebuilds a report from stored answers and makes no provider "
+                "call, so there is nothing here to authorise. Drop "
+                "--authorise-paid-inference."
+            )
         return
     if not namespace.split:
         raise BenchmarkRefusedError("--split is required: development or holdout, never both")
@@ -504,16 +610,35 @@ def _validate(namespace: argparse.Namespace) -> None:
         raise BenchmarkRefusedError(
             "--model is required, even for a dry run: the preflight names what it measured"
         )
+    if namespace.authorise_paid_inference and not namespace.live:
+        raise BenchmarkRefusedError(
+            "--authorise-paid-inference without --live authorises a command that does not call "
+            "anything. Say what is intended: drop the authorisation, or add --live."
+        )
+    if namespace.live:
+        namespace.authorisation = authorise(
+            namespace.authorise_paid_inference,
+            SPLIT_SCOPES[namespace.split],
+            max_calls=GLOBAL_CEILING.max_calls,
+            max_estimated_usd=GLOBAL_CEILING.max_estimated_usd,
+        )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    provider_builder: ProviderBuilder = bedrock_provider,
+) -> int:
+    """Parse, refuse or run. ``provider_builder`` is the only way a paid client enters."""
     namespace = build_parser().parse_args(argv)
     try:
         _validate(namespace)
         if namespace.from_results:
             return rebuild(namespace)
-        return asyncio.run(run_live(namespace))
-    except BenchmarkRefusedError as error:
+        return asyncio.run(run_live(namespace, provider_builder=provider_builder))
+    except (BenchmarkRefusedError, SpendNotAuthorisedError, StoreError) as error:
+        # A result file that cannot be continued is a refusal like any other, not a crash, and
+        # nothing was bought: the identity is checked before the first question is put.
         print(f"refused: {error}", file=sys.stderr)
         return 2
 
