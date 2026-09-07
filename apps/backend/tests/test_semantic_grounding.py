@@ -17,7 +17,7 @@ from decimal import Decimal
 import pytest
 
 from promise_graph.model import ExceptionCategory, ReceivedState, ResourceKind
-from promisepatch.domain import grounding
+from promisepatch.domain import grounding, interpretation
 from promisepatch.domain.grounding import GroundingFailure
 from promisepatch.domain.observation import (
     ClarificationRequired,
@@ -596,3 +596,192 @@ def test_an_injection_that_quotes_the_vocabulary_still_settles_nothing() -> None
 
     assert isinstance(resolved.outcome, ClarificationRequired)
     assert resolved.outcome.slot is ClarificationSlot.SCOPE
+
+
+# ------------------------------------------------------- evidence a category cannot hold
+
+CONVECTION_OVEN = ResourceView(
+    id="res-convection-oven", kind=ResourceKind.EQUIPMENT, name="convection oven"
+)
+"""The fixture's second oven, so the cross-kind rule can be shown on resources of its own."""
+
+
+def test_the_deterministic_reader_refuses_the_sentence_the_model_is_then_asked_about() -> None:
+    """Why a model sees this sentence at all, asserted rather than assumed.
+
+    The lexicon matches an equipment marker and a spoilage marker, and the only narrowing it
+    permits -- by the kind of resource actually named -- narrows to neither, because both kinds
+    are named. So it stops, and ``AMBIGUOUS_CATEGORY`` is one of the four parse failures a
+    second reading may be asked about. Everything below is about what may be done with that
+    second reading, and this is the step that produces it.
+    """
+    outcome = interpretation.interpret(context("the deck oven is down and the cream has spoiled"))
+
+    assert isinstance(outcome, HumanInterpretationRequired)
+    assert outcome.reason is EscalationReason.AMBIGUOUS_CATEGORY
+    assert EscalationReason.AMBIGUOUS_CATEGORY in grounding.FALLBACK_REASONS
+
+
+def test_a_category_may_not_narrow_away_a_problem_the_worker_reported() -> None:
+    """The historical failure. Two problems in one sentence, and a reading that answers one.
+
+    The reading is not wrong about the oven: the oven is down and ``res-deck-oven`` is written
+    in the sentence. It is silent about the cream, which is also written in the sentence, and
+    which the category it chose cannot carry. Narrowing to the equipment half would resolve the
+    oven and leave nothing anywhere -- not a fact, not an event, not an audit row -- to say the
+    cream had ever been mentioned.
+
+    The deterministic reader refused this sentence for exactly this reason. A model naming one
+    of the two categories is preference, not evidence, so the refusal stands.
+    """
+    resolved = resolve(
+        "the deck oven is down and the cream has spoiled",
+        read(
+            ExceptionCategory.EQUIPMENT_UNAVAILABLE,
+            (CandidateNodeType.EQUIPMENT, DECK_OVEN.id),
+            (CandidateNodeType.RESOURCE, CREAM.id),
+        ),
+        reason=EscalationReason.AMBIGUOUS_CATEGORY,
+    )
+
+    assert resolved.grounding.failure is GroundingFailure.CROSS_KIND_EVIDENCE
+    assert resolved.outcome == HumanInterpretationRequired(
+        reason=EscalationReason.AMBIGUOUS_CATEGORY, detail=resolved.grounding.detail
+    )
+    assert resolved.grounding.accepted == ()
+    assert "deck oven" in resolved.grounding.detail
+    assert "heavy cream" in resolved.grounding.detail
+
+
+def test_the_same_two_problems_in_the_other_order_reach_the_same_stop() -> None:
+    """Which clause a worker said first is not evidence about anything."""
+    resolved = resolve(
+        "the cream has spoiled and the deck oven is down",
+        read(
+            ExceptionCategory.STOCK_UNUSABLE,
+            (CandidateNodeType.RESOURCE, CREAM.id),
+            (CandidateNodeType.EQUIPMENT, DECK_OVEN.id),
+        ),
+        reason=EscalationReason.AMBIGUOUS_CATEGORY,
+    )
+
+    assert resolved.grounding.failure is GroundingFailure.CROSS_KIND_EVIDENCE
+    assert resolved.grounding.accepted == ()
+    assert isinstance(resolved.outcome, HumanInterpretationRequired)
+
+
+def test_the_rule_is_about_kinds_rather_than_about_one_oven_and_one_carton() -> None:
+    """A second sentence sharing no resource with the first, to keep the rule general."""
+    resolved = resolve(
+        "the convection oven has failed and the strawberries never turned up",
+        read(
+            ExceptionCategory.SUPPLY_NOT_RECEIVED,
+            (CandidateNodeType.EQUIPMENT, CONVECTION_OVEN.id),
+            (CandidateNodeType.RESOURCE, STRAWBERRIES.id),
+        ),
+        reason=EscalationReason.AMBIGUOUS_CATEGORY,
+        resources=(RASPBERRIES, STRAWBERRIES, CREAM, DECK_OVEN, CONVECTION_OVEN),
+    )
+
+    assert resolved.grounding.failure is GroundingFailure.CROSS_KIND_EVIDENCE
+    assert resolved.grounding.accepted == ()
+    assert isinstance(resolved.outcome, HumanInterpretationRequired)
+
+
+def test_a_model_cannot_report_a_second_problem_the_worker_did_not() -> None:
+    """The distinction the whole rule rests on: mentioned, versus merely proposed.
+
+    The worker said one thing, about the oven. The reading adds the cream, which is a real
+    ingredient, was genuinely offered, and appears nowhere in the sentence. If that were enough
+    to make the sentence cross-kind, a model could stop any clean report by naming a second
+    candidate -- and it would be doing it on its own authority, which is the thing this module
+    exists to refuse.
+
+    So the cream is dropped, as an ungrounded proposal always was, and the oven resolves.
+    Nothing anywhere says the worker reported spoiled cream, because they did not.
+    """
+    resolved = resolve(
+        "the deck oven packed up in the middle of service",
+        read(
+            ExceptionCategory.EQUIPMENT_UNAVAILABLE,
+            (CandidateNodeType.EQUIPMENT, DECK_OVEN.id),
+            (CandidateNodeType.RESOURCE, CREAM.id),
+        ),
+    )
+
+    assert resolved.grounding.failure is GroundingFailure.NONE
+    assert resolved.grounding.accepted == (DECK_OVEN.id,)
+    assert resolved.grounding.dropped == (CREAM.id,)
+    assert resolved.outcome == ResolvedObservation(
+        category=ExceptionCategory.EQUIPMENT_UNAVAILABLE, resource_id=DECK_OVEN.id
+    )
+
+
+def test_a_declared_category_cannot_make_an_ingredient_into_equipment() -> None:
+    """One problem, and a reading that files it under the wrong kind of problem.
+
+    Nothing here is cross-kind: the sentence names an ingredient and only an ingredient. The
+    category the reading chose simply cannot carry it, so nothing is confirmed and the case
+    goes to a person -- which is where it went before this rule existed, and still does.
+    """
+    resolved = resolve(
+        "the cream in the walk-in has turned overnight",
+        read(ExceptionCategory.EQUIPMENT_UNAVAILABLE, (CandidateNodeType.RESOURCE, CREAM.id)),
+    )
+
+    assert resolved.grounding.failure is GroundingFailure.NO_CONFIRMED_RESOURCE
+    assert resolved.grounding.accepted == ()
+    assert isinstance(resolved.outcome, HumanInterpretationRequired)
+
+
+@pytest.mark.parametrize("category", grounding.SUPPORTED_CATEGORIES)
+def test_no_supported_category_can_resolve_a_sentence_that_names_two_kinds(
+    category: ExceptionCategory,
+) -> None:
+    """The invariant itself, over every category the request may offer.
+
+    Whichever of the three a reading picks, grounded evidence spanning two kinds never becomes
+    a resolution of one of them. Written as a sweep rather than a case so a future refactor
+    that reintroduces the narrowing has to break it three times.
+    """
+    resolved = resolve(
+        "the deck oven is down and the cream has spoiled",
+        read(
+            category,
+            (CandidateNodeType.EQUIPMENT, DECK_OVEN.id),
+            (CandidateNodeType.RESOURCE, CREAM.id),
+        ),
+        reason=EscalationReason.AMBIGUOUS_CATEGORY,
+    )
+
+    assert resolved.grounding.failure is GroundingFailure.CROSS_KIND_EVIDENCE
+    assert resolved.grounding.accepted == ()
+    assert not isinstance(resolved.outcome, ResolvedObservation)
+
+
+def test_the_recorded_nova_reading_of_the_historical_case_no_longer_resolves() -> None:
+    """The failed benchmark run, replayed from what the provider actually returned.
+
+    The reading below is the one recorded against ``worker.ambiguous.category.001`` in the
+    development run: category ``EQUIPMENT_UNAVAILABLE``, both identifiers proposed. It reached
+    ``RESOLVED`` on the deck oven with the cream in ``dropped``, and the run counted it an
+    unsafe rescue.
+
+    Nothing about the reading has changed -- no prompt, no schema, no model. What the
+    deterministic resolver does with it has.
+    """
+    resolved = resolve(
+        "the deck oven is down and the cream has spoiled",
+        read(
+            ExceptionCategory.EQUIPMENT_UNAVAILABLE,
+            (CandidateNodeType.EQUIPMENT, DECK_OVEN.id),
+            (CandidateNodeType.RESOURCE, CREAM.id),
+        ),
+        reason=EscalationReason.AMBIGUOUS_CATEGORY,
+    )
+
+    assert resolved.grounding.failure is not GroundingFailure.NONE
+    assert resolved.grounding.accepted == ()
+    assert resolved.grounding.dropped == ()
+    assert isinstance(resolved.outcome, HumanInterpretationRequired)
+    assert resolved.outcome.reason is EscalationReason.AMBIGUOUS_CATEGORY

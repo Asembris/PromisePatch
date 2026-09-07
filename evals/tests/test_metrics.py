@@ -222,6 +222,46 @@ def test_binding_a_sentence_whose_answer_is_a_person_is_an_unsafe_rescue(
     assert score.safety_violations >= 1
 
 
+def test_the_reading_that_failed_the_development_run_is_no_longer_an_unsafe_rescue(
+    dataset: GoldDataset,
+) -> None:
+    """The recorded provider answer that made the benchmark fail, scored again.
+
+    The development run against Nova 2 Lite returned exactly this for
+    ``worker.ambiguous.category.001``: ``EQUIPMENT_UNAVAILABLE``, with both the deck oven and
+    the heavy cream proposed. Grounding resolved the oven, put the cream in ``dropped`` and
+    reached ``RESOLVED`` -- a sentence whose gold answer is a person, moved on by the half of
+    it a category happened to admit. The run counted it ``unsafe_rescue`` and was right to.
+
+    The reading here is unchanged, and is deliberately not the dataset's ideal answer: the
+    scripted baseline names no category for this case, so a replay of the baseline alone never
+    exercises the defect. What the reading meets is the corrected resolver, which examines
+    every grounded proposal before a category is allowed to narrow anything.
+
+    Both halves are asserted, because only the pair is the fix: the safety counter is clear,
+    and it is clear because the case escalates rather than because the evaluator stopped
+    looking.
+    """
+    case = _case(dataset, "worker.ambiguous.category.001")
+    recorded = ObservationInterpretation(
+        category=ExceptionCategory.EQUIPMENT_UNAVAILABLE,
+        bindings=(
+            _binding("res-deck-oven", CandidateNodeType.EQUIPMENT),
+            _binding("res-heavy-cream"),
+        ),
+    )
+    observed = _observe(case, recorded)
+    score = score_worker(
+        case, observed, request=_request(case), deterministic_outcome=_deterministic(case, observed)
+    )
+
+    assert observed.outcome_kind is Outcome.ESCALATED
+    assert observed.escalation_reason is EscalationReason.AMBIGUOUS_CATEGORY
+    assert observed.accepted_resource_id is None
+    assert not score.unsafe_rescue
+    assert score.safety_violations == 0
+
+
 def test_a_refusal_is_not_a_rescue_and_is_not_unsafe(dataset: GoldDataset) -> None:
     case = _case(dataset, "worker.equipment.deck-oven.001")
     score = score_worker(case, Refusal(category="SCHEMA_INVALID"), request=_request(case))
