@@ -45,7 +45,7 @@ from evals.dataset import GoldDataset
 from evals.metrics import customer as customer_metrics
 from evals.metrics import worker as worker_metrics
 from evals.observed import CaseObservation, CustomerObservation, Refusal, WorkerObservation
-from evals.results import CaseResult
+from evals.results import CaseResult, ExecutionStatus
 from promisepatch.domain import grounding as grounding_rules
 from promisepatch.domain import interpretation
 from promisepatch.domain.observation import EscalationReason, InterpretationOutcome
@@ -170,6 +170,15 @@ class RunOutcome:
     reused: int = 0
     """Cases answered by an earlier attempt at this run and read back rather than re-asked."""
 
+    unscored: int = 0
+    """Cases the provider never answered, so no quality score was computed for them.
+
+    Reported rather than folded in. A case nobody was reached about has no reading to grade,
+    and scoring it as a miss would put an outage into an accuracy figure -- which is how an
+    infrastructure problem starts looking like a model problem. The count is here so the
+    absence is visible instead of merely absent.
+    """
+
 
 async def run_offline(
     dataset: GoldDataset,
@@ -218,29 +227,43 @@ async def run_cases(
     failures = 0
     stopped: str | None = None
     reused = 0
+    unscored = 0
 
     def keep(result: CaseResult, *, fresh: bool) -> None:
         results.append(result)
         if fresh and on_result is not None:
             on_result(result)
 
+    def score_of(result: CaseResult, score: object) -> None:
+        """Collect a quality score, unless there was no reading to compute one from.
+
+        A boundary-forbidden sentence is still scored: "nothing was asked, and nothing was"
+        is the whole assertion for that case, and it is a safety measurement. A provider
+        failure is different -- the model was asked and did not answer -- and there is no
+        quality claim to be made about it in either direction.
+        """
+        nonlocal unscored
+        if result.execution_status is ExecutionStatus.PROVIDER_FAILURE:
+            unscored += 1
+            return
+        _collect(score, worker_scores, customer_scores)
+
     for case in dataset.cases:
         if stopped is not None:
             break
         previous = stored.get(case.id)
         if previous is not None:
-            score = _rescore(case, previous)
-            _collect(score, worker_scores, customer_scores)
+            score_of(previous, _rescore(case, previous))
             keep(previous, fresh=False)
             reused += 1
         elif isinstance(case, WorkerCase):
             previous, worker_score = await _run_worker(case, factory, guard, mode=mode)
-            worker_scores.append(worker_score)
+            score_of(previous, worker_score)
             keep(previous, fresh=True)
             failures += int(previous.provider_error)
         else:
             previous, customer_score = await _run_customer(case, factory, guard, mode=mode)
-            customer_scores.append(customer_score)
+            score_of(previous, customer_score)
             keep(previous, fresh=True)
             failures += int(previous.provider_error)
 
@@ -275,17 +298,18 @@ async def run_cases(
         provider_failures=failures,
         stopped=stopped,
         reused=reused,
+        unscored=unscored,
     )
 
 
 def _collect(
-    score: worker_metrics.WorkerScore | customer_metrics.CustomerScore,
+    score: object,
     worker_scores: list[worker_metrics.WorkerScore],
     customer_scores: list[customer_metrics.CustomerScore],
 ) -> None:
     if isinstance(score, worker_metrics.WorkerScore):
         worker_scores.append(score)
-    else:
+    elif isinstance(score, customer_metrics.CustomerScore):
         customer_scores.append(score)
 
 

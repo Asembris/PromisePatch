@@ -42,7 +42,8 @@ from evals.budget import ModelPrice
 from evals.cases import CustomerCase, EvalJob, EvalSplit
 from evals.dataset import GoldDataset
 from evals.metrics.customer import CustomerScore, aggregate_customer, score_from_metrics
-from evals.results import CaseResult
+from evals.results import CaseResult, ExecutionStatus
+from evals.store import ProviderFailureRecord
 from promisepatch.semantic import ApparentIntent
 
 SELECTION_ALGORITHM_VERSION = "1"
@@ -266,14 +267,23 @@ def _refuse_an_incomplete_source(
     cases: Mapping[str, CustomerCase], stored: Sequence[CaseResult]
 ) -> None:
     """A paired comparison needs a reading for every case, so a gap stops rather than shrinks."""
-    answered = {result.case_id for result in stored}
+    answered = {result.case_id for result in stored if result.has_reading}
+    unreadable = sorted(result.case_id for result in stored if not result.has_reading)
     missing = sorted(set(cases) - answered)
-    unknown = sorted(answered - set(cases))
+    unknown = sorted({result.case_id for result in stored} - set(cases))
     if missing:
+        detail = (
+            ""
+            if not unreadable
+            else (
+                f" {len(unreadable)} of them recorded an attempt with no reading "
+                f"({', '.join(unreadable)}), which is an execution fact and not an answer."
+            )
+        )
         raise ChallengerError(
             f"the source run has no reading for {len(missing)} customer development case(s): "
             f"{', '.join(missing)}. Every case needs one for a paired comparison, and this "
-            f"slice does not re-run the source model to get it."
+            f"slice does not re-run the source model to get it.{detail}"
         )
     if unknown:  # pragma: no cover - a result file from another dataset fails the hash first
         raise ChallengerError(
@@ -299,12 +309,33 @@ def _label_value(label: ApparentIntent | None) -> str | None:
 
 
 class PairedOutcome(StrEnum):
-    """What happened to one case, in the four states a paired reading can be in."""
+    """What happened to one case: four model-quality states, and one that is not about a model.
+
+    The first four are claims about how a challenger read a sentence, and each of them needs
+    the challenger to have read it. :data:`PROVIDER_FAILURE` is the state where it did not --
+    where nobody was reached and no reading exists -- and it is a member of this enum rather
+    than an absence precisely so that it cannot be quietly rounded into the nearest quality
+    label. A report once did exactly that, calling three unreachable calls two unchanged
+    failures and one control regression, which read as evidence about a model and was evidence
+    about an account.
+    """
 
     REPAIRED = "REPAIRED"
     UNCHANGED_FAILURE = "UNCHANGED_FAILURE"
     CONTROL_PRESERVED = "CONTROL_PRESERVED"
     CONTROL_REGRESSION = "CONTROL_REGRESSION"
+
+    PROVIDER_FAILURE = "PROVIDER_FAILURE"
+    """No reading was obtained, so nothing about model quality is claimed for this case."""
+
+    @property
+    def is_model_quality(self) -> bool:
+        """Whether this outcome is a statement about a model at all."""
+        return self is not PairedOutcome.PROVIDER_FAILURE
+
+
+SEMANTIC_OUTCOMES = frozenset(outcome for outcome in PairedOutcome if outcome.is_model_quality)
+"""The outcomes that require two readings. Nothing outside this set is a win, a loss or a tie."""
 
 
 class Role(StrEnum):
@@ -326,9 +357,49 @@ def is_directional_inversion(gold: ApparentIntent, predicted: ApparentIntent | N
     return (gold is approve and predicted is decline) or (gold is decline and predicted is approve)
 
 
+class ProviderFailureCategory(StrEnum):
+    """Why nobody was reached, in the coarsest terms the evaluator can state truthfully.
+
+    Derived from the exception class the semantic boundary raised, which is the only thing
+    about the failure that reaches a stored result. Production distinguishes a retryable
+    transport fault from a non-retryable one on the exception object, and puts the provider's
+    own code in the message; neither is carried into the surface the evaluator sees, and this
+    gate does not widen production logging to fetch them. So the categories are deliberately
+    coarse, and no raw provider message is ever persisted here.
+    """
+
+    TIMEOUT = "TIMEOUT"
+    """The model did not answer inside the bound. Retryable in the transport sense."""
+
+    PROVIDER_UNREACHABLE = "PROVIDER_UNREACHABLE"
+    """The provider refused, could not be reached, or did not answer with a response. Covers
+    authentication, access denial, throttling and network faults alike: telling those apart
+    from a stored result would need a sanitised provider code production does not publish."""
+
+    UNKNOWN_PROVIDER_FAILURE = "UNKNOWN_PROVIDER_FAILURE"
+    """A failure whose recorded category names nothing this evaluator knows."""
+
+
+def provider_failure_category(result: CaseResult) -> ProviderFailureCategory | None:
+    """The coarse category of one provider failure, or ``None`` when the case is not one."""
+    if result.execution_status is not ExecutionStatus.PROVIDER_FAILURE:
+        return None
+    if result.error_category == "SemanticTimeoutError":
+        return ProviderFailureCategory.TIMEOUT
+    if result.error_category == "SemanticProviderError":
+        return ProviderFailureCategory.PROVIDER_UNREACHABLE
+    return ProviderFailureCategory.UNKNOWN_PROVIDER_FAILURE
+
+
 @dataclass(frozen=True, slots=True)
 class PairedCase:
-    """One case read by both models, with the raw labels kept rather than collapsed."""
+    """One case seen by both models, with the raw labels kept rather than collapsed.
+
+    ``outcome`` is a model-quality verdict only when ``execution_status`` is ``ANSWERED``. When
+    it is not, every quality field on this record is deliberately empty rather than defaulted:
+    there is no predicted label, no inversion and no authority violation to report about a call
+    nobody answered, and a ``False`` in those places would read as a measurement.
+    """
 
     case_id: str
     role: Role
@@ -339,6 +410,13 @@ class PairedCase:
     outcome: PairedOutcome
     directional_inversion: bool
     authority_violation: bool
+    execution_status: ExecutionStatus = ExecutionStatus.ANSWERED
+    failure_category: ProviderFailureCategory | None = None
+
+    @property
+    def comparable(self) -> bool:
+        """Whether this case may be counted in any model-quality number."""
+        return self.outcome.is_model_quality
 
     @property
     def source_correct(self) -> bool:
@@ -346,7 +424,7 @@ class PairedCase:
 
     @property
     def challenger_correct(self) -> bool:
-        return self.challenger_predicted is self.gold
+        return self.comparable and self.challenger_predicted is self.gold
 
     def as_payload(self) -> dict[str, object]:
         return {
@@ -357,6 +435,11 @@ class PairedCase:
             "source_predicted": _label_value(self.source_predicted),
             "challenger_predicted": _label_value(self.challenger_predicted),
             "outcome": self.outcome.value,
+            "execution_status": self.execution_status.value,
+            "provider_failure_category": (
+                None if self.failure_category is None else self.failure_category.value
+            ),
+            "comparable": self.comparable,
             "directional_inversion": self.directional_inversion,
             "authority_violation": self.authority_violation,
         }
@@ -365,8 +448,27 @@ class PairedCase:
 def pair_case(
     case: CustomerCase, role: Role, source: CaseResult, challenger: CaseResult
 ) -> PairedCase:
-    """Classify one case from the two stored readings of it."""
+    """Classify one case from the two stored readings of it.
+
+    A challenger result with no reading is classified as :data:`PairedOutcome.PROVIDER_FAILURE`
+    and stops there. It is not a repair, not an unchanged failure and not a regression, because
+    each of those words asserts something about what a model said, and nothing was said.
+    """
     source_label = predicted_label(source)
+    if not challenger.has_reading:
+        return PairedCase(
+            case_id=case.id,
+            role=role,
+            tags=case.tags,
+            gold=case.expected,
+            source_predicted=source_label,
+            challenger_predicted=None,
+            outcome=PairedOutcome.PROVIDER_FAILURE,
+            directional_inversion=False,
+            authority_violation=False,
+            execution_status=challenger.execution_status,
+            failure_category=provider_failure_category(challenger),
+        )
     challenger_label = predicted_label(challenger)
     correct = challenger_label is case.expected
     if role is Role.FAILURE:
@@ -383,6 +485,34 @@ def pair_case(
         outcome=outcome,
         directional_inversion=is_directional_inversion(case.expected, challenger_label),
         authority_violation=bool(challenger.metrics.get("authority_violation")),
+        execution_status=ExecutionStatus.ANSWERED,
+        failure_category=None,
+    )
+
+
+def unread_result(record: ProviderFailureRecord, case: CustomerCase) -> CaseResult:
+    """Turn one logged failed attempt back into the shape the taxonomy reads.
+
+    Used only to rebuild a report from stored evidence. The result it returns carries no
+    reading, no metrics and no usage -- there were none -- and its ``provider_error`` flag is
+    what makes :func:`pair_case` classify it as an execution failure rather than a misread
+    sentence. Constructing one costs nothing and calls nothing.
+    """
+    return CaseResult(
+        case_id=case.id,
+        job=case.job,
+        split=case.split,
+        tags=case.tags,
+        expected={"apparent_intent": case.expected.value},
+        observed={},
+        metrics={},
+        passed=False,
+        reason=f"no reading: the provider was not reached ({record.category or 'unknown'})",
+        provider=record.provider,
+        model_id=record.model_id,
+        error_category=record.category,
+        provider_error=True,
+        e2e_latency_ms=record.e2e_latency_ms,
     )
 
 
@@ -400,6 +530,29 @@ class StageAOutcome:
     @property
     def controls(self) -> tuple[PairedCase, ...]:
         return tuple(case for case in self.cases if case.role is Role.CONTROL)
+
+    @property
+    def comparable(self) -> tuple[PairedCase, ...]:
+        """The cases a model-quality statement may be made about: both models read them."""
+        return tuple(case for case in self.cases if case.comparable)
+
+    @property
+    def comparable_failures(self) -> tuple[PairedCase, ...]:
+        return tuple(case for case in self.failures if case.comparable)
+
+    @property
+    def comparable_controls(self) -> tuple[PairedCase, ...]:
+        return tuple(case for case in self.controls if case.comparable)
+
+    @property
+    def provider_failures(self) -> tuple[PairedCase, ...]:
+        """Cases the challenger was asked about and did not answer. Not quality evidence."""
+        return tuple(case for case in self.cases if not case.comparable)
+
+    @property
+    def provider_completion(self) -> str:
+        """Readings obtained over cases selected, as a fraction a reader can check."""
+        return f"{len(self.comparable)}/{len(self.selection.case_ids)}"
 
     @property
     def repairs(self) -> int:
@@ -427,13 +580,27 @@ class StageAOutcome:
 
     @property
     def repair_rate(self) -> float | None:
-        challenged = len(self.failures)
+        """Repairs over the failures the challenger actually read, or ``None`` when it read none.
+
+        The denominator is comparable failures rather than selected failures, and the two
+        differ by exactly the provider failures. Dividing by the selected count would fold an
+        unreachable endpoint into the model's score as an unrepaired failure, which is a claim
+        about availability wearing the costume of a claim about quality. The rate is therefore
+        never reported on its own: :attr:`provider_completion` travels with it, and
+        :attr:`complete` is what decides whether either may be acted on.
+        """
+        challenged = len(self.comparable_failures)
         return None if challenged == 0 else self.repairs / challenged
 
     @property
     def complete(self) -> bool:
-        """Whether every selected case has a reading. A partial stage decides nothing."""
-        return {case.case_id for case in self.cases} == self.selection.case_ids
+        """Whether every selected case produced a reading. A partial stage decides nothing.
+
+        A provider failure leaves the stage incomplete, which is the mechanism by which an
+        execution problem cannot become a quality verdict: :func:`evaluate_materiality` refuses
+        to pass an incomplete stage whatever its partial numbers say, so Stage B stays shut.
+        """
+        return {case.case_id for case in self.comparable} == self.selection.case_ids
 
     def as_payload(self) -> dict[str, object]:
         return {
@@ -441,6 +608,11 @@ class StageAOutcome:
             "complete": self.complete,
             "failures_challenged": len(self.failures),
             "controls": len(self.controls),
+            "eligible_semantic_comparisons": len(self.comparable),
+            "comparable_failures": len(self.comparable_failures),
+            "comparable_controls": len(self.comparable_controls),
+            "provider_failures": len(self.provider_failures),
+            "provider_completion": self.provider_completion,
             "repairs": self.repairs,
             "unchanged_failures": self.unchanged_failures,
             "directional_inversions": self.directional_inversions,
@@ -640,16 +812,25 @@ class PairedTotals:
 
 
 def compare(cases: Sequence[PairedCase]) -> PairedTotals:
-    """Roll up a set of paired readings into wins, losses and ties."""
+    """Roll up a set of paired readings into wins, losses and ties.
+
+    Cases with no challenger reading are dropped before anything is counted. A win, a loss and
+    a tie are all statements about two models disagreeing or agreeing, and a case where only
+    one of them spoke supports none of the three -- least of all a loss, which is what
+    counting it as "not correct" would silently make it.
+    """
+    comparable = [case for case in cases if case.comparable]
     return PairedTotals(
-        cases=len(cases),
-        both_correct=sum(case.source_correct and case.challenger_correct for case in cases),
-        both_wrong=sum(not case.source_correct and not case.challenger_correct for case in cases),
+        cases=len(comparable),
+        both_correct=sum(case.source_correct and case.challenger_correct for case in comparable),
+        both_wrong=sum(
+            not case.source_correct and not case.challenger_correct for case in comparable
+        ),
         challenger_only_correct=sum(
-            case.challenger_correct and not case.source_correct for case in cases
+            case.challenger_correct and not case.source_correct for case in comparable
         ),
         source_only_correct=sum(
-            case.source_correct and not case.challenger_correct for case in cases
+            case.source_correct and not case.challenger_correct for case in comparable
         ),
     )
 
@@ -696,6 +877,8 @@ def cluster_deltas(cases: Sequence[PairedCase]) -> tuple[ClusterDelta, ...]:
     """
     tags: dict[str, list[PairedCase]] = {}
     for case in cases:
+        if not case.comparable:
+            continue
         for tag in case.tags:
             tags.setdefault(tag, []).append(case)
     return tuple(
@@ -743,6 +926,7 @@ def scores_for(dataset: GoldDataset, results: Sequence[CaseResult]) -> tuple[Cus
         score_from_metrics(cases[result.case_id], result.metrics)
         for result in sorted(results, key=lambda item: item.case_id)
         if result.case_id in cases
+        and result.execution_status is not ExecutionStatus.PROVIDER_FAILURE
     )
 
 
@@ -863,6 +1047,7 @@ def latency_profile(results: Sequence[CaseResult], field: str) -> dict[str, obje
 __all__ = [
     "MAX_STAGE_A_CASES",
     "SELECTION_ALGORITHM_VERSION",
+    "SEMANTIC_OUTCOMES",
     "STAGE_A_MATERIALITY",
     "ChallengerError",
     "ChallengerPair",
@@ -873,6 +1058,7 @@ __all__ = [
     "PairedCase",
     "PairedOutcome",
     "PairedTotals",
+    "ProviderFailureCategory",
     "Role",
     "SourceRun",
     "StageAOutcome",
@@ -889,7 +1075,9 @@ __all__ = [
     "pair_all",
     "pair_case",
     "predicted_label",
+    "provider_failure_category",
     "scores_for",
     "select_stage_a",
+    "unread_result",
     "usage_profile",
 ]

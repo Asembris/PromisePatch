@@ -62,31 +62,73 @@ def render_stage_a(outcome: StageAOutcome, verdict: MaterialityVerdict) -> str:
     lines.append(header)
     for case in outcome.cases:
         flag = "  <- DIRECTIONAL INVERSION" if case.directional_inversion else ""
+        if not case.comparable:
+            category = "" if case.failure_category is None else f"  [{case.failure_category.value}]"
+            flag = f"  <- NOT A QUALITY OBSERVATION{category}"
         lines.append(
             f"    {case.case_id.ljust(34)} {case.role.value.ljust(8)} "
             f"{case.gold.value.ljust(17)} {_label(_value(case.source_predicted)).ljust(17)} "
             f"{_label(_value(case.challenger_predicted)).ljust(17)} {case.outcome.value}{flag}"
         )
     if not outcome.complete:
-        missing = sorted(selection.case_ids - {case.case_id for case in outcome.cases})
+        seen = {case.case_id for case in outcome.comparable}
+        missing = sorted(selection.case_ids - seen)
         lines.append(f"    INCOMPLETE -- no reading for: {', '.join(missing)}")
 
     lines.extend(
         [
             "",
-            "  COUNTS",
-            f"    failure repairs            {outcome.repairs}/{len(outcome.failures)}",
-            f"    unchanged failures         {outcome.unchanged_failures}/{len(outcome.failures)}",
+            "  EXECUTION  (whether a reading exists; nothing here is about quality)",
+            f"    cases selected             {len(selection.case_ids)}",
+            f"    readings obtained          {outcome.provider_completion}",
+            f"    provider failures          {len(outcome.provider_failures)}",
+            f"    eligible comparisons       {len(outcome.comparable)}",
+            "",
+            "  QUALITY  (denominators are the cases both models read, and only those)",
+            f"    comparable failures        {len(outcome.comparable_failures)} "
+            f"of {len(outcome.failures)} selected",
+            f"    comparable controls        {len(outcome.comparable_controls)} "
+            f"of {len(outcome.controls)} selected",
+            f"    failure repairs            {outcome.repairs}/{len(outcome.comparable_failures)}",
+            f"    unchanged failures         {outcome.unchanged_failures}/"
+            f"{len(outcome.comparable_failures)}",
             f"    directional inversions     {outcome.directional_inversions}",
-            f"    controls preserved         {outcome.controls_preserved}/{len(outcome.controls)}",
-            f"    control regressions        {outcome.control_regressions}/{len(outcome.controls)}",
+            f"    controls preserved         {outcome.controls_preserved}/"
+            f"{len(outcome.comparable_controls)}",
+            f"    control regressions        {outcome.control_regressions}/"
+            f"{len(outcome.comparable_controls)}",
             f"    authority violations       {outcome.authority_violations}",
             f"    failure repair rate        {_rate(outcome.repair_rate)}",
+        ]
+    )
+    if outcome.provider_failures:
+        lines.extend(
+            [
+                "",
+                "    A provider failure is not an unrepaired failure and not a control "
+                "regression. It is",
+                "    absent evidence, it is excluded from every denominator above, and it "
+                "leaves this stage",
+                "    incomplete -- so no materiality verdict is available and Stage B stays "
+                "closed.",
+            ]
+        )
+    lines.extend(
+        [
             "",
             "  MATERIALITY  (fixed before the first challenger call; a spending decision, "
             "not an acceptance bar)",
         ]
     )
+    if not outcome.complete:
+        lines.append(
+            "    NOT EVALUABLE -- the stage is incomplete. Each criterion below describes the "
+            "partial set"
+        )
+        lines.append(
+            "    that was read and decides nothing; a stage that did not finish has no "
+            "materiality verdict."
+        )
     for criterion in verdict.criteria:
         status = "pass" if criterion.passed else "FAIL"
         lines.append(

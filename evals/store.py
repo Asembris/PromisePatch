@@ -30,6 +30,7 @@ from evals.results import CaseResult
 
 HEADER_KIND = "run"
 CASE_KIND = "case"
+ATTEMPT_KIND = "provider_failure"
 
 IDENTITY_FIELDS = (
     "git_sha",
@@ -155,6 +156,143 @@ class ResultStore:
             handle.flush()
 
 
+# ------------------------------------------------- attempts that produced no reading
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderFailureRecord:
+    """One provider invocation that produced no reading. Execution evidence, never a result.
+
+    Kept apart from the result file on purpose, and the separation carries a rule each way.
+
+    *Out of the results file*, because a resumed run reads that file to decide what it has
+    already bought, and a failure written there would be read back as an answer: the case
+    would never be asked again, and an outage would be frozen into the record as a reading.
+
+    *Into a file of its own rather than discarded*, because "we tried, three times, and were
+    refused" is worth keeping. It is the difference between a model that answered badly and an
+    endpoint nobody could reach, and a project that throws the second away can only report the
+    first.
+
+    The fields are identifiers, a coarse category and timings. There is no credential, no
+    session token, no request header, no prompt, no reply and no provider message here -- a
+    provider's own text can carry an account id or a request context, so the exception class
+    name is as far as this goes. Token counts and cost are absent rather than zero: AWS
+    reported no usage for these calls, and a zero would be a measurement nobody made.
+    """
+
+    run_id: str
+    recorded_at: str
+    git_sha: str | None
+    case_id: str
+    job: str
+    split: str
+    provider: str
+    model_id: str | None
+    attempt: int
+    """Which attempt at this case this was, counting every earlier one in this log."""
+
+    category: str | None
+    """The boundary's exception class, the only thing about the fault that is safe to keep."""
+
+    e2e_latency_ms: int | None
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "kind": ATTEMPT_KIND,
+            "run_id": self.run_id,
+            "recorded_at": self.recorded_at,
+            "git_sha": self.git_sha,
+            "case_id": self.case_id,
+            "job": self.job,
+            "split": self.split,
+            "provider": self.provider,
+            "model_id": self.model_id,
+            "attempt": self.attempt,
+            "category": self.category,
+            "e2e_latency_ms": self.e2e_latency_ms,
+            "input_tokens": None,
+            "output_tokens": None,
+            "estimated_usd": None,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> ProviderFailureRecord:
+        return cls(
+            run_id=str(payload["run_id"]),
+            recorded_at=str(payload["recorded_at"]),
+            git_sha=_optional_str(payload.get("git_sha")),
+            case_id=str(payload["case_id"]),
+            job=str(payload["job"]),
+            split=str(payload["split"]),
+            provider=str(payload["provider"]),
+            model_id=_optional_str(payload.get("model_id")),
+            attempt=int(payload["attempt"]) if isinstance(payload["attempt"], int) else 1,
+            category=_optional_str(payload.get("category")),
+            e2e_latency_ms=_optional_int(payload.get("e2e_latency_ms")),
+        )
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+class ProviderFailureLog:
+    """An append-only history of attempts nobody answered, across runs and across commits.
+
+    Deliberately *not* identity-gated the way :class:`ResultStore` is. A result file may only
+    be continued by the same commit, because blending two versions of the harness into one
+    measurement would corrupt it. This file is the opposite kind of thing: it is the record of
+    what infrastructure did, every line says which run and which commit produced it, and the
+    whole value of it is that a later attempt under a fixed configuration can sit beside an
+    earlier refusal rather than erasing it.
+
+    Nothing here makes a call, and reading it makes none either.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self.records: tuple[ProviderFailureRecord, ...] = _read_attempts(path)
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def attempts_for(self, case_id: str) -> int:
+        return sum(record.case_id == case_id for record in self.records)
+
+    def case_ids(self) -> frozenset[str]:
+        return frozenset(record.case_id for record in self.records)
+
+    def record(self, record: ProviderFailureRecord) -> ProviderFailureRecord:
+        """Append one failed attempt, flushed before anything else is tried."""
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(record.as_payload(), sort_keys=True, separators=(",", ":"))
+        with self._path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+            handle.flush()
+        self.records = (*self.records, record)
+        return record
+
+
+def _read_attempts(path: Path) -> tuple[ProviderFailureRecord, ...]:
+    if not path.exists():
+        return ()
+    records: list[ProviderFailureRecord] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        if payload.get("kind") != ATTEMPT_KIND:
+            continue
+        records.append(ProviderFailureRecord.from_payload(payload))
+    return tuple(records)
+
+
 def read_run(path: Path) -> tuple[RunHeader, tuple[CaseResult, ...]]:
     """Load a result file back: its header, and every case it recorded.
 
@@ -193,9 +331,12 @@ def _cases(lines: Sequence[str]) -> Iterator[CaseResult]:
 
 
 __all__ = [
+    "ATTEMPT_KIND",
     "CASE_KIND",
     "HEADER_KIND",
     "IDENTITY_FIELDS",
+    "ProviderFailureLog",
+    "ProviderFailureRecord",
     "ResultStore",
     "RunHeader",
     "StoreError",

@@ -171,6 +171,7 @@ def build_summary(
             "attempts": spend.attempts,
             "corrective_retries": max(0, spend.attempts - spend.calls),
             "provider_failures": outcome.provider_failures,
+            "unscored_cases": outcome.unscored,
             "reused_cases": outcome.reused,
             "stopped": outcome.stopped,
             "latency": _latency(outcome.results, "latency_ms"),

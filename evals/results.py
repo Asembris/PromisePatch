@@ -18,10 +18,38 @@ fields are ``null``. A zero would be a measurement, and there was no measurement
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from enum import StrEnum
 
 from pydantic import Field
 
 from evals.cases import EvalJob, EvalSplit, Frozen
+
+
+class ExecutionStatus(StrEnum):
+    """Whether a case produced a semantic observation at all, before anything grades it.
+
+    The distinction this enum exists to make is the one a paired report got wrong once: a
+    challenger nobody could reach was counted as a challenger that answered badly. Those are
+    not the same event and they belong to different questions -- one is about a model, the
+    other is about the weather -- so the state is named rather than inferred from a ``None``
+    somewhere downstream.
+
+    Derived from what a result already records, so every result file ever written, including
+    the ones on disk from before this type existed, reads back with the right status and no
+    migration.
+    """
+
+    ANSWERED = "ANSWERED"
+    """The provider returned something. It may have been refused by the acceptance gate --
+    that is a fact about the model and is graded -- but the model was reached and it spoke."""
+
+    PROVIDER_FAILURE = "PROVIDER_FAILURE"
+    """Nobody was reached. There is no reading, so there is nothing here to grade, and any
+    quality label attached to this case would be a claim about a sentence never uttered."""
+
+    NOT_INVOKED = "NOT_INVOKED"
+    """The boundary forbids asking about this sentence, and nothing was asked. The score for
+    the case is that assertion; it is neither a model success nor a model failure."""
 
 
 class CaseResult(Frozen):
@@ -61,6 +89,30 @@ class CaseResult(Frozen):
     A model that answered something the boundary would not accept and a model nobody could
     reach are both a case with no reading, and they are not the same event: one is the gate
     working, the other is the weather."""
+
+    @property
+    def execution_status(self) -> ExecutionStatus:
+        """Which of the three states this case ended in. Read, never stored.
+
+        A property rather than a persisted field on purpose. The status is a function of
+        facts the result already carries, so deriving it keeps every file written before this
+        type existed readable -- and keeps the serialised shape, and therefore the result
+        hashes a challenger set is pinned to, byte-identical.
+        """
+        if self.provider_error:
+            return ExecutionStatus.PROVIDER_FAILURE
+        if self.metrics.get("asked") is False:
+            return ExecutionStatus.NOT_INVOKED
+        return ExecutionStatus.ANSWERED
+
+    @property
+    def has_reading(self) -> bool:
+        """Whether a model actually said something about this case.
+
+        The precondition for every model-quality judgement in this package. A case without one
+        may be reported, counted and retried; it may not be scored, compared or repaired.
+        """
+        return self.execution_status is ExecutionStatus.ANSWERED
 
 
 class DatasetIdentity(Frozen):
@@ -132,4 +184,11 @@ def counts_by(results: Sequence[CaseResult], job: EvalJob) -> int:
     return sum(result.job is job for result in results)
 
 
-__all__ = ["CaseResult", "DatasetIdentity", "GateResult", "RunSummary", "counts_by"]
+__all__ = [
+    "CaseResult",
+    "DatasetIdentity",
+    "ExecutionStatus",
+    "GateResult",
+    "RunSummary",
+    "counts_by",
+]
