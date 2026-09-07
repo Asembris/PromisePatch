@@ -88,11 +88,31 @@ def _request() -> ClassifyReplyIntentRequest:
 # ------------------------------------------------------------------------- the catalog
 
 
-def test_the_catalog_ships_empty_so_no_stale_price_can_be_believed() -> None:
-    """Slice 4 makes zero calls, and an unverified price is worse than none."""
-    assert PRICES == {}
+def test_the_catalog_holds_only_the_model_that_has_actually_been_benchmarked() -> None:
+    """One entry, and a run behind it.
+
+    The catalog shipped empty while nothing had been priced, because an unverified number is
+    worse than none: it makes an unbudgeted call look budgeted. Populating it is the same rule
+    kept, not relaxed -- a price is added when a model is about to be measured against it, and
+    a price for a model nobody has run would be a number with nothing behind it.
+
+    Naming the whole key set rather than only the entry that was added is the load-bearing
+    half. `Settings.bedrock_model_id` defaults to a Claude model, so a price appearing for one
+    is exactly how an unintended model would become quietly affordable.
+    """
+    assert set(PRICES) == {("bedrock", "us.amazon.nova-2-lite-v1:0")}
     assert price_for("bedrock", "example.model-v1:0") is None
     assert price_for("bedrock", None) is None
+
+
+def test_the_benchmarked_model_is_priced_from_a_dated_published_snapshot() -> None:
+    """The figures the Nova benchmark's spend is computed from, and where they came from."""
+    price = price_for("bedrock", "us.amazon.nova-2-lite-v1:0")
+    assert price is not None
+    assert price.input_usd_per_million == Decimal("0.30")
+    assert price.output_usd_per_million == Decimal("2.50")
+    assert price.snapshot_date == date(2026, 9, 7)
+    assert "Nova 2 Lite" in price.source
 
 
 def test_an_unknown_price_makes_cost_unavailable_and_never_zero() -> None:

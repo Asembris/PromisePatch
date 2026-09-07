@@ -67,16 +67,34 @@ class ModelPrice:
         }
 
 
-PRICES: Mapping[tuple[str, str], ModelPrice] = {}
-"""Verified prices, by ``(provider, model id)``. Deliberately empty.
+NOVA_2_LITE = ModelPrice(
+    provider="bedrock",
+    model_id="us.amazon.nova-2-lite-v1:0",
+    input_usd_per_million=Decimal("0.30"),
+    output_usd_per_million=Decimal("2.50"),
+    snapshot_date=date(2026, 9, 7),
+    source="AWS published Amazon Nova 2 Lite on-demand pricing, read 2026-09-07",
+)
+"""The one model this repository has benchmarked, at the price it was benchmarked against.
+
+An *estimated pricing snapshot*, not billing truth. AWS Billing is the truth; this is a number
+somebody read on a day, recorded with that day, so a spend figure computed from it can be
+checked rather than believed.
+"""
+
+
+PRICES: Mapping[tuple[str, str], ModelPrice] = {
+    (NOVA_2_LITE.provider, NOVA_2_LITE.model_id): NOVA_2_LITE,
+}
+"""Verified prices, by ``(provider, model id)``. One entry, and deliberately only one.
 
 Nothing is written here from memory. A stale price silently understates a budget, which is the
 one failure mode this whole module exists to prevent, so an unverified number is worse than no
 number: with none, :func:`estimate_usd` returns ``None`` and a dollar budget refuses to start.
 
-This slice makes zero provider calls, so nothing here is needed to run anything. Entries are
-added from a current published price list before the first live benchmark, each with the day it
-was read and the page it was read from.
+The catalog holds the model a run has actually been priced and executed against and nothing
+else. A price for a model nobody has benchmarked would be a number with no run behind it, and
+the first thing it would do is make an unbudgeted call look budgeted.
 """
 
 
@@ -321,6 +339,104 @@ class CostLedgerEntry:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class LedgerTotals:
+    """What every run already in a ledger adds up to. The basis of a ceiling across runs.
+
+    A benchmark ceiling that reset with each command would not be a ceiling: two splits run
+    one after the other would each be allowed the whole budget. So the caps for a run are the
+    global ones minus whatever the ledger says has already been spent under them.
+    """
+
+    runs: int = 0
+    calls: int = 0
+    attempts: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    estimated_usd: Decimal = Decimal(0)
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "runs": self.runs,
+            "calls": self.calls,
+            "attempts": self.attempts,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "estimated_usd": str(self.estimated_usd),
+        }
+
+
+def ledger_totals(path: Path, *, mode: str, model_id: str | None = None) -> LedgerTotals:
+    """Sum the ledger lines for one mode, and optionally one model. Missing file means zero.
+
+    Unparseable lines are skipped rather than raising: a ledger is an append-only local
+    artifact, and a run must not be blocked from starting by a line somebody's editor mangled.
+    What it must not do is *understate*, and skipping a line it cannot read is the direction
+    that risks that -- so a skipped line is counted and reported by the caller.
+    """
+    if not path.exists():
+        return LedgerTotals()
+    runs = calls = attempts = input_tokens = output_tokens = 0
+    spend = Decimal(0)
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:  # pragma: no cover - a hand-mangled ledger line
+            continue
+        if not isinstance(entry, dict) or entry.get("mode") != mode:
+            continue
+        if model_id is not None and entry.get("model_id") != model_id:
+            continue
+        runs += 1
+        calls += _int(entry.get("calls"))
+        attempts += _int(entry.get("attempts"))
+        input_tokens += _int(entry.get("input_tokens"))
+        output_tokens += _int(entry.get("output_tokens"))
+        recorded = entry.get("estimated_usd")
+        if isinstance(recorded, str):
+            spend += Decimal(recorded)
+    return LedgerTotals(
+        runs=runs,
+        calls=calls,
+        attempts=attempts,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        estimated_usd=spend,
+    )
+
+
+def _int(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def remaining_budget(ceiling: EvalBudget, spent: LedgerTotals) -> EvalBudget:
+    """The ceiling this run may use, given what earlier runs already used.
+
+    Never negative: a run whose allowance is gone gets zero, and the guard refuses its first
+    call rather than being handed a nonsense bound it would compare against and pass.
+    """
+    return EvalBudget(
+        max_calls=None if ceiling.max_calls is None else max(0, ceiling.max_calls - spent.calls),
+        max_input_tokens=(
+            None
+            if ceiling.max_input_tokens is None
+            else max(0, ceiling.max_input_tokens - spent.input_tokens)
+        ),
+        max_output_tokens=(
+            None
+            if ceiling.max_output_tokens is None
+            else max(0, ceiling.max_output_tokens - spent.output_tokens)
+        ),
+        max_estimated_usd=(
+            None
+            if ceiling.max_estimated_usd is None
+            else max(Decimal(0), ceiling.max_estimated_usd - spent.estimated_usd)
+        ),
+    )
+
+
 def append_to_ledger(path: Path, entry: CostLedgerEntry) -> None:
     """Append one line to a local JSONL cost ledger, creating the directory if needed.
 
@@ -339,6 +455,7 @@ def utc_now_iso() -> str:
 
 
 __all__ = [
+    "NOVA_2_LITE",
     "PRICES",
     "TOKENS_PER_PRICE_UNIT",
     "BudgetExhaustedError",
@@ -346,11 +463,14 @@ __all__ = [
     "BudgetedSemanticProvider",
     "CostLedgerEntry",
     "EvalBudget",
+    "LedgerTotals",
     "ModelPrice",
     "PricingUnavailableError",
     "Spend",
     "append_to_ledger",
     "estimate_usd",
+    "ledger_totals",
     "price_for",
+    "remaining_budget",
     "utc_now_iso",
 ]
