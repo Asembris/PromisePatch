@@ -68,11 +68,20 @@ about.
   person attested; you are only saying which delivery, resource or equipment was spoken about.\
 """,
     SemanticJob.CLASSIFY_REPLY_INTENT: """\
-Your job: read one message a customer sent and label how it reads.
+Your job: read one message a customer sent, and label the stance it takes.
 
-- APPARENT_APPROVE: it reads as agreement with the change they were asked about.
-- APPARENT_DECLINE: it reads as refusal.
-- UNCLEAR: anything else, including hedging, questions, and text about something else.
+The customer was asked to accept or refuse a change to their order. You are not shown that
+change and you do not need it: label the message by the stance it takes on its own, not by
+whether you can tell which change it is about.
+
+- APPARENT_APPROVE: it reads as accepting the change or telling the bakery to go ahead --
+  including a brief acceptance that names what is being accepted instead of saying yes.
+- APPARENT_DECLINE: it reads as refusing the change, or asking for it not to be made.
+- UNCLEAR: neither acceptance nor refusal can be read from it -- hedging, a deferral, a
+  question, or text about something else.
+- Caution here means UNCLEAR for a message that takes no side. It does not mean UNCLEAR for a
+  message that plainly takes one in words other than the literal one the protocol wants:
+  reading those is the whole of what you were asked for.
 - This label is not consent. The customer's agreement is recorded only when they reply with
   one literal word, which deterministic code checks and you never see the result of. Your
   label can cause one clarifying message to be sent, and nothing else in the world.\

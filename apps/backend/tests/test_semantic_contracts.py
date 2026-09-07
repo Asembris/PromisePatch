@@ -334,6 +334,34 @@ def test_the_system_prompt_states_the_rules_the_validator_enforces() -> None:
     assert "This label is not consent" in consent
 
 
+def test_the_consent_prompt_asks_only_what_one_reply_can_answer() -> None:
+    """The job is given the reply and nothing else, so its labels must be readable from it.
+
+    A rule that defined APPARENT_APPROVE as agreement *with the proposed change* would ask the
+    model to check the reply against a change the contract never shows it, and a model told to
+    be cautious when unsure answers UNCLEAR to every paraphrase rather than the hedges UNCLEAR
+    is for. Both readings stay non-authoritative either way -- but the ledger is supposed to
+    record what the customer appeared to mean, and a label that is always UNCLEAR records
+    nothing.
+    """
+    consent = build_system_instruction(SemanticJob.CLASSIFY_REPLY_INTENT)
+
+    assert "You are not shown that" in consent
+    for label in ApparentIntent:
+        assert label.value in consent
+    # UNCLEAR is the absence of a stance, not the bucket everything unmatched falls into.
+    assert "neither acceptance nor refusal can be read from it" in consent
+    assert "anything else" not in consent
+
+
+def test_the_consent_prompt_names_no_customer_sentence() -> None:
+    """Definitions, not a phrasebook. A prompt that listed the demo's reply would be scoring
+    itself: the label has to come from reading, so nothing here may be matched against."""
+    consent = build_system_instruction(SemanticJob.CLASSIFY_REPLY_INTENT)
+    for sentence in ("Strawberries work", "strawberr", "that works for me", "maybe"):
+        assert sentence.lower() not in consent.lower()
+
+
 def test_a_case_id_is_never_shown_to_the_model() -> None:
     """Correlation is for the log line. The model is asked a question, not told who is asking."""
     request = ClassifyReplyIntentRequest(
