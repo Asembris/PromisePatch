@@ -35,6 +35,14 @@ dev = [
     "pytest-asyncio>=0.24,<1",
 ]
 
+# Evaluation only, and deliberately its own group rather than part of `dev`. It is not a default
+# group, so an ordinary `uv sync` does not install it, the production image (`--no-dev`) cannot
+# reach it, and the CI jobs that test the application carry none of its dependency tree. The two
+# jobs that need it -- the evaluation suite and import-linter -- ask for it by name.
+evals = [
+    "deepeval>=4.2,<5",
+]
+
 # --------------------------------------------------------------------------- ruff
 
 [tool.ruff]
