@@ -15,12 +15,33 @@ which pydantic-settings prefers over a file. Nothing is printed: the file holds 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
+from bootstrap_local_env import published_port
+
 ROOT = Path(__file__).resolve().parents[1]
 HOST_ENV = ROOT / "docker" / "env" / "host.env"
+
+_LOCAL_ENDPOINT = re.compile(r"@(127\.0\.0\.1|localhost|\[::1\]):(\d+)/")
+"""The host and port in a local connection string. Loopback only, so a URL naming anything
+else is left exactly as it was rather than quietly repointed."""
+
+
+def repoint(values: dict[str, str], port: str) -> dict[str, str]:
+    """Move the loopback connection strings onto ``port``.
+
+    ``host.env`` is generated once and then left alone -- regenerating it rotates the runtime
+    role's password out from under a database that still has the old one. So when a machine
+    has to publish PostgreSQL somewhere other than the port its `host.env` was written with,
+    the launcher moves the address rather than asking for the file to be rebuilt.
+    """
+    return {
+        key: (_LOCAL_ENDPOINT.sub(rf"@\g<1>:{port}/", value) if "DATABASE_URL" in key else value)
+        for key, value in values.items()
+    }
 
 
 def load(path: Path) -> dict[str, str]:
@@ -54,7 +75,10 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
-    environment = {**os.environ, **load(HOST_ENV)}
+    # Resolved with `bootstrap_local_env`'s own rule rather than a second one, so the port the
+    # suite connects to is by construction the port compose publishes.
+    values = repoint(load(HOST_ENV), published_port(ROOT))
+    environment = {**os.environ, **values}
     # `shell=False`: the command is an argument vector the caller already split, and passing it
     # through a shell would make quoting in a test command a source of surprise.
     return subprocess.run(command, env=environment, cwd=ROOT, check=False).returncode

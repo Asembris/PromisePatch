@@ -21,9 +21,12 @@
 # **Privilege separation is the shape of this file.** There is no shared environment. The
 # administrative connection reaches `migrate` and `seed`; the runtime connection reaches
 # `api`; the frontend receives neither, because everything a `VITE_`-prefixed variable holds is
-# compiled into a bundle any visitor can read. Nothing is interpolated from the repository's
-# own `.env` either -- a developer whose `.env` points at a hosted database must not be able to
-# migrate it by typing `docker compose up`.
+# compiled into a bundle any visitor can read. No connection string, credential or hostname is
+# interpolated from the repository's own `.env` either -- a developer whose `.env` points at a
+# hosted database must not be able to migrate it by typing `docker compose up`. The single
+# interpolated value is `PROMISEPATCH_POSTGRES_PUBLISHED_PORT`, which chooses which host port
+# this machine publishes the database on. A port number cannot name another database, so it
+# carries none of the risk the rule above exists to prevent.
 #
 # Generate the environment files first:
 #
@@ -41,7 +44,15 @@ services:
       # A high host port on purpose: 5432 is very often already taken by a locally installed
       # PostgreSQL, and a stack that silently connected to that one instead would be a
       # migration run against the wrong database.
-      - "127.0.0.1:55432:5432"
+      #
+      # Overridable because a high port is not always an available one. Windows reserves
+      # blocks of the ephemeral range for Hyper-V and WinNAT, the blocks move when the host
+      # reboots, and a machine whose reservation has swallowed 55432 cannot bind it at all
+      # (`netsh interface ipv4 show excludedportrange protocol=tcp`). Set
+      # `PROMISEPATCH_POSTGRES_PUBLISHED_PORT` to move the published port; the default keeps
+      # every machine that can bind 55432 exactly as it was. The container's own port never
+      # moves, so nothing inside the network is affected.
+      - "127.0.0.1:${PROMISEPATCH_POSTGRES_PUBLISHED_PORT:-55432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Runs once, on an empty data directory, before anything else touches the database. It

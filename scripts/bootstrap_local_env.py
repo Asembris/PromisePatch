@@ -26,6 +26,7 @@ mechanism, and a deployed environment gets its secrets from a secret manager ins
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import secrets
 import sys
@@ -48,6 +49,41 @@ FILES: tuple[str, ...] = (
     "host.env",
     "order-simulator.env",
 )
+
+PUBLISHED_PORT_VARIABLE = "PROMISEPATCH_POSTGRES_PUBLISHED_PORT"
+DEFAULT_PUBLISHED_PORT = "55432"
+"""Which host port the database is published on, and the value every machine had before.
+
+Not a secret and not generated: it is a choice about this machine's free ports. It is resolved
+the way compose resolves it -- the real environment first, then the repository's own `.env` --
+so `docker compose up` and the `host.env` this writes cannot end up naming different ports.
+Reading one non-secret key out of `.env` is not the interpolation compose refuses: a port
+number cannot redirect the stack at another database.
+"""
+
+
+def published_port(root: Path) -> str:
+    """The host port to publish PostgreSQL on, following compose's own precedence."""
+    from_environment = os.environ.get(PUBLISHED_PORT_VARIABLE)
+    if from_environment:
+        return _valid_port(from_environment)
+
+    dotenv = root / ".env"
+    if dotenv.is_file():
+        for line in dotenv.read_text(encoding="utf-8").splitlines():
+            key, _, value = line.strip().partition("=")
+            if key.strip() == PUBLISHED_PORT_VARIABLE and value.strip():
+                return _valid_port(value.strip())
+
+    return DEFAULT_PUBLISHED_PORT
+
+
+def _valid_port(value: str) -> str:
+    """Refuse anything that is not a port, rather than writing it into a connection string."""
+    if not value.isdigit() or not 1 <= int(value) <= 65535:
+        raise SystemExit(f"{PUBLISHED_PORT_VARIABLE}={value!r} is not a TCP port number")
+    return value
+
 
 EXTRA_CA = "extra-ca.crt"
 """An optional additional root CA the container builds trust, created empty.
@@ -122,6 +158,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     values = generated_secrets()
+    # Substituted alongside the secrets so `render` still refuses a file with an
+    # unsubstituted placeholder left in it.
+    values["__POSTGRES_PUBLISHED_PORT__"] = published_port(ROOT)
     for name in FILES:
         template = (ENV_DIR / f"{name}.example").read_text(encoding="utf-8")
         (ENV_DIR / name).write_text(render(template, values), encoding="utf-8")
