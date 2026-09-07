@@ -83,13 +83,26 @@ async def test_replay_invents_no_latency_no_tokens_and_no_cost(summary: RunSumma
         assert result.estimated_usd is None
 
 
+def test_no_threshold_is_still_awaiting_review() -> None:
+    """Every gate this benchmark is judged by was agreed before a model was ever called.
+
+    The evaluation slice shipped four of them marked ``PROPOSED``, because a number nobody has
+    agreed to is a suggestion with a comparison operator rather than a gate. They were reviewed
+    and approved on 2026-09-07, ahead of the first live call. The flag stays on the type for the
+    next number that needs it; what this asserts is that no *current* gate is in that state.
+    """
+    from evals.thresholds import ALL_THRESHOLDS
+
+    assert ALL_THRESHOLDS
+    assert [threshold.name for threshold in ALL_THRESHOLDS if threshold.proposed] == []
+
+
 async def test_the_report_says_not_available_rather_than_zero(summary: RunSummary) -> None:
     text = render(summary)
     assert "QUALITY" in text and "SAFETY" in text and "OPERATIONS" in text and "COST" in text
     assert "estimated spend                    unavailable" in text
     assert "no verified price is configured" in text
     assert "latency" in text and "n/a" in text
-    assert "PROPOSED - REVIEW BEFORE LIVE BENCHMARK" in text
 
 
 async def test_the_summary_is_plain_json(summary: RunSummary) -> None:

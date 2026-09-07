@@ -18,9 +18,15 @@ terse assent is a model that fails the product while passing the average.
 
 **Provenance.** The two grounding figures and the safety rule come from the frozen architecture
 (§24: binding exact match ≥ 95 %, out-of-scope declined 100 %, 100 % on hard safety rules) and
-are marked authoritative. Everything else is marked ``PROPOSED`` and needs a product-owner
-review before the live benchmark it would gate. A number nobody has agreed to is not a gate; it
-is a suggestion with a comparison operator.
+are authoritative. The remaining four were written in the evaluation slice as proposals and were
+reviewed and approved on 2026-09-07 -- before the first live benchmark call, and therefore before
+anybody had seen what any model scores on this dataset. That order is the whole point: a
+threshold agreed once the numbers are in is not a threshold.
+
+**Sample sizes are small, and the numbers are not adjusted for that.** Several gated clusters are
+five hand-authored cases or fewer, so 0.80 over one of them means four of five. The report prints
+both counts beside every rate for exactly this reason. These are engineering regression fixtures;
+a rate over five of them is not a population estimate and is not reported as one.
 """
 
 from __future__ import annotations
@@ -47,7 +53,13 @@ class Threshold:
     minimum: float | None = None
     maximum: float | None = None
     proposed: bool = False
-    """``True`` while this number is still awaiting review. Reported, never hidden."""
+    """``True`` while this number is still awaiting review. Reported, never hidden.
+
+    Every threshold here is now either authoritative or reviewed, so this is ``False``
+    throughout. The field stays because the state it describes is one a future threshold can
+    be in, and a number nobody has agreed to must be visibly distinguishable from one somebody
+    has -- which is only true if the distinction has somewhere to live.
+    """
 
     rationale: str = ""
 
@@ -163,12 +175,11 @@ QUALITY_TARGETS: Final[tuple[Threshold, ...]] = (
         kind=GateKind.QUALITY,
         metric="worker.structured_output_validity",
         minimum=0.99,
-        proposed=True,
         rationale=(
-            "PROPOSED. §36 of the frozen plan names JSON validity < 99 % as the trigger for "
-            "escalating to a larger model, so the same figure is used as the target here. A "
-            "refused answer costs a retry and, at the bound, an escalation an operator has to "
-            "read."
+            "Approved 2026-09-07, before any live call. §36 of the frozen plan names JSON "
+            "validity < 99 % as the trigger for escalating to a larger model, so the same "
+            "figure is the target here. A refused answer costs a retry and, at the bound, an "
+            "escalation an operator has to read."
         ),
     ),
     Threshold(
@@ -176,12 +187,11 @@ QUALITY_TARGETS: Final[tuple[Threshold, ...]] = (
         kind=GateKind.QUALITY,
         metric="worker.safe_rescue_rate",
         minimum=0.80,
-        proposed=True,
         rationale=(
-            "PROPOSED. This is the number that says whether the semantic layer earns its place: "
-            "below it, most sentences the lexicon cannot read still end up in front of a person "
-            "and the model is paying for little. Set as a floor for 'clearly worth having' "
-            "rather than as a prediction of what any model scores."
+            "Approved 2026-09-07, before any live call. The number that says whether the "
+            "semantic layer earns its place: below it, most sentences the lexicon cannot read "
+            "still end up in front of a person and the model is paying for little. A floor for "
+            "'clearly worth having', not a prediction of what any model scores."
         ),
     ),
     Threshold(
@@ -189,12 +199,11 @@ QUALITY_TARGETS: Final[tuple[Threshold, ...]] = (
         kind=GateKind.QUALITY,
         metric="customer.tag.terse_assent",
         minimum=0.80,
-        proposed=True,
         rationale=(
-            "PROPOSED. The known weak cluster: a brief acceptance that names what is being "
-            "accepted instead of saying yes. Missing it sends a confirmation prompt to a "
-            "customer who already agreed, which is the most common avoidable second message in "
-            "the protocol. Called out separately because aggregate accuracy hides it."
+            "Approved 2026-09-07, before any live call. The known weak cluster: a brief "
+            "acceptance that names what is being accepted instead of saying yes. Missing it "
+            "sends a confirmation prompt to a customer who already agreed, the most common "
+            "avoidable second message in the protocol. Separate because the aggregate hides it."
         ),
     ),
     Threshold(
@@ -202,11 +211,10 @@ QUALITY_TARGETS: Final[tuple[Threshold, ...]] = (
         kind=GateKind.QUALITY,
         metric="customer.tag.indirect_refusal",
         minimum=0.80,
-        proposed=True,
         rationale=(
-            "PROPOSED. The mirror cluster. A refusal read as approval changes no authority -- "
-            "the customer is still asked to type YES or NO -- but it puts the wrong stance on "
-            "the ledger for whoever reviews the case."
+            "Approved 2026-09-07, before any live call. The mirror cluster. A refusal read as "
+            "approval changes no authority -- the customer is still asked to type YES or NO -- "
+            "but it puts the wrong stance on the ledger for whoever reviews the case."
         ),
     ),
     Threshold(
@@ -214,11 +222,11 @@ QUALITY_TARGETS: Final[tuple[Threshold, ...]] = (
         kind=GateKind.QUALITY,
         metric="customer.macro_f1",
         minimum=0.80,
-        proposed=True,
         rationale=(
-            "PROPOSED and deliberately secondary. Reported so a regression across all three "
-            "labels at once is visible; it is not the number a model-selection decision should "
-            "turn on, because it can be high while one cluster is entirely missed."
+            "Approved 2026-09-07, before any live call, and deliberately secondary. Reported so "
+            "a regression across all three labels at once is visible; not the number a "
+            "model-selection decision should turn on, because it can be high while one cluster "
+            "is entirely missed."
         ),
     ),
 )
