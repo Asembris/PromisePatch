@@ -24,6 +24,15 @@ nothing the bakery authored says so, and a reading resting on the model's world 
 alone is a reading nobody can check. Sentences like that fail closed to a human, exactly as
 they did before this module existed.
 
+**Grounded evidence is read whole, before a category narrows anything.** A worker who reports
+two problems of different kinds in one sentence -- an oven that is down and a cream that has
+spoiled -- has reported both, and this contract carries one category and one identity. A
+reading that names one of the two categories and lets the other half fall away would resolve
+half a sentence and leave no trace of the rest. So every proposal the worker's own words
+support is collected first; if they span more than one kind, the reading is refused entire.
+Narrowing by category happens only once that check has passed, which is the same order the
+deterministic reader uses and the same conclusion it reaches for the same sentence.
+
 **Three things a model says are never read here.** Its confidence, its scope and quantity
 hints, and its "this looked ambiguous to me" flag. Ambiguity is decided by the deterministic
 triggers and by whether the identity survives the vocabulary check; a flag that could turn
@@ -146,6 +155,23 @@ class GroundingFailure(StrEnum):
     The load-bearing refusal. It is what "the berries didn't arrive" reaches when a model
     confidently answers ``raspberries``: plausible, well-formed, grounded in the candidate set,
     and resting on nothing the bakery wrote down.
+    """
+
+    CROSS_KIND_EVIDENCE = "CROSS_KIND_EVIDENCE"
+    """The worker's own words name things of more than one kind, and one category cannot hold them.
+
+    "The deck oven is down and the cream has spoiled" is two physical problems, an equipment
+    one and an ingredient one, and this contract carries a category and a single identity. A
+    reading that answers ``EQUIPMENT_UNAVAILABLE`` is not wrong about the oven; it is silent
+    about the cream, and the silence is the danger. Narrowing to the half the category admits
+    would settle one problem and lose the other, leaving nothing in the ledger to say the cream
+    was ever mentioned.
+
+    The deterministic reader refuses the same sentence for the same reason: two category
+    markers match, the kinds actually named narrow it to neither, and it stops. That refusal is
+    what sends the sentence to a model in the first place, and a model naming one of the two
+    categories is preference rather than evidence. So the stop stands, and the case reaches a
+    person with both problems intact.
     """
 
     AMBIGUOUS_RESOURCE = "AMBIGUOUS_RESOURCE"
@@ -380,9 +406,24 @@ def resolve_semantic_observation(
     category = reading.category
     wanted = interpretation.CATEGORY_KINDS[category]
     named = _named_resources(context, reading)
-    confirmed = tuple(
-        item for item in named if item.kind is wanted and interpretation.mentions(context, item)
-    )
+
+    grounded = tuple(item for item in named if interpretation.mentions(context, item))
+    if len({item.kind for item in grounded}) > 1:
+        return _refuse(
+            deterministic_reason,
+            Grounding(
+                failure=GroundingFailure.CROSS_KIND_EVIDENCE,
+                category=category,
+                proposed=proposed,
+                detail=(
+                    "the report names "
+                    + ", ".join(f"{item.name} ({item.kind.value.lower()})" for item in grounded)
+                    + f", which one {category.value} reading cannot account for"
+                ),
+            ),
+        )
+
+    confirmed = tuple(item for item in grounded if item.kind is wanted)
     dropped = tuple(item.id for item in named if item not in confirmed)
 
     if not confirmed:

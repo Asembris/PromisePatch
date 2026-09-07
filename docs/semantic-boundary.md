@@ -207,7 +207,7 @@ quantity, and not a physical outcome. Everything after the identity is decided b
 there is one interpreter, and a reading a model helped with faces every question a reading it
 did not help with faces, including the clarification that makes the demo consequential.
 
-Three rules make that hold:
+Four rules make that hold:
 
 - **Identity must be in the bakery's own words.** A proposed resource is accepted only if the
   worker's sentence contains that resource's stored name or one of its recorded aliases. This
@@ -221,6 +221,14 @@ Three rules make that hold:
   prices. The grounding check runs at the boundary against the set that was sent, and again at
   consumption against the set as it stands then — so an identifier that exists but was not
   offered for *this* reading is refused exactly like an invented one.
+- **Grounded evidence is read whole, before a category narrows anything.** "The deck oven is
+  down and the cream has spoiled" names an equipment problem and an ingredient problem, and
+  this contract carries one category and one identity. A reading answering
+  `EQUIPMENT_UNAVAILABLE` is not wrong about the oven; it is silent about the cream, and
+  narrowing to the half the category admits would resolve one problem and leave nothing to say
+  the other was reported. So every proposal the worker's words support is collected first, and
+  a set spanning more than one kind refuses the reading entire — the same stop the
+  deterministic reader reaches for the same sentence, for the same reason.
 - **Advice is advice.** `clarification_needed`, `confidence`, `scope_hint` and `quantity_hint`
   are never read by the resolver. A reading that says clarification is unnecessary and offers
   its own scope still produces the frozen scope question when the delivery holds a second open
