@@ -13,6 +13,7 @@ been priced.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from decimal import Decimal
 
 from evals.results import GateResult, RunSummary
 from evals.summary import FAILED, NOT_MEASURED
@@ -115,29 +116,45 @@ def _quality(summary: RunSummary) -> str:
 
 
 def _weakest(worker: Mapping[str, object], customer: Mapping[str, object]) -> list[str]:
-    """The clusters this run did worst on, lowest first.
+    """The clusters this run did worst on, lowest first, each with its two counts.
 
     Reported because the aggregate is the number most likely to be quoted and least likely to
     be actionable: a classifier can score well overall while missing every member of one
     cluster, and the cluster is what a customer notices. The full per-tag tables are in the
     JSON summary; this is the part worth reading first.
+
+    The numerator and denominator are printed beside the rate and not instead of it. Several
+    of these clusters are five hand-authored cases, and "0.800" over five of them is four --
+    a fact a reader is entitled to see without opening the JSON.
     """
-    scored: list[tuple[float, str]] = []
+    scored: list[tuple[float, str, str]] = []
     for source, label in ((customer, "customer"), (worker, "worker")):
         per_tag = source.get("per_tag_recall") or source.get("per_tag_pass_rate")
+        counts = source.get("per_tag_counts")
         if not isinstance(per_tag, dict):
             continue
-        scored.extend(
-            (float(rate), f"{label}:{tag}")
-            for tag, rate in per_tag.items()
-            if isinstance(rate, int | float)
-        )
+        for tag, rate in per_tag.items():
+            if not isinstance(rate, int | float):
+                continue
+            scored.append((float(rate), f"{label}:{tag}", _fraction(counts, tag)))
     if not scored:
         return []
     scored.sort()
     lines = ["  weakest clusters (lowest first; full per-tag tables are in the JSON summary)"]
-    lines.extend(f"    {name.ljust(38)} {rate:.3f}" for rate, name in scored[:5])
+    lines.extend(
+        f"    {name.ljust(38)} {rate:.3f}  {fraction}" for rate, name, fraction in scored[:5]
+    )
     return lines
+
+
+def _fraction(counts: object, tag: str) -> str:
+    """``(4/5)`` for one tag, or empty when the run did not record the counts."""
+    if not isinstance(counts, Mapping):
+        return ""
+    entry = counts.get(tag)
+    if not isinstance(entry, Mapping):
+        return ""
+    return f"({entry.get('hits')}/{entry.get('total')})"
 
 
 def _per_class(customer: Mapping[str, object]) -> Sequence[Mapping[str, object]]:
@@ -178,18 +195,33 @@ def _safety(summary: RunSummary) -> str:
 
 
 def _operations(summary: RunSummary) -> str:
+    operations = summary.operations
     lines = ["OPERATIONS"]
-    lines.append(_line("provider calls", summary.operations.get("calls")))
-    lines.append(_line("provider attempts", summary.operations.get("attempts")))
-    latency = summary.operations.get("latency")
-    if isinstance(latency, dict):
-        lines.append(_line("latency p50 (ms)", latency.get("p50_ms")))
-        lines.append(_line("latency p95 (ms)", latency.get("p95_ms")))
-        lines.append(_line("latency max (ms)", latency.get("max_ms")))
-    else:
-        lines.append(f"  {'latency'.ljust(34)} {NA}  (no provider reported any)")
+    lines.append(_line("logical provider calls", operations.get("calls")))
+    lines.append(_line("provider attempts", operations.get("attempts")))
+    lines.append(_line("structured-output retries", operations.get("corrective_retries")))
+    lines.append(_line("provider/transport failures", operations.get("provider_failures")))
+    reused = operations.get("reused_cases")
+    if isinstance(reused, int) and reused:
+        lines.append(_line("cases reused from an earlier attempt", reused))
+    lines.extend(_latency_lines("model latency", operations.get("latency")))
+    lines.extend(_latency_lines("end-to-end latency", operations.get("e2e_latency")))
+    stopped = operations.get("stopped")
+    if isinstance(stopped, str):
+        lines.append(f"  RUN STOPPED EARLY: {stopped}")
     lines.append("")
     return "\n".join(lines)
+
+
+def _latency_lines(label: str, latency: object) -> list[str]:
+    """One latency series, or the statement that nobody measured it."""
+    if not isinstance(latency, Mapping):
+        return [f"  {label.ljust(34)} {NA}  (nothing reported it)"]
+    return [
+        _line(f"{label} p50 (ms)", latency.get("p50_ms")),
+        _line(f"{label} p95 (ms)", latency.get("p95_ms")),
+        _line(f"{label} max (ms)", latency.get("max_ms")),
+    ]
 
 
 def _cost(summary: RunSummary) -> str:
@@ -213,15 +245,67 @@ def _cost(summary: RunSummary) -> str:
             f"  {'pricing snapshot'.ljust(34)} {NA}  "
             f"(no verified price is configured for this model)"
         )
+    lines.extend(_ceiling(cost))
+    lines.extend(_value(cost.get("value")))
     lines.append("")
     return "\n".join(lines)
+
+
+def _ceiling(cost: Mapping[str, object]) -> list[str]:
+    """How much of the run's own dollar ceiling this run used.
+
+    A budget only informs once somebody says what fraction of it went. Printed when both
+    halves exist: a percentage of an uncapped budget is not a number.
+    """
+    budget = cost.get("budget")
+    estimated = cost.get("estimated_usd")
+    if not isinstance(budget, Mapping) or not isinstance(estimated, str):
+        return []
+    cap = budget.get("max_estimated_usd")
+    if not isinstance(cap, str) or Decimal(cap) == 0:
+        return []
+    share = Decimal(estimated) / Decimal(cap) * 100
+    return [f"  {'share of the dollar ceiling'.ljust(34)} {share:.2f}%  (ceiling ${cap})"]
+
+
+def _value(value: object) -> list[str]:
+    """What the calls bought, per dollar. An engineering efficiency figure and nothing more.
+
+    Not a business measure: nothing here knows what a rescued sentence is worth to a bakery.
+    What it answers is narrower, and is the question a later slice has to decide -- whether a
+    semantic job earns the runtime cost of asking.
+    """
+    if not isinstance(value, Mapping):
+        return []
+    lines = ["", "  what the model calls bought (engineering efficiency, not business value)"]
+    lines.append(
+        f"    {'safe worker rescues'.ljust(32)} "
+        f"{_number(value.get('safe_rescues'))} from "
+        f"{_number(value.get('worker_semantic_calls'))} semantic calls"
+    )
+    per_rescue = value.get("usd_per_safe_rescue")
+    lines.append(
+        f"    {'cost per safe rescue'.ljust(32)} "
+        f"{NA if per_rescue is None else '$' + str(per_rescue)}"
+    )
+    lines.append(
+        f"    {'correct apparent intents'.ljust(32)} "
+        f"{_number(value.get('correct_apparent_intents'))} from "
+        f"{_number(value.get('customer_semantic_calls'))} semantic calls"
+    )
+    per_reply = value.get("usd_per_correct_reply")
+    lines.append(
+        f"    {'cost per correctly read reply'.ljust(32)} "
+        f"{NA if per_reply is None else '$' + str(per_reply)}"
+    )
+    return lines
 
 
 def _gates(gates: Sequence[GateResult]) -> str:
     lines = ["GATES"]
     for gate in gates:
         marker = {"pass": "ok  ", FAILED: "FAIL", NOT_MEASURED: "--  "}.get(gate.status, "?   ")
-        suffix = "  [PROPOSED - REVIEW BEFORE LIVE BENCHMARK]" if gate.proposed else ""
+        suffix = "  [PROPOSED - NOT YET REVIEWED]" if gate.proposed else ""
         lines.append(
             f"  {marker} {gate.kind.ljust(8)} {gate.name.ljust(38)} "
             f"{gate.required.ljust(9)} got {gate.observed or NA}{suffix}"

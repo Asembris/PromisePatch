@@ -1,16 +1,23 @@
-"""Running the dataset, offline, through the production acceptance path.
+"""Running the dataset through the production acceptance path, offline or against a model.
 
 The runner does one thing per case: build the question, get an answer, and put that answer
 through exactly the code the workflow would put it through. Nothing here re-implements
 validation, grounding or interpretation -- it calls them, which is what makes the result a
 statement about PromisePatch rather than about the harness.
 
-**Every answer comes from a scripted payload.** The provider is
+**Where the answer comes from is an argument.** A :data:`ProviderFactory` is handed one
+model input and returns the provider to ask. :func:`scripted_provider` is the offline one --
 :class:`~promisepatch.semantic.fake.FakeSemanticProvider`, the same one the worker runs under
-by default: it reaches no network, holds no credential and imports no SDK, and its answers go
-through the same :func:`~promisepatch.semantic.jobs.validate` gate a real model's would. There
-is no branch here that could construct a Bedrock client, and an import-linter contract stops
-one being added.
+by default, reaching no network, holding no credential and importing no SDK -- and it is the
+only one this package can build. A live benchmark passes a factory in from a composition root
+outside both cores, because an import-linter contract stops an AWS SDK entering this package's
+import graph at all. The seam is a parameter; it is not a branch, and there is no flag here
+that turns a replay into a spend.
+
+**The budget wrapper is applied here, not by the caller.** :func:`_ask` wraps whatever the
+factory returned in :class:`~evals.budget.BudgetedSemanticProvider` before asking it anything,
+so a factory cannot hand in a provider that skips the accounting -- not by mistake and not on
+purpose. There is one path to a provider call and it is counted.
 
 **A scripted answer is a list, because a real one is too.** The boundary gives a
 schema-invalid answer exactly one corrective retry, so a case whose first payload is refused
@@ -25,13 +32,14 @@ and the score for that case is the assertion that no call was made.
 from __future__ import annotations
 
 import json
+import time
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from evals import context
-from evals.budget import BudgetedSemanticProvider, BudgetGuard, EvalBudget
+from evals.budget import BudgetedSemanticProvider, BudgetGuard, EvalBudget, estimate_usd
 from evals.cases import CustomerCase, GoldCase, ModelInput, WorkerCase, to_model_input
 from evals.dataset import GoldDataset
 from evals.metrics import customer as customer_metrics
@@ -42,20 +50,43 @@ from promisepatch.domain import grounding as grounding_rules
 from promisepatch.domain import interpretation
 from promisepatch.domain.observation import EscalationReason, InterpretationOutcome
 from promisepatch.semantic import (
+    ApparentIntent,
     FakeSemanticProvider,
     InterpretUtteranceRequest,
     ObservationInterpretation,
     ReplyIntentReading,
     SemanticError,
+    SemanticProvider,
     SemanticProviderError,
     SemanticResult,
     SemanticValidationError,
 )
 
 REPLAY_MODE = "replay"
-"""The only mode the commands in this package run in. A live mode reaches AWS; none does."""
+"""Every answer came from a scripted payload. Nothing was reached and nothing was spent."""
+
+LIVE_MODE = "live"
+"""A real provider answered. Only reachable by passing one in; nothing here can build one."""
 
 SCRIPT_FILE = Path(__file__).parent / "datasets" / "scripted_answers.json"
+
+type ProviderFactory = Callable[[ModelInput], SemanticProvider]
+"""How one case gets something to ask. The whole of the seam a live benchmark needs."""
+
+
+@dataclass(frozen=True, slots=True)
+class StopPolicy:
+    """When a run gives up rather than spending more.
+
+    Both bounds exist because the failure they describe gets more expensive the longer it is
+    tolerated. A hard-safety violation means the thing the benchmark was checking for has
+    already happened, and the remaining cases would buy more copies of the same finding. A
+    string of transport failures means the infrastructure is not answering, and retrying a
+    whole split is how a benchmark's cost stops relating to its dataset.
+    """
+
+    max_provider_failures: int | None = None
+    stop_on_safety_violation: bool = False
 
 
 class ScriptedAnswers:
@@ -86,6 +117,17 @@ class ScriptedAnswers:
         return len(self._payloads)
 
 
+def scripted_provider(answers: ScriptedAnswers) -> ProviderFactory:
+    """The offline factory: a deterministic fake, scripted per case. Reaches nothing, ever."""
+
+    def build(model_input: ModelInput) -> SemanticProvider:
+        return FakeSemanticProvider(
+            {model_input.job.semantic_job: answers.for_case(model_input.case_id)}
+        )
+
+    return build
+
+
 @dataclass(frozen=True, slots=True)
 class Answer:
     """One case's trip through the acceptance path: a result, or the refusal that replaced it."""
@@ -93,6 +135,7 @@ class Answer:
     result: SemanticResult | None
     refusal: CaseObservation | None
     provider_calls: int
+    e2e_latency_ms: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +159,17 @@ class RunOutcome:
     guard: BudgetGuard
     provider: str
     model_id: str | None
+    provider_failures: int = 0
+    stopped: str | None = None
+    """Why the run ended early, or ``None`` when it ran to the end.
+
+    A stopped run is reported as stopped rather than as a smaller run. Its numbers describe
+    the cases it reached and nothing else, and a reader has to be told which of the two they
+    are looking at.
+    """
+
+    reused: int = 0
+    """Cases answered by an earlier attempt at this run and read back rather than re-asked."""
 
 
 async def run_offline(
@@ -125,39 +179,148 @@ async def run_offline(
     budget: EvalBudget | None = None,
 ) -> RunOutcome:
     """Score every case in the dataset from scripted answers. Reaches no network, ever."""
-    guard = BudgetGuard(budget or EvalBudget(), price=None, live=False)
+    return await run_cases(
+        dataset,
+        scripted_provider(answers),
+        guard=BudgetGuard(budget or EvalBudget(), price=None, live=False),
+        provider_name=FakeSemanticProvider.name,
+    )
+
+
+async def run_cases(
+    dataset: GoldDataset,
+    factory: ProviderFactory,
+    *,
+    guard: BudgetGuard,
+    provider_name: str,
+    mode: str = REPLAY_MODE,
+    expected_model_id: str | None = None,
+    reuse: Sequence[CaseResult] = (),
+    on_result: Callable[[CaseResult], None] | None = None,
+    stop: StopPolicy | None = None,
+) -> RunOutcome:
+    """Score every case, asking ``factory`` for whatever answers each one.
+
+    ``reuse`` is what an earlier attempt at this same run already paid for: those cases are
+    scored from their stored result and no provider is asked about them again. ``on_result``
+    is called with each case result as it is produced, which is how a live run writes its
+    answers down before anything else can go wrong with them.
+
+    ``expected_model_id`` is checked against what each answer's telemetry reports. A benchmark
+    that silently measured a different model than the one it names would be worse than no
+    benchmark, and the default configured model in this repository is not the one this slice
+    is about -- so the mismatch is a stop, not a warning.
+    """
+    policy = stop or StopPolicy()
+    stored = {result.case_id: result for result in reuse}
     results: list[CaseResult] = []
     worker_scores: list[worker_metrics.WorkerScore] = []
     customer_scores: list[customer_metrics.CustomerScore] = []
+    failures = 0
+    stopped: str | None = None
+    reused = 0
 
-    for case in dataset.worker:
-        worker_result, worker_score = await _run_worker(case, answers, guard)
-        results.append(worker_result)
-        worker_scores.append(worker_score)
-    for customer_case in dataset.customer:
-        customer_result, customer_score = await _run_customer(customer_case, answers, guard)
-        results.append(customer_result)
-        customer_scores.append(customer_score)
+    def keep(result: CaseResult, *, fresh: bool) -> None:
+        results.append(result)
+        if fresh and on_result is not None:
+            on_result(result)
+
+    for case in dataset.cases:
+        if stopped is not None:
+            break
+        previous = stored.get(case.id)
+        if previous is not None:
+            score = _rescore(case, previous)
+            _collect(score, worker_scores, customer_scores)
+            keep(previous, fresh=False)
+            reused += 1
+        elif isinstance(case, WorkerCase):
+            previous, worker_score = await _run_worker(case, factory, guard, mode=mode)
+            worker_scores.append(worker_score)
+            keep(previous, fresh=True)
+            failures += int(previous.provider_error)
+        else:
+            previous, customer_score = await _run_customer(case, factory, guard, mode=mode)
+            customer_scores.append(customer_score)
+            keep(previous, fresh=True)
+            failures += int(previous.provider_error)
+
+        # Checked for a reused result as well as a fresh one. A run that resumed past a
+        # violation it had already recorded would be a benchmark continuing after the protocol
+        # said to stop -- silently, and using a result somebody had already paid for.
+        limit = policy.max_provider_failures
+        if limit is not None and failures >= limit:
+            stopped = (
+                f"{failures} provider or transport failures in one split; stopping rather "
+                f"than spending more against unstable infrastructure"
+            )
+        if (
+            expected_model_id is not None
+            and previous.model_id is not None
+            and previous.model_id != expected_model_id
+        ):
+            stopped = (
+                f"{case.id} was answered by {previous.model_id!r}, not the benchmarked "
+                f"{expected_model_id!r}"
+            )
+        if policy.stop_on_safety_violation and _broke_safety(previous):
+            stopped = f"{case.id} broke a hard safety gate: {previous.reason}"
 
     return RunOutcome(
         results=tuple(results),
         worker_scores=tuple(worker_scores),
         customer_scores=tuple(customer_scores),
         guard=guard,
-        provider=FakeSemanticProvider.name,
-        model_id=None,
+        provider=provider_name,
+        model_id=_single_model_id(results, expected_model_id),
+        provider_failures=failures,
+        stopped=stopped,
+        reused=reused,
     )
 
 
-async def _ask(model_input: ModelInput, answers: ScriptedAnswers, guard: BudgetGuard) -> Answer:
-    """Put one question to the scripted provider through the budget guard.
+def _collect(
+    score: worker_metrics.WorkerScore | customer_metrics.CustomerScore,
+    worker_scores: list[worker_metrics.WorkerScore],
+    customer_scores: list[customer_metrics.CustomerScore],
+) -> None:
+    if isinstance(score, worker_metrics.WorkerScore):
+        worker_scores.append(score)
+    else:
+        customer_scores.append(score)
 
-    ``provider_calls`` is what proves, for a case the boundary forbids, that nothing was asked.
+
+def _broke_safety(result: CaseResult) -> bool:
+    """Whether this case's own metrics record a zero-tolerance failure."""
+    return result.reason.startswith("safety:")
+
+
+def _single_model_id(results: Sequence[CaseResult], expected: str | None) -> str | None:
+    """The one model that answered, or ``None`` when nothing reported one.
+
+    Reported from what came back rather than from what was asked for, because "which model
+    produced these numbers" is a fact about the answers.
     """
-    provider = FakeSemanticProvider(
-        {model_input.job.semantic_job: answers.for_case(model_input.case_id)}
-    )
-    budgeted = BudgetedSemanticProvider(provider, guard)
+    seen = {result.model_id for result in results if result.model_id is not None}
+    if not seen:
+        return None
+    if len(seen) == 1:
+        return seen.pop()
+    return expected  # pragma: no cover - a mixed run is stopped at the case that mixed it
+
+
+async def _ask(model_input: ModelInput, factory: ProviderFactory, guard: BudgetGuard) -> Answer:
+    """Put one question to a provider, through the budget guard and nothing else.
+
+    The guard wraps here rather than at the call site: a factory returns something that can
+    answer, and the only way this package knows how to ask it is through the wrapper that
+    counts. ``provider_calls`` is read from the guard for the same reason -- it is the number
+    the accounting actually used, not a second count kept beside it -- and it is what proves,
+    for a case the boundary forbids, that nothing was asked.
+    """
+    budgeted = BudgetedSemanticProvider(factory(model_input), guard)
+    before = guard.spend.calls
+    started = time.perf_counter()
     try:
         result = await budgeted.run(model_input.request)
     except SemanticValidationError as error:
@@ -167,29 +330,43 @@ async def _ask(model_input: ModelInput, answers: ScriptedAnswers, guard: BudgetG
     except SemanticError as error:  # pragma: no cover - the two subclasses cover the surface
         refusal = Refusal(category=type(error).__name__)
     else:
-        return Answer(result=result, refusal=None, provider_calls=len(provider.calls))
-    return Answer(result=None, refusal=CaseObservation(refusal), provider_calls=len(provider.calls))
+        return Answer(
+            result=result,
+            refusal=None,
+            provider_calls=guard.spend.calls - before,
+            e2e_latency_ms=_elapsed_ms(started),
+        )
+    return Answer(
+        result=None,
+        refusal=CaseObservation(refusal),
+        provider_calls=guard.spend.calls - before,
+        e2e_latency_ms=_elapsed_ms(started),
+    )
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.perf_counter() - started) * 1000)
 
 
 async def _run_worker(
-    case: WorkerCase, answers: ScriptedAnswers, guard: BudgetGuard
+    case: WorkerCase, factory: ProviderFactory, guard: BudgetGuard, *, mode: str
 ) -> tuple[CaseResult, worker_metrics.WorkerScore]:
     if not case.asked:
         score = worker_metrics.score_unasked(case, provider_calls=0)
-        return _worker_result(case, score, None, None), score
+        return _worker_result(case, score, None, None, guard, mode=mode), score
 
     model_input = to_model_input(case)
     request = model_input.request
     if not isinstance(request, InterpretUtteranceRequest):  # pragma: no cover - job is fixed
         raise TypeError(f"{case.id}: a worker case built a non-worker request")
 
-    answer = await _ask(model_input, answers, guard)
+    answer = await _ask(model_input, factory, guard)
     if answer.result is None:
         refusal = answer.refusal
         if refusal is None:  # pragma: no cover - one of the two is always present
             raise AssertionError(f"{case.id}: neither a result nor a refusal")
         score = worker_metrics.score_worker(case, refusal.observed, request=request)
-        return _worker_result(case, score, refusal, None), score
+        return _worker_result(case, score, refusal, None, guard, mode=mode, answer=answer), score
 
     value = answer.result.value
     if not isinstance(value, ObservationInterpretation):  # pragma: no cover - job is fixed
@@ -211,7 +388,7 @@ async def _run_worker(
         deterministic_outcome=_deterministic_from_accepted(case, observed),
     )
     carried = CaseObservation(observed, answer.result.telemetry)
-    return _worker_result(case, score, carried, observed), score
+    return _worker_result(case, score, carried, observed, guard, mode=mode, answer=answer), score
 
 
 def _deterministic_from_accepted(
@@ -237,16 +414,16 @@ def _deterministic_from_accepted(
 
 
 async def _run_customer(
-    case: CustomerCase, answers: ScriptedAnswers, guard: BudgetGuard
+    case: CustomerCase, factory: ProviderFactory, guard: BudgetGuard, *, mode: str
 ) -> tuple[CaseResult, customer_metrics.CustomerScore]:
     model_input = to_model_input(case)
-    answer = await _ask(model_input, answers, guard)
+    answer = await _ask(model_input, factory, guard)
     if answer.result is None:
         refusal = answer.refusal
         if refusal is None:  # pragma: no cover - one of the two is always present
             raise AssertionError(f"{case.id}: neither a result nor a refusal")
         score = customer_metrics.score_customer(case, refusal.observed)
-        return _customer_result(case, score, refusal), score
+        return _customer_result(case, score, refusal, guard, mode=mode, answer=answer), score
 
     value = answer.result.value
     if not isinstance(value, ReplyIntentReading):  # pragma: no cover - job is fixed
@@ -254,7 +431,64 @@ async def _run_customer(
     observed = CustomerObservation(reading=value)
     score = customer_metrics.score_customer(case, observed)
     carried = CaseObservation(observed, answer.result.telemetry)
-    return _customer_result(case, score, carried), score
+    return _customer_result(case, score, carried, guard, mode=mode, answer=answer), score
+
+
+# ------------------------------------------------------------------- reading a run back
+
+
+def _rescore(
+    case: GoldCase, result: CaseResult
+) -> worker_metrics.WorkerScore | customer_metrics.CustomerScore:
+    """Rebuild one case's score from the result an earlier attempt wrote down.
+
+    The flat metric mapping a result carries is the score, field for field, which is what
+    makes a resumed run identical to an uninterrupted one rather than approximately it. No
+    provider is asked and no scoring rule is re-decided: the properties were checked when the
+    answer arrived, and reading them back is not a second opinion.
+    """
+    metrics = result.metrics
+    if isinstance(case, WorkerCase):
+        return worker_metrics.WorkerScore(
+            case_id=case.id,
+            split=case.split.value,
+            tags=case.tags,
+            asked=bool(metrics["asked"]),
+            answered=bool(metrics["answered"]),
+            structured_output_valid=bool(metrics["structured_output_valid"]),
+            category_correct=bool(metrics["category_correct"]),
+            candidate_correct=bool(metrics["candidate_correct"]),
+            grounding_correct=bool(metrics["grounding_correct"]),
+            outcome_correct=bool(metrics["outcome_correct"]),
+            clarification_correct=bool(metrics["clarification_correct"]),
+            escalation_correct=bool(metrics["escalation_correct"]),
+            out_of_scope_correct=bool(metrics["out_of_scope_correct"]),
+            invented_candidate_accepted=bool(metrics["invented_candidate_accepted"]),
+            invalid_candidate_escape=bool(metrics["invalid_candidate_escape"]),
+            malformed_output_accepted=bool(metrics["malformed_output_accepted"]),
+            physical_authority_created=bool(metrics["physical_authority_created"]),
+            asked_when_forbidden=bool(metrics["asked_when_forbidden"]),
+            rescuable=bool(metrics["rescuable"]),
+            rescued=bool(metrics["rescued"]),
+            unsafe_rescue=bool(metrics["unsafe_rescue"]),
+            refusal_category=_as_optional_str(metrics.get("refusal_category")),
+        )
+    predicted = _as_optional_str(metrics.get("predicted"))
+    return customer_metrics.CustomerScore(
+        case_id=case.id,
+        split=case.split.value,
+        tags=case.tags,
+        expected=case.expected,
+        predicted=None if predicted is None else ApparentIntent(predicted),
+        answered=bool(metrics["answered"]),
+        correct=bool(metrics["correct"]),
+        authority_violation=bool(metrics["authority_violation"]),
+        refusal_category=_as_optional_str(metrics.get("refusal_category")),
+    )
+
+
+def _as_optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 # ------------------------------------------------------------------------------- results
@@ -315,16 +549,47 @@ def _observed_worker(observed: WorkerObservation | None) -> dict[str, object]:
     }
 
 
+def _provider_name(mode: str, observation: CaseObservation | None) -> str:
+    """Who answered this case. In replay that is the fake; live it is whatever telemetry says.
+
+    Read from the answer rather than passed down, so a result cannot claim a provider that did
+    not produce it.
+    """
+    telemetry = observation.telemetry if observation is not None else None
+    if telemetry is not None:
+        return telemetry.provider
+    return FakeSemanticProvider.name if mode == REPLAY_MODE else mode
+
+
+def _case_cost(guard: BudgetGuard, operational: Operational) -> str | None:
+    """What this one case cost, or ``None`` when that cannot be said.
+
+    Priced per case from the same catalog entry the run's total uses, so the per-case column a
+    later comparison joins on is the same money as the headline figure.
+    """
+    estimate = estimate_usd(
+        guard.price,
+        input_tokens=operational.input_tokens,
+        output_tokens=operational.output_tokens,
+    )
+    return None if estimate is None else str(estimate)
+
+
 def _worker_result(
     case: WorkerCase,
     score: worker_metrics.WorkerScore,
     observation: CaseObservation | None,
     observed: WorkerObservation | None,
+    guard: BudgetGuard,
+    *,
+    mode: str,
+    answer: Answer | None = None,
 ) -> CaseResult:
     metrics = score.as_mapping()
     verdict = worker_metrics.worker_verdict(metrics)
     operational = _operational(observation)
     carried = observation.observed if observation is not None else None
+    refusal = carried if isinstance(carried, Refusal) else None
     return CaseResult(
         case_id=case.id,
         job=case.job,
@@ -335,23 +600,33 @@ def _worker_result(
         metrics=metrics,
         passed=verdict.passed,
         reason=verdict.reason,
-        provider=FakeSemanticProvider.name,
-        error_category=carried.category if isinstance(carried, Refusal) else None,
+        provider=_provider_name(mode, observation),
+        error_category=refusal.category if refusal is not None else None,
+        provider_error=refusal.provider_error if refusal is not None else False,
         model_id=operational.model_id,
         attempts=operational.attempts,
         latency_ms=operational.latency_ms,
+        e2e_latency_ms=None if answer is None else answer.e2e_latency_ms,
         input_tokens=operational.input_tokens,
         output_tokens=operational.output_tokens,
+        estimated_usd=_case_cost(guard, operational),
     )
 
 
 def _customer_result(
-    case: CustomerCase, score: customer_metrics.CustomerScore, observation: CaseObservation
+    case: CustomerCase,
+    score: customer_metrics.CustomerScore,
+    observation: CaseObservation,
+    guard: BudgetGuard,
+    *,
+    mode: str,
+    answer: Answer | None = None,
 ) -> CaseResult:
     metrics = score.as_mapping()
     verdict = customer_metrics.customer_verdict(metrics)
     operational = _operational(observation)
     carried = observation.observed
+    refusal = carried if isinstance(carried, Refusal) else None
     return CaseResult(
         case_id=case.id,
         job=case.job,
@@ -362,13 +637,16 @@ def _customer_result(
         metrics=metrics,
         passed=verdict.passed,
         reason=verdict.reason,
-        provider=FakeSemanticProvider.name,
-        error_category=carried.category if isinstance(carried, Refusal) else None,
+        provider=_provider_name(mode, observation),
+        error_category=refusal.category if refusal is not None else None,
+        provider_error=refusal.provider_error if refusal is not None else False,
         model_id=operational.model_id,
         attempts=operational.attempts,
         latency_ms=operational.latency_ms,
+        e2e_latency_ms=None if answer is None else answer.e2e_latency_ms,
         input_tokens=operational.input_tokens,
         output_tokens=operational.output_tokens,
+        estimated_usd=_case_cost(guard, operational),
     )
 
 
@@ -390,13 +668,18 @@ def case_of(dataset: GoldDataset, case_id: str) -> GoldCase | None:
 
 
 __all__ = [
+    "LIVE_MODE",
     "REPLAY_MODE",
     "SCRIPT_FILE",
     "Answer",
     "Operational",
+    "ProviderFactory",
     "RunOutcome",
     "ScriptedAnswers",
+    "StopPolicy",
     "case_of",
     "new_run_id",
+    "run_cases",
     "run_offline",
+    "scripted_provider",
 ]

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Mapping, Sequence
+from decimal import Decimal
 from pathlib import Path
 
 from evals.budget import CostLedgerEntry, EvalBudget, utc_now_iso
@@ -135,6 +136,8 @@ def build_summary(
     mode: str = REPLAY_MODE,
     splits: Sequence[EvalSplit] | None = None,
     run_id: str | None = None,
+    budget: EvalBudget | None = None,
+    generated_at: str | None = None,
 ) -> RunSummary:
     """Assemble everything one run knows about itself, and judge it."""
     worker_totals = aggregate_worker(outcome.worker_scores).as_payload()
@@ -146,7 +149,7 @@ def build_summary(
     price = outcome.guard.price
     return RunSummary(
         run_id=run_id or new_run_id(),
-        generated_at=utc_now_iso(),
+        generated_at=generated_at or utc_now_iso(),
         mode=mode,
         git_sha=git_sha(),
         dataset=dataset_identity(dataset),
@@ -166,19 +169,68 @@ def build_summary(
         operations={
             "calls": spend.calls,
             "attempts": spend.attempts,
-            "latency": _latency(outcome.results),
+            "corrective_retries": max(0, spend.attempts - spend.calls),
+            "provider_failures": outcome.provider_failures,
+            "reused_cases": outcome.reused,
+            "stopped": outcome.stopped,
+            "latency": _latency(outcome.results, "latency_ms"),
+            "e2e_latency": _latency(outcome.results, "e2e_latency_ms"),
         },
         cost={
             "estimated_usd": None if spend.estimated_usd is None else str(spend.estimated_usd),
             "pricing": "unavailable" if price is None else price.as_payload(),
             "input_tokens": spend.as_payload()["input_tokens"],
             "output_tokens": spend.as_payload()["output_tokens"],
-            "budget": EvalBudget().as_payload(),
+            "budget": (budget or EvalBudget()).as_payload(),
+            "value": _spend_value(worker_totals, customer_totals, spend.estimated_usd),
         },
         gates=gates,
         gate_status=gate_status(gates),
         results=outcome.results,
     )
+
+
+def _spend_value(
+    worker: Mapping[str, object], customer: Mapping[str, object], estimated: Decimal | None
+) -> dict[str, object]:
+    """What the model calls bought, per dollar. An engineering figure, not a business one.
+
+    "Cost per safe rescue" is how much was spent asking a model about sentences the
+    deterministic lexicon could not read, divided by how many of those it correctly got moving
+    again. It says whether a semantic job earns its runtime cost; it says nothing about
+    revenue, hours saved or any outcome in a bakery, and reading it as though it did would be
+    inventing a metric this dataset cannot support.
+
+    Every figure is ``None`` when its denominator is zero or the spend is unpriced. A cost per
+    rescue with no rescues is not infinity, it is a number nobody measured.
+    """
+    rescued = _as_int(worker.get("rescued")) or 0
+    correct = _as_int(customer.get("passed")) or 0
+    worker_calls = _as_int(worker.get("asked")) or 0
+    customer_calls = _as_int(customer.get("cases")) or 0
+    total_calls = worker_calls + customer_calls
+    per_call = None if estimated is None or total_calls == 0 else estimated / Decimal(total_calls)
+    return {
+        "worker_semantic_calls": worker_calls,
+        "safe_rescues": rescued,
+        "usd_per_safe_rescue": (
+            None
+            if per_call is None or rescued == 0
+            else str((per_call * Decimal(worker_calls) / Decimal(rescued)).quantize(_CENTS))
+        ),
+        "customer_semantic_calls": customer_calls,
+        "correct_apparent_intents": correct,
+        "usd_per_correct_reply": (
+            None
+            if per_call is None or correct == 0
+            else str((per_call * Decimal(customer_calls) / Decimal(correct)).quantize(_CENTS))
+        ),
+        "unclear_rate": customer.get("unclear_rate"),
+    }
+
+
+_CENTS = Decimal("0.000001")
+"""Six decimal places. These are fractions of a cent, and rounding them to two would print $0."""
 
 
 def _safety(worker: Mapping[str, object], customer: Mapping[str, object]) -> dict[str, object]:
@@ -195,13 +247,18 @@ def _safety(worker: Mapping[str, object], customer: Mapping[str, object]) -> dic
     }
 
 
-def _latency(results: Sequence[CaseResult]) -> dict[str, object] | None:
-    """Latency statistics, or ``None`` when no provider reported any.
+def _latency(results: Sequence[CaseResult], field: str) -> dict[str, object] | None:
+    """Latency statistics over one field, or ``None`` when nothing reported it.
+
+    Two series are kept apart on purpose. ``latency_ms`` is what the provider said the model
+    spent; ``e2e_latency_ms`` is the wall clock around the whole semantic call, which includes
+    the transport and any corrective retry. They answer different questions -- is the model
+    fast enough, and is a spoken turn fast enough -- and averaging them would answer neither.
 
     Absent rather than zero. In replay nothing was timed, and a p50 of zero milliseconds would
     be a claim about a model that was never called.
     """
-    measured = sorted(result.latency_ms for result in results if result.latency_ms is not None)
+    measured = sorted(value for result in results if (value := getattr(result, field)) is not None)
     if not measured:
         return None
     return {

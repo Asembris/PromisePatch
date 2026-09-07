@@ -43,10 +43,24 @@ class CaseResult(Frozen):
     model_id: str | None = None
     attempts: int | None = None
     latency_ms: int | None = None
+    """What the provider said the model spent, when it says. Bedrock reports it; the fake
+    does not, and an unreported figure stays ``None``."""
+
+    e2e_latency_ms: int | None = None
+    """Wall-clock time for the whole semantic call as PromisePatch experiences it: building
+    the prompt, the transport, every corrective retry, and validation. Measured by the runner,
+    so it exists whenever a provider was asked and is not the same number as ``latency_ms``."""
+
     input_tokens: int | None = None
     output_tokens: int | None = None
     estimated_usd: str | None = None
     error_category: str | None = None
+    provider_error: bool = False
+    """Whether the refusal was the provider failing rather than an answer being refused.
+
+    A model that answered something the boundary would not accept and a model nobody could
+    reach are both a case with no reading, and they are not the same event: one is the gate
+    working, the other is the weather."""
 
 
 class DatasetIdentity(Frozen):

@@ -342,6 +342,8 @@ class WorkerTotals:
     physical_authority_created: int
     asked_when_forbidden: int
     per_tag_pass_rate: Mapping[str, float]
+    per_tag_counts: Mapping[str, Mapping[str, int]]
+    """The numerator and denominator behind every rate in :attr:`per_tag_pass_rate`."""
 
     def as_payload(self) -> dict[str, object]:
         return {
@@ -368,6 +370,7 @@ class WorkerTotals:
             "physical_authority_created": self.physical_authority_created,
             "asked_when_forbidden": self.asked_when_forbidden,
             "per_tag_pass_rate": dict(self.per_tag_pass_rate),
+            "per_tag_counts": {tag: dict(counts) for tag, counts in self.per_tag_counts.items()},
         }
 
 
@@ -422,18 +425,24 @@ def aggregate_worker(scores: Sequence[WorkerScore]) -> WorkerTotals:
         physical_authority_created=sum(s.physical_authority_created for s in scores),
         asked_when_forbidden=sum(s.asked_when_forbidden for s in scores),
         per_tag_pass_rate=_per_tag(scores),
+        per_tag_counts=_per_tag_counts(scores),
     )
+
+
+def _per_tag_counts(scores: Sequence[WorkerScore]) -> dict[str, dict[str, int]]:
+    """Passes and cases per tag. The two numbers a rate over five cases has to be read with."""
+    counts: dict[str, dict[str, int]] = {}
+    for score in scores:
+        for tag in score.tags:
+            entry = counts.setdefault(tag, {"hits": 0, "total": 0})
+            entry["total"] += 1
+            entry["hits"] += int(score.case_passed)
+    return {tag: counts[tag] for tag in sorted(counts)}
 
 
 def _per_tag(scores: Sequence[WorkerScore]) -> dict[str, float]:
     """Pass rate per tag. Where an aggregate hides which kind of sentence a model cannot read."""
-    totals: dict[str, int] = {}
-    hits: dict[str, int] = {}
-    for score in scores:
-        for tag in score.tags:
-            totals[tag] = totals.get(tag, 0) + 1
-            hits[tag] = hits.get(tag, 0) + int(score.case_passed)
-    return {tag: hits[tag] / totals[tag] for tag in sorted(totals)}
+    return {tag: entry["hits"] / entry["total"] for tag, entry in _per_tag_counts(scores).items()}
 
 
 # -------------------------------------------------------------------------------- verdict

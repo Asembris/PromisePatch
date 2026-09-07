@@ -135,6 +135,8 @@ class CustomerTotals:
     per_class: tuple[ClassMetrics, ...]
     confusion: Mapping[str, Mapping[str, int]]
     per_tag_recall: Mapping[str, float]
+    per_tag_counts: Mapping[str, Mapping[str, int]]
+    """The numerator and denominator behind every rate in :attr:`per_tag_recall`."""
 
     def as_payload(self) -> dict[str, object]:
         return {
@@ -148,6 +150,7 @@ class CustomerTotals:
             "per_class": [item.as_payload() for item in self.per_class],
             "confusion": {row: dict(columns) for row, columns in self.confusion.items()},
             "per_tag_recall": dict(self.per_tag_recall),
+            "per_tag_counts": {tag: dict(counts) for tag, counts in self.per_tag_counts.items()},
         }
 
 
@@ -207,6 +210,24 @@ def per_class_metrics(scores: Sequence[CustomerScore]) -> tuple[ClassMetrics, ..
     return tuple(results)
 
 
+def per_tag_counts(scores: Sequence[CustomerScore]) -> dict[str, dict[str, int]]:
+    """How many of each tag came back right, and how many there were.
+
+    The denominator is reported beside the rate because several of these clusters are five
+    cases or fewer. "80 %" over five hand-authored examples is four of them, and a reader who
+    is shown only the percentage cannot tell that from four hundred of five hundred. A
+    threshold is still a threshold; what changes is that nobody can mistake it for a
+    population-level measurement.
+    """
+    counts: dict[str, dict[str, int]] = {}
+    for score in scores:
+        for tag in score.tags:
+            entry = counts.setdefault(tag, {"hits": 0, "total": 0})
+            entry["total"] += 1
+            entry["hits"] += int(score.correct)
+    return {tag: counts[tag] for tag in sorted(counts)}
+
+
 def per_tag_recall(scores: Sequence[CustomerScore]) -> dict[str, float]:
     """How often the gold label came back, per tag.
 
@@ -214,13 +235,7 @@ def per_tag_recall(scores: Sequence[CustomerScore]) -> dict[str, float]:
     clusters, not classes, and a classifier can be right about the class and wrong about every
     member of one cluster inside it.
     """
-    totals: dict[str, int] = {}
-    hits: dict[str, int] = {}
-    for score in scores:
-        for tag in score.tags:
-            totals[tag] = totals.get(tag, 0) + 1
-            hits[tag] = hits.get(tag, 0) + int(score.correct)
-    return {tag: hits[tag] / totals[tag] for tag in sorted(totals)}
+    return {tag: entry["hits"] / entry["total"] for tag, entry in per_tag_counts(scores).items()}
 
 
 def aggregate_customer(scores: Sequence[CustomerScore]) -> CustomerTotals:
@@ -239,6 +254,7 @@ def aggregate_customer(scores: Sequence[CustomerScore]) -> CustomerTotals:
         per_class=per_class,
         confusion=confusion_matrix(scores),
         per_tag_recall=per_tag_recall(scores),
+        per_tag_counts=per_tag_counts(scores),
     )
 
 
@@ -266,6 +282,7 @@ __all__ = [
     "confusion_matrix",
     "customer_verdict",
     "per_class_metrics",
+    "per_tag_counts",
     "per_tag_recall",
     "score_customer",
 ]
