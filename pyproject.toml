@@ -48,6 +48,7 @@ src = [
     "apps/backend/src",
     "apps/order-simulator/src",
     "apps/order-simulator",
+    "evals",
 ]
 
 [tool.ruff.lint]
@@ -61,6 +62,9 @@ ignore = ["RUF012"]
 "apps/backend/alembic/versions/**" = ["E501"]
 # Operator scripts talk to a terminal: printing is their interface, not a stray debug line.
 "scripts/**" = ["T20"]
+# Evaluation fixtures build hand-written cases and assert on them; a scorer test that could
+# not name a variable `S` or shadow a builtin-ish label would be harder to read, not safer.
+"evals/tests/**" = ["N802", "N803", "N806"]
 # The simulator's operator screen is a markup template. A CSS rule or a form action wrapped
 # to fit a column limit is markup that reads worse and renders the same.
 "apps/order-simulator/src/order_simulator/ui.py" = ["E501"]
@@ -80,6 +84,7 @@ mypy_path = [
     "apps/backend/src",
     "apps/backend/tests",
     "apps/order-simulator/src",
+    ".",
 ]
 
 [[tool.mypy.overrides]]
@@ -92,6 +97,22 @@ disallow_untyped_decorators = false
 [[tool.mypy.overrides]]
 module = ["boto3.*", "botocore.*"]
 ignore_missing_imports = true
+
+# DeepEval ships a `py.typed` marker but its public surface is loosely annotated: the metric
+# base class takes `*args, **kwargs` and several attributes are untyped. It is imported by one
+# module, the adapter, which is the only place in the repository that knows the framework
+# exists.
+[[tool.mypy.overrides]]
+module = "deepeval.*"
+ignore_errors = true
+
+# Subclassing DeepEval's metric base calls its untyped `__init_subclass__`, which is a hook of
+# the framework rather than anything PromisePatch wrote. The adapter is the only module that
+# subclasses it, and everything the metrics decide is a call out to typed functions in
+# `evals.metrics`.
+[[tool.mypy.overrides]]
+module = "evals.metrics.deepeval_adapter"
+disable_error_code = ["no-untyped-call"]
 
 # asyncpg ships no py.typed marker. The driver is used directly only by the event listener,
 # which wraps it behind a Protocol naming the four calls it makes, so the untyped surface is
@@ -109,8 +130,9 @@ testpaths = [
     "packages/order-contract/tests",
     "apps/order-simulator/tests",
     "apps/backend/tests",
+    "evals/tests",
 ]
-pythonpath = ["packages/promise-graph", "apps/backend/tests", "apps/order-simulator/tests"]
+pythonpath = ["packages/promise-graph", "apps/backend/tests", "apps/order-simulator/tests", "."]
 addopts = "-q --strict-markers --strict-config --import-mode=importlib -m 'not bedrock_live'"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -123,7 +145,7 @@ markers = [
 # --------------------------------------------------------------------------- coverage
 
 [tool.coverage.run]
-source = ["order_contract", "order_simulator", "promise_graph", "promisepatch"]
+source = ["evals", "order_contract", "order_simulator", "promise_graph", "promisepatch"]
 branch = true
 
 [tool.coverage.report]
@@ -138,7 +160,7 @@ exclude_lines = [
 # --------------------------------------------------------------------------- import-linter
 
 [tool.importlinter]
-root_packages = ["order_contract", "order_simulator", "promise_graph", "promisepatch"]
+root_packages = ["evals", "order_contract", "order_simulator", "promise_graph", "promisepatch"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -399,4 +421,79 @@ forbidden_modules = [
     "promisepatch.fixtures",
     "promisepatch.graph",
     "sqlalchemy",
+]
+
+# Measurement never becomes production. The application, the engine, the wire contract and the
+# order system cannot reach the evaluation package or the framework behind it -- so an eval that
+# could change what it measures is not something to be careful about, it is something that does
+# not compile. The dependency also stays where it belongs: `deepeval` is an eval-only group, and
+# nothing in the runtime image can import it even if it were installed.
+[[tool.importlinter.contracts]]
+name = "measurement never becomes production"
+type = "forbidden"
+source_modules = ["order_contract", "order_simulator", "promise_graph", "promisepatch"]
+forbidden_modules = ["deepeval", "evals"]
+
+# The harness cannot reach a model, a database or the network. An evaluation is the one workload
+# here that could deliberately spend money at scale, so "the offline runner cannot call Bedrock"
+# is a build failure rather than a policy: there is no AWS SDK, no HTTP client, no session and no
+# migration in its import graph, and the only provider it can construct is the deterministic fake.
+[[tool.importlinter.contracts]]
+name = "the evaluation harness cannot reach a model or a database"
+type = "forbidden"
+source_modules = ["evals"]
+forbidden_modules = [
+    "alembic",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "httpx2",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.integrations",
+    "promisepatch.main",
+    "promisepatch.worker",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "urllib",
+]
+
+# The framework is one module wide. The dataset, the metrics, the runner, the thresholds and the
+# report are ordinary Python that runs without DeepEval installed -- which is what makes every
+# number this evaluation produces reproducible by hand, and what stops a runner from quietly
+# becoming the source of truth.
+[[tool.importlinter.contracts]]
+name = "DeepEval is one module wide"
+type = "forbidden"
+source_modules = [
+    "evals.budget",
+    "evals.cases",
+    "evals.context",
+    "evals.dataset",
+    "evals.metrics.customer",
+    "evals.metrics.verdict",
+    "evals.metrics.worker",
+    "evals.observed",
+    "evals.prompts",
+    "evals.report",
+    "evals.results",
+    "evals.runner",
+    "evals.summary",
+    "evals.thresholds",
+]
+forbidden_modules = ["deepeval"]
+
+[[tool.importlinter.contracts]]
+name = "evaluation module layering"
+type = "layers"
+layers = [
+    "evals.report",
+    "evals.summary",
+    "evals.runner",
+    "evals.dataset",
+    "evals.metrics",
+    "evals.observed",
+    "evals.cases",
+    "evals.context",
 ]
