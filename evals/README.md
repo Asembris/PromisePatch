@@ -125,11 +125,27 @@ python -m evals replay --split holdout --out .eval-results
 python -m evals manifest --write  # regenerate the committed manifest after a dataset change
 ```
 
-There is deliberately **no live command**. A machine with AWS credentials in its environment
-and `PP_LLM_PROVIDER=bedrock` in its `.env` still cannot spend anything by running an
-evaluation, because nothing reachable from `python -m evals` can construct a Bedrock client.
-That is stronger than a flag defaulting to off. The live benchmark surface arrives with the run
-it is for.
+There is deliberately **no live command here**. A machine with AWS credentials in its
+environment and `PP_LLM_PROVIDER=bedrock` in its `.env` still cannot spend anything by running
+`python -m evals`, because nothing reachable from it can construct a Bedrock client. That is
+stronger than a flag defaulting to off, and it stays true.
+
+The live benchmark lives outside this package, in `scripts/run_semantic_benchmark.py` -- it has
+to, because production must not import `evals` and `evals` must not import an AWS SDK, so the
+place the two meet is in neither. Spending takes three explicit flags:
+
+```bash
+uv run python -m scripts.run_semantic_benchmark --split development --model <id>          # preflight only
+uv run python -m scripts.run_semantic_benchmark --live --provider bedrock --model <id> --split development
+uv run python -m scripts.run_semantic_benchmark --from-results .eval-results/<file>.jsonl  # rebuild, no calls
+```
+
+Where the answers come from is a *parameter* of the runner, not a branch in it: the composition
+root passes a provider in, and `evals` wraps whatever it is passed in the budget guard before
+asking it anything. A factory cannot hand in a provider that escapes the accounting.
+
+The first benchmark run under this surface is written up in
+[`docs/semantic-benchmark.md`](../docs/semantic-benchmark.md).
 
 ## Safety and quality are different numbers
 
@@ -229,11 +245,11 @@ Phase 4 spends real money on purpose. The rules exist before the spending does.
 - **Unknown pricing is never zero.** A model with no verified price has an *unavailable*
   estimated cost. If a live run declares a dollar budget and the model has no configured price,
   the guard refuses before the first call.
-- **Prices live in one catalog** with a snapshot date and a source, and it is *deliberately
-  empty*. Nothing is written into it from memory: a stale price silently understates a budget,
-  which is the failure this whole module exists to prevent. Entries are added from a current
-  published price list before the first live benchmark. This slice makes zero calls, so it
-  needs none.
+- **Prices live in one catalog** with a snapshot date and a source, and it holds exactly the
+  models that have been benchmarked -- today, one. Nothing is written into it from memory: a
+  stale price silently understates a budget, which is the failure this whole module exists to
+  prevent. A model with no verified price cannot be run under a dollar ceiling at all, which is
+  what stands between `Settings.bedrock_model_id`'s default and an unintended bill.
 - **The cost ledger** is a local JSONL artifact under `.eval-results/`. It records run id,
   timestamp, commit, dataset version and hash, provider, model, mode, calls, attempts, tokens
   and estimated spend. It carries no credential, no session token and no prompt. It is not
