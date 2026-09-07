@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
+from _database_safety import migration_database_url
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from promisepatch.config import Settings
@@ -364,7 +365,7 @@ def operator_settings() -> Settings:
 
 @pytest_asyncio.fixture
 async def operator_engine(operator_settings: Settings) -> AsyncIterator[AsyncEngine]:
-    engine = build_engine(operator_settings.require_migration_database_url(), pool_size=1)
+    engine = build_engine(migration_database_url(operator_settings), pool_size=1)
     try:
         yield engine
     finally:

@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import pytest_asyncio
+from _database_safety import migration_database_url
 from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy import update as sa_update
 
@@ -994,7 +995,7 @@ class Intake:
         Still audited: the boundary being reached past is the privilege grant, not the ledger.
         """
         settings = Settings()
-        engine = build_engine(settings.require_migration_database_url(), pool_size=1)
+        engine = build_engine(migration_database_url(settings), pool_size=1)
         try:
             async with engine.begin() as connection:
                 unit_of_work = UnitOfWork(connection)
@@ -1121,7 +1122,7 @@ class Intake:
 
 async def _seed(settings: Settings) -> None:
     """Load the dataset at today's anchor, as the migration role, and clear the engine's work."""
-    engine = build_engine(settings.require_migration_database_url(), pool_size=1)
+    engine = build_engine(migration_database_url(settings), pool_size=1)
     try:
         async with engine.begin() as connection:
             for table in WORKFLOW_TABLES:

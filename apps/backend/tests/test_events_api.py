@@ -24,6 +24,7 @@ from uuid import UUID
 
 import pytest
 import pytest_asyncio
+from _database_safety import migration_database_url
 from fastapi import FastAPI
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -262,7 +263,7 @@ async def live_app(live_settings: Settings, demo_state: object) -> AsyncIterator
 
 @pytest_asyncio.fixture
 async def operator_engine(live_settings: Settings) -> AsyncIterator[AsyncEngine]:
-    engine = build_engine(live_settings.require_migration_database_url(), pool_size=1)
+    engine = build_engine(migration_database_url(live_settings), pool_size=1)
     try:
         yield engine
     finally:

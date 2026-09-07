@@ -17,6 +17,10 @@ from typing import Any
 import pytest
 import pytest_asyncio
 
+# Every connection string the suite builds an engine from comes through here, so a database
+# that is not this machine's disposable one is refused before a connection exists.
+from _database_safety import migration_database_url, runtime_database_url
+
 # The ``workflow`` fixture is defined beside its own helpers so that tests can import the type
 # they annotate it with; pytest collects it from here.
 from _workflow_support import workflow as workflow
@@ -65,7 +69,7 @@ def database_url() -> str:
         pytest.skip(
             "PP_MIGRATION_DATABASE_URL is not set; the schema integration tests need a database"
         )
-    return settings.require_migration_database_url()
+    return migration_database_url(settings)
 
 
 @pytest_asyncio.fixture
@@ -104,7 +108,7 @@ def app_database_url() -> str:
     settings = Settings()
     if settings.database_url is None:
         pytest.skip("PP_DATABASE_URL is not set; the runtime-connection tests need it")
-    return settings.require_database_url()
+    return runtime_database_url(settings)
 
 
 @pytest_asyncio.fixture
@@ -203,7 +207,7 @@ def demo_state() -> DemoState:
         pytest.skip("PP_ALLOW_FIXTURE_RESET is not true; refusing to reset this database")
 
     async def ensure() -> DemoState:
-        engine = build_engine(settings.require_migration_database_url(), pool_size=1)
+        engine = build_engine(migration_database_url(settings), pool_size=1)
         try:
             async with engine.connect() as connection:
                 loaded = (
