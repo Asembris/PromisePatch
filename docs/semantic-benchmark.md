@@ -278,3 +278,5 @@ That prints the preflight and stops, having constructed no client and spent noth
 Raw per-case results, the preflight and the cost ledger stay local under `.eval-results/`,
 which is git-ignored. A run is a fact about one machine at one moment; this page is the part
 worth keeping.
+
+The rerun under the fixed resolver is recorded in [`semantic-benchmark-rerun.md`](semantic-benchmark-rerun.md).
