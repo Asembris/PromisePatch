@@ -237,6 +237,26 @@ Per the model-selection protocol:
 The benchmark should be re-run, from the start, once the grounding gap is resolved — against a
 new dataset or prompt version if either changes, and with a fresh controlled run either way.
 
+## Resolution of the finding
+
+Closed by `7e4f36b`, in the resolver rather than in the prompt. `resolve_semantic_observation`
+now collects every proposal the worker's own words support *before* the declared category is
+allowed to narrow anything, and refuses the reading entire when those proposals span more than
+one resource kind — `GroundingFailure.CROSS_KIND_EVIDENCE`, escalating under the deterministic
+stop that sent the sentence to a model in the first place. A proposal the sentence does not
+name is still dropped as it always was, so a model cannot manufacture ambiguity by naming an
+extra candidate, and a clean single-kind report still resolves.
+
+Nothing else moved. No prompt, no schema, no model id, no threshold, no migration, and the gold
+dataset keeps version 1.0.0 and hash `9cf1ab7820ca`. The scorer was not touched either: the
+case stops counting as an unsafe rescue because production now escalates it, which is what the
+counter was always measuring.
+
+The run recorded above stands as it was written. It is the evidence that the benchmark caught
+an unsafe resolver before the holdout was opened, and re-running it is a fresh development run
+from the first case — deterministic behaviour has changed, so the 14 recorded calls do not
+carry over.
+
 ## Deviation of record
 
 ADR-0004 names `claude-haiku-4-5` as the model and `claude-sonnet-5` as the configured
