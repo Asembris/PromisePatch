@@ -52,6 +52,12 @@ who spoke, and the model appears only as provenance beside it.
 [docs/semantic-boundary.md](docs/semantic-boundary.md) has the trust line, the fallback
 condition, the failure semantics, the prompt-injection posture and the opt-in live acceptance.
 
+How well that boundary reads a sentence is measured rather than asserted. `evals/` holds a
+hand-authored gold dataset, deterministic scorers, hard safety gates and the spend controls a
+live benchmark will run under; `python -m evals replay` scores the whole thing with **zero
+provider calls**, and no command there can reach Bedrock. [evals/README.md](evals/README.md)
+has the methodology, the thresholds and the cost policy.
+
 ## Prerequisites
 
 - Python 3.12 and [uv](https://docs.astral.sh/uv/)
