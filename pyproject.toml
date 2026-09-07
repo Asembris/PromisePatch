@@ -486,6 +486,8 @@ type = "forbidden"
 source_modules = [
     "evals.budget",
     "evals.cases",
+    "evals.challenger",
+    "evals.challenger_report",
     "evals.context",
     "evals.dataset",
     "evals.metrics.customer",
@@ -505,6 +507,8 @@ forbidden_modules = ["deepeval"]
 name = "evaluation module layering"
 type = "layers"
 layers = [
+    "evals.challenger_report",
+    "evals.challenger",
     "evals.report",
     "evals.summary",
     "evals.runner",

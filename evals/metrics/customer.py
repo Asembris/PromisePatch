@@ -94,6 +94,30 @@ def score_customer(case: CustomerCase, observed: Observed) -> CustomerScore:
     )
 
 
+def score_from_metrics(case: CustomerCase, metrics: Mapping[str, object]) -> CustomerScore:
+    """Rebuild one customer score from the flat mapping a stored result carries.
+
+    The properties were checked when the answer arrived; reading them back is not a second
+    opinion. It exists because two callers need the same reconstruction -- a resumed run
+    re-scoring its own file, and a comparison re-scoring another model's -- and two copies of
+    it would be two definitions of what "correct" meant, which is the one thing a paired
+    comparison cannot afford.
+    """
+    predicted = metrics.get("predicted")
+    refusal = metrics.get("refusal_category")
+    return CustomerScore(
+        case_id=case.id,
+        split=case.split.value,
+        tags=case.tags,
+        expected=case.expected,
+        predicted=ApparentIntent(predicted) if isinstance(predicted, str) else None,
+        answered=bool(metrics["answered"]),
+        correct=bool(metrics["correct"]),
+        authority_violation=bool(metrics["authority_violation"]),
+        refusal_category=refusal if isinstance(refusal, str) else None,
+    )
+
+
 # ------------------------------------------------------------------------------ aggregate
 
 
@@ -285,4 +309,5 @@ __all__ = [
     "per_tag_counts",
     "per_tag_recall",
     "score_customer",
+    "score_from_metrics",
 ]

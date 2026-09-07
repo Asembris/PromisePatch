@@ -50,7 +50,6 @@ from promisepatch.domain import grounding as grounding_rules
 from promisepatch.domain import interpretation
 from promisepatch.domain.observation import EscalationReason, InterpretationOutcome
 from promisepatch.semantic import (
-    ApparentIntent,
     FakeSemanticProvider,
     InterpretUtteranceRequest,
     ObservationInterpretation,
@@ -482,18 +481,7 @@ def _rescore(
             out_of_scope_case=case.expected is not None and case.expected.out_of_scope,
             out_of_scope_declined=_declined(result),
         )
-    predicted = _as_optional_str(metrics.get("predicted"))
-    return customer_metrics.CustomerScore(
-        case_id=case.id,
-        split=case.split.value,
-        tags=case.tags,
-        expected=case.expected,
-        predicted=None if predicted is None else ApparentIntent(predicted),
-        answered=bool(metrics["answered"]),
-        correct=bool(metrics["correct"]),
-        authority_violation=bool(metrics["authority_violation"]),
-        refusal_category=_as_optional_str(metrics.get("refusal_category")),
-    )
+    return customer_metrics.score_from_metrics(case, metrics)
 
 
 def _declined(result: CaseResult) -> bool:
