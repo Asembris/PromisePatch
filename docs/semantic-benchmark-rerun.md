@@ -1,6 +1,16 @@
 # Nova 2 Lite semantic benchmark — development split, after the grounding fix
 
-**Verdict: SEMANTIC SAFETY GATE FAILED — REVIEW REQUIRED.**
+> **Superseded on the safety verdict only.** The reservation this page attached to the
+> `out-of-scope declined` gate was reviewed against the frozen documents and upheld: the gate
+> was measuring the model's self-label, and §16.3 makes the *engine* the thing that declines an
+> out-of-scope request. The scorer was corrected and this run was recomputed from its own stored
+> answers with zero provider calls. Safety is clean, 2 / 2 declined; the customer quality
+> failures below are unchanged and still decide the outcome. See
+> [`semantic-benchmark-scorer-audit.md`](semantic-benchmark-scorer-audit.md) for the authoritative
+> verdict. **Everything below is left as it executed** — it is the evidence that triggered the
+> audit, and the numbers in it were produced by the scorer as it stood at the time.
+
+**Verdict as recorded at the time: SEMANTIC SAFETY GATE FAILED — REVIEW REQUIRED.**
 **HOLDOUT NOT OPENED.** No challenger model was called. Haiku calls: 0. OpenAI calls: 0.
 
 This is a fresh run from the first case, under the commit that closed the cross-kind grounding
@@ -401,6 +411,10 @@ dollar ceiling for. OpenAI calls: 0, spend $0. No judge model is used; the evalu
   them. No credential, ledger, JSONL dump or TLS bundle is committed.
 
 ## Where this leaves Phase 4
+
+> Superseded — see the banner at the top. The safety gate this section turns on was measuring
+> the wrong layer; under the corrected metric it passes 2 / 2 and the challenger *is* the next
+> step. The paragraph is kept as written because it is what the run concluded at the time.
 
 The development split did not pass. The holdout was not opened, and the reason is a hard safety
 gate rather than a quality threshold, so the next step is not a challenger model:
