@@ -122,6 +122,14 @@ ignore_errors = true
 module = "evals.metrics.deepeval_adapter"
 disable_error_code = ["no-untyped-call"]
 
+# `with_local_env.py` is run as a path script, so its sibling is importable by bare name at
+# runtime. mypy resolves modules by name rather than by how a file will be invoked, and the two
+# operator scripts predate this directory becoming a package; the composition root beside them is
+# checked normally.
+[[tool.mypy.overrides]]
+module = "bootstrap_local_env"
+ignore_missing_imports = true
+
 # asyncpg ships no py.typed marker. The driver is used directly only by the event listener,
 # which wraps it behind a Protocol naming the four calls it makes, so the untyped surface is
 # one import wide rather than spread through the application.
@@ -139,6 +147,7 @@ testpaths = [
     "apps/order-simulator/tests",
     "apps/backend/tests",
     "evals/tests",
+    "scripts/tests",
 ]
 pythonpath = ["packages/promise-graph", "apps/backend/tests", "apps/order-simulator/tests", "."]
 addopts = "-q --strict-markers --strict-config --import-mode=importlib -m 'not bedrock_live'"

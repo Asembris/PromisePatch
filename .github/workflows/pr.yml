@@ -152,9 +152,16 @@ jobs:
       - name: The whole dataset, scored offline, gates and all
         run: uv run python -m evals replay
 
+      # The live benchmark's composition root -- the one module that can spend money -- and the
+      # refusals that decide whether it does. No AWS credential and no network: every case here
+      # either refuses, stops at the preflight, or rebuilds a report from stored answers. The
+      # benchmark itself is never executed in CI, and no AWS secret exists for it to use.
+      - name: The live composition root refuses to spend without being told to
+        run: uv run pytest scripts/tests
+
       # Type-checked here rather than in the `mypy` job: that job installs no evaluation
       # dependencies, and this is the only job that has the framework the adapter imports.
-      - run: uv run mypy evals
+      - run: uv run mypy evals scripts
 
   properties:
     name: hypothesis (ci profile)
