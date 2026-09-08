@@ -332,3 +332,124 @@ What that did **not** do:
 
 The exposure is to the operator's terminal, not to a model and not to the harness. The holdout
 remains unopened for evaluation purposes, and those inputs are not to be inspected again.
+
+---
+
+## The challenger is replaced: Haiku 4.5 → `gpt-4o-mini-2024-07-18`
+
+Recorded on 2026-09-08. This is a change of challenger, not a finding about one.
+
+### Why Haiku was dropped
+
+```text
+valid Haiku semantic readings:  0
+Haiku quality conclusion:       NONE
+reason for replacement:         AWS Marketplace INVALID_PAYMENT_INSTRUMENT
+```
+
+Every attempt against `us.anthropic.claude-haiku-4-5-20251001-v1:0` was refused by the AWS
+data plane before the model was reached. CloudTrail records `AccessDenied` with
+`INVALID_PAYMENT_INSTRUMENT`, and the Marketplace condition behind it:
+
+> A valid payment instrument must be provided. Your AWS Marketplace subscription for this
+> model cannot be completed.
+
+That is an account-level billing constraint on a third-party model billed through AWS
+Marketplace — the distinction already recorded against `CLAUDE_HAIKU_4_5` in the price
+catalog, which is a first-party/third-party billing fact rather than a quality one.
+
+**Nothing about Haiku's ability to read a customer's sentence was measured, and nothing on
+this page or anywhere in this repository is evidence about it.** The historical artifacts —
+the header-only result file, the provider-failure log, the preflights, the ledger lines — stay
+on disk exactly as written. They are the record of what infrastructure did. They are not model
+errors and must not be reinterpreted as any.
+
+### What replaces it
+
+```text
+provider:  OpenAI
+model:     gpt-4o-mini-2024-07-18
+```
+
+The pinned snapshot, never the floating `gpt-4o-mini` alias. An alias is a pointer the
+provider may repoint, so a benchmark recorded against one would describe whichever model
+answered that day; the command refuses the alias by name and tells the operator to type the
+date. Price, result file, run header identity and ledger totals are all keyed on the pair
+`(provider, model)`, so an alias run and a snapshot run can never merge.
+
+**GPT-4o-mini was not chosen because it performed better. It has not been tested.** It is a
+challenger that can be reached and paid for. Whether it repairs anything is what Stage A
+exists to find out, and Stage A has not been run.
+
+### What did not change
+
+The experiment is the frozen one, and only the challenger's model differs:
+
+| held fixed | value |
+|---|---|
+| dataset | `promisepatch-semantic-gold` v1.0.0, `9cf1ab7820ca…144fd` |
+| source run | Nova `36c1f008de80`, read from disk and never re-run |
+| Stage-A set | the same 6 failures and 6 matched controls, re-derived not re-matched |
+| job | `classify_reply_intent` |
+| prompt and schema | production's own, byte-identical across both adapters |
+| scorer | unchanged, same denominators |
+| Stage-A materiality | repair rate ≥ 0.50, ≥ 2 repairs, 0 inversions, ≤ 1 control regression, 0 safety violations |
+| approved thresholds | macro F1 ≥ 0.80, terse-assent recall ≥ 0.80, indirect-refusal recall ≥ 0.80 |
+| production routing | unchanged; `LlmProvider` is still `fake \| bedrock` |
+
+The controls are deliberately **not** re-matched for the new challenger. Selection reads the
+stored Nova results and cannot see who is being challenged, so re-running it produces the same
+twelve cases — which is what keeps the comparison paired across models rather than a fresh
+experiment wearing the old one's name.
+
+### The OpenAI ceilings
+
+Its own, because the two models are an order of magnitude apart in price and a cap sized for
+the dearer one is not a cap on the cheaper one.
+
+```text
+gpt-4o-mini-2024-07-18   $0.15 / 1M input     $0.60 / 1M output   (verified 2026-09-08)
+
+global OpenAI challenger ceiling   30 calls   100k in   10k out   $0.03
+OpenAI Stage-A ceiling             12 calls                       $0.01
+effective Stage-A allowance        12 calls   100k in   10k out   $0.01
+```
+
+At the recorded price the token ceilings come to $0.021, so the global dollar cap sits above
+what the token bounds already permit — a backstop for arithmetic nobody re-checked, not the
+bound expected to bite. Stage A's cent is stricter than all of it, and twelve is the
+selection's own size rather than a number retyped at a keyboard.
+
+The Bedrock ceilings are untouched. Adding a provider is not repricing the one already there,
+and the ledger now matches on `(provider, model)` so neither challenger's history can debit
+the other's allowance. Lines from a wholly failed run name no model at all — the id is read
+off what came back — and those are reported beside the totals rather than charged to whichever
+model asks next.
+
+### Spend safety, unchanged and extended
+
+`--live` still buys nothing. The scope-bound phrase is still typed at the invocation and read
+from nowhere else, a Stage-A authorisation is still not a Stage-B authorisation, and a process
+running under pytest still cannot construct a paid provider — now proved for the OpenAI
+builder as well as the Bedrock one, with a syntactically valid key present throughout so that
+what refuses is demonstrably the harness rather than the credential.
+
+One gate is new, and it is the last one before a client can exist: a live OpenAI stage refuses
+when `OPENAI_API_KEY` is absent, before the provider builder is called, with no fallback to
+another provider or another model. The key is read from the environment or from the ignored
+local `.env`, is handed to exactly one constructor, and is never printed, logged, persisted or
+returned to anything that formats. Everything visible anywhere — the plan, the preflight, this
+page — is a boolean.
+
+### Accounting for the integration itself
+
+```text
+OpenAI model calls:  0
+Nova calls:          0
+Haiku calls:         0
+model spend:         $0
+holdout model calls: 0
+migrations:          none
+```
+
+Stage A has not been run.

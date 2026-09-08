@@ -134,8 +134,12 @@ environment and `PP_LLM_PROVIDER=bedrock` in its `.env` still cannot spend anyth
 stronger than a flag defaulting to off, and it stays true.
 
 The live benchmark lives outside this package, in `scripts/run_semantic_benchmark.py` -- it has
-to, because production must not import `evals` and `evals` must not import an AWS SDK, so the
-place the two meet is in neither.
+to, because production must not import `evals` and `evals` must not import a vendor SDK, so the
+place the two meet is in neither. The targeted challenger,
+`scripts/run_intent_challenger.py`, is there for the same reason and can reach either of two
+providers: Bedrock, or OpenAI for the pinned `gpt-4o-mini-2024-07-18` snapshot. Each carries its
+own ceilings, because the two models are an order of magnitude apart in price and a cap sized
+for the dearer one is not a cap on the cheaper one.
 
 **`--live` is not permission to spend.** It names a code path. Being charged additionally takes
 a scope-bound authorisation phrase typed at the invocation:
@@ -167,10 +171,17 @@ So four things are true now, and none of them depends on a credential being abse
   pay for Stage B. Approval for a bounded probe is not approval for the rest of a split.
 - **It is command-line only.** Never `.env`, never `Settings`, never an environment variable,
   never a default. There is no long-lived setting to leave switched on.
-- **A pytest process cannot construct a paid provider at all.** Checked before the Bedrock
-  import, and it consults neither the phrase nor the credentials nor the price.
+- **A pytest process cannot construct a paid provider at all.** Checked before the vendor
+  import, for every provider, and it consults neither the phrase nor the credentials nor the
+  price. A syntactically valid AWS credential set, or a syntactically valid `OPENAI_API_KEY`,
+  changes nothing -- and CI arranges both precisely to show that.
 - **Authorisation is not a budget.** Both are required: a deliberate decision, and a hard
   ceiling that refuses the call which would cross it.
+- **A missing credential refuses before a client exists.** A live OpenAI stage without
+  `OPENAI_API_KEY` stops before the provider builder, with no fallback to another provider and
+  no fallback to another model. The key is read from the environment or the ignored local
+  `.env`, handed to one constructor, and never printed, logged or persisted: everything visible
+  anywhere is a boolean.
 
 The full account of the defect and the guards is in
 [`docs/challenger-harness-hardening.md`](../docs/challenger-harness-hardening.md).
