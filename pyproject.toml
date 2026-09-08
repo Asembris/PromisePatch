@@ -304,6 +304,35 @@ forbidden_modules = [
     "urllib",
 ]
 
+# An explanation describes an outcome that has already been decided, and the projection that
+# produces its facts must not be able to decide anything itself. No database, no provider, no
+# clock, no environment: every value it emits was computed by the engine and copied. A
+# projection that could read a row would be a second implementation of the classification
+# ladder, and the two would eventually disagree about the same case with nothing to say which
+# was right.
+[[tool.importlinter.contracts]]
+name = "explanations describe and cannot decide"
+type = "forbidden"
+source_modules = ["promisepatch.domain.explanations"]
+forbidden_modules = [
+    "asyncio",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.integrations",
+    "promisepatch.main",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "urllib",
+]
+
 # A model may propose; only PromisePatch decides. This is that sentence as a build failure.
 # The semantic contracts are values in and values out: no database, no session, no HTTP client,
 # no AWS SDK, no clock, no environment. A provider that could open a connection could act on
