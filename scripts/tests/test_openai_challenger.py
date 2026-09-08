@@ -983,14 +983,24 @@ def test_a_report_rebuilds_from_stored_openai_evidence_with_no_call(
     assert OFF_MACHINE_CONNECTIONS == []
 
 
-def test_the_openai_provider_holds_no_settings_that_route_production(
-    sandbox: Path,
-) -> None:
-    """OpenAI is not in the runtime's provider enum, and this gate did not put it there."""
+def test_no_runtime_setting_can_route_a_deployment_to_openai() -> None:
+    """OpenAI is not in the runtime's provider enum, and this gate did not put it there.
+
+    A claim about the code, not about this process's environment. ``PP_LLM_PROVIDER`` is read
+    from the environment by design and CI deliberately sets it, so asserting what
+    ``Settings()`` currently holds would be asserting which variables happen to be exported --
+    which is true of a machine rather than of the repository, and would fail for the right
+    reasons in the one job arranged to look like a machine that could spend.
+
+    What has to hold is that no value of that variable routes anywhere near OpenAI: the enum is
+    closed, an unrecognised value fails when settings are parsed, and there is no OpenAI field
+    in the settings surface for a deployment to fill in.
+    """
     from promisepatch.config import LlmProvider
 
     assert {member.value for member in LlmProvider} == {"fake", "bedrock"}
-    assert Settings().llm_provider is LlmProvider.FAKE
+    assert not [name for name in Settings.model_fields if "openai" in name.lower()]
+    assert challenger.OPENAI not in {member.value for member in LlmProvider}
 
 
 def test_the_off_machine_connection_count_is_still_zero() -> None:

@@ -30,6 +30,12 @@ retry it does get belongs to the shared acceptance path rather than to this modu
 credential on its own is a provider that can be constructed by accident, and the composition
 root's job of refusing before a client exists would become advisory.
 
+**The SDK is imported where a client is built, and where one of its exceptions is classified,
+and nowhere else.** Both are unreachable without a real client. So every other path through
+this module -- building a request, reading a response, mapping a label, refusing a malformed
+answer, propagating a failure raised by a stub -- runs with the package absent, which is what
+lets the boundary be tested in the jobs that install no evaluation dependency at all.
+
 **It cannot write anything.** This module holds no database handle and imports no SQLAlchemy
 model -- an import contract forbids it, in the same way and for the same reason as the Bedrock
 adapter. It returns values. Whether those values matter is decided elsewhere.
@@ -43,6 +49,7 @@ from collections.abc import Callable, Mapping
 from typing import Any, Final, Protocol, cast
 
 from promisepatch.semantic.errors import (
+    SemanticError,
     SemanticProviderError,
     SemanticTimeoutError,
     SemanticValidationError,
@@ -204,37 +211,54 @@ class OpenAiSemanticProvider(StructuredSemanticProvider):
         """One Chat Completions call, with every SDK failure translated into a semantic one.
 
         Nothing above this line should have to know what an ``APIStatusError`` is, and nothing
-        below it decides what a failure means for a case. The messages carry a class name and,
-        where the SDK publishes one, an HTTP status -- never a response body, never a header,
-        never a key, and never the text that was sent.
-        """
-        import openai
+        below it decides what a failure means for a case.
 
+        A failure that is already one of ours is re-raised untouched. That is the case whenever
+        the transport is a stub, and it is why this whole path needs no SDK installed to be
+        exercised: the module is reached only to classify an exception the SDK itself raised.
+        """
         try:
             return transport.create(**request)
-        except openai.APITimeoutError as error:
-            raise SemanticTimeoutError("OpenAI timed out: APITimeoutError") from error
-        except openai.AuthenticationError as error:
-            raise OpenAiAuthenticationError("OpenAI rejected the credential: 401") from error
-        except openai.PermissionDeniedError as error:
-            raise OpenAiPermissionError(
-                "OpenAI refused this account access to the model: 403"
-            ) from error
-        except openai.RateLimitError as error:
-            raise OpenAiRateLimitError("OpenAI throttled or refused for quota: 429") from error
-        except (openai.APIConnectionError, openai.InternalServerError) as error:
-            raise OpenAiUnavailableError(
-                f"OpenAI is unreachable: {type(error).__name__}"
-            ) from error
-        except openai.APIStatusError as error:
-            status = getattr(error, "status_code", None)
-            raise OpenAiInvalidRequestError(
-                f"OpenAI refused the call: {type(error).__name__} {status}"
-            ) from error
-        except openai.OpenAIError as error:
-            raise OpenAiUnavailableError(
-                f"the OpenAI SDK failed before an answer: {type(error).__name__}"
-            ) from error
+        except SemanticError:
+            raise
+        except Exception as error:
+            raise translate_transport_error(error) from error
+
+
+def translate_transport_error(error: Exception) -> SemanticProviderError:
+    """One third-party exception, as the category the evaluator is allowed to store.
+
+    The SDK's exception types are resolved here rather than at the call site, and only if the
+    package can be imported at all. That is not a fallback for a broken installation: the only
+    way a real OpenAI exception can reach this function is through a client, and the only place
+    a client is built is :meth:`OpenAiSemanticProvider.with_api_key`, which imports the SDK to
+    do it. So "the module is missing" and "this exception came from the module" cannot both be
+    true, and the honest answer when the first holds is the unclassified one.
+
+    The messages carry a class name and, where the SDK publishes one, an HTTP status -- never a
+    response body, never a header, never a key, and never the text that was sent.
+    """
+    try:
+        import openai
+    except ImportError:  # pragma: no cover - see the note above
+        return OpenAiUnavailableError(f"the OpenAI transport failed: {type(error).__name__}")
+
+    if isinstance(error, openai.APITimeoutError):
+        return SemanticTimeoutError("OpenAI timed out: APITimeoutError")
+    if isinstance(error, openai.AuthenticationError):
+        return OpenAiAuthenticationError("OpenAI rejected the credential: 401")
+    if isinstance(error, openai.PermissionDeniedError):
+        return OpenAiPermissionError("OpenAI refused this account access to the model: 403")
+    if isinstance(error, openai.RateLimitError):
+        return OpenAiRateLimitError("OpenAI throttled or refused for quota: 429")
+    if isinstance(error, openai.APIConnectionError | openai.InternalServerError):
+        return OpenAiUnavailableError(f"OpenAI is unreachable: {type(error).__name__}")
+    if isinstance(error, openai.APIStatusError):
+        status = getattr(error, "status_code", None)
+        return OpenAiInvalidRequestError(
+            f"OpenAI refused the call: {type(error).__name__} {status}"
+        )
+    return OpenAiUnavailableError(f"the OpenAI SDK failed before an answer: {type(error).__name__}")
 
 
 def function_definition(spec: JobSpec) -> dict[str, Any]:
@@ -389,4 +413,5 @@ __all__ = [
     "extract_tool_arguments",
     "function_definition",
     "read_usage",
+    "translate_transport_error",
 ]

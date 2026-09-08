@@ -37,6 +37,7 @@ from promisepatch.integrations.openai import (
     extract_tool_arguments,
     function_definition,
     read_usage,
+    translate_transport_error,
 )
 from promisepatch.semantic import (
     JOB_SPECS,
@@ -439,6 +440,48 @@ def test_the_failure_types_say_which_ones_are_worth_presenting_again() -> None:
     assert OpenAiAuthenticationError("401").retryable is False
     assert OpenAiPermissionError("403").retryable is False
     assert OpenAiInvalidRequestError("400").retryable is False
+
+
+@pytest.mark.asyncio
+async def test_the_whole_boundary_works_with_the_sdk_not_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The property CI found missing: this module needs no OpenAI package to be exercised.
+
+    It is an evaluation-group dependency, so the jobs that test the semantic boundary and the
+    backend install none of it. An adapter that imported the SDK merely to *shape* a call would
+    make every one of those jobs depend on a package they have no other reason to carry -- and
+    the first version of this module did exactly that, on the line that classified failures.
+
+    ``openai`` is blocked outright here, not merely unimported, so a stray import anywhere on
+    the request, response, mapping or propagation path raises rather than passing silently.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def refuse_openai(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "openai" or name.startswith("openai."):
+            raise ImportError("No module named 'openai'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", refuse_openai)
+    monkeypatch.delitem(__import__("sys").modules, "openai", raising=False)
+
+    answered = await provider(completion({"apparent_intent": "APPARENT_DECLINE"})).run(reply())
+    assert isinstance(answered.value, ReplyIntentReading)
+    assert answered.value.apparent_intent is ApparentIntent.APPARENT_DECLINE
+
+    # A failure the stub raises is already one of ours, so it propagates without the SDK being
+    # consulted at all -- which is what makes the provider-failure tests above SDK-free too.
+    with pytest.raises(OpenAiPermissionError):
+        await provider(OpenAiPermissionError("403")).run(reply())
+
+    # And a third-party exception, which cannot really happen without a client, is classified
+    # as unclassifiable rather than crashing on the missing import.
+    translated = translate_transport_error(RuntimeError("something from a library"))
+    assert isinstance(translated, OpenAiUnavailableError)
+    assert "RuntimeError" in str(translated)
 
 
 def test_a_provider_without_a_key_refuses_to_be_built_and_opens_no_client() -> None:
