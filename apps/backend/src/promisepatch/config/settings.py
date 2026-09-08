@@ -151,12 +151,19 @@ class Settings(BaseSettings):
     and PromisePatch holds no AWS key in any environment.
     """
 
-    bedrock_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    """The one model, as the architecture fixes it: Claude Haiku 4.5 via a cross-Region profile.
+    bedrock_model_id: str = "us.amazon.nova-2-lite-v1:0"
+    """The one model, as ADR-0007 selects it: Nova 2 Lite via a cross-Region profile.
 
     One model for every job. No router, no tier ladder, no automatic escalation: five closed
     jobs do not need one, and a fallback chain would mean the answer a demo gets and the answer
     an eval measured came from different models.
+
+    ADR-0004 named Claude Haiku 4.5 and this default named it with it. Haiku returned no
+    readings in the P4.6 record -- not because it read badly, which was never measured, but
+    because the Marketplace subscription this account needs cannot complete. A default naming a
+    model this deployment cannot invoke is a configuration that fails on the first spoken turn,
+    so it names the one that answers instead. The Bedrock transport is unchanged and Haiku
+    remains a supported value of this variable.
     """
 
     bedrock_timeout_seconds: float = 10.0

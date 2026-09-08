@@ -108,9 +108,10 @@ def test_the_catalog_holds_only_the_models_that_have_actually_been_benchmarked()
     a price for a model nobody has run would be a number with nothing behind it.
 
     Naming the whole key set rather than only the entry that was added is the load-bearing
-    half. `Settings.bedrock_model_id` defaults to Haiku 4.5, which is now priced because the
-    customer-intent challenger measures it -- and ADR-0004's configured escalation is not, so
-    escalating to it under a dollar ceiling still refuses rather than proceeding unmeasured.
+    half. Haiku 4.5 is priced because the customer-intent challenger measures it -- and
+    ADR-0004's configured escalation is not, so escalating to it under a dollar ceiling still
+    refuses rather than proceeding unmeasured. `Settings.bedrock_model_id` defaults to Nova 2
+    Lite per ADR-0007, which is priced for the same reason: it was benchmarked.
 
     The OpenAI entry is the replacement challenger and it is exactly one: an SDK that supports
     a hundred models does not put a hundred rows here, and the floating `gpt-4o-mini` alias is

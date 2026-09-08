@@ -11,12 +11,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 
 from promise_graph.model import ExceptionCategory
 from promisepatch.config import Environment, LlmProvider, Settings
+from promisepatch.domain import customer_intent, semantic_intake, steps
+from promisepatch.domain.adapters import FakeEffectAdapter
+from promisepatch.domain.approvals import STEP_INTERPRET_CUSTOMER_REPLY
+from promisepatch.domain.model import StepResult
+from promisepatch.domain.observation import STEP_INTERPRET_SEMANTICALLY
+from promisepatch.domain.steps import StepClaim
 from promisepatch.integrations import build_semantic_provider, semantic_provider
 from promisepatch.integrations.semantic_provider import ObservedSemanticProvider
 from promisepatch.semantic import (
@@ -37,6 +45,7 @@ from promisepatch.semantic import (
 )
 from promisepatch.semantic.errors import ValidationFailure
 from promisepatch.semantic.provider import CORRECTIVE_RETRIES
+from promisepatch.worker import Worker
 
 RASPBERRY = CandidateResource(id="res-raspberry", name="raspberries")
 
@@ -259,15 +268,87 @@ def test_settings_parse_without_any_aws_credential(monkeypatch: pytest.MonkeyPat
     ):
         monkeypatch.delenv(variable, raising=False)
     settings = Settings()
-    assert settings.bedrock_model_id.startswith("us.anthropic.claude-haiku-4-5")
+    assert settings.bedrock_model_id.startswith("us.amazon.nova-2-lite")
     assert not any("aws_access" in name for name in Settings.model_fields)
     assert not any("credential" in name for name in Settings.model_fields)
 
 
 def test_the_configured_model_is_the_one_the_architecture_names() -> None:
-    """One model, no router, no automatic escalation to a stronger one."""
-    assert Settings().bedrock_model_id == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    """One model, no router, no automatic escalation to a stronger one.
+
+    ADR-0007 names it, amending ADR-0004 on the model identity and on nothing else.
+    """
+    assert Settings().bedrock_model_id == "us.amazon.nova-2-lite-v1:0"
     assert not any("escalation" in name for name in Settings.model_fields)
+
+
+def test_the_default_model_is_not_the_one_this_account_cannot_call() -> None:
+    """Haiku 4.5 is a supported value of the variable and is not the shipping default.
+
+    Nothing here is a claim about how Haiku reads: its quality was never measured. What was
+    measured is access, and the P4.6 record has the Marketplace subscription this account needs
+    failing with `INVALID_PAYMENT_INSTRUMENT`. A default naming a model the deployment cannot
+    invoke is a configuration error that waits until the first spoken turn to appear.
+    """
+    assert "haiku" not in Settings().bedrock_model_id.lower()
+    # Still buildable when a deployment asks for it by name, because the transport is unchanged.
+    configured = local_settings(
+        llm_provider=LlmProvider.BEDROCK,
+        bedrock_model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    )
+    assert configured.require_bedrock_model_id() == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+
+async def test_both_semantic_jobs_are_answered_by_the_one_configured_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The worker's sentence and the customer's reply are read by the same provider object.
+
+    This is why selecting a model selects it for both jobs: `Worker` has one provider field and
+    no per-job route to point somewhere else. Adding one would be the multi-model routing
+    ADR-0004 rejected, and no measured evidence asks for it -- no challenger cleared the frozen
+    materiality floor, so there is no better customer model to route to.
+
+    Both `prepare` functions are stood in for here, and so are the claim and the execution, so
+    what is asserted is the routing and nothing about a database.
+    """
+    handed: dict[str, object] = {}
+
+    async def record_worker(_db: object, provider: object, *, claim: StepClaim) -> None:
+        handed["worker"] = provider
+
+    async def record_customer(_db: object, provider: object, *, claim: StepClaim) -> None:
+        handed["customer"] = provider
+
+    monkeypatch.setattr(semantic_intake, "prepare", record_worker)
+    monkeypatch.setattr(customer_intent, "prepare", record_customer)
+
+    kinds = iter((STEP_INTERPRET_SEMANTICALLY, STEP_INTERPRET_CUSTOMER_REPLY))
+
+    async def claim_next(_db: object, *, worker: str, **_: object) -> StepClaim:
+        return StepClaim(
+            step_id=uuid4(),
+            case_id=uuid4(),
+            step_key="k",
+            kind=next(kinds),
+            attempts=1,
+            lease_owner=worker,
+            lease_expires_at=datetime(2026, 9, 8, tzinfo=UTC),
+        )
+
+    async def executed(_db: object, *, claim: StepClaim, actor: object) -> StepResult:
+        return StepResult.COMPLETED
+
+    monkeypatch.setattr(steps, "claim_step", claim_next)
+    monkeypatch.setattr(steps, "execute_step", executed)
+
+    configured = FakeSemanticProvider()
+    worker = Worker(database=cast(Any, None), adapter=FakeEffectAdapter(), semantic=configured)
+    await worker._execute_one_step()
+    await worker._execute_one_step()
+
+    assert handed["worker"] is configured
+    assert handed["customer"] is configured
 
 
 # ------------------------------------------------------------------------------ observability

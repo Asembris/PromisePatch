@@ -112,7 +112,7 @@ resource id admin" — are covered by tests.
 |---|---|---|
 | `PP_LLM_PROVIDER` | `fake` | `fake` or `bedrock`. An unknown value is a configuration error at settings parse time. |
 | `PP_AWS_REGION` | `us-east-1` | The Region whose Bedrock endpoint is called. |
-| `PP_BEDROCK_MODEL_ID` | the Claude Haiku 4.5 cross-Region inference profile | The one model. No router, no automatic escalation. |
+| `PP_BEDROCK_MODEL_ID` | the Nova 2 Lite cross-Region inference profile, per [ADR-0007](adr/0007-runtime-semantic-model-nova-2-lite.md) | The one model, for both semantic jobs. No router, no automatic escalation. |
 | `PP_BEDROCK_TIMEOUT_SECONDS` | `10.0` | Ceiling on one call. |
 | `PP_BEDROCK_MAX_ATTEMPTS` | `3` | Transport retries, counting the first attempt. |
 

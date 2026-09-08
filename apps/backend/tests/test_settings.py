@@ -31,6 +31,21 @@ def test_every_documented_variable_is_read() -> None:
     assert documented_keys() - set(Settings.model_fields) == set()
 
 
+def test_the_example_names_the_selected_runtime_model() -> None:
+    """The model a reader copies out of the example is the model the code would have used.
+
+    Two documents naming different models is how a deployment ends up measuring one and
+    demonstrating another. ADR-0007 selects `us.amazon.nova-2-lite-v1:0` for both semantic jobs;
+    both places say so or this fails.
+    """
+    documented = re.search(
+        r"^PP_BEDROCK_MODEL_ID=(.+)$", ENV_EXAMPLE.read_text(encoding="utf-8"), re.MULTILINE
+    )
+    assert documented is not None
+    assert documented.group(1).strip() == Settings().bedrock_model_id
+    assert Settings().bedrock_model_id == "us.amazon.nova-2-lite-v1:0"
+
+
 def test_defaults_are_local() -> None:
     settings = Settings()
     assert settings.env is Environment.LOCAL
