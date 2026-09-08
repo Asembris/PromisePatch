@@ -120,11 +120,18 @@ jobs:
       # The NVIDIA one carries the claim a third challenger rests on: the two OpenAI-compatible
       # requests are pulled apart and their semantic halves asserted equal, so "different model,
       # same question" is checked here rather than believed.
+      #
+      # `test_explanations.py` belongs here for the same reason as the grounding suite: what a
+      # settled outcome may be said to mean is decided by a pure projection over the canonical
+      # fixture, so every rule that stops a fluent passage becoming an authority -- an invented
+      # reference, a dropped cause, a figure from nowhere, a provider that is simply down --
+      # runs with no database, no credential and no network.
       - run: >
           uv run pytest
           apps/backend/tests/test_semantic_contracts.py
           apps/backend/tests/test_semantic_provider.py
           apps/backend/tests/test_semantic_grounding.py
+          apps/backend/tests/test_explanations.py
           apps/backend/tests/test_bedrock_semantic.py
           apps/backend/tests/test_openai_semantic.py
           apps/backend/tests/test_nvidia_semantic.py
