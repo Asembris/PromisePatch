@@ -215,6 +215,51 @@ async def test_the_canonical_sentence_produces_exactly_one_prompt(physical: Inta
     assert approvals.AUDIT_APPROVAL_CONFIRMATION_REQUESTED in await audit_types(physical, case_id)
 
 
+@pytest.mark.parametrize(
+    "label",
+    [
+        ApparentIntent.APPARENT_APPROVE.value,
+        ApparentIntent.APPARENT_DECLINE.value,
+        ApparentIntent.UNCLEAR.value,
+    ],
+)
+async def test_the_canonical_sentence_behaves_the_same_however_it_is_read(
+    physical: Intake, label: str
+) -> None:
+    """The regression the amended demo contract rests on.
+
+    The storyboard used to name `APPARENT_APPROVE` as the reading of this sentence. Every
+    provider measured against it -- Nova 2 Lite, GPT-4o-mini and Nemotron -- returns `UNCLEAR`,
+    so the storyboard now states the reading provider-neutrally and the demo shows whichever
+    label the configured model actually produced. That correction is only honest if the label
+    genuinely changes nothing, which is what this asserts on the frozen sentence itself: same
+    absence of a decision, same single prompt, same states, whichever of the three comes back.
+
+    `test_every_apparent_intent_asks_and_decides_nothing` makes the same claim across three
+    different sentences. This one holds the sentence fixed and varies only the reading.
+    """
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+    scripted = classifier(physical, intent(label))
+
+    await read(physical, request, CANONICAL, scripted=scripted)
+
+    assert await physical.decisions() == []
+    settled = await the_request(physical)
+    assert settled.decided is False
+    assert settled.state == ApprovalRequestState.CONFIRMATION_PENDING.value
+    assert (await track_b(physical, case_id)).state == cases.TRACK_WAITING_FOR_CUSTOMER
+    assert (await physical.case(case_id)).state == cases.CASE_WAITING
+
+    prompts = await confirmations(physical, request.id)
+    assert len(prompts) == 1
+    assert messaging.CONFIRMATION_INSTRUCTION in prompts[0].payload["text"]
+
+    replies = await physical.replies()
+    assert [reply.raw_text for reply in replies] == [CANONICAL]
+    assert replies[0].apparent_intent == label
+
+
 async def test_the_reading_is_stored_as_apparent_intent_and_nothing_else(
     physical: Intake,
 ) -> None:
