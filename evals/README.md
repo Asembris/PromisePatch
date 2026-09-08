@@ -156,7 +156,9 @@ root passes a provider in, and `evals` wraps whatever it is passed in the budget
 asking it anything. A factory cannot hand in a provider that escapes the accounting.
 
 The first benchmark run under this surface is written up in
-[`docs/semantic-benchmark.md`](../docs/semantic-benchmark.md).
+[`docs/semantic-benchmark.md`](../docs/semantic-benchmark.md). The targeted customer-intent
+challengers that followed it, and the architecture question they raised, are closed in
+[`docs/customer-intent-architecture-closeout.md`](../docs/customer-intent-architecture-closeout.md).
 
 ### Spending is authorised, not merely enabled
 
