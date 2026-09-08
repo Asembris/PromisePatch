@@ -111,11 +111,15 @@ jobs:
       # rules live in needs PostgreSQL and runs in the integration job below; the two live
       # Bedrock suites are marked `bedrock_live` and are deselected by default everywhere.
       #
-      # `test_openai_semantic.py` is here rather than with the evaluation jobs because it is a
-      # boundary test like the others: the OpenAI adapter is transport-only, its SDK import is
-      # deferred into a function body, and every request it builds is asserted against a stub
-      # that sits exactly where the SDK would. No key, no network, and no OpenAI package needs
-      # to be installed for it to run.
+      # `test_openai_semantic.py` and `test_nvidia_semantic.py` are here rather than with the
+      # evaluation jobs because they are boundary tests like the others: both adapters are
+      # transport-only, their client import is deferred into a function body, and every request
+      # they build is asserted against a stub that sits exactly where the SDK would. No key, no
+      # network, and no client package needs to be installed for either to run.
+      #
+      # The NVIDIA one carries the claim a third challenger rests on: the two OpenAI-compatible
+      # requests are pulled apart and their semantic halves asserted equal, so "different model,
+      # same question" is checked here rather than believed.
       - run: >
           uv run pytest
           apps/backend/tests/test_semantic_contracts.py
@@ -123,6 +127,7 @@ jobs:
           apps/backend/tests/test_semantic_grounding.py
           apps/backend/tests/test_bedrock_semantic.py
           apps/backend/tests/test_openai_semantic.py
+          apps/backend/tests/test_nvidia_semantic.py
 
   evaluation:
     name: semantic evaluation
@@ -195,6 +200,7 @@ jobs:
           uv run pytest
           scripts/tests/test_spend_interlock.py
           scripts/tests/test_openai_challenger.py
+          scripts/tests/test_nvidia_challenger.py
           evals/tests/test_authorisation.py
           evals/tests/test_provider_failure.py
 
@@ -211,6 +217,24 @@ jobs:
         env:
           OPENAI_API_KEY: sk-notarealkey-000000000000000000000000000000000000
         run: uv run pytest scripts/tests/test_openai_challenger.py
+
+      # The same claim for the third provider, and this one matters even though its endpoint is
+      # free. "Free" is not "harmless": the resource a stray CI call would spend is somebody's
+      # prototype quota, and a benchmark run from inside a test would be a measurement nobody
+      # asked for recorded under an experiment's name. So the environment below carries a
+      # syntactically valid NVIDIA key and the real hosted base URL, and the suite must still
+      # pass with nothing called.
+      #
+      # No repository secret exists for this and none is needed. What refuses is the harness:
+      # the scope-bound authorisation nobody typed, and the interlock that stops a pytest
+      # process constructing a paid provider at all -- neither of which cares whether a
+      # credential is present, valid, or free to use. The suite's own socket guard raises on
+      # any connection leaving the machine and asserts the count of them is zero.
+      - name: A key-carrying environment still cannot buy NVIDIA inference from a test
+        env:
+          NVIDIA_API_KEY: nvapi-notarealkey-0000000000000000000000000000000000000000
+          NVIDIA_API_BASE_URL: https://integrate.api.nvidia.com/v1
+        run: uv run pytest scripts/tests/test_nvidia_challenger.py
 
       # Type-checked here rather than in the `mypy` job: that job installs no evaluation
       # dependencies, and this is the only job that has the framework the adapter imports.
