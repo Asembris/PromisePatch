@@ -26,7 +26,7 @@ it came from. It is an estimate. AWS Billing is the truth, and this is not it.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -489,6 +489,33 @@ def remaining_budget(ceiling: EvalBudget, spent: LedgerTotals) -> EvalBudget:
     )
 
 
+def _stricter[T: (int, Decimal)](values: Iterable[T | None]) -> T | None:
+    """The smallest bound present, or ``None`` when every one of them is uncapped."""
+    present = [value for value in values if value is not None]
+    return min(present) if present else None
+
+
+def tightest(*budgets: EvalBudget) -> EvalBudget:
+    """The strictest of several ceilings, field by field. Composition, never replacement.
+
+    ``None`` means *uncapped* and therefore always loses to a number: combining a global
+    allowance with a narrower stage-specific one can only ever narrow it, never widen it, and
+    a field the narrower budget says nothing about keeps the wider budget's bound rather than
+    becoming unlimited.
+
+    This exists so a stage can carry its own hard bound *in addition to* the run-wide one. Two
+    ceilings that must both hold are safer than one number edited up and down between runs,
+    because the edit is the thing nobody re-reads. Both remain in force, and whichever refuses
+    first is the one that was strictest at that moment.
+    """
+    return EvalBudget(
+        max_calls=_stricter(budget.max_calls for budget in budgets),
+        max_input_tokens=_stricter(budget.max_input_tokens for budget in budgets),
+        max_output_tokens=_stricter(budget.max_output_tokens for budget in budgets),
+        max_estimated_usd=_stricter(budget.max_estimated_usd for budget in budgets),
+    )
+
+
 def append_to_ledger(path: Path, entry: CostLedgerEntry) -> None:
     """Append one line to a local JSONL cost ledger, creating the directory if needed.
 
@@ -525,5 +552,6 @@ __all__ = [
     "ledger_totals",
     "price_for",
     "remaining_budget",
+    "tightest",
     "utc_now_iso",
 ]

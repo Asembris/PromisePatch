@@ -175,7 +175,7 @@ def render_preflight(
             f"    never asked (0 calls)      "
             f"{eligible[EvalJob.WORKER_SEMANTICS.value + '.never_asked']} worker cases",
             "",
-            "  CEILINGS  (global across every live run of this benchmark)",
+            "  CEILINGS  (in force for this run, across every live run of this benchmark)",
             f"    max logical calls          {ceiling.max_calls}",
             f"    max input tokens           {ceiling.max_input_tokens}",
             f"    max output tokens          {ceiling.max_output_tokens}",

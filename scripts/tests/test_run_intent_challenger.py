@@ -14,20 +14,26 @@ The properties a tired operator relies on, stated plainly:
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from evals.budget import price_for
+from evals.authorisation import SpendScope, required_phrase
+from evals.budget import BudgetExhaustedError, BudgetGuard, price_for
 from evals.cases import EvalSplit
 from evals.dataset import load_dataset
 from scripts.run_intent_challenger import (
     CHALLENGER_CEILING,
     MAX_PROVIDER_FAILURES,
+    STAGE_A_CEILING,
     ChallengerRefusedError,
     build_parser,
     main,
     narrow,
+    stage_ceiling,
 )
+
+from promisepatch.semantic import SemanticJob, SemanticTelemetry, SemanticUsage
 
 HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 NOVA = "us.amazon.nova-2-lite-v1:0"
@@ -223,3 +229,180 @@ def test_the_challenged_model_is_not_the_challenger() -> None:
 def test_a_refusal_is_an_exception_type_and_not_a_printed_warning() -> None:
     """A precondition that warned would already have spent the money by the time it printed."""
     assert issubclass(ChallengerRefusedError, RuntimeError)
+
+
+# --------------------------------------- Stage A's own ceiling, on top of the global one
+
+
+def _telemetry(*, input_tokens: int, output_tokens: int) -> SemanticTelemetry:
+    """One answered call's usage. Synthetic: the thing under test is the arithmetic."""
+    return SemanticTelemetry(
+        job=SemanticJob.CLASSIFY_REPLY_INTENT,
+        provider="counting",
+        model_id=HAIKU,
+        attempts=1,
+        usage=SemanticUsage(input_tokens=input_tokens, output_tokens=output_tokens),
+    )
+
+
+def test_stage_a_is_bounded_by_twelve_calls_and_three_cents() -> None:
+    """Twelve is the selection's size. The bound is written down, not typed at a keyboard."""
+    assert STAGE_A_CEILING.max_calls == 12
+    assert STAGE_A_CEILING.max_estimated_usd == Decimal("0.03")
+
+
+def test_stage_a_composes_its_ceiling_with_the_global_one() -> None:
+    """Both hold: the stage narrows calls and dollars, the global still bounds the tokens."""
+    ceiling = stage_ceiling("a")
+    assert ceiling.max_calls == 12
+    assert ceiling.max_estimated_usd == Decimal("0.03")
+    assert ceiling.max_input_tokens == CHALLENGER_CEILING.max_input_tokens
+    assert ceiling.max_output_tokens == CHALLENGER_CEILING.max_output_tokens
+
+
+def test_the_stage_ceiling_can_only_narrow_the_global_one() -> None:
+    """A stage bound that widened any field would be a hole rather than a bound."""
+    ceiling = stage_ceiling("a")
+    assert ceiling.max_calls is not None
+    assert CHALLENGER_CEILING.max_calls is not None
+    assert ceiling.max_calls <= CHALLENGER_CEILING.max_calls
+    assert ceiling.max_estimated_usd is not None
+    assert CHALLENGER_CEILING.max_estimated_usd is not None
+    assert ceiling.max_estimated_usd <= CHALLENGER_CEILING.max_estimated_usd
+
+
+def test_stage_b_keeps_the_global_ceiling_exactly() -> None:
+    """Stage B is separately authorised and separately approved. Nothing here changed it."""
+    assert stage_ceiling("b") == CHALLENGER_CEILING
+    assert stage_ceiling("b").max_calls == 30
+    assert stage_ceiling("b").max_estimated_usd == Decimal("0.15")
+
+
+def test_stage_a_cannot_buy_a_thirteenth_call() -> None:
+    """The refusal is before the call, so the thirteenth question is never put to anything."""
+    guard = BudgetGuard(stage_ceiling("a"), price=price_for("bedrock", HAIKU), live=True)
+
+    for _ in range(12):
+        guard.authorise()
+
+    with pytest.raises(BudgetExhaustedError, match="call budget exhausted"):
+        guard.authorise()
+    assert guard.spend.calls == 12
+
+
+def test_stage_a_refuses_the_call_that_would_cross_three_cents() -> None:
+    """A dollar cap that reported afterwards would have spent the money before anybody read."""
+    guard = BudgetGuard(stage_ceiling("a"), price=price_for("bedrock", HAIKU), live=True)
+    guard.authorise()
+    guard.record(_telemetry(input_tokens=30_000, output_tokens=0))
+
+    assert guard.spend.estimated_usd is not None
+    assert guard.spend.estimated_usd >= Decimal("0.03")
+    with pytest.raises(BudgetExhaustedError, match="estimated spend budget exhausted"):
+        guard.authorise()
+
+
+def test_the_stage_a_budget_is_not_an_operator_flag() -> None:
+    """Structural. There is no flag to widen it and none to forget to narrow."""
+    options = {action.dest for action in build_parser()._actions}
+    for forbidden in ("budget", "ceiling", "max_calls", "max_estimated_usd", "usd"):
+        assert forbidden not in options
+    help_text = build_parser().format_help()
+    assert "--max-calls" not in help_text
+    assert "--max-estimated-usd" not in help_text
+
+
+# ----------------------------------------------- an approval that stops where it was given
+
+
+def test_a_stage_a_phrase_cannot_buy_stage_b(capsys: pytest.CaptureFixture[str]) -> None:
+    """Refused at the parse, before a dataset is read or a price is looked up."""
+    code = main(
+        [
+            "--live",
+            "--stage",
+            "b",
+            "--provider",
+            "bedrock",
+            "--model",
+            HAIKU,
+            "--authorise-paid-inference",
+            required_phrase(SpendScope.STAGE_A),
+        ]
+    )
+    assert code == 2
+    assert "STAGE-B" in capsys.readouterr().err
+
+
+@needs_source
+def test_a_live_stage_a_names_its_ceiling_and_still_cannot_buy_from_a_test(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two properties at once, in the order they happen.
+
+    The authorisation is granted against the *stage* ceiling, so what is printed for a reader
+    to check is 12 / $0.03 rather than the global figures. Then the process interlock refuses
+    to build the provider anyway, because this is pytest.
+    """
+    code = main(
+        [
+            "--live",
+            "--stage",
+            "a",
+            "--provider",
+            "bedrock",
+            "--model",
+            HAIKU,
+            "--authorise-paid-inference",
+            required_phrase(SpendScope.STAGE_A),
+        ]
+    )
+    assert code == 2
+    printed = capsys.readouterr()
+    assert "caps 12 call(s) / $0.03" in printed.out
+    assert "a test process may not construct a paid provider" in printed.err
+
+
+@needs_source
+def test_the_stage_a_selection_is_unchanged_by_the_budget(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The bound narrows money, not evidence: the same six failures and six controls."""
+    from scripts.run_intent_challenger import selection_path
+
+    assert main(["--stage", "a", "--model", HAIKU]) == 0
+    capsys.readouterr()
+
+    payload = json.loads(selection_path(HAIKU).read_text(encoding="utf-8"))
+    assert payload["failure_case_ids"] == [
+        "customer.approve.punctuation.001",
+        "customer.approve.terse.001",
+        "customer.approve.terse.007",
+        "customer.decline.indirect.005",
+        "customer.decline.terse.003",
+        "customer.unclear.injection.003",
+    ]
+    assert payload["control_case_ids"] == [
+        "customer.approve.terse.003",
+        "customer.approve.terse.005",
+        "customer.approve.explicit.001",
+        "customer.decline.indirect.001",
+        "customer.decline.punctuation.001",
+        "customer.unclear.injection.001",
+    ]
+    assert payload["cases"] == 12
+    selected = payload["failure_case_ids"] + payload["control_case_ids"]
+    assert len(set(selected)) == 12
+    # No worker case can reach a customer-intent challenger, and the ids say so.
+    assert all(case_id.startswith("customer.") for case_id in selected)
+
+
+def test_the_stage_a_budget_block_names_both_ceilings() -> None:
+    """A stored preflight has to answer "which bound refused" without the operator present."""
+    from scripts.run_intent_challenger import _stage_budget_block
+
+    printed = _stage_budget_block("a", stage_ceiling("a"))
+    assert "global challenger ceiling    30 call(s) / $0.15" in printed
+    assert "stage A ceiling              12 call(s) / $0.03" in printed
+    assert "effective ceiling            12 call(s) / $0.03" in printed
+    assert "both remain in force" in printed

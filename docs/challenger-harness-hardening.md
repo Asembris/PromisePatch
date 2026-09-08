@@ -258,3 +258,77 @@ This gate obtained no reading, changed no production code, ran no migration, alt
 threshold, touched no gold data and opened no holdout. It did not request Bedrock model access,
 accept Marketplace terms, modify IAM or authenticate to AWS. Whether to pursue Haiku access at
 all is a separate decision, and it is still open.
+
+---
+
+## Stage A carries its own hard budget
+
+The global `CHALLENGER_CEILING` — 30 calls and $0.15 — covers the whole challenger: Stage A,
+Stage B and any resumed attempt. It is deliberately generous enough to hold both stages, which
+means it is **not** a bound on Stage A. A Stage-A run approved at three cents was, in the code
+as it stood, permitted fifteen.
+
+That gap was found during a preflight, before any call. Stage A now carries its own ceiling:
+
+```python
+STAGE_A_CEILING = EvalBudget(
+    max_calls=12,
+    max_estimated_usd=Decimal("0.03"),
+)
+```
+
+Twelve is the selection's own size — six failures and six matched controls — so the call cap
+and the experiment are the same number rather than two numbers that have to be kept in step.
+
+**Both ceilings remain in force.** `stage_ceiling()` composes them with
+`evals.budget.tightest()`, which takes the smaller of each field, and `None` means *uncapped*
+and always loses. So the stage bound narrows calls and dollars, while the global ceiling's
+token caps carry through untouched — a field a stage bound is silent about keeps the wider
+protection rather than losing it. Composition can only ever narrow: that is asserted, both
+ways round, rather than assumed.
+
+The effective allowance is still the composed ceiling *less what the local ledger says this
+model already used*, so a resumed Stage A does not get a fresh three cents.
+
+**Stage B is unchanged.** It has no entry in `STAGE_CEILINGS`, so it keeps the global 30-call
+/ $0.15 protection exactly as before, and it remains separately authorised: a Stage-A phrase
+is refused for Stage B at the parse, before a dataset is read or a price is looked up.
+
+### Why not a flag
+
+`--max-estimated-usd` would have been three lines. It was rejected on purpose. A ceiling typed
+at the invocation is a ceiling that depends on whoever is at the keyboard getting it right at
+the end of a long session — and the failure this whole page documents is precisely a safety
+property that rested on somebody noticing. The bound belongs to the frozen experiment
+protocol, so it lives in a commit somebody reviews. There is a test asserting no such flag
+exists.
+
+The preflight prints all three figures — global, stage, effective — so a stored preflight can
+answer *which bound would have refused* without the operator present.
+
+---
+
+## Audit note — holdout inputs displayed during a preflight
+
+During the preflight that found the gap above, a search for one canonical development case
+(`customer.approve.terse.001`, "Strawberries work") printed the matching rows of the customer
+dataset, and six of those rows were **holdout** cases. Their input strings were displayed in
+the operator's terminal.
+
+Recorded here rather than left out, because a page about a harness defect that quietly omitted
+an exposure of its own would be worth less than no page.
+
+What that did **not** do:
+
+- **No holdout gold label was used for tuning.** No threshold, prompt, schema, selection rule
+  or scorer was changed, and nothing was changed *because of* those inputs.
+- **No holdout model call occurred.** The holdout is excluded structurally: selection filters
+  to the development split before anything else reads a result, `narrow()` cannot return a
+  holdout case, and there is no flag that opens it. All three are tested.
+- **No dataset change.** The gold data is untouched and its hash is unchanged:
+  `9cf1ab7820cac2be9a586328b8d500def0f34e40fe516cc8cd35e39e5a2144fd`.
+- **No production semantic change.** No prompt, no tool schema, no boundary behaviour.
+- **No model call of any kind** was made in that session — Haiku, Nova or otherwise.
+
+The exposure is to the operator's terminal, not to a model and not to the harness. The holdout
+remains unopened for evaluation purposes, and those inputs are not to be inspected again.

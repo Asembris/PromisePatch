@@ -58,7 +58,7 @@ import argparse
 import asyncio
 import json
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
 
@@ -79,6 +79,7 @@ from evals.budget import (
     ledger_totals,
     price_for,
     remaining_budget,
+    tightest,
     utc_now_iso,
 )
 from evals.cases import EvalJob, EvalSplit, ModelInput
@@ -134,6 +135,45 @@ Ceilings, not targets, and global rather than per invocation: the caps a run get
 less whatever the local cost ledger says this model already used. Expected use is well under
 them. Raising one is an edit to this line in a commit somebody can read.
 """
+
+STAGE_A_CEILING = EvalBudget(
+    max_calls=12,
+    max_estimated_usd=Decimal("0.03"),
+)
+"""Stage A's own allowance, enforced *as well as* :data:`CHALLENGER_CEILING`, never instead.
+
+Stage A is a bounded probe: six of the challenged model's customer-intent failures and their
+six matched controls, which is twelve logical calls and cannot become a thirteenth by any
+route that does not also change the selection. The bound is written here so that number is a
+property of the experiment rather than a figure an operator retypes correctly each time. A
+flag would put the ceiling in the hands of whoever is tired at the keyboard; this puts it in a
+commit somebody reviews, which is where the global ceiling already lives.
+
+Only the two fields the stage is bounded on are set. The token caps stay ``None`` -- uncapped
+*here*, which under :func:`~evals.budget.tightest` means the global ceiling's own token bounds
+carry through untouched. That is the intended shape: a stage bound narrows, and a field it is
+silent about keeps the wider protection rather than losing it.
+
+Stage B has no entry in :data:`STAGE_CEILINGS` and is therefore bounded by the global ceiling
+exactly as before. It is separately authorised, separately approved, and nothing here changes
+what it may spend.
+"""
+
+STAGE_CEILINGS: Mapping[str, EvalBudget] = {"a": STAGE_A_CEILING}
+"""Stage-specific bounds, by ``--stage``. A stage absent from this map keeps the global one."""
+
+
+def stage_ceiling(stage: str) -> EvalBudget:
+    """The ceiling one stage may not cross: the global allowance, tightened by its own bound.
+
+    Both ceilings remain in force and whichever is strictest refuses first, so the global cap
+    is defence in depth rather than something this replaced.
+    """
+    stage_bound = STAGE_CEILINGS.get(stage)
+    if stage_bound is None:
+        return CHALLENGER_CEILING
+    return tightest(CHALLENGER_CEILING, stage_bound)
+
 
 MAX_PROVIDER_FAILURES = 3
 """Transport failures tolerated before the run stops rather than paying to rediscover them."""
@@ -375,8 +415,9 @@ async def run(
 
     selected = narrow(full, wanted)
     refuse_ineligible_cases(selected)
+    ceiling = stage_ceiling(namespace.stage)
     spent = ledger_totals(LEDGER, mode=LIVE_MODE, model_id=namespace.model)
-    budget = remaining_budget(CHALLENGER_CEILING, spent)
+    budget = remaining_budget(ceiling, spent)
 
     preflight = render_preflight(
         full=full,
@@ -388,10 +429,11 @@ async def run(
         region=namespace.region,
         price=price,
         budget=budget,
-        ceiling=CHALLENGER_CEILING,
+        ceiling=ceiling,
         already_spent=json.dumps(spent.as_payload(), sort_keys=True),
     )
     print(preflight)
+    print(_stage_budget_block(namespace.stage, ceiling))
     print(_selection_block(selection, stage_a, namespace.stage, len(stored)))
     write_selection(selection_path(namespace.model), selection, namespace.model, namespace.region)
 
@@ -612,6 +654,34 @@ def _summarise(
         return summary
     operations = {**summary.operations, "stopped": stopped_by_budget}
     return summary.model_copy(update={"operations": operations})
+
+
+def _stage_budget_block(stage: str, effective: EvalBudget) -> str:
+    """Name both ceilings and the one actually in force, before anything is bought.
+
+    Printed rather than inferred because "which bound refused" has to be answerable from the
+    stored preflight alone, months later, by somebody who was not at the keyboard.
+    """
+    stage_bound = STAGE_CEILINGS.get(stage)
+    label = f"stage {stage.upper()} ceiling".ljust(28)
+    lines = [
+        "",
+        f"STAGE BUDGET  -- stage {stage.upper()} is bounded by the stricter of both ceilings",
+        f"  {'global challenger ceiling'.ljust(28)} {CHALLENGER_CEILING.max_calls} call(s) / "
+        f"${CHALLENGER_CEILING.max_estimated_usd}",
+    ]
+    if stage_bound is None:
+        lines.append(f"  {label} none -- this stage keeps the global ceiling")
+    else:
+        lines.append(
+            f"  {label} {stage_bound.max_calls} call(s) / ${stage_bound.max_estimated_usd}"
+        )
+    lines.append(
+        f"  {'effective ceiling'.ljust(28)} {effective.max_calls} call(s) / "
+        f"${effective.max_estimated_usd}"
+    )
+    lines.append("  both remain in force; the guard refuses the call that would cross either one")
+    return "\n".join(lines)
 
 
 def _selection_block(
@@ -977,8 +1047,8 @@ def _validate(namespace: argparse.Namespace) -> None:
         namespace.authorisation = authorise(
             namespace.authorise_paid_inference,
             STAGE_SCOPES[namespace.stage],
-            max_calls=CHALLENGER_CEILING.max_calls,
-            max_estimated_usd=CHALLENGER_CEILING.max_estimated_usd,
+            max_calls=stage_ceiling(namespace.stage).max_calls,
+            max_estimated_usd=stage_ceiling(namespace.stage).max_estimated_usd,
         )
 
 

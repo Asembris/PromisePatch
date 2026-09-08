@@ -32,6 +32,7 @@ from evals.budget import (
     append_to_ledger,
     estimate_usd,
     price_for,
+    tightest,
 )
 
 from promisepatch.semantic import (
@@ -359,3 +360,49 @@ def test_the_budget_reports_itself_without_inventing_a_default() -> None:
         "max_output_tokens": None,
         "max_estimated_usd": None,
     }
+
+
+# ------------------------------------------------- two ceilings, and both of them in force
+
+
+def test_the_tightest_of_two_budgets_takes_the_smaller_of_each_field() -> None:
+    """A stage bound composes with the run-wide one rather than replacing it."""
+    wide = EvalBudget(
+        max_calls=30,
+        max_input_tokens=100_000,
+        max_output_tokens=10_000,
+        max_estimated_usd=Decimal("0.15"),
+    )
+    narrow = EvalBudget(max_calls=12, max_estimated_usd=Decimal("0.03"))
+
+    combined = tightest(wide, narrow)
+
+    assert combined.max_calls == 12
+    assert combined.max_estimated_usd == Decimal("0.03")
+    # Silence about a field is not permission: the wider budget's token caps carry through.
+    assert combined.max_input_tokens == 100_000
+    assert combined.max_output_tokens == 10_000
+
+
+def test_an_uncapped_field_never_widens_a_capped_one() -> None:
+    """``None`` is uncapped and always loses. Composing can only ever narrow."""
+    assert tightest(EvalBudget(max_calls=5), EvalBudget()).max_calls == 5
+    assert tightest(EvalBudget(), EvalBudget(max_calls=5)).max_calls == 5
+    assert tightest(EvalBudget(), EvalBudget()).max_calls is None
+
+
+def test_composition_is_order_independent_and_binds_at_least_as_hard_as_either_input() -> None:
+    """The property that matters, stated as one: the result is never looser than a source."""
+    wide = EvalBudget(max_calls=30, max_estimated_usd=Decimal("0.15"))
+    narrow = EvalBudget(max_calls=12, max_estimated_usd=Decimal("0.03"))
+
+    assert tightest(wide, narrow) == tightest(narrow, wide)
+
+    combined = tightest(wide, narrow)
+    for source in (wide, narrow):
+        assert combined.max_calls is not None
+        assert source.max_calls is not None
+        assert combined.max_calls <= source.max_calls
+        assert combined.max_estimated_usd is not None
+        assert source.max_estimated_usd is not None
+        assert combined.max_estimated_usd <= source.max_estimated_usd
