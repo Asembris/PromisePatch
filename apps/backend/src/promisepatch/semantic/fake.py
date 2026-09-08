@@ -38,12 +38,17 @@ the label outside the vocabulary.
 DEFAULT_REPLIES: Final[Mapping[SemanticJob, object]] = {
     SemanticJob.INTERPRET_UTTERANCE: {"clarification_needed": True},
     SemanticJob.CLASSIFY_REPLY_INTENT: {"apparent_intent": "UNCLEAR"},
-    SemanticJob.VERBALISE: {"speech": "Recorded."},
+    SemanticJob.VERBALISE: {"speech": "Recorded.", "fact_refs": []},
 }
 """What the fake says when nothing was scripted: understood nothing, claimed nothing.
 
 ``UNCLEAR`` is also the architecture's deterministic fallback for that job, so a deployment
 running the fake behaves the way a deployment whose model is unreachable behaves.
+
+The verbalisation default accounts for no facts at all, which any real explanation request
+refuses -- so an unconfigured deployment says the deterministic passage rather than the word
+"Recorded." That is the same answer it would give if the provider were unreachable, which is
+the property this file exists to preserve.
 """
 
 

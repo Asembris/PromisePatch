@@ -15,10 +15,15 @@ a strict schema answers it. *Is this about things that exist* is ours, and no sc
 answer it: ``res-blueberry`` is a perfectly well-formed identifier and there is no such
 resource. The second check is the one that matters, because a model's failure mode is not
 malformed JSON -- it is confident, plausible, well-typed invention.
+
+For ``verbalise`` the second question has three parts, because a passage can go wrong in three
+directions: it can reach past the facts it was given, fall short of the ones the application
+said it could not leave out, or state a number that appears in none of them.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
@@ -115,7 +120,10 @@ JOB_SPECS: Final[Mapping[SemanticJob, JobSpec]] = {
     SemanticJob.VERBALISE: JobSpec(
         job=SemanticJob.VERBALISE,
         tool_name="record_speech",
-        tool_description="Record the spoken phrasing of the facts you were given.",
+        tool_description=(
+            "Record the spoken phrasing of the facts you were given, and the ids of the "
+            "facts it rests on. Records nothing in any system and changes no outcome."
+        ),
         result_model=Verbalisation,
         max_tokens=256,
     ),
@@ -221,10 +229,30 @@ def _allowed_ids(
 
 
 def _ground_verbalisation(request: VerbaliseRequest, value: Verbalisation) -> Verbalisation:
-    """A word cap is part of the contract, so exceeding it is a rejection, not a trim.
+    """Four questions, and any of them failing means the caller renders its own sentence.
 
-    Truncating would produce a sentence nobody wrote, which is worse than falling back to the
-    deterministic template the caller already has.
+    *Is it short enough.* A word cap is part of the contract, so exceeding it is a rejection
+    and never a trim: truncating would produce a sentence nobody wrote, which is worse than
+    falling back to the deterministic rendering the caller already holds.
+
+    *Is it about facts we supplied.* Every reference must be one of the ids on the request.
+    This is the verbalisation half of the rule that governs every other job here -- a model
+    names things PromisePatch offered it, and nothing else.
+
+    *Does it account for the facts that matter.* The application marked some of them required,
+    because which cause matters is a property of the outcome. A passage that dropped one is
+    refused rather than shown, since the sentence that survives would be true and beside the
+    point.
+
+    *Are its numbers ours.* Digits in the passage are compared with digits in the facts, and a
+    figure that appears in none of them is refused. Narrow on purpose -- it understands nothing
+    and a number written in words slips past it -- but "three kilograms short" where the engine
+    computed 2.1 is the invention that actually costs somebody a cake.
+
+    None of this claims the prose is faithful. It cannot: no check over free text proves that,
+    and pretending otherwise would be the boundary overstating itself. What it does establish
+    is that the passage refers to nothing invented and omits nothing mandatory -- and that the
+    outcome on screen never comes from the passage at all.
     """
     words = len(value.speech.split())
     if words > request.word_limit:
@@ -232,7 +260,45 @@ def _ground_verbalisation(request: VerbaliseRequest, value: Verbalisation) -> Ve
             f"the model returned {words} words against a limit of {request.word_limit}",
             category=ValidationFailure.WORD_CAP_EXCEEDED,
         )
+
+    offered = {fact.id for fact in request.facts}
+    unknown = sorted(set(value.fact_refs) - offered)
+    if unknown:
+        raise SemanticValidationError(
+            f"the answer refers to {', '.join(unknown)}, which PromisePatch did not supply",
+            category=ValidationFailure.UNKNOWN_CANDIDATE,
+        )
+
+    missing = sorted(set(request.required_fact_ids) - set(value.fact_refs))
+    if missing:
+        raise SemanticValidationError(
+            f"the answer accounts for none of {', '.join(missing)}, which this outcome requires",
+            category=ValidationFailure.MISSING_REQUIRED_FACT,
+        )
+
+    supplied = _numbers(" ".join(fact.value for fact in request.facts))
+    invented = sorted(_numbers(value.speech) - supplied)
+    if invented:
+        raise SemanticValidationError(
+            f"the answer states {', '.join(invented)}, which is in none of the facts it was given",
+            category=ValidationFailure.UNSUPPORTED_QUANTITY,
+        )
     return value
+
+
+_DIGITS = re.compile(r"\d+(?:[.,]\d+)?")
+"""Runs of digits, and nothing cleverer.
+
+Deliberately not a natural-language number reader. This compares the digits in the passage with
+the digits in the facts and refuses a passage that introduced one, which catches the failure
+that matters -- a quantity the engine never computed -- without pretending to understand
+anything. A number written in words passes it, so it is a floor and not a guarantee, and the
+docstring on ``UNSUPPORTED_QUANTITY`` says so.
+"""
+
+
+def _numbers(text: str) -> set[str]:
+    return set(_DIGITS.findall(text))
 
 
 __all__ = ["JOB_SPECS", "JobSpec", "spec_for", "validate"]

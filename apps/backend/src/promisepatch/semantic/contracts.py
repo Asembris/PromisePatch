@@ -29,7 +29,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from promise_graph.model import ExceptionCategory
 
@@ -39,6 +39,26 @@ MAX_UNTRUSTED_CHARACTERS = 4_000
 A bound rather than a budget. Anything longer than this is not a worker reporting a delivery
 or a customer answering a message, and sending it would be paying to have a model read
 something that arrived at the wrong door.
+"""
+
+MAX_EVIDENCE_FACTS = 16
+"""How many already-decided facts one verbalisation may be built from.
+
+Small on purpose. A passage of forty spoken words cannot honestly rest on more than a handful
+of facts, and a caller that wanted to send a whole case would be sending state rather than a
+conclusion -- which is the shape this job exists to refuse.
+"""
+
+MAX_FACT_ID_CHARACTERS = 64
+MAX_FACT_TEXT_CHARACTERS = 200
+"""Bounds on one fact's name, label and rendered value. Values, not essays."""
+
+FACT_ID_PATTERN = r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$"
+"""The shape of a fact identifier: dotted, lowercase, ``resource.shortfall``.
+
+Enforced on the request rather than on the answer, because the request is the side
+PromisePatch writes. What the model returns is checked against the ids that were actually
+sent, which is a stronger question than whether a string looks like one.
 """
 
 
@@ -192,10 +212,18 @@ class ClassifyReplyIntentRequest(Strict):
 
 
 class EvidenceFact(Strict):
-    """One deterministic fact, already decided and already rendered, offered for phrasing."""
+    """One deterministic fact, already decided and already rendered, offered for phrasing.
 
-    label: str
-    value: str
+    ``id`` is the whole reason this is a record rather than a sentence. A fact the caller can
+    name is a fact the answer can be checked against: the passage that comes back says which
+    ids it rests on, and an id nobody sent is an answer about something PromisePatch did not
+    say. Without it the only available check would be reading the prose, which is the thing
+    this boundary exists not to have to do.
+    """
+
+    id: str = Field(max_length=MAX_FACT_ID_CHARACTERS, pattern=FACT_ID_PATTERN)
+    label: str = Field(max_length=MAX_FACT_TEXT_CHARACTERS)
+    value: str = Field(max_length=MAX_FACT_TEXT_CHARACTERS)
 
 
 class VerbaliseRequest(Strict):
@@ -204,13 +232,35 @@ class VerbaliseRequest(Strict):
     The facts are the whole input. Nothing here is a question, so there is nothing for the
     model to work out -- which is exactly why a sentence it produces can be thrown away and
     replaced by a template without changing anything the system did.
+
+    ``required_fact_ids`` is the application saying which of those facts the passage may not
+    leave out. Deterministic code decides that, because which cause matters is a property of
+    the outcome and not of the phrasing: a blocked promise whose passage never mentions the
+    rule that blocked it is a fluent answer to a different question.
     """
 
     job: Literal[SemanticJob.VERBALISE] = SemanticJob.VERBALISE
-    subject: str
-    facts: tuple[EvidenceFact, ...]
+    subject: str = Field(max_length=MAX_FACT_TEXT_CHARACTERS)
+    facts: tuple[EvidenceFact, ...] = Field(min_length=1, max_length=MAX_EVIDENCE_FACTS)
+    required_fact_ids: tuple[str, ...] = ()
     word_limit: int = Field(ge=1, le=120)
     metadata: SemanticMetadata = SemanticMetadata()
+
+    @model_validator(mode="after")
+    def _requirements_are_offered(self) -> VerbaliseRequest:
+        """A required fact must be one of the facts sent, and the ids must be distinct.
+
+        An invariant of the *caller*, checked here so it cannot be got wrong quietly: a
+        request demanding a fact it never supplied could only ever be refused, and two facts
+        sharing an id would make a reference ambiguous.
+        """
+        ids = [fact.id for fact in self.facts]
+        if len(set(ids)) != len(ids):
+            raise ValueError("two facts share an id")
+        missing = [fact_id for fact_id in self.required_fact_ids if fact_id not in set(ids)]
+        if missing:
+            raise ValueError(f"required fact(s) {', '.join(sorted(missing))} were not supplied")
+        return self
 
 
 type SemanticRequest = Annotated[
@@ -287,9 +337,21 @@ class ReplyIntentReading(Strict):
 
 
 class Verbalisation(Strict):
-    """One sentence saying what was already decided."""
+    """One passage saying what was already decided, and the facts it rests on.
+
+    There is no field here for an outcome, a status, a decision or a recommendation, and that
+    is the whole design. The passage is presentation: PromisePatch already knows what happened
+    and displays it from its own columns, so a sentence claiming something else is a sentence
+    that is wrong on screen rather than a sentence that changed anything.
+
+    ``fact_refs`` is what makes an answer checkable without reading it. Every reference must be
+    one of the ids the caller supplied, and every id the caller marked required must appear --
+    so an answer that reached past its facts, or quietly dropped the cause, is refused and the
+    deterministic rendering of the same facts is used instead.
+    """
 
     speech: str = Field(max_length=1_000)
+    fact_refs: tuple[str, ...] = Field(default=(), max_length=MAX_EVIDENCE_FACTS)
 
 
 type SemanticValue = ObservationInterpretation | ReplyIntentReading | Verbalisation
@@ -297,6 +359,10 @@ type SemanticValue = ObservationInterpretation | ReplyIntentReading | Verbalisat
 
 
 __all__ = [
+    "FACT_ID_PATTERN",
+    "MAX_EVIDENCE_FACTS",
+    "MAX_FACT_ID_CHARACTERS",
+    "MAX_FACT_TEXT_CHARACTERS",
     "MAX_UNTRUSTED_CHARACTERS",
     "ApparentIntent",
     "CandidateBinding",

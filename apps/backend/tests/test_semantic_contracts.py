@@ -14,6 +14,7 @@ import pathlib
 import typing
 from datetime import UTC, datetime
 
+import pydantic
 import pytest
 from pydantic import BaseModel
 
@@ -43,7 +44,6 @@ from promisepatch.semantic import (
     SemanticProvider,
     SemanticValidationError,
     UntrustedText,
-    Verbalisation,
     VerbaliseRequest,
     validate,
 )
@@ -248,19 +248,89 @@ def test_an_intent_outside_the_closed_vocabulary_is_refused(label: str) -> None:
     assert raised.value.category is ValidationFailure.UNSUPPORTED_VOCABULARY
 
 
+def verbalise(word_limit: int = 5) -> VerbaliseRequest:
+    """One plan summary, with the fact the caller says the passage may not leave out."""
+    return VerbaliseRequest(
+        subject="plan summary",
+        facts=(
+            EvidenceFact(id="case.affected", label="orders affected", value="2"),
+            EvidenceFact(id="case.unaffected", label="orders untouched", value="3"),
+        ),
+        required_fact_ids=("case.affected",),
+        word_limit=word_limit,
+    )
+
+
 def test_speech_longer_than_the_cap_is_refused_rather_than_trimmed() -> None:
     """Truncating would produce a sentence nobody wrote. The template is the better answer."""
-    request = VerbaliseRequest(
-        subject="plan summary",
-        facts=(EvidenceFact(label="orders affected", value="2"),),
-        word_limit=5,
-    )
+    request = verbalise()
     with pytest.raises(SemanticValidationError) as raised:
-        validate(request, {"speech": "one two three four five six"})
+        validate(request, {"speech": "one two three four five six", "fact_refs": ["case.affected"]})
     assert raised.value.category is ValidationFailure.WORD_CAP_EXCEEDED
-    assert validate(request, {"speech": "two orders are affected"}) == Verbalisation(
-        speech="two orders are affected"
+    assert validate(request, {"speech": "two orders are affected", "fact_refs": ["case.affected"]})
+
+
+def test_a_passage_referring_to_a_fact_nobody_supplied_is_refused() -> None:
+    """The verbalise job's own version of "identifiers are chosen, never written"."""
+    with pytest.raises(SemanticValidationError) as raised:
+        validate(
+            verbalise(),
+            {"speech": "two orders are affected", "fact_refs": ["case.affected", "case.invented"]},
+        )
+    assert raised.value.category is ValidationFailure.UNKNOWN_CANDIDATE
+
+
+def test_a_passage_that_drops_a_required_fact_is_refused() -> None:
+    """A fluent sentence that never reaches the cause is an answer to a different question."""
+    with pytest.raises(SemanticValidationError) as raised:
+        validate(verbalise(), {"speech": "three orders are fine", "fact_refs": ["case.unaffected"]})
+    assert raised.value.category is ValidationFailure.MISSING_REQUIRED_FACT
+
+
+def test_a_passage_stating_a_figure_from_nowhere_is_refused() -> None:
+    """Digits against digits: a number in none of the facts is invention, not phrasing."""
+    with pytest.raises(SemanticValidationError) as raised:
+        validate(
+            verbalise(word_limit=20),
+            {"speech": "9 orders are affected", "fact_refs": ["case.affected"]},
+        )
+    assert raised.value.category is ValidationFailure.UNSUPPORTED_QUANTITY
+    assert validate(
+        verbalise(word_limit=20),
+        {"speech": "2 orders are affected", "fact_refs": ["case.affected"]},
     )
+
+
+def test_the_quantity_check_is_a_floor_and_the_boundary_does_not_overclaim_it() -> None:
+    """A number written in words passes. Stated here rather than left for somebody to discover.
+
+    The check compares digit runs and understands nothing, so "nine orders" is accepted where
+    "9 orders" is refused. That is deliberate: a natural-language number reader would be a
+    second, fallible parser sitting on the safety path, and how often a real model writes a
+    figure it was never given is a question for measurement, not for a regex.
+    """
+    assert validate(
+        verbalise(word_limit=20),
+        {"speech": "nine orders are affected", "fact_refs": ["case.affected"]},
+    )
+
+
+def test_a_verbalise_request_cannot_require_a_fact_it_never_supplied() -> None:
+    """An invariant of the caller: a demand that could only ever be refused is a bug here."""
+    with pytest.raises(pydantic.ValidationError):
+        VerbaliseRequest(
+            subject="plan summary",
+            facts=(EvidenceFact(id="case.affected", label="orders affected", value="2"),),
+            required_fact_ids=("case.unaffected",),
+            word_limit=5,
+        )
+
+
+def test_the_facts_offered_for_phrasing_are_fenced_as_data() -> None:
+    """Customer names and order references came from somebody else's system. They are data."""
+    content = build_user_content(verbalise())
+    assert content.index(DATA_OPEN) > content.index("FACT IDS YOUR PASSAGE MUST ACCOUNT FOR")
+    assert content.endswith(DATA_CLOSE)
 
 
 # ------------------------------------------------------------------------ injected instructions

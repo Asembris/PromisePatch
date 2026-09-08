@@ -74,6 +74,24 @@ class ValidationFailure(StrEnum):
     WORD_CAP_EXCEEDED = "WORD_CAP_EXCEEDED"
     """Longer than the caller said it could be. A cap is part of the contract, not advice."""
 
+    UNSUPPORTED_QUANTITY = "UNSUPPORTED_QUANTITY"
+    """A number in the passage that appears in none of the facts it was given.
+
+    Narrow by construction: it compares digits against digits and understands nothing. A model
+    that wrote a quantity in words has not been checked, which is why this is a floor rather
+    than a proof -- but a passage saying "three kilograms short" where the engine computed 2.1
+    is the failure that actually costs somebody a cake, and it is worth refusing outright.
+    """
+
+    MISSING_REQUIRED_FACT = "MISSING_REQUIRED_FACT"
+    """A passage that left out a fact the application said it could not leave out.
+
+    Separate from ``UNKNOWN_CANDIDATE`` because the two failures are opposite directions of the
+    same boundary: one is a model reaching past the facts it was given, and this is a model
+    falling short of them. A fluent sentence that never mentions the rule that blocked a
+    promise is not a shorter explanation; it is an explanation of something else.
+    """
+
 
 class SemanticValidationError(SemanticError):
     """The model answered, and the answer is not usable. Carries no partial value.
