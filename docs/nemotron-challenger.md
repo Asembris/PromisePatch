@@ -1,13 +1,14 @@
-# The NVIDIA Nemotron challenger — integrated, not yet run
+# The NVIDIA Nemotron challenger — how it was integrated
 
-> **NVIDIA model calls: 0. OpenAI calls: 0. Nova calls: 0. Haiku calls: 0. Model spend: $0.**
+> **Stage A has since been executed.** Its evidence is
+> [`nemotron-challenger-stage-a.md`](nemotron-challenger-stage-a.md): 12/12 valid readings,
+> 0 repairs, materiality **FAIL**, Stage B not opened. **Production routing unchanged.**
 > **Holdout model calls: 0. Worker calls: 0.**
-> **Stage A has NOT been executed. Production routing unchanged.**
 
 This page records what was built so that one more model can be asked the *same* question the
-previous two were asked, and what was deliberately not built. Nothing here is evidence about
-Nemotron: no request has been sent to NVIDIA, and every number below is either a configuration
-somebody chose or a fact about an earlier model's run.
+previous two were asked, and what was deliberately not built. Nothing on *this* page is
+evidence about Nemotron: every number below is either a configuration somebody chose or a fact
+about an earlier model's run. The measurement lives on the Stage-A page above.
 
 ---
 
@@ -349,4 +350,5 @@ stops. It constructs no client and calls nothing. Buying Stage A additionally ta
 * Nemotron is **not** an LLM judge, an explanation evaluator or a red-team model. Those are
   later decisions and none of that work is here.
 * No Ollama, no generic provider marketplace, no model catalog sweep.
-* Stage B is not authorised and is not opened. Stage A has not been executed.
+* Stage B is not authorised and is not opened. (Stage A has since been run, and did not open
+  it: see [`nemotron-challenger-stage-a.md`](nemotron-challenger-stage-a.md).)
