@@ -1,6 +1,9 @@
 # ADR-0004 — One Bedrock model via Converse forced tool-use
 
-Status: accepted
+Status: accepted — amended by [ADR-0007](0007-runtime-semantic-model-nova-2-lite.md),
+which replaces the model identity below with `us.amazon.nova-2-lite-v1:0`. Everything
+else on this page still stands: one model for every job, Converse with forced tool use,
+schema validation, one corrective retry, deterministic fallback, no write tool.
 Date: 2026-09-02
 Phase: 4
 
