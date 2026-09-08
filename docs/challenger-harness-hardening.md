@@ -3,7 +3,7 @@
 > **Haiku quality: NOT MEASURED.** No semantic reading has ever been obtained from
 > `us.anthropic.claude-haiku-4-5-20251001-v1:0` in this repository. Nothing on this page is
 > evidence about that model, and no page in this repository is. **Holdout: not opened.**
-> **Nova calls: 0. Haiku calls: 0. OpenAI calls: 0.**
+> **For the work recorded on this page — Nova calls: 0. Haiku calls: 0. OpenAI calls: 0.**
 
 This is the record of a harness defect, the evidence it produced, and the guards added because
 of it. It is written down rather than tidied away because the sequence — a safe-looking test
@@ -452,4 +452,8 @@ holdout model calls: 0
 migrations:          none
 ```
 
-Stage A has not been run.
+Stage A had not been run when this page was written. It has been run since, against
+`gpt-4o-mini-2024-07-18`: twelve calls, twelve readings, no provider failure, $0.00114675. It
+repaired two of Nova's six customer-intent failures against a floor of three, preserved all six
+matched controls, and did **not** clear materiality, so Stage B was not opened. The record is
+[`docs/customer-intent-challenger-stage-a.md`](customer-intent-challenger-stage-a.md).
