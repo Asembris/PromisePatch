@@ -39,6 +39,7 @@ IDENTITY_FIELDS = (
     "prompts",
     "provider",
     "model_id",
+    "endpoint",
     "mode",
     "splits",
 )
@@ -47,6 +48,13 @@ IDENTITY_FIELDS = (
 The prompt hashes are in the list deliberately. A resumed run whose prompts had changed in
 between would be two experiments in one summary, and the identity check is the only thing
 standing between that and a number nobody could interpret.
+
+So is the endpoint, and for the same reason one step further out. A provider name and a model
+id do not always locate a model: an OpenAI-compatible protocol is spoken by hosted services,
+self-hosted containers and proxies alike, and the same model name behind two of them is two
+measurements. Runs that predate this field, and every run against a provider with one canonical
+endpoint, record ``None`` -- which matches ``None`` and leaves them continuable exactly as they
+were.
 """
 
 
@@ -70,6 +78,17 @@ class RunHeader:
     splits: tuple[str, ...]
     region: str | None = None
     pricing_snapshot: str | None = None
+    endpoint: str | None = None
+    """Which host answered, where that is not implied by the provider name. See
+    :data:`IDENTITY_FIELDS`."""
+
+    decoding: Mapping[str, object] | None = None
+    """How the model was asked to sample, and whether it was asked to reason.
+
+    Recorded because it is part of what was measured -- the same model with a hidden reasoning
+    trace on and off is two experiments -- and deliberately *not* in :data:`IDENTITY_FIELDS`:
+    it is descriptive telemetry, and the fields that gate a resume are the ones whose drift
+    would silently blend two datasets or two models into one summary."""
 
     def as_payload(self) -> dict[str, object]:
         return {
@@ -86,6 +105,8 @@ class RunHeader:
             "splits": list(self.splits),
             "region": self.region,
             "pricing_snapshot": self.pricing_snapshot,
+            "endpoint": self.endpoint,
+            "decoding": None if self.decoding is None else dict(self.decoding),
         }
 
     def identity(self) -> dict[str, object]:
@@ -318,6 +339,8 @@ def read_run(path: Path) -> tuple[RunHeader, tuple[CaseResult, ...]]:
         splits=tuple(header_payload.get("splits", ())),
         region=header_payload.get("region"),
         pricing_snapshot=header_payload.get("pricing_snapshot"),
+        endpoint=header_payload.get("endpoint"),
+        decoding=header_payload.get("decoding"),
     )
     return header, tuple(_cases(lines[1:]))
 
