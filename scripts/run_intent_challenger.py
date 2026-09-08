@@ -38,6 +38,14 @@ attempt log rather than into the results file, so a resumed run asks the case ag
 reading an outage back as an answer -- and the paired taxonomy classifies it as
 ``PROVIDER_FAILURE`` rather than as an unrepaired failure or a control regression.
 
+**Two providers, two ceilings, one experiment.** A challenger may be reached through Bedrock or
+through OpenAI, and each carries its own global and stage allowances because the two are an
+order of magnitude apart in price -- a dollar cap sized for the dearer one is not a cap on the
+cheaper one. Nothing else about the comparison changes with the provider: the same frozen
+dataset, the same stored source run, the same deterministic selection, the same production
+prompt and schema, the same scorer and the same materiality floor. Only the model differs, which
+is the whole point of a challenger.
+
 Plan the set without calling anything::
 
     uv run python -m scripts.run_intent_challenger --stage a --model <id> --plan
@@ -46,6 +54,10 @@ Run Stage A::
 
     uv run python -m scripts.run_intent_challenger --live --provider bedrock --model <id> \\
         --stage a --authorise-paid-inference AUTHORISE-PAID-INFERENCE-STAGE-A
+
+    uv run python -m scripts.run_intent_challenger --live --provider openai \\
+        --model gpt-4o-mini-2024-07-18 --stage a \\
+        --authorise-paid-inference AUTHORISE-PAID-INFERENCE-STAGE-A
 
 Rebuild any report from what a run already paid for::
 
@@ -57,8 +69,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
@@ -123,6 +137,34 @@ RESULTS_DIR = Path(".eval-results")
 LEDGER = RESULTS_DIR / "cost-ledger.jsonl"
 DEFAULT_SOURCE = RESULTS_DIR / "development-us.amazon.nova-2-lite-v1_0.jsonl"
 
+BEDROCK = LlmProvider.BEDROCK.value
+OPENAI = "openai"
+"""The two providers a challenger may be reached through, by the name a result file records.
+
+``openai`` is a literal rather than a :class:`~promisepatch.config.LlmProvider` member on
+purpose. That enum is the runtime's routing surface, and adding to it would widen what a
+deployment can be configured to do -- which is a production change, and this gate makes none.
+The OpenAI adapter is reachable from here, from a composition root that has to be handed an
+authorisation and a key, and from nowhere a running worker can get to.
+"""
+
+GPT_4O_MINI = "gpt-4o-mini-2024-07-18"
+"""The pinned challenger snapshot. The dated id, never the floating ``gpt-4o-mini`` alias.
+
+A benchmark identity has to survive the provider changing what an alias points at. The two are
+different models for every purpose here: different price lookups, different result files,
+different run headers, and a run started against one may not be continued against the other.
+"""
+
+OPENAI_ALIASES: Mapping[str, str] = {"gpt-4o-mini": GPT_4O_MINI}
+"""Floating names this command refuses, and the pinned snapshot to use instead.
+
+Refused by name rather than merely left unpriced. Unknown pricing would already stop the run --
+the alias is not in the catalog and never will be -- but "no verified price" is the wrong
+sentence for this mistake, and an operator who reads it looks for a pricing bug instead of
+typing the date.
+"""
+
 CHALLENGER_CEILING = EvalBudget(
     max_calls=30,
     max_input_tokens=100_000,
@@ -163,16 +205,82 @@ STAGE_CEILINGS: Mapping[str, EvalBudget] = {"a": STAGE_A_CEILING}
 """Stage-specific bounds, by ``--stage``. A stage absent from this map keeps the global one."""
 
 
-def stage_ceiling(stage: str) -> EvalBudget:
-    """The ceiling one stage may not cross: the global allowance, tightened by its own bound.
+OPENAI_CHALLENGER_CEILING = EvalBudget(
+    max_calls=30,
+    max_input_tokens=100_000,
+    max_output_tokens=10_000,
+    max_estimated_usd=Decimal("0.03"),
+)
+"""The OpenAI challenger's whole allowance, across Stage A, Stage B and any resumed attempt.
+
+Its own ceiling rather than the Bedrock one reused, because the two models are an order of
+magnitude apart in price and a dollar cap sized for the dearer one is not a cap on the cheaper
+one at all. At the recorded snapshot price, the token ceilings above come to $0.021 --
+100k input at $0.15/M is $0.015, 10k output at $0.60/M is $0.006 -- so three cents sits above
+what the token bounds already permit. That is the intended shape: the dollar cap is a backstop
+for arithmetic nobody re-checked, not the bound expected to bite.
+
+The call and token bounds are deliberately the same numbers the Bedrock ceiling carries. The
+experiment is the same size whichever model answers it; only the money differs.
+"""
+
+OPENAI_STAGE_A_CEILING = EvalBudget(
+    max_calls=12,
+    max_estimated_usd=Decimal("0.01"),
+)
+"""OpenAI Stage A's own allowance, enforced *as well as* :data:`OPENAI_CHALLENGER_CEILING`.
+
+Twelve is the selection's own size -- six of the challenged model's customer-intent failures
+and their six matched controls -- so the call cap and the experiment are one number rather than
+two that have to be kept in step. One cent is far above what twelve calls of this shape can
+cost and far below anything worth noticing, which is what a probe's ceiling should be.
+
+Only the two fields the stage is bounded on are set, exactly as :data:`STAGE_A_CEILING` is: the
+token caps stay ``None`` here so :func:`~evals.budget.tightest` carries the global ceiling's own
+token bounds through untouched.
+"""
+
+PROVIDER_CEILINGS: Mapping[str, EvalBudget] = {
+    BEDROCK: CHALLENGER_CEILING,
+    OPENAI: OPENAI_CHALLENGER_CEILING,
+}
+"""The global allowance per provider. Separate entries, never one number shared between them.
+
+A shared ceiling would make one challenger's history debit another's allowance, and a
+discontinued attempt would keep paying for itself for ever. Keeping them apart is also what
+lets the Bedrock figures stay exactly as they were recorded: this gate adds a provider, it does
+not reprice one.
+"""
+
+PROVIDER_STAGE_CEILINGS: Mapping[str, Mapping[str, EvalBudget]] = {
+    BEDROCK: STAGE_CEILINGS,
+    OPENAI: {"a": OPENAI_STAGE_A_CEILING},
+}
+"""Stage bounds per provider. A stage absent from a provider's map keeps that provider's global
+ceiling -- which is how Stage B stays bounded exactly as it was, for both of them."""
+
+
+def global_ceiling(provider: str) -> EvalBudget:
+    """One provider's whole challenger allowance. Unknown providers get no allowance at all."""
+    ceiling = PROVIDER_CEILINGS.get(provider)
+    if ceiling is None:  # pragma: no cover - argparse closes the choice set first
+        raise ChallengerRefusedError(
+            f"{provider!r} has no challenger ceiling written down, so nothing bounds a run "
+            f"against it. A provider without a ceiling is a provider that cannot be run."
+        )
+    return ceiling
+
+
+def stage_ceiling(stage: str, provider: str = BEDROCK) -> EvalBudget:
+    """The ceiling one stage may not cross: that provider's allowance, tightened by its own bound.
 
     Both ceilings remain in force and whichever is strictest refuses first, so the global cap
     is defence in depth rather than something this replaced.
     """
-    stage_bound = STAGE_CEILINGS.get(stage)
+    stage_bound = PROVIDER_STAGE_CEILINGS.get(provider, {}).get(stage)
     if stage_bound is None:
-        return CHALLENGER_CEILING
-    return tightest(CHALLENGER_CEILING, stage_bound)
+        return global_ceiling(provider)
+    return tightest(global_ceiling(provider), stage_bound)
 
 
 MAX_PROVIDER_FAILURES = 3
@@ -205,11 +313,34 @@ class ChallengerRefusedError(RuntimeError):
 # ------------------------------------------------------------------ the paid provider seam
 
 
-type ProviderBuilder = Callable[[Settings, SpendAuthorisation], SemanticProvider]
+@dataclass(frozen=True, slots=True)
+class ChallengerTarget:
+    """Which model this invocation would pay to ask, and everything needed to reach it.
+
+    A value rather than four arguments, because "which provider, which model" is one decision
+    and splitting it across a signature is how a run ends up naming one provider and calling
+    another. It carries no credential: the key, when there is one, is resolved by the
+    composition root immediately before the builder is called and handed to the adapter that
+    needs it, so nothing that gets written down or printed has ever held it.
+    """
+
+    provider: str
+    model_id: str
+    region: str | None
+    settings: Settings
+    """Production's settings object, for the provider that has one. OpenAI does not appear in
+    it at all -- there is no runtime routing to OpenAI, and this gate adds none."""
+
+    api_key: str | None = None
+
+
+type ProviderBuilder = Callable[[ChallengerTarget, SpendAuthorisation], SemanticProvider]
 """How this command gets something that can be charged for. A parameter, never a branch."""
 
 
-def bedrock_provider(settings: Settings, authorisation: SpendAuthorisation) -> SemanticProvider:
+def bedrock_provider(
+    target: ChallengerTarget, authorisation: SpendAuthorisation
+) -> SemanticProvider:
     """Production's own provider factory, behind the two guards that gate paid inference.
 
     The authorisation is taken as an argument rather than looked up, so there is no way to
@@ -225,7 +356,92 @@ def bedrock_provider(settings: Settings, authorisation: SpendAuthorisation) -> S
     refuse_real_inference_under_test(authorisation.scope)
     from promisepatch.integrations.semantic_provider import build_semantic_provider
 
-    return build_semantic_provider(settings)
+    return build_semantic_provider(target.settings)
+
+
+def openai_provider(
+    target: ChallengerTarget, authorisation: SpendAuthorisation
+) -> SemanticProvider:
+    """The OpenAI transport adapter, behind the same two guards and one more.
+
+    The same shape as the Bedrock builder above and for the same reasons: an authorisation is
+    an argument, the test interlock is checked on the last line before money, and the SDK
+    import is deferred so that importing this module loads no vendor client.
+
+    The third guard is the key. It is not read here and it is not read by the adapter -- both
+    of them take it -- so a missing credential is a refusal the composition root already made
+    before this function existed in the call stack. The check below is the assertion that it
+    did, not the place the decision is taken.
+    """
+    refuse_real_inference_under_test(authorisation.scope)
+    if not target.api_key:  # pragma: no cover - the composition root refuses first
+        raise ChallengerRefusedError(
+            "no OpenAI API key reached the provider builder. A run that got this far without "
+            "one is a run whose preflight did not check, which is a defect in the ordering."
+        )
+    from promisepatch.integrations.openai import OpenAiSemanticProvider
+
+    return OpenAiSemanticProvider.with_api_key(api_key=target.api_key, model_id=target.model_id)
+
+
+PROVIDER_BUILDERS: Mapping[str, ProviderBuilder] = {
+    BEDROCK: bedrock_provider,
+    OPENAI: openai_provider,
+}
+
+
+def paid_provider(target: ChallengerTarget, authorisation: SpendAuthorisation) -> SemanticProvider:
+    """The default builder: whichever vendor client this target names, and no other.
+
+    A lookup rather than a chain of ``if``s, so adding a provider cannot quietly change what
+    happens for an existing one. It is still the seam -- a test passes its own builder in and
+    never reaches this function at all.
+    """
+    builder = PROVIDER_BUILDERS.get(target.provider)
+    if builder is None:  # pragma: no cover - argparse closes the choice set first
+        raise ChallengerRefusedError(f"{target.provider!r} has no provider builder")
+    return builder(target, authorisation)
+
+
+# ------------------------------------------------------------------- the OpenAI credential
+
+
+API_KEY_VARIABLE = "OPENAI_API_KEY"
+"""The one name this command will look under. Never printed, never logged, never persisted."""
+
+
+def read_openai_api_key(env_file: Path = Path(".env")) -> str | None:
+    """The key, from the process environment or the local ``.env``, or ``None``.
+
+    Two places because both are real: an operator may export it for one command, and this
+    repository's convention -- the one pydantic-settings already follows for everything else --
+    is that local configuration lives in an ignored ``.env``. Neither is a secret store and
+    neither is treated as one; this returns the value to exactly one caller, which hands it to
+    exactly one constructor.
+
+    The value is never returned to anything that prints, formats or serialises. Everything a
+    report, a preflight, a result file, a ledger line or an error message sees is the boolean
+    from :func:`openai_api_key_present`.
+    """
+    from_environment = os.environ.get(API_KEY_VARIABLE, "").strip()
+    if from_environment:
+        return from_environment
+    if not env_file.is_file():
+        return None
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, _, value = stripped.partition("=")
+        if name.strip() != API_KEY_VARIABLE:
+            continue
+        return value.strip().strip("\"'") or None
+    return None
+
+
+def openai_api_key_present(env_file: Path = Path(".env")) -> bool:
+    """Whether a key is available, as a boolean and only ever as a boolean."""
+    return read_openai_api_key(env_file) is not None
 
 
 # ------------------------------------------------------------------------ reading the source
@@ -337,6 +553,44 @@ def refuse_challenging_a_model_with_itself(source: SourceRun, model: str) -> Non
         )
 
 
+def refuse_a_floating_model_alias(provider: str, model: str) -> None:
+    """Refuse an alias, before a plan is written and long before anything is bought.
+
+    A benchmark's model identity has to be the thing that was actually measured. An alias is a
+    pointer the provider may repoint without telling anybody, so a number recorded against one
+    describes whichever snapshot answered that day -- and the next run under the same name is
+    not a comparison, it is two experiments sharing a label.
+    """
+    pinned = OPENAI_ALIASES.get(model) if provider == OPENAI else None
+    if pinned is None:
+        return
+    raise ChallengerRefusedError(
+        f"{model!r} is a floating alias, not a model. A benchmark result has to name the "
+        f"snapshot that produced it, because an alias may point somewhere else next week and "
+        f"the two results would not be comparable. Use --model {pinned}."
+    )
+
+
+def refuse_a_missing_openai_key(provider: str) -> None:
+    """Refuse before the provider builder when the credential is not there. Never prints it.
+
+    Ordered here rather than left to the SDK on purpose. A client constructed without a key
+    fails at the first request, which is a failure that has already left the machine and has
+    already been counted as an attempt; a check before construction is a refusal that costs
+    nothing and cannot be mistaken for a provider outage.
+
+    There is no fallback. Not to Bedrock, not to another model, not to another variable: a run
+    that quietly measured something else would answer a question nobody asked.
+    """
+    if provider != OPENAI or openai_api_key_present():
+        return
+    raise ChallengerRefusedError(
+        f"{API_KEY_VARIABLE} is not set and no local .env supplies it, so the OpenAI "
+        f"challenger cannot be reached. Nothing was constructed and nothing was spent. This "
+        f"command does not fall back to another provider or another model."
+    )
+
+
 def results_path(model: str) -> Path:
     return RESULTS_DIR / f"challenger-{model.replace(':', '_')}.jsonl"
 
@@ -370,7 +624,7 @@ def write_selection(path: Path, selection: StageASelection, model: str, region: 
 async def run(
     namespace: argparse.Namespace,
     *,
-    provider_builder: ProviderBuilder = bedrock_provider,
+    provider_builder: ProviderBuilder = paid_provider,
 ) -> int:
     """Plan, preflight, and -- only with an authorisation -- buy the stage that was asked for.
 
@@ -394,14 +648,6 @@ async def run(
     except ChallengerError as error:
         raise ChallengerRefusedError(str(error)) from error
 
-    price = price_for(namespace.provider, namespace.model)
-    if price is None:
-        raise ChallengerRefusedError(
-            f"{namespace.model!r} has no verified price in evals.budget.PRICES, so a dollar "
-            f"ceiling cannot be enforced for it. Add it from a current published price list, "
-            f"with the day it was read, before challenging with it."
-        )
-
     attempts = ProviderFailureLog(failures_path(namespace.model))
     stored = _stored_results(results_path(namespace.model))
     stage_a = build_stage_a(full, selection, source, _with_attempts(full, stored, attempts))
@@ -415,9 +661,25 @@ async def run(
 
     selected = narrow(full, wanted)
     refuse_ineligible_cases(selected)
-    ceiling = stage_ceiling(namespace.stage)
-    spent = ledger_totals(LEDGER, mode=LIVE_MODE, model_id=namespace.model)
+
+    # Pricing after eligibility and before any budget arithmetic, which is the order the two
+    # questions actually depend on each other in: what may be asked is a property of the
+    # dataset, and what it may cost is only worth computing once the set is legal.
+    price = price_for(namespace.provider, namespace.model)
+    if price is None:
+        raise ChallengerRefusedError(
+            f"{namespace.model!r} has no verified price in evals.budget.PRICES for provider "
+            f"{namespace.provider!r}, so a dollar ceiling cannot be enforced for it. Add it "
+            f"from a current published price list, with the day it was read, before "
+            f"challenging with it."
+        )
+
+    ceiling = stage_ceiling(namespace.stage, namespace.provider)
+    spent = ledger_totals(
+        LEDGER, mode=LIVE_MODE, provider=namespace.provider, model_id=namespace.model
+    )
     budget = remaining_budget(ceiling, spent)
+    region = _region_for(namespace)
 
     preflight = render_preflight(
         full=full,
@@ -426,18 +688,19 @@ async def run(
         git_sha=git_sha(),
         provider=namespace.provider,
         model_id=namespace.model,
-        region=namespace.region,
+        region=region,
         price=price,
         budget=budget,
         ceiling=ceiling,
         already_spent=json.dumps(spent.as_payload(), sort_keys=True),
     )
     print(preflight)
-    print(_stage_budget_block(namespace.stage, ceiling))
+    print(_stage_budget_block(namespace.stage, ceiling, namespace.provider))
     print(_selection_block(selection, stage_a, namespace.stage, len(stored)))
-    write_selection(selection_path(namespace.model), selection, namespace.model, namespace.region)
+    write_selection(selection_path(namespace.model), selection, namespace.model, region)
 
     if namespace.plan or not namespace.live:
+        print(_zero_call_block(selected, namespace))
         print(
             "PLAN ONLY. No provider was constructed and nothing was spent.\n"
             f"The challenger set is written to {selection_path(namespace.model)} and is "
@@ -460,12 +723,20 @@ async def run(
         f"caps {authorisation.max_calls} call(s) / ${authorisation.max_estimated_usd}\n"
     )
 
-    settings = Settings(
-        llm_provider=LlmProvider.BEDROCK,
-        bedrock_model_id=namespace.model,
-        aws_region=namespace.region,
+    # The last gate before a client can exist, and the only one about a credential. Everything
+    # above it -- authorisation, dataset identity, eligibility, pricing, budget -- has already
+    # held; this asks whether the run can even reach the provider it is allowed to pay.
+    refuse_a_missing_openai_key(namespace.provider)
+
+    settings = _settings_for(namespace)
+    target = ChallengerTarget(
+        provider=namespace.provider,
+        model_id=namespace.model,
+        region=region,
+        settings=settings,
+        api_key=read_openai_api_key() if namespace.provider == OPENAI else None,
     )
-    provider = provider_builder(settings, authorisation)
+    provider = provider_builder(target, authorisation)
 
     def factory(_: ModelInput) -> SemanticProvider:
         return provider
@@ -513,7 +784,12 @@ async def run(
                     case_id=result.case_id,
                     job=result.job.value,
                     split=result.split.value,
-                    provider=result.provider,
+                    # Both halves of the identity, for the same reason the model id is
+                    # substituted here: a call nobody answered carries no telemetry, so the
+                    # runner has neither to read off the answer. A failure record that named
+                    # only the mode would not say which challenger was refused, and two
+                    # challengers now share this log.
+                    provider=result.provider if result.model_id else namespace.provider,
                     model_id=result.model_id or namespace.model,
                     attempt=attempts.attempts_for(result.case_id) + 1,
                     category=result.error_category,
@@ -552,6 +828,33 @@ def _new_run_id() -> str:
     from evals.runner import new_run_id
 
     return new_run_id()
+
+
+def _settings_for(namespace: argparse.Namespace) -> Settings:
+    """Production settings for the provider that has some; a bare object for the one that has none.
+
+    OpenAI appears nowhere in :class:`~promisepatch.config.Settings`, because the runtime has no
+    route to it and this gate adds none. Handing the OpenAI builder a settings object configured
+    for Bedrock would be a small lie in the one value that says what a deployment is, so it is
+    handed an unconfigured one it does not read.
+    """
+    if namespace.provider != BEDROCK:
+        return Settings()
+    return Settings(
+        llm_provider=LlmProvider.BEDROCK,
+        bedrock_model_id=namespace.model,
+        aws_region=namespace.region,
+    )
+
+
+def _region_for(namespace: argparse.Namespace) -> str:
+    """Where the model is called, for the provider where that is a fact.
+
+    ``--region`` is a Bedrock concept: an inference profile is Region-scoped and the Region is
+    part of what a Bedrock result measured. OpenAI's API is not addressed that way, so recording
+    ``us-east-1`` against an OpenAI run would put a fact in a result file that is not one.
+    """
+    return namespace.region if namespace.provider == BEDROCK else "not applicable"
 
 
 def _with_attempts(
@@ -599,8 +902,8 @@ def _refuse_an_unearned_stage_b(stage_a: StageAOutcome, verdict: object) -> None
         )
     raise ChallengerRefusedError(
         "Stage A did not clear the materiality floor, so the rest of the split is not bought: "
-        f"{', '.join(materiality.failed)}. HAIKU TARGETED CHALLENGE NOT MATERIAL -- STOPPED "
-        "EARLY is a valid outcome, and this is it."
+        f"{', '.join(materiality.failed)}. TARGETED CHALLENGE NOT MATERIAL -- STOPPED EARLY "
+        "is a valid outcome, and this is it."
     )
 
 
@@ -656,19 +959,22 @@ def _summarise(
     return summary.model_copy(update={"operations": operations})
 
 
-def _stage_budget_block(stage: str, effective: EvalBudget) -> str:
+def _stage_budget_block(stage: str, effective: EvalBudget, provider: str = BEDROCK) -> str:
     """Name both ceilings and the one actually in force, before anything is bought.
 
     Printed rather than inferred because "which bound refused" has to be answerable from the
-    stored preflight alone, months later, by somebody who was not at the keyboard.
+    stored preflight alone, months later, by somebody who was not at the keyboard -- and now
+    also which provider's ceilings those were, because the two are different money.
     """
-    stage_bound = STAGE_CEILINGS.get(stage)
+    ceiling = global_ceiling(provider)
+    stage_bound = PROVIDER_STAGE_CEILINGS.get(provider, {}).get(stage)
     label = f"stage {stage.upper()} ceiling".ljust(28)
     lines = [
         "",
         f"STAGE BUDGET  -- stage {stage.upper()} is bounded by the stricter of both ceilings",
-        f"  {'global challenger ceiling'.ljust(28)} {CHALLENGER_CEILING.max_calls} call(s) / "
-        f"${CHALLENGER_CEILING.max_estimated_usd}",
+        f"  {'provider'.ljust(28)} {provider}",
+        f"  {'global challenger ceiling'.ljust(28)} {ceiling.max_calls} call(s) / "
+        f"${ceiling.max_estimated_usd}",
     ]
     if stage_bound is None:
         lines.append(f"  {label} none -- this stage keeps the global ceiling")
@@ -682,6 +988,36 @@ def _stage_budget_block(stage: str, effective: EvalBudget) -> str:
     )
     lines.append("  both remain in force; the guard refuses the call that would cross either one")
     return "\n".join(lines)
+
+
+def _zero_call_block(selected: GoldDataset, namespace: argparse.Namespace) -> str:
+    """What a plan proves it did not do, as counts rather than as a promise.
+
+    Every line here is read off the value the runner would have been handed, or off a code path
+    this invocation demonstrably did not take. A plan that merely said "nothing was called"
+    would be an assertion about intent; these are the numbers somebody can check.
+
+    The credential line is a boolean and is a boolean everywhere else too. Whether a key is
+    present changes whether a live run could start, so an operator needs to know it -- and the
+    value itself is never read by anything that prints.
+    """
+    holdout = sum(case.split is not EvalSplit.DEVELOPMENT for case in selected.customer)
+    return "\n".join(
+        [
+            "ZERO-CALL PLAN  -- what this invocation did not do, counted",
+            f"  {'challenger provider'.ljust(32)} {namespace.provider}",
+            f"  {'challenger model'.ljust(32)} {namespace.model}",
+            f"  {'stage A cases'.ljust(32)} {len(selected.customer)}",
+            f"  {'worker cases'.ljust(32)} {len(selected.worker)}",
+            f"  {'holdout cases'.ljust(32)} {holdout}",
+            f"  {'challenger model calls'.ljust(32)} 0",
+            f"  {'source (challenged) model calls'.ljust(32)} 0",
+            f"  {'provider clients constructed'.ljust(32)} 0",
+            f"  {(API_KEY_VARIABLE + ' present').ljust(32)} "
+            f"{str(openai_api_key_present()).lower()}",
+            "",
+        ]
+    )
 
 
 def _selection_block(
@@ -923,7 +1259,7 @@ def rebuild(namespace: argparse.Namespace) -> int:
         mode=header.mode,
         splits=[EvalSplit.DEVELOPMENT],
         run_id=header.run_id,
-        budget=CHALLENGER_CEILING,
+        budget=global_ceiling(header.provider),
         generated_at=header.started_at,
     )
     summary = summary.model_copy(update={"model_id": header.model_id, "provider": header.provider})
@@ -973,17 +1309,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--provider",
-        choices=[LlmProvider.BEDROCK.value],
+        choices=[BEDROCK, OPENAI],
         help="which provider to call. No default: a comparison names what it measured.",
     )
     parser.add_argument(
         "--model",
         help=(
-            "the challenger's model or cross-Region inference profile id. No default, and "
-            "never taken from settings."
+            "the challenger's model id, cross-Region inference profile or pinned snapshot. No "
+            "default, never taken from settings, and never a floating alias: "
+            f"{GPT_4O_MINI} rather than gpt-4o-mini."
         ),
     )
-    parser.add_argument("--region", default="us-east-1", help="the Region to call Bedrock in")
+    parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="the Region to call Bedrock in. Not applicable to OpenAI and not recorded for it.",
+    )
     parser.add_argument(
         "--stage",
         choices=["a", "b"],
@@ -1016,7 +1357,7 @@ def _validate(namespace: argparse.Namespace) -> None:
     namespace.authorisation = None
     if namespace.from_results:
         if not namespace.provider:
-            namespace.provider = LlmProvider.BEDROCK.value
+            namespace.provider = BEDROCK
         if namespace.authorise_paid_inference:
             raise ChallengerRefusedError(
                 "--from-results rebuilds a report from stored evidence and makes no provider "
@@ -1033,29 +1374,31 @@ def _validate(namespace: argparse.Namespace) -> None:
             "chose."
         )
     if not namespace.provider:
-        namespace.provider = LlmProvider.BEDROCK.value
+        namespace.provider = BEDROCK
     if not namespace.model:
         raise ChallengerRefusedError(
             "--model is required, even for a plan: the preflight names what it would measure"
         )
+    refuse_a_floating_model_alias(namespace.provider, namespace.model)
     if namespace.authorise_paid_inference and not namespace.live:
         raise ChallengerRefusedError(
             "--authorise-paid-inference without --live authorises a command that does not "
             "call anything. Say what is intended: drop the authorisation, or add --live."
         )
     if namespace.live:
+        ceiling = stage_ceiling(namespace.stage, namespace.provider)
         namespace.authorisation = authorise(
             namespace.authorise_paid_inference,
             STAGE_SCOPES[namespace.stage],
-            max_calls=stage_ceiling(namespace.stage).max_calls,
-            max_estimated_usd=stage_ceiling(namespace.stage).max_estimated_usd,
+            max_calls=ceiling.max_calls,
+            max_estimated_usd=ceiling.max_estimated_usd,
         )
 
 
 def main(
     argv: Sequence[str] | None = None,
     *,
-    provider_builder: ProviderBuilder = bedrock_provider,
+    provider_builder: ProviderBuilder = paid_provider,
 ) -> int:
     """Parse, refuse or run. ``provider_builder`` is the only way a paid client enters."""
     namespace = build_parser().parse_args(argv)

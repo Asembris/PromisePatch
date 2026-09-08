@@ -98,13 +98,21 @@ def credentialed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @dataclass
 class BuilderSpy:
-    """A provider builder that records being called, so "never reached" is a number."""
+    """A provider builder that records being called, so "never reached" is a number.
+
+    Passed to both composition roots, which hand their builders different values: the benchmark
+    passes production's :class:`~promisepatch.config.Settings`, and the challenger passes its own
+    target, which names a provider that may not be in ``Settings`` at all. Both are read for the
+    model they name, because what a refused call has to prove is that nothing was built for any
+    model rather than for one particular one.
+    """
 
     provider: SemanticProvider | None = None
     calls: list[tuple[str, str | None]] = field(default_factory=list)
 
-    def __call__(self, settings: Settings, authorisation: object) -> SemanticProvider:
-        self.calls.append((str(getattr(authorisation, "scope", "?")), settings.bedrock_model_id))
+    def __call__(self, target: object, authorisation: object) -> SemanticProvider:
+        model = getattr(target, "model_id", None) or getattr(target, "bedrock_model_id", None)
+        self.calls.append((str(getattr(authorisation, "scope", "?")), model))
         if self.provider is None:
             raise AssertionError("this builder must not be reached")
         return self.provider
@@ -300,16 +308,33 @@ def test_the_real_builder_refuses_inside_pytest_however_it_is_called(
 ) -> None:
     """Called directly, with a valid authorisation, in a fully credentialed process.
 
-    This is the guard that does not depend on the operator at all. It refuses before the
-    Bedrock import on the line below it, so a test that reaches here loads no SDK either.
+    This is the guard that does not depend on the operator at all. It refuses before the vendor
+    import on the line below it, so a test that reaches here loads no SDK either -- and it holds
+    for every provider, because a second builder that forgot the check would be a second way in.
     """
     from evals.authorisation import authorise
 
     granted = authorise(STAGE_A, SpendScope.STAGE_A)
     settings = Settings(bedrock_model_id=HAIKU)
-    for builder in (challenger.bedrock_provider, benchmark.bedrock_provider):
+    bedrock_target = challenger.ChallengerTarget(
+        provider="bedrock", model_id=HAIKU, region="us-east-1", settings=settings
+    )
+    openai_target = challenger.ChallengerTarget(
+        provider="openai",
+        model_id=challenger.GPT_4O_MINI,
+        region=None,
+        settings=Settings(),
+        api_key="sk-test-never-send",
+    )
+    calls: list[tuple[object, object]] = [
+        (challenger.bedrock_provider, bedrock_target),
+        (challenger.openai_provider, openai_target),
+        (challenger.paid_provider, openai_target),
+        (benchmark.bedrock_provider, settings),
+    ]
+    for builder, argument in calls:
         with pytest.raises(SpendNotAuthorisedError) as error:
-            builder(settings, granted)
+            builder(argument, granted)  # type: ignore[operator]
         assert "a test process may not construct a paid provider" in str(error.value)
 
 
