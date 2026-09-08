@@ -53,7 +53,7 @@ no database handle, imports no SQLAlchemy model and cannot be given one.
 |---|---|---|---|
 | `interpret_utterance` | one worker sentence, plus the graph's own vocabulary: resources with aliases, open commitments and their lines, equipment | a category, candidate bindings with confidence and evidence spans, scope and quantity hints, an advisory "this looked ambiguous" flag | the category was not offered, or any identifier is not a supplied candidate |
 | `classify_reply_intent` | one customer reply, and nothing else | `APPARENT_APPROVE` / `APPARENT_DECLINE` / `UNCLEAR` | the label is outside that closed set |
-| `verbalise` | deterministic facts already decided, and a word limit | one short passage | the passage exceeds the word limit |
+| `verbalise` | deterministic facts already decided, each with an id, the subset the passage may not leave out, and a word limit | one short passage plus the ids of the facts it rests on | the passage exceeds the word limit, refers to a fact nobody supplied, or drops a required one |
 
 Each job defines exactly one tool, whose input schema is generated from the result model, so
 what the model is shown and what the answer is checked against cannot drift apart.
@@ -82,7 +82,7 @@ Two kinds of failure, deliberately different types:
   the bounded-wait case. Missing AWS credentials are reported as such and are not retryable.
 - `SemanticValidationError` — the model answered and the answer is not usable. Carries a
   category: missing tool use, malformed output, schema-invalid, unknown candidate, unsupported
-  vocabulary, word cap exceeded.
+  vocabulary, word cap exceeded, missing required fact.
 
 A schema-invalid answer gets **exactly one** corrective retry, carrying the validation error so
 the second attempt is answering a different question — the number the architecture fixes. A
@@ -350,6 +350,141 @@ No migration was needed. `approval_requests.state` already permitted `CONFIRMATI
 `inbound_replies.apparent_intent` already existed — both were written into the baseline schema
 by the slice that froze the protocol, long before anything could fill them in.
 
+## Where it is wired: explaining a settled outcome
+
+The third place a model is asked anything is the one where it decides least. By the time an
+explanation exists, PromisePatch already knows which promises are affected, by how much, under
+which rule, with which pre-authored variant and whose recorded constraint. The model is handed
+those answers and asked to say them in a sentence.
+
+> **The deterministic engine establishes the facts; the model verbalises them.**
+
+```text
+persisted state
+      │
+promise_graph: propagation → options → classification → evidence
+      │
+      ├── authoritative status, cited rule, reason detail, quantities, constraint provenance
+      │
+promisepatch.domain.explanations          pure projection, no I/O, no clock
+      │
+      ▼
+ExplanationFacts     ── the bounded payload: named facts, and the required subset
+      │
+      ├──────────────────────────────┐
+      ▼                              ▼
+verbalise (Bedrock, Nova 2 Lite)   deterministic renderer
+      │                              │
+strict schema + word cap +           │
+fact-reference grounding             │
+      │                              │
+      ├── valid ────────────────────►│
+      └── invalid / unreachable ────►│
+                                     ▼
+                            PRESENTATION ONLY
+```
+
+**No arrow returns from the passage to domain authority.** Explanation output is never parsed
+back into workflow authority: no status, no classification, no decision, no option and no
+permission is read from a sentence. Every consequential value a screen or a voice turn shows is
+read from PromisePatch's own columns, so a passage that contradicted one would be wrong on
+screen and would still not have changed anything.
+
+### The four surfaces
+
+Each is a question the frozen contract already has a settled answer to, and each carries the
+word limit §9.2 fixes — 70 words for the plan summary, 40 for the rest.
+
+| Surface | What it explains | Authoritative source |
+|---|---|---|
+| `PLAN_SUMMARY` | the whole case: how many promises, in which postures | `CaseEvidence` (§13.1 classifications, §13.7 selectivity) |
+| `TRACK_OUTCOME` | one promise's classification and the rule behind it | `PromiseEvidence.classification` (§13.1, cited `RuleId` / `ReasonDetail` / constraint) |
+| `CUSTOMER_WAIT` | why one promise is still waiting, and what would end it | approval-request posture (§13.6) |
+| `REVALIDATION` | what revalidation concluded, and which check decided it | `RevalidationResult` (§14.3's ten checks) |
+
+### What reaches the model, and what does not
+
+The payload is a handful of named facts — `impact.outcome`, `resource.shortfall`,
+`recovery.variant`, `constraint.cited`, `revalidation.check` and a couple of dozen more — each
+one a value the engine computed and this layer copied. The fact vocabulary is a closed enum, so
+an id that is not in it cannot be sent and therefore cannot be referred to.
+
+Deliberately absent: the worker's sentence, the customer's reply, the order's customisation
+note, the case id, any database row and the graph itself. Explaining that a confirmation is
+outstanding does not need the message that caused it. The two values that did reach
+PromisePatch from outside — a customer's name and an order's own reference — are display labels
+and are fenced in the prompt with everything else that is data rather than instruction.
+
+### What comes back, and what is checked
+
+`{speech, fact_refs}`. Four checks, all of them mechanical:
+
+- **the word cap**, exceeded is a rejection rather than a trim;
+- **every reference is a fact that was sent** — the verbalisation half of "identifiers are
+  chosen, never written";
+- **every fact the application marked required is referenced** — deterministic code decides
+  which cause matters, because that is a property of the outcome and not of the phrasing;
+- **every figure in the passage appears in the facts** — digits compared with digits, refusing
+  a quantity the engine never computed.
+
+The limits are worth stating rather than leaving to be discovered. The quantity check
+understands nothing: it compares digit runs, so "nine orders" passes where "9 orders" is
+refused. And nothing here proves the prose is faithful — no check over free text can. What the
+boundary establishes is that a passage refers to nothing invented, omits nothing mandatory,
+states no figure of its own, and that **the outcome shown never comes from the passage at
+all**. Measuring faithfulness, causal completeness, brevity and speech quality is an evaluation
+question, not an architectural one, and this slice makes no claim about any of them.
+
+### The deterministic fallback
+
+Every surface has one, rendered from the *same* `ExplanationFacts` object the model would have
+been given — one projection, two mouths. A fallback built from a second reading of the state
+would be a second causal path, and the two sentences could then differ about what happened.
+
+The fallback is used, immediately and without retrying anything above the boundary, when:
+
+| Condition | Recorded as |
+|---|---|
+| provider unreachable, throttled or timed out | `PROVIDER_FAILURE` |
+| malformed output, missing field, undeclared field, wrong type | `SCHEMA_REJECTED` |
+| unknown fact reference, missing required fact, word cap exceeded | `GROUNDING_REJECTED` |
+| the outcome moved while the passage was being written | `STALE_DISCARDED` |
+| no model was asked at all | `NOT_ATTEMPTED` |
+
+In every one of those, the case state, the recovery outcome, the approval state, the external
+writes and the outbox are unchanged, and `prepare` does not raise: a caller that had to handle
+an exception here would be a caller that could be made to do something other than continue.
+**No explanation call gates an external effect.**
+
+### Overtaken passages
+
+`ExplanationFacts` fingerprints itself over the surface, the facts and the required set.
+`accept` recomputes that fingerprint against the outcome as it now stands and discards a
+passage written about a previous plan. An amendment, a decision or a re-plan between the call
+and the commit moves the fingerprint, and a sentence about the case as it was is not a sentence
+about the case as it is.
+
+### Security posture
+
+The explanation path is not a tool-capable agent. It has no tools, no database access, no
+external API access, no recovery authority, no mutation authority and no approval authority. An
+import contract (`explanations describe and cannot decide`) forbids the projection from
+reaching `asyncio`, `sqlalchemy`, the database layer, the API, the integrations package, the
+environment or a random source, and a test asserts from the source that neither explanation
+module names an approval decision, the literal parser or the consent vocabulary.
+
+### Provider and persistence
+
+The same one: Bedrock, `us.amazon.nova-2-lite-v1:0`, per [ADR-0007](adr/0007-runtime-semantic-model-nova-2-lite.md). There is no separate
+explanation model, no explanation-specific provider variable and no routing. The `verbalise`
+job travels the same port, prompt builder, validator and single corrective retry as the other
+two.
+
+`Explanation.provenance()` returns the record — surface, facts fingerprint, source, failure
+reason, provider, model id, attempt count and the referenced ids — in the shape
+`case_steps.result` and the audit ledger already hold. **No migration was required.** No prompt
+and no rejected model prose is kept: neither is evidence of anything.
+
 ## What is not wired yet
 
 - `phrase_clarification` is not used. Clarification wording stays deterministic, and its
@@ -358,6 +493,14 @@ by the slice that froze the protocol, long before anything could fill them in.
 - `draft_customer_change_phrase` is not used. Both customer-facing messages are composed from
   column values, and the sentences that tell a customer which words count are fixed strings in
   the message builder, guarded by a pre-send check that predates any drafter.
-- No explanation text reaches the UI.
+- No explanation text reaches the UI or a durable step yet. The projection, the bounded
+  `verbalise` contract, the validation and the deterministic fallback exist and are tested
+  end to end against the canonical fixture; what remains is the caller — a step that prepares a
+  passage between claiming and executing, and an evidence field that carries it. Nothing
+  downstream will read it for authority when that happens, because there is nothing on an
+  `Explanation` that could hold any.
+- Explanation *quality* is unmeasured. This slice establishes what a passage cannot do; how
+  faithful, complete, brief and speakable a real model's passages are is an evaluation
+  question, and no claim about it is made here.
 
 Wiring each of those is its own change, with its own tests.

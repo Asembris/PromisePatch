@@ -49,6 +49,17 @@ the lexicon and costs **zero** model calls, which is asserted rather than assume
 
 The worker remains the physical attestor throughout: `PHYSICAL_FACT_RECORDED` names the person
 who spoke, and the model appears only as provenance beside it.
+
+Explanations are the same rule pointed the other way: the deterministic engine establishes the
+facts, and the model verbalises them. A settled outcome is projected into a bounded set of
+named facts -- the classification, the cited rule, the shortfall, the pre-authored variant, the
+constraint and who recorded it -- and a passage is accepted only if it stays inside its word
+limit, refers to nothing PromisePatch did not supply, and accounts for the causes the
+application marked required. The same facts render PromisePatch's own sentence, which is what
+gets shown when the provider is down, the answer will not parse, a reference is invented or the
+outcome moved while the model was writing. **Explanation output is never parsed back into
+workflow authority**, and no explanation call gates an external effect.
+
 [docs/semantic-boundary.md](docs/semantic-boundary.md) has the trust line, the fallback
 condition, the failure semantics, the prompt-injection posture and the opt-in live acceptance.
 
@@ -172,6 +183,7 @@ The semantic boundary needs neither a database nor an AWS account:
 uv run pytest apps/backend/tests/test_semantic_contracts.py \
   apps/backend/tests/test_semantic_provider.py \
   apps/backend/tests/test_semantic_grounding.py \
+  apps/backend/tests/test_explanations.py \
   apps/backend/tests/test_bedrock_semantic.py
 ```
 
