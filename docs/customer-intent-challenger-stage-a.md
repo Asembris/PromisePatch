@@ -282,3 +282,9 @@ next one, and `_refuse_an_unearned_stage_b` is the code that says so.
 The decision of what to do next — accept Nova's weakness, try a different challenger, or
 improve the prompt for the terse-assent cluster — is a separate one, and this page does not
 make it.
+
+**What was done next:** one more challenger was integrated — NVIDIA's hosted Nemotron 3 Super,
+against this same frozen selection, this same prompt and this same materiality floor. That
+integration is recorded in [`docs/nemotron-challenger.md`](nemotron-challenger.md). It has not
+been run, and nothing on this page is reinterpreted by it: GPT-4o-mini repaired two of six,
+which remains a real quality result under the criteria fixed before its first call.
