@@ -1085,6 +1085,7 @@ dev = [
 ]
 evals = [
     { name = "deepeval" },
+    { name = "openai" },
 ]
 
 [package.metadata]
@@ -1106,7 +1107,10 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.6" },
 ]
-evals = [{ name = "deepeval", specifier = ">=4.2,<5" }]
+evals = [
+    { name = "deepeval", specifier = ">=4.2,<5" },
+    { name = "openai", specifier = ">=1.60,<4" },
+]
 
 [[package]]
 name = "prompt-toolkit"
