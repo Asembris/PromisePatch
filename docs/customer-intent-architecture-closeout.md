@@ -158,8 +158,8 @@ mandatory Proof E, not because the measurements justified the call on product va
 
 | surface | provider | status |
 |---|---|---|
-| Worker semantics — `interpret_utterance` | Bedrock, per ADR-0004 | production; not in this gate's scope and not modified |
-| Customer intent — `classify_reply_intent` | Bedrock, per ADR-0004 | production; retained, unchanged |
+| Worker semantics — `interpret_utterance` | Bedrock, per ADR-0004 | production; not in this gate's scope and not modified (model identity later selected by ADR-0007) |
+| Customer intent — `classify_reply_intent` | Bedrock, per ADR-0004 | production; retained, unchanged (model identity later selected by ADR-0007) |
 | Local development and CI | `FakeSemanticProvider` | the default everywhere, including the worker |
 | OpenAI transport | `scripts/run_intent_challenger.py` | **eval-only** — never had production routing |
 | NVIDIA transport | `scripts/run_intent_challenger.py` | **eval-only** — never had production routing |
@@ -168,17 +168,22 @@ mandatory Proof E, not because the measurements justified the call on product va
 remove: the OpenAI and NVIDIA transports were only ever reachable from the challenger script and
 remain there as eval infrastructure.
 
-## Open items, recorded rather than closed
+## Open items, since closed
 
-- **The storyboard's specific label is not currently reproducible.** §21 and
-  `ARCHITECTURE_PLAN.md`'s acceptance line both name `"Strawberries work" → APPARENT_APPROVE`, and
-  all three measured configurations read it `UNCLEAR`. Proof E's substance is unaffected — `UNCLEAR`
-  is a non-authoritative apparent intent, produces no write and sends the same prompt — but the
-  storyboard's on-screen label is not what a measured provider currently returns. Closing that gap
-  is a provider or prompt question, not an authority question, and it is not addressed here.
-- **ADR-0004 names `claude-haiku-4-5` and the configured default still does.** The P4.6 record has
-  Haiku returning no valid readings because of AWS Marketplace billing. Which model production runs
-  is an open decision that this gate deliberately does not make.
+Both were closed by [`runtime-provider-and-storyboard-closeout.md`](runtime-provider-and-storyboard-closeout.md),
+with zero model calls and no change to any measurement on this page.
+
+- **The storyboard's specific label was not reproducible.** §21 and `ARCHITECTURE_PLAN.md`'s
+  acceptance line both named `"Strawberries work" → APPARENT_APPROVE`, and all three measured
+  configurations read it `UNCLEAR`. Proof E's substance was never affected — `UNCLEAR` is a
+  non-authoritative apparent intent, produces no write and sends the same prompt. The frozen
+  documents were amended to state the reading provider-neutrally rather than to name a label the
+  running system does not produce. The gold label is unchanged.
+- **ADR-0004 named `claude-haiku-4-5` and the configured default did too.** The selected runtime
+  semantic model is now `us.amazon.nova-2-lite-v1:0` for both semantic jobs, recorded as
+  [ADR-0007](adr/0007-runtime-semantic-model-nova-2-lite.md). Haiku's quality remains unmeasured;
+  it was rejected as the default because the account's Marketplace subscription cannot complete,
+  and it remains a supported value of `PP_BEDROCK_MODEL_ID`.
 
 ## Revisit trigger
 
