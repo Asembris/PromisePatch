@@ -110,12 +110,19 @@ jobs:
       # ungrounded binding is exercised with no infrastructure of any kind. The workflow those
       # rules live in needs PostgreSQL and runs in the integration job below; the two live
       # Bedrock suites are marked `bedrock_live` and are deselected by default everywhere.
+      #
+      # `test_openai_semantic.py` is here rather than with the evaluation jobs because it is a
+      # boundary test like the others: the OpenAI adapter is transport-only, its SDK import is
+      # deferred into a function body, and every request it builds is asserted against a stub
+      # that sits exactly where the SDK would. No key, no network, and no OpenAI package needs
+      # to be installed for it to run.
       - run: >
           uv run pytest
           apps/backend/tests/test_semantic_contracts.py
           apps/backend/tests/test_semantic_provider.py
           apps/backend/tests/test_semantic_grounding.py
           apps/backend/tests/test_bedrock_semantic.py
+          apps/backend/tests/test_openai_semantic.py
 
   evaluation:
     name: semantic evaluation
@@ -144,7 +151,7 @@ jobs:
         run: uv run python -m evals validate
 
       # No AWS credential, no OpenAI credential, no network. Every answer comes from a scripted
-      # payload through the deterministic fake, and an import-linter contract stops an AWS SDK
+      # payload through the deterministic fake, and import-linter contracts stop both vendor SDKs
       # entering this package's import graph at all. No live model benchmark runs in CI.
       - name: Deterministic scorers, budget refusals and the DeepEval adapter
         run: uv run pytest evals/tests
@@ -187,8 +194,23 @@ jobs:
         run: >
           uv run pytest
           scripts/tests/test_spend_interlock.py
+          scripts/tests/test_openai_challenger.py
           evals/tests/test_authorisation.py
           evals/tests/test_provider_failure.py
+
+      # The same claim for the second provider, and a syntactically valid OpenAI key to make it
+      # mean something. No repository secret exists for this and none is needed: the value below
+      # is nonsense that belongs to nobody, and the point is that a *plausible* credential is not
+      # what decides whether inference can be bought. What decides it is the scope-bound
+      # authorisation nobody typed and the interlock that stops a pytest process constructing a
+      # paid provider at all.
+      #
+      # Nothing in this step reaches OpenAI. The suite's own socket guard raises on any
+      # connection leaving the machine and asserts the count of them is zero.
+      - name: A key-carrying environment still cannot buy OpenAI inference from a test
+        env:
+          OPENAI_API_KEY: sk-notarealkey-000000000000000000000000000000000000
+        run: uv run pytest scripts/tests/test_openai_challenger.py
 
       # Type-checked here rather than in the `mypy` job: that job installs no evaluation
       # dependencies, and this is the only job that has the framework the adapter imports.
