@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-from evals.budget import EvalBudget, ModelPrice, estimate_usd
+from evals.budget import Billing, EvalBudget, estimate_usd
 from evals.cases import EvalJob, EvalSplit, WorkerCase, to_model_input
 from evals.dataset import GoldDataset
 from evals.prompts import prompt_identity
@@ -111,12 +111,19 @@ def render_preflight(
     provider: str,
     model_id: str,
     region: str,
-    price: ModelPrice | None,
+    billing: Billing | None,
     budget: EvalBudget,
     ceiling: EvalBudget,
     already_spent: object = None,
 ) -> str:
-    """The block printed, and stored, before the first live call of a split."""
+    """The block printed, and stored, before the first live call of a split.
+
+    ``billing`` is how the model is charged for rather than merely what it costs, because the
+    two questions have different answers and only one of them is arithmetic. A metered model
+    prints its rate and its snapshot; a free hosted endpoint says so, and says which ceilings
+    are protecting it instead, rather than printing a zero somebody would read as a price.
+    """
+    price = billing.price if billing is not None else None
     manifest = full.manifest()
     eligible = eligible_calls(selected)
     projection = project(selected)
@@ -152,11 +159,21 @@ def render_preflight(
             f"    region                     {region}",
         ]
     )
-    if price is None:
+    if billing is None:
+        lines.append("    billing                    UNKNOWN -- no terms recorded for this model")
         lines.append("    pricing                    UNAVAILABLE -- a dollar cap cannot start")
+    elif price is None:
+        lines.extend(
+            [
+                f"    billing                    {billing.mode.value}",
+                f"    pricing                    {billing.describe()}",
+                f"    billing source             {billing.source}",
+            ]
+        )
     else:
         lines.extend(
             [
+                f"    billing                    {billing.mode.value}",
                 f"    pricing (estimate)         ${price.input_usd_per_million} in / "
                 f"${price.output_usd_per_million} out per 1M tokens",
                 f"    pricing snapshot           {price.snapshot_date.isoformat()}  {price.source}",
@@ -179,7 +196,7 @@ def render_preflight(
             f"    max logical calls          {ceiling.max_calls}",
             f"    max input tokens           {ceiling.max_input_tokens}",
             f"    max output tokens          {ceiling.max_output_tokens}",
-            f"    max estimated spend        ${ceiling.max_estimated_usd}",
+            f"    max estimated spend        {_cap(ceiling.max_estimated_usd)}",
         ]
     )
     if already_spent is not None:
@@ -191,7 +208,7 @@ def render_preflight(
             f"    max logical calls          {budget.max_calls}",
             f"    max input tokens           {budget.max_input_tokens}",
             f"    max output tokens          {budget.max_output_tokens}",
-            f"    max estimated spend        ${budget.max_estimated_usd}",
+            f"    max estimated spend        {_cap(budget.max_estimated_usd)}",
             "",
             "  PROJECTION  (estimate; the exact request bytes are known, the tokenizer is not)",
             f"    logical calls              {projection.calls}",
@@ -202,7 +219,7 @@ def render_preflight(
             f"(sum of each job's max_tokens)",
         ]
     )
-    lines.append(f"    estimated spend            {_projected_cost(price, projection)}")
+    lines.append(f"    estimated spend            {_projected_cost(billing, projection)}")
     lines.extend(["", "  THRESHOLD POLICY  (fixed before any result was seen)"])
     for threshold in ALL_THRESHOLDS:
         suffix = "  [approved for this benchmark]" if threshold.proposed else "  [authoritative]"
@@ -214,10 +231,29 @@ def render_preflight(
     return "\n".join(lines)
 
 
-def _projected_cost(price: ModelPrice | None, projection: Projection) -> str:
-    """A range, or the statement that there is no price to compute one from."""
+def _cap(value: Decimal | None) -> str:
+    """A dollar ceiling, or the statement that this provider has no dollar meter at all.
+
+    ``$None`` is what a bare interpolation produces for an uncapped field, and it reads as a
+    formatting bug rather than as the deliberate absence it is. A free hosted endpoint has no
+    dollar cap because it has no dollar meter; the call and token ceilings above it are the
+    bounds in force, and this line says so instead of implying an unbounded spend.
+    """
+    return "not applicable -- no per-token billing" if value is None else f"${value}"
+
+
+def _projected_cost(billing: Billing | None, projection: Projection) -> str:
+    """A range, or the statement of why there is not one. Two different reasons, said apart.
+
+    "Nobody recorded a price" and "this endpoint is not billed per token" would both produce an
+    empty figure, and collapsing them would hide a missing catalog entry behind a legitimate
+    absence.
+    """
+    if billing is None:
+        return "unavailable (no billing terms recorded)"
+    price = billing.price
     if price is None:
-        return "unavailable (no verified price)"
+        return f"not applicable ({billing.mode.value}; no per-token price is modelled)"
     low = estimate_usd(
         price, input_tokens=projection.input_tokens_low, output_tokens=projection.max_output_tokens
     )

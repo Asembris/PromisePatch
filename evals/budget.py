@@ -22,6 +22,18 @@ expensive one.
 number scattered through the runner, and every entry carries the provider, the exact model
 snapshot, the day it was recorded and where it came from. It is an estimate. The provider's own
 invoice is the truth, and this is not it.
+
+And one rule that came later, from an endpoint that has no price at all:
+
+**Not every model is billed per token, and the ones that are not do not get a fake price.**
+:class:`Billing` says which of the two a model is. A metered model carries a
+:class:`ModelPrice` and a dollar ceiling; a free hosted trial carries neither, and writing
+``$0.00`` for it would be a claim about a commercial rate nobody published and a permanence
+nobody promised -- while also switching off the one guard the dollar cap provides for the
+models that *are* metered. What protects a free endpoint is not money: it is the call and token
+ceilings, which apply to every provider and are the bounds that actually bite on a run this
+size. So "unpriced" and "not billed per token" stay different states, and neither of them is
+zero.
 """
 
 from __future__ import annotations
@@ -31,6 +43,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from enum import StrEnum
 from pathlib import Path
 
 from promisepatch.semantic import (
@@ -183,8 +196,127 @@ snapshot, so the catalog gains exactly one.
 """
 
 
+class BillingMode(StrEnum):
+    """How a model is charged for, which is a different question from how much.
+
+    Two members, and the second exists because a hosted free endpoint is not a metered model
+    with a zero rate. Conflating them would put a fabricated commercial price in the catalog
+    and would silently disable the dollar guard on a run, so they are separate states and a
+    caller has to look at which one it has.
+    """
+
+    METERED = "metered"
+    """Charged per token, at a rate somebody read from a published price list on a given day."""
+
+    FREE_HOSTED_TRIAL = "free_hosted_trial"
+    """Offered without a per-token charge for prototype and API use, at the provider's
+    discretion. No price is modelled, no dollar ceiling is enforced, and nothing here says the
+    arrangement is permanent or that production use would be free."""
+
+
+@dataclass(frozen=True, slots=True)
+class Billing:
+    """What one model costs and on what terms, with the provenance that makes it reviewable.
+
+    ``price`` is present for a metered model and absent for a free hosted trial, and the
+    invariant is checked at construction rather than trusted: a metered entry with no price
+    would be an unenforceable dollar cap, and a free entry carrying one would be the fabricated
+    price this type exists to prevent.
+    """
+
+    provider: str
+    model_id: str
+    mode: BillingMode
+    source: str
+    price: ModelPrice | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode is BillingMode.METERED and self.price is None:
+            raise ValueError(f"{self.model_id!r} is metered and has no price")
+        if self.mode is BillingMode.FREE_HOSTED_TRIAL and self.price is not None:
+            raise ValueError(f"{self.model_id!r} is a free hosted trial and cannot carry a price")
+
+    @property
+    def is_metered(self) -> bool:
+        return self.mode is BillingMode.METERED
+
+    def describe(self) -> str:
+        """One line for a preflight, saying what the money situation actually is."""
+        if self.price is not None:
+            return (
+                f"${self.price.input_usd_per_million} in / "
+                f"${self.price.output_usd_per_million} out per 1M tokens"
+            )
+        return "no per-token price -- free hosted trial; call and token ceilings still apply"
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "provider": self.provider,
+            "model_id": self.model_id,
+            "mode": self.mode.value,
+            "source": self.source,
+            "price": None if self.price is None else self.price.as_payload(),
+        }
+
+
+NEMOTRON_3_SUPER = Billing(
+    provider="nvidia",
+    model_id="nvidia/nemotron-3-super-120b-a12b",
+    mode=BillingMode.FREE_HOSTED_TRIAL,
+    source=(
+        "NVIDIA build (integrate.api.nvidia.com) offers this model on a free hosted endpoint "
+        "for prototype and API use; NVIDIA publishes no per-token price for it, so none is "
+        "recorded here. The arrangement is the provider's to change, and nothing in this "
+        "entry claims it is permanent or that any other deployment of this model is free."
+    ),
+)
+"""The NVIDIA challenger, recorded as what it is rather than as a metered model priced at zero.
+
+Deliberately carries no ``ModelPrice``. A ``$0.00`` entry would make :func:`estimate_usd` return
+a real-looking zero for every call, make a dollar ceiling trivially satisfiable, and assert a
+published commercial rate that does not exist. What bounds this challenger instead is the call
+and token ceilings its composition root sets -- which is the guard that matters for a free
+endpoint, because the resource at risk is quota rather than money.
+"""
+
+
+BILLING: Mapping[tuple[str, str], Billing] = {
+    **{
+        key: Billing(
+            provider=price.provider,
+            model_id=price.model_id,
+            mode=BillingMode.METERED,
+            source=price.source,
+            price=price,
+        )
+        for key, price in PRICES.items()
+    },
+    (NEMOTRON_3_SUPER.provider, NEMOTRON_3_SUPER.model_id): NEMOTRON_3_SUPER,
+}
+"""Billing terms by ``(provider, model id)``: every priced model, plus the ones that are not.
+
+Derived from :data:`PRICES` rather than restating it, so a price recorded in one place is the
+price in both and the two catalogs cannot disagree about a model. A model absent from here has
+no billing terms written down at all, which is a refusal rather than a default -- the same
+posture unknown pricing already had, extended to the question of whether there is a price.
+"""
+
+
+def billing_for(provider: str, model_id: str | None) -> Billing | None:
+    """How one model is charged for, or ``None`` when nobody has written that down."""
+    if model_id is None:
+        return None
+    return BILLING.get((provider, model_id))
+
+
 def price_for(provider: str, model_id: str | None) -> ModelPrice | None:
-    """The catalog entry for one model, or ``None`` when there is no verified price."""
+    """The catalog entry for one model, or ``None`` when there is no verified price.
+
+    ``None`` for a model nobody priced and ``None`` for one that is not billed per token at
+    all. Those are different facts and :func:`billing_for` is what tells them apart; this is
+    the narrower question every arithmetic path already asks, and both answers mean the same
+    thing to arithmetic -- there is no rate to multiply by.
+    """
     if model_id is None:
         return None
     return PRICES.get((provider, model_id))
@@ -599,11 +731,15 @@ def utc_now_iso() -> str:
 
 
 __all__ = [
+    "BILLING",
     "CLAUDE_HAIKU_4_5",
     "GPT_4O_MINI",
+    "NEMOTRON_3_SUPER",
     "NOVA_2_LITE",
     "PRICES",
     "TOKENS_PER_PRICE_UNIT",
+    "Billing",
+    "BillingMode",
     "BudgetExhaustedError",
     "BudgetGuard",
     "BudgetedSemanticProvider",
@@ -614,6 +750,7 @@ __all__ = [
     "PricingUnavailableError",
     "Spend",
     "append_to_ledger",
+    "billing_for",
     "estimate_usd",
     "ledger_totals",
     "price_for",

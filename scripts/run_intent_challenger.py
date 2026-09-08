@@ -90,6 +90,7 @@ from evals.budget import (
     EvalBudget,
     LedgerTotals,
     append_to_ledger,
+    billing_for,
     ledger_totals,
     price_for,
     remaining_budget,
@@ -114,7 +115,14 @@ from evals.challenger import (
     unread_result,
     usage_profile,
 )
-from evals.challenger_report import render_cost, render_stage_a, render_stage_b
+from evals.challenger_report import (
+    PriorColumn,
+    column_from_results,
+    render_comparison,
+    render_cost,
+    render_stage_a,
+    render_stage_b,
+)
 from evals.dataset import GoldDataset, load_dataset, manifest_problems, validate_dataset
 from evals.preflight import render_preflight
 from evals.report import render
@@ -139,13 +147,23 @@ DEFAULT_SOURCE = RESULTS_DIR / "development-us.amazon.nova-2-lite-v1_0.jsonl"
 
 BEDROCK = LlmProvider.BEDROCK.value
 OPENAI = "openai"
-"""The two providers a challenger may be reached through, by the name a result file records.
+NVIDIA = "nvidia"
+"""The three providers a challenger may be reached through, by the name a result file records.
 
-``openai`` is a literal rather than a :class:`~promisepatch.config.LlmProvider` member on
-purpose. That enum is the runtime's routing surface, and adding to it would widen what a
-deployment can be configured to do -- which is a production change, and this gate makes none.
-The OpenAI adapter is reachable from here, from a composition root that has to be handed an
-authorisation and a key, and from nowhere a running worker can get to.
+``openai`` and ``nvidia`` are literals rather than :class:`~promisepatch.config.LlmProvider`
+members on purpose. That enum is the runtime's routing surface, and adding to it would widen
+what a deployment can be configured to do -- which is a production change, and this gate makes
+none. Both adapters are reachable from here, from a composition root that has to be handed an
+authorisation and a credential, and from nowhere a running worker can get to.
+"""
+
+NEMOTRON_3_SUPER = "nvidia/nemotron-3-super-120b-a12b"
+"""The NVIDIA challenger, pinned by full name. Not a nano, not a lightning, not an ultra.
+
+The family publishes several sizes and NVIDIA hosts many other models on the same endpoint. A
+run names this one, and a model this command has no billing terms for is refused before
+anything is constructed -- which is what stops "whichever Nemotron was handy" becoming a result
+under this experiment's label.
 """
 
 GPT_4O_MINI = "gpt-4o-mini-2024-07-18"
@@ -240,9 +258,41 @@ token caps stay ``None`` here so :func:`~evals.budget.tightest` carries the glob
 token bounds through untouched.
 """
 
+NVIDIA_CHALLENGER_CEILING = EvalBudget(
+    max_calls=30,
+    max_input_tokens=100_000,
+    max_output_tokens=10_000,
+)
+"""The NVIDIA challenger's whole allowance, across Stage A, Stage B and any resumed attempt.
+
+**No dollar field, and its absence is the honest statement rather than a gap.** NVIDIA offers
+this model on a free hosted endpoint and publishes no per-token price for it, so there is no
+rate to bound a spend against. Writing ``$0`` here would assert a commercial price nobody
+published, and :func:`~evals.budget.tightest` would then carry a cap of zero into every stage --
+a number that looks like a bound and is really a claim. What is at risk on a free endpoint is
+quota, and quota is bounded in calls and tokens, which is what these three fields do.
+
+The call and token bounds are deliberately the same numbers the other two ceilings carry. The
+experiment is the same size whichever model answers it; only the billing differs.
+"""
+
+NVIDIA_STAGE_A_CEILING = EvalBudget(max_calls=12)
+"""NVIDIA Stage A's own allowance, enforced *as well as* :data:`NVIDIA_CHALLENGER_CEILING`.
+
+Twelve is the selection's own size -- six of the challenged model's customer-intent failures
+and their six matched controls -- so the call cap and the experiment are one number rather than
+two that have to be kept in step. Every other field stays ``None`` so the global ceiling's token
+bounds carry through untouched, exactly as the other stage bounds do.
+
+The model's own documented defaults -- a 16k completion ceiling and a 16k reasoning budget --
+reach nothing here. Output is bounded per call by the job spec's ``max_tokens``, which is 64
+for this job, and reasoning is off.
+"""
+
 PROVIDER_CEILINGS: Mapping[str, EvalBudget] = {
     BEDROCK: CHALLENGER_CEILING,
     OPENAI: OPENAI_CHALLENGER_CEILING,
+    NVIDIA: NVIDIA_CHALLENGER_CEILING,
 }
 """The global allowance per provider. Separate entries, never one number shared between them.
 
@@ -255,6 +305,7 @@ not reprice one.
 PROVIDER_STAGE_CEILINGS: Mapping[str, Mapping[str, EvalBudget]] = {
     BEDROCK: STAGE_CEILINGS,
     OPENAI: {"a": OPENAI_STAGE_A_CEILING},
+    NVIDIA: {"a": NVIDIA_STAGE_A_CEILING},
 }
 """Stage bounds per provider. A stage absent from a provider's map keeps that provider's global
 ceiling -- which is how Stage B stays bounded exactly as it was, for both of them."""
@@ -328,10 +379,16 @@ class ChallengerTarget:
     model_id: str
     region: str | None
     settings: Settings
-    """Production's settings object, for the provider that has one. OpenAI does not appear in
-    it at all -- there is no runtime routing to OpenAI, and this gate adds none."""
+    """Production's settings object, for the provider that has one. Neither OpenAI nor NVIDIA
+    appears in it at all -- there is no runtime routing to either, and neither gate added
+    any."""
 
     api_key: str | None = None
+
+    base_url: str | None = None
+    """Which host the compatible transport opens against, for the provider where that is not
+    implied by the name. Resolved and validated by the composition root before a builder is
+    called, never discovered by an adapter."""
 
 
 type ProviderBuilder = Callable[[ChallengerTarget, SpendAuthorisation], SemanticProvider]
@@ -384,9 +441,37 @@ def openai_provider(
     return OpenAiSemanticProvider.with_api_key(api_key=target.api_key, model_id=target.model_id)
 
 
+def nvidia_provider(
+    target: ChallengerTarget, authorisation: SpendAuthorisation
+) -> SemanticProvider:
+    """The NVIDIA hosted NIM adapter, behind the same guards as the OpenAI one and one more.
+
+    The same shape as the two builders above and for the same reasons: an authorisation is an
+    argument, the test interlock is checked on the last line before a request, and the import
+    is deferred so that importing this module loads no vendor client.
+
+    The extra guard is the endpoint. It is validated by the composition root before this
+    function is in the call stack, and validated again by the adapter as the last line before
+    a client -- because a free endpoint's quota and a benchmark's identity are both spent by a
+    request to the wrong host, and neither is recoverable afterwards.
+    """
+    refuse_real_inference_under_test(authorisation.scope)
+    if not target.api_key:  # pragma: no cover - the composition root refuses first
+        raise ChallengerRefusedError(
+            "no NVIDIA API key reached the provider builder. A run that got this far without "
+            "one is a run whose preflight did not check, which is a defect in the ordering."
+        )
+    from promisepatch.integrations.nvidia import NvidiaSemanticProvider
+
+    return NvidiaSemanticProvider.with_api_key(
+        api_key=target.api_key, model_id=target.model_id, base_url=target.base_url
+    )
+
+
 PROVIDER_BUILDERS: Mapping[str, ProviderBuilder] = {
     BEDROCK: bedrock_provider,
     OPENAI: openai_provider,
+    NVIDIA: nvidia_provider,
 }
 
 
@@ -403,27 +488,41 @@ def paid_provider(target: ChallengerTarget, authorisation: SpendAuthorisation) -
     return builder(target, authorisation)
 
 
-# ------------------------------------------------------------------- the OpenAI credential
+# ------------------------------------------------------------ the challengers' credentials
 
 
 API_KEY_VARIABLE = "OPENAI_API_KEY"
-"""The one name this command will look under. Never printed, never logged, never persisted."""
+NVIDIA_API_KEY_VARIABLE = "NVIDIA_API_KEY"
+NVIDIA_BASE_URL_VARIABLE = "NVIDIA_API_BASE_URL"
+"""The only names this command will look under. A key is never printed, logged or persisted.
+
+The base URL is not a secret -- it is an address, it is documented in ``.env.example``, and a
+preflight prints it, because which endpoint answered is half of what a result means. It is
+still read the same careful way rather than by dumping the file, because the file it lives in
+holds keys.
+"""
+
+PROVIDER_KEY_VARIABLES: Mapping[str, str] = {
+    OPENAI: API_KEY_VARIABLE,
+    NVIDIA: NVIDIA_API_KEY_VARIABLE,
+}
+"""Which variable each key-carrying challenger reads. Bedrock has none: it is reached through
+the AWS credential chain, which is production's own arrangement and not this command's."""
 
 
-def read_openai_api_key(env_file: Path = Path(".env")) -> str | None:
-    """The key, from the process environment or the local ``.env``, or ``None``.
+def read_env_value(name: str, env_file: Path = Path(".env")) -> str | None:
+    """One configured value, from the process environment or the local ``.env``, or ``None``.
 
     Two places because both are real: an operator may export it for one command, and this
     repository's convention -- the one pydantic-settings already follows for everything else --
     is that local configuration lives in an ignored ``.env``. Neither is a secret store and
-    neither is treated as one; this returns the value to exactly one caller, which hands it to
-    exactly one constructor.
+    neither is treated as one.
 
-    The value is never returned to anything that prints, formats or serialises. Everything a
-    report, a preflight, a result file, a ledger line or an error message sees is the boolean
-    from :func:`openai_api_key_present`.
+    Reads one named variable and returns one value. It never yields the file, never yields a
+    mapping of everything in it, and is never called by anything that prints: a caller that
+    wants to *say* something about a key calls :func:`api_key_present` and gets a boolean.
     """
-    from_environment = os.environ.get(API_KEY_VARIABLE, "").strip()
+    from_environment = os.environ.get(name, "").strip()
     if from_environment:
         return from_environment
     if not env_file.is_file():
@@ -432,16 +531,105 @@ def read_openai_api_key(env_file: Path = Path(".env")) -> str | None:
         stripped = line.strip()
         if stripped.startswith("#") or "=" not in stripped:
             continue
-        name, _, value = stripped.partition("=")
-        if name.strip() != API_KEY_VARIABLE:
+        found, _, value = stripped.partition("=")
+        if found.strip() != name:
             continue
         return value.strip().strip("\"'") or None
     return None
 
 
-def openai_api_key_present(env_file: Path = Path(".env")) -> bool:
+def read_openai_api_key(env_file: Path = Path(".env")) -> str | None:
+    """The OpenAI key, or ``None``. Handed to exactly one constructor and to nothing else."""
+    return read_env_value(API_KEY_VARIABLE, env_file)
+
+
+def read_nvidia_api_key(env_file: Path = Path(".env")) -> str | None:
+    """The NVIDIA key, or ``None``. Handed to exactly one constructor and to nothing else."""
+    return read_env_value(NVIDIA_API_KEY_VARIABLE, env_file)
+
+
+def api_key_for(provider: str, env_file: Path = Path(".env")) -> str | None:
+    """The credential this provider needs, or ``None`` for one that needs none here."""
+    variable = PROVIDER_KEY_VARIABLES.get(provider)
+    return None if variable is None else read_env_value(variable, env_file)
+
+
+def api_key_present(provider: str, env_file: Path = Path(".env")) -> bool:
     """Whether a key is available, as a boolean and only ever as a boolean."""
-    return read_openai_api_key(env_file) is not None
+    return api_key_for(provider, env_file) is not None
+
+
+def openai_api_key_present(env_file: Path = Path(".env")) -> bool:
+    """Whether an OpenAI key is available, as a boolean and only ever as a boolean."""
+    return api_key_present(OPENAI, env_file)
+
+
+def nvidia_api_key_present(env_file: Path = Path(".env")) -> bool:
+    """Whether an NVIDIA key is available, as a boolean and only ever as a boolean."""
+    return api_key_present(NVIDIA, env_file)
+
+
+# ------------------------------------------------------------------------ endpoint identity
+
+
+def nvidia_hosted_endpoint() -> str:
+    """The endpoint this experiment is defined against, read from the adapter that owns it.
+
+    Imported inside the body rather than at module scope, exactly as the provider builders do:
+    it keeps the integration package out of this module's import graph until something actually
+    asks about an endpoint. The constant lives in one place, so the value this command validates
+    against and the value the adapter refuses anything else for cannot drift apart.
+    """
+    from promisepatch.integrations.nvidia import HOSTED_BASE_URL
+
+    return HOSTED_BASE_URL
+
+
+def nvidia_base_url(env_file: Path = Path(".env")) -> str:
+    """The configured NVIDIA endpoint, or the documented one when nothing is configured.
+
+    **The policy, stated once because it is a choice.** An unset ``NVIDIA_API_BASE_URL`` is not
+    an error: this benchmark is defined against one specific hosted endpoint, that endpoint is
+    written down in the adapter and in ``.env.example``, and defaulting to it is defaulting to
+    the only value the run would be allowed to use anyway. A *configured* value that is not it
+    is a different matter and is refused -- see :func:`refuse_a_foreign_nvidia_endpoint`. So
+    the failure mode this guards is "benchmarked something else by accident", which is the one
+    that produces a wrong number, rather than "forgot to set a variable", which produces none.
+    """
+    return read_env_value(NVIDIA_BASE_URL_VARIABLE, env_file) or nvidia_hosted_endpoint()
+
+
+def nvidia_base_url_present(env_file: Path = Path(".env")) -> bool:
+    """Whether the endpoint was configured explicitly, as opposed to defaulted."""
+    return read_env_value(NVIDIA_BASE_URL_VARIABLE, env_file) is not None
+
+
+def endpoint_for(provider: str) -> str | None:
+    """Which host this provider is reached on, where that is not implied by its name.
+
+    ``None`` for the two providers with one canonical endpoint each, which is what a result
+    file has always recorded for them and what keeps their stored runs continuable unchanged.
+    """
+    return nvidia_base_url() if provider == NVIDIA else None
+
+
+def decoding_for(provider: str) -> Mapping[str, object] | None:
+    """How this provider is asked to sample, read from the adapter that decides it.
+
+    Read rather than restated, so a result file cannot record a configuration the adapter does
+    not send. ``None`` for Bedrock: its inference configuration lives in its own adapter and
+    predates this field, and inventing an entry for it here would be describing a request this
+    function has never seen.
+    """
+    if provider == NVIDIA:
+        from promisepatch.integrations.nvidia import NEMOTRON_DECODING
+
+        return NEMOTRON_DECODING.as_payload()
+    if provider == OPENAI:
+        from promisepatch.integrations.openai import OPENAI_DECODING
+
+        return OPENAI_DECODING.as_payload()
+    return None
 
 
 # ------------------------------------------------------------------------ reading the source
@@ -591,17 +779,103 @@ def refuse_a_missing_openai_key(provider: str) -> None:
     )
 
 
+def prior_columns(paths: Sequence[str], full: GoldDataset) -> tuple[PriorColumn, ...]:
+    """Earlier challengers' stored answers, as comparison columns. Reads files, calls nothing.
+
+    Each path is another challenger's result file, and each is refused unless it was measured
+    against the dataset on disk -- the same check the source run gets, for the same reason. A
+    column read against other labels would put a number in a table that is about a different
+    experiment.
+
+    The attempt log beside each file is joined in, so a case that model was asked about and
+    never answered shows as "no reading" rather than silently as an absence. That distinction
+    is the whole reason the two files are kept apart.
+    """
+    columns: list[PriorColumn] = []
+    for raw in paths:
+        path = Path(raw)
+        if not path.exists():
+            raise ChallengerRefusedError(
+                f"{path} does not exist, so there is no earlier challenger to compare against."
+            )
+        header, results = read_run(path)
+        if header.dataset_hash != full.content_hash:
+            raise ChallengerRefusedError(
+                f"{path.name} was run against dataset hash {header.dataset_hash[:12]} and the "
+                f"dataset on disk hashes to {full.content_hash[:12]}. A comparison column has "
+                f"to have been measured against the same labels as the rest of the table."
+            )
+        model = header.model_id or path.stem
+        joined = _with_attempts(full, results, ProviderFailureLog(failures_path(model)))
+        columns.append(column_from_results(model, header.model_id, joined))
+    return tuple(columns)
+
+
+def refuse_a_missing_nvidia_key(provider: str) -> None:
+    """Refuse before the provider builder when the credential is not there. Never prints it.
+
+    The same ordering and the same posture as the OpenAI check above: a client constructed
+    without a key fails at the first request, which is a failure that has already left the
+    machine and has already spent an attempt against a free endpoint's quota; a check before
+    construction is a refusal that costs nothing and cannot be mistaken for an outage.
+
+    There is no fallback. Not to Bedrock, not to OpenAI, not to another model, not to another
+    variable: a run that quietly measured something else would answer a question nobody asked.
+    """
+    if provider != NVIDIA or nvidia_api_key_present():
+        return
+    raise ChallengerRefusedError(
+        f"{NVIDIA_API_KEY_VARIABLE} is not set and no local .env supplies it, so the NVIDIA "
+        f"challenger cannot be reached. Nothing was constructed and nothing was called. This "
+        f"command does not fall back to another provider or another model."
+    )
+
+
+def refuse_a_foreign_nvidia_endpoint(provider: str) -> None:
+    """Refuse a configured endpoint that is not the one this experiment is defined against.
+
+    Checked here, before a client can exist, and again inside the adapter as the last line
+    before one. The refusal is the adapter's own, so "which endpoints count as the same one" is
+    decided in exactly one place -- and a local NIM container, a partner deployment or an
+    OpenAI-compatible proxy cannot be recorded under this experiment's identity by way of a
+    variable somebody exported last week.
+    """
+    if provider != NVIDIA:
+        return
+    from promisepatch.integrations.nvidia import NvidiaEndpointError, refuse_a_foreign_endpoint
+
+    try:
+        refuse_a_foreign_endpoint(nvidia_base_url())
+    except NvidiaEndpointError as error:
+        raise ChallengerRefusedError(str(error)) from error
+
+
+def slug(model: str) -> str:
+    """One model id as one path segment. Never a directory, whatever the provider names it.
+
+    Bedrock ids carry a colon and OpenAI ids carry neither, which is why this started as one
+    substitution. A vendor-prefixed id such as ``nvidia/nemotron-...`` carries a separator, and
+    left alone it would not name a file at all: it would silently create a directory and put a
+    run's results one level down from every other run's, where the resume check, the attempt
+    log and the report would each look for them in a different place.
+
+    Substitution rather than a hash, because a results directory a person reads should still
+    say which model each file belongs to.
+    """
+    return model.replace(":", "_").replace("/", "_")
+
+
 def results_path(model: str) -> Path:
-    return RESULTS_DIR / f"challenger-{model.replace(':', '_')}.jsonl"
+    return RESULTS_DIR / f"challenger-{slug(model)}.jsonl"
 
 
 def failures_path(model: str) -> Path:
     """Where attempts that produced no reading are kept, beside the readings and not among them."""
-    return RESULTS_DIR / f"challenger-{model.replace(':', '_')}-provider-failures.jsonl"
+    return RESULTS_DIR / f"challenger-{slug(model)}-provider-failures.jsonl"
 
 
 def selection_path(model: str) -> Path:
-    return RESULTS_DIR / f"challenger-set-{model.replace(':', '_')}.json"
+    return RESULTS_DIR / f"challenger-set-{slug(model)}.json"
 
 
 def write_selection(path: Path, selection: StageASelection, model: str, region: str) -> None:
@@ -662,17 +936,25 @@ async def run(
     selected = narrow(full, wanted)
     refuse_ineligible_cases(selected)
 
-    # Pricing after eligibility and before any budget arithmetic, which is the order the two
+    # Billing after eligibility and before any budget arithmetic, which is the order the two
     # questions actually depend on each other in: what may be asked is a property of the
-    # dataset, and what it may cost is only worth computing once the set is legal.
-    price = price_for(namespace.provider, namespace.model)
-    if price is None:
+    # dataset, and what it costs is only worth computing once the set is legal.
+    #
+    # Two questions rather than one, because "nobody wrote down how this model is charged for"
+    # and "this model is not charged per token" are different facts. The first is a gap and is
+    # refused; the second is a recorded term and is honoured -- by not inventing a price for it
+    # and not pretending a dollar ceiling is protecting anything.
+    billing = billing_for(namespace.provider, namespace.model)
+    if billing is None:
         raise ChallengerRefusedError(
-            f"{namespace.model!r} has no verified price in evals.budget.PRICES for provider "
-            f"{namespace.provider!r}, so a dollar ceiling cannot be enforced for it. Add it "
-            f"from a current published price list, with the day it was read, before "
-            f"challenging with it."
+            f"{namespace.model!r} has no verified price in evals.budget.PRICES and no other "
+            f"billing terms in evals.budget.BILLING for provider {namespace.provider!r}, so "
+            f"nothing here knows whether calling it costs money or what would bound it. "
+            f"Record how it is charged for -- a price from a current published list with the "
+            f"day it was read, or the terms it is actually offered on -- before challenging "
+            f"with it."
         )
+    price = billing.price
 
     ceiling = stage_ceiling(namespace.stage, namespace.provider)
     spent = ledger_totals(
@@ -689,7 +971,7 @@ async def run(
         provider=namespace.provider,
         model_id=namespace.model,
         region=region,
-        price=price,
+        billing=billing,
         budget=budget,
         ceiling=ceiling,
         already_spent=json.dumps(spent.as_payload(), sort_keys=True),
@@ -723,10 +1005,13 @@ async def run(
         f"caps {authorisation.max_calls} call(s) / ${authorisation.max_estimated_usd}\n"
     )
 
-    # The last gate before a client can exist, and the only one about a credential. Everything
-    # above it -- authorisation, dataset identity, eligibility, pricing, budget -- has already
-    # held; this asks whether the run can even reach the provider it is allowed to pay.
+    # The last two gates before a client can exist, and the only ones about how the provider is
+    # reached. Everything above them -- authorisation, dataset identity, eligibility, billing,
+    # budget -- has already held; these ask whether the run can reach the provider it is allowed
+    # to use, and whether the host it would reach is the one this experiment is about.
     refuse_a_missing_openai_key(namespace.provider)
+    refuse_a_missing_nvidia_key(namespace.provider)
+    refuse_a_foreign_nvidia_endpoint(namespace.provider)
 
     settings = _settings_for(namespace)
     target = ChallengerTarget(
@@ -734,7 +1019,8 @@ async def run(
         model_id=namespace.model,
         region=region,
         settings=settings,
-        api_key=read_openai_api_key() if namespace.provider == OPENAI else None,
+        api_key=api_key_for(namespace.provider),
+        base_url=endpoint_for(namespace.provider),
     )
     provider = provider_builder(target, authorisation)
 
@@ -754,7 +1040,9 @@ async def run(
         mode=LIVE_MODE,
         splits=(EvalSplit.DEVELOPMENT.value,),
         region=namespace.region,
-        pricing_snapshot=price.snapshot_date.isoformat(),
+        pricing_snapshot=None if price is None else price.snapshot_date.isoformat(),
+        endpoint=endpoint_for(namespace.provider),
+        decoding=decoding_for(namespace.provider),
     )
     store = ResultStore(results_path(namespace.model), header)
     (RESULTS_DIR / f"{store.header.run_id}-challenger-preflight.txt").write_text(
@@ -833,10 +1121,10 @@ def _new_run_id() -> str:
 def _settings_for(namespace: argparse.Namespace) -> Settings:
     """Production settings for the provider that has some; a bare object for the one that has none.
 
-    OpenAI appears nowhere in :class:`~promisepatch.config.Settings`, because the runtime has no
-    route to it and this gate adds none. Handing the OpenAI builder a settings object configured
-    for Bedrock would be a small lie in the one value that says what a deployment is, so it is
-    handed an unconfigured one it does not read.
+    Neither OpenAI nor NVIDIA appears anywhere in :class:`~promisepatch.config.Settings`,
+    because the runtime has no route to either and neither gate added one. Handing one of their
+    builders a settings object configured for Bedrock would be a small lie in the one value that
+    says what a deployment is, so each is handed an unconfigured one it does not read.
     """
     if namespace.provider != BEDROCK:
         return Settings()
@@ -851,8 +1139,9 @@ def _region_for(namespace: argparse.Namespace) -> str:
     """Where the model is called, for the provider where that is a fact.
 
     ``--region`` is a Bedrock concept: an inference profile is Region-scoped and the Region is
-    part of what a Bedrock result measured. OpenAI's API is not addressed that way, so recording
-    ``us-east-1`` against an OpenAI run would put a fact in a result file that is not one.
+    part of what a Bedrock result measured. Neither hosted compatible endpoint is addressed that
+    way, so recording ``us-east-1`` against one of their runs would put a fact in a result file
+    that is not one. What locates those is the endpoint, which is recorded instead.
     """
     return namespace.region if namespace.provider == BEDROCK else "not applicable"
 
@@ -973,21 +1262,31 @@ def _stage_budget_block(stage: str, effective: EvalBudget, provider: str = BEDRO
         "",
         f"STAGE BUDGET  -- stage {stage.upper()} is bounded by the stricter of both ceilings",
         f"  {'provider'.ljust(28)} {provider}",
-        f"  {'global challenger ceiling'.ljust(28)} {ceiling.max_calls} call(s) / "
-        f"${ceiling.max_estimated_usd}",
+        f"  {'global challenger ceiling'.ljust(28)} {_bound(ceiling)}",
     ]
     if stage_bound is None:
         lines.append(f"  {label} none -- this stage keeps the global ceiling")
     else:
-        lines.append(
-            f"  {label} {stage_bound.max_calls} call(s) / ${stage_bound.max_estimated_usd}"
-        )
+        lines.append(f"  {label} {_bound(stage_bound)}")
+    lines.append(f"  {'effective ceiling'.ljust(28)} {_bound(effective)}")
     lines.append(
-        f"  {'effective ceiling'.ljust(28)} {effective.max_calls} call(s) / "
-        f"${effective.max_estimated_usd}"
+        f"  {'token ceilings'.ljust(28)} {effective.max_input_tokens} in / "
+        f"{effective.max_output_tokens} out"
     )
     lines.append("  both remain in force; the guard refuses the call that would cross either one")
     return "\n".join(lines)
+
+
+def _bound(budget: EvalBudget) -> str:
+    """One ceiling in a sentence, saying what bounds it rather than printing an empty cap.
+
+    A provider with no dollar meter has no dollar cap, and the honest line names the bound
+    that is doing the work instead of an empty one that reads as a formatting fault.
+    """
+    calls = f"{budget.max_calls} call(s)"
+    if budget.max_estimated_usd is None:
+        return f"{calls} / no dollar cap -- calls and tokens are the bound"
+    return f"{calls} / ${budget.max_estimated_usd}"
 
 
 def _zero_call_block(selected: GoldDataset, namespace: argparse.Namespace) -> str:
@@ -997,27 +1296,54 @@ def _zero_call_block(selected: GoldDataset, namespace: argparse.Namespace) -> st
     this invocation demonstrably did not take. A plan that merely said "nothing was called"
     would be an assertion about intent; these are the numbers somebody can check.
 
-    The credential line is a boolean and is a boolean everywhere else too. Whether a key is
+    The credential lines are booleans and are booleans everywhere else too. Whether a key is
     present changes whether a live run could start, so an operator needs to know it -- and the
-    value itself is never read by anything that prints.
+    value itself is never read by anything that prints. Every key-carrying provider is listed,
+    not only the one this invocation names, because "which credentials this machine could
+    spend with" is what an operator is actually checking.
     """
     holdout = sum(case.split is not EvalSplit.DEVELOPMENT for case in selected.customer)
-    return "\n".join(
-        [
-            "ZERO-CALL PLAN  -- what this invocation did not do, counted",
-            f"  {'challenger provider'.ljust(32)} {namespace.provider}",
-            f"  {'challenger model'.ljust(32)} {namespace.model}",
-            f"  {'stage A cases'.ljust(32)} {len(selected.customer)}",
-            f"  {'worker cases'.ljust(32)} {len(selected.worker)}",
-            f"  {'holdout cases'.ljust(32)} {holdout}",
-            f"  {'challenger model calls'.ljust(32)} 0",
-            f"  {'source (challenged) model calls'.ljust(32)} 0",
-            f"  {'provider clients constructed'.ljust(32)} 0",
-            f"  {(API_KEY_VARIABLE + ' present').ljust(32)} "
-            f"{str(openai_api_key_present()).lower()}",
-            "",
-        ]
-    )
+    lines = [
+        "ZERO-CALL PLAN  -- what this invocation did not do, counted",
+        f"  {'challenger provider'.ljust(32)} {namespace.provider}",
+        f"  {'challenger model'.ljust(32)} {namespace.model}",
+        *_endpoint_lines(namespace.provider),
+        f"  {'stage A cases'.ljust(32)} {len(selected.customer)}",
+        f"  {'worker cases'.ljust(32)} {len(selected.worker)}",
+        f"  {'holdout cases'.ljust(32)} {holdout}",
+        f"  {'challenger model calls'.ljust(32)} 0",
+        f"  {'source (challenged) model calls'.ljust(32)} 0",
+        f"  {'provider clients constructed'.ljust(32)} 0",
+        *(
+            f"  {(variable + ' present').ljust(32)} {str(api_key_present(provider)).lower()}"
+            for provider, variable in sorted(PROVIDER_KEY_VARIABLES.items())
+        ),
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _endpoint_lines(provider: str) -> list[str]:
+    """Which host a live run would reach, and how it would sample, for the provider that varies.
+
+    Printed in a plan, before anything could be bought, because "the right model at the wrong
+    endpoint" is a mistake whose result file looks entirely normal afterwards. None of it is a
+    credential: an address is configuration, the sampling numbers are read off the adapter that
+    would send them, and the key itself appears only as the boolean above.
+    """
+    if provider != NVIDIA:
+        return []
+    decoding = decoding_for(provider) or {}
+    return [
+        f"  {'endpoint'.ljust(32)} {nvidia_base_url()}",
+        f"  {(NVIDIA_BASE_URL_VARIABLE + ' set').ljust(32)} "
+        f"{str(nvidia_base_url_present()).lower()}",
+        f"  {'endpoint is the intended one'.ljust(32)} "
+        f"{str(nvidia_base_url() == nvidia_hosted_endpoint()).lower()}",
+        f"  {'reasoning'.ljust(32)} disabled (reasoning_effort={decoding.get('reasoning_effort')})",
+        f"  {'sampling'.ljust(32)} temperature {decoding.get('temperature')} / "
+        f"top_p {decoding.get('top_p')}",
+    ]
 
 
 def _selection_block(
@@ -1087,6 +1413,9 @@ def report(
     stage_a = build_stage_a(full, selection, source, joined)
     verdict = evaluate_materiality(stage_a)
     print("\n" + render_stage_a(stage_a, verdict))
+    priors = prior_columns(getattr(namespace, "compare_with", None) or (), full)
+    if priors:
+        print(render_comparison(stage_a, challenger_label=namespace.model, priors=priors))
     results = joined
 
     development = frozenset(
@@ -1146,6 +1475,7 @@ def _cost_block(
         challenger=usage_profile(full, results, namespace.model),
         source_price=price_for(source.provider, source.model_id),
         challenger_price=price_for(namespace.provider, namespace.model),
+        challenger_billing=billing_for(namespace.provider, namespace.model),
         source_latency=latency_profile(source_subset, "latency_ms"),
         challenger_latency=latency_profile(results, "latency_ms"),
     )
@@ -1309,7 +1639,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--provider",
-        choices=[BEDROCK, OPENAI],
+        choices=[BEDROCK, OPENAI, NVIDIA],
         help="which provider to call. No default: a comparison names what it measured.",
     )
     parser.add_argument(
@@ -1323,7 +1653,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--region",
         default="us-east-1",
-        help="the Region to call Bedrock in. Not applicable to OpenAI and not recorded for it.",
+        help=(
+            "the Region to call Bedrock in. Not applicable to either hosted compatible "
+            "endpoint and not recorded for them."
+        ),
     )
     parser.add_argument(
         "--stage",
@@ -1341,6 +1674,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--from-results",
         help="rebuild the reports from a stored challenger run instead of calling anything",
+    )
+    parser.add_argument(
+        "--compare-with",
+        action="append",
+        metavar="PATH",
+        help=(
+            "an earlier challenger's stored result file, added to the Stage-A table as a "
+            "comparison column. Repeatable, reads files and calls nothing. It changes no "
+            "outcome and no threshold: every verdict stays the challenger's against the model "
+            "being challenged."
+        ),
     )
     parser.add_argument("--json", action="store_true", help="emit the machine-readable summary")
     return parser

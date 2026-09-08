@@ -366,12 +366,14 @@ class ProviderFailureCategory(StrEnum):
     it is persisted and none of it is read here -- the category has to be in the type, and a
     boundary that wants a finer category raises a finer exception.
 
-    That is what separates the two adapters' resolution. The Bedrock boundary raises one
+    That is what separates the adapters' resolution. The Bedrock boundary raises one
     ``SemanticProviderError`` for authentication, access denial, throttling and network faults
     alike, so those collapse into :data:`PROVIDER_UNREACHABLE` and cannot honestly be told
-    apart from a stored result. The OpenAI boundary raises a distinct type per class of fault,
-    so they arrive already distinguished. Neither adapter's answer is a claim about model
-    quality: every member here means no reading was obtained.
+    apart from a stored result. The two OpenAI-compatible boundaries raise a distinct type per
+    class of fault, so they arrive already distinguished -- and each raises its *own* five
+    types, so a fault is attributed to the endpoint that produced it rather than to whichever
+    provider the shared transport was first written for. No adapter's answer is a claim about
+    model quality: every member here means no reading was obtained.
     """
 
     TIMEOUT = "TIMEOUT"
@@ -409,6 +411,12 @@ FAILURE_CATEGORIES: Mapping[str, ProviderFailureCategory] = {
     "OpenAiRateLimitError": ProviderFailureCategory.RATE_LIMITED,
     "OpenAiInvalidRequestError": ProviderFailureCategory.INVALID_REQUEST,
     "OpenAiUnavailableError": ProviderFailureCategory.PROVIDER_UNAVAILABLE,
+    "NvidiaAuthenticationError": ProviderFailureCategory.AUTHENTICATION,
+    "NvidiaPermissionError": ProviderFailureCategory.PERMISSION,
+    "NvidiaRateLimitError": ProviderFailureCategory.RATE_LIMITED,
+    "NvidiaInvalidRequestError": ProviderFailureCategory.INVALID_REQUEST,
+    "NvidiaUnavailableError": ProviderFailureCategory.PROVIDER_UNAVAILABLE,
+    "NvidiaEndpointError": ProviderFailureCategory.INVALID_REQUEST,
 }
 """Exception class names, as a stored result records them, to the category they mean.
 

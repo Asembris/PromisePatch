@@ -11,6 +11,11 @@ The four refusals are the point:
 * an exhausted call cap refuses **before** the next call;
 * an exhausted token cap refuses **before** the next call;
 * an unknown price produces an *unavailable* cost, never a free one.
+
+And one distinction, which arrived with an endpoint that has no price at all: *unpriced* and
+*not billed per token* are different states, and neither of them is zero. The last section
+below is about keeping them apart -- because collapsing them would put a fabricated commercial
+rate in the catalog, and would switch off the dollar guard for every model that really has one.
 """
 
 from __future__ import annotations
@@ -21,7 +26,10 @@ from pathlib import Path
 
 import pytest
 from evals.budget import (
+    BILLING,
     PRICES,
+    Billing,
+    BillingMode,
     BudgetedSemanticProvider,
     BudgetExhaustedError,
     BudgetGuard,
@@ -30,6 +38,7 @@ from evals.budget import (
     ModelPrice,
     PricingUnavailableError,
     append_to_ledger,
+    billing_for,
     estimate_usd,
     ledger_totals,
     price_for,
@@ -563,3 +572,111 @@ def test_composition_is_order_independent_and_binds_at_least_as_hard_as_either_i
         assert combined.max_estimated_usd is not None
         assert source.max_estimated_usd is not None
         assert combined.max_estimated_usd <= source.max_estimated_usd
+
+
+# ------------------------------------------------ billed per token, or not billed per token
+
+
+NEMOTRON = "nvidia/nemotron-3-super-120b-a12b"
+
+
+def test_every_priced_model_is_metered_and_carries_the_price_it_was_priced_at() -> None:
+    """The billing catalog is derived from the price catalog, so the two cannot disagree."""
+    for (provider, model_id), price in PRICES.items():
+        billing = billing_for(provider, model_id)
+        assert billing is not None
+        assert billing.mode is BillingMode.METERED
+        assert billing.is_metered
+        assert billing.price is price
+        assert billing.source == price.source
+
+
+def test_a_free_hosted_endpoint_is_recorded_as_one_rather_than_priced_at_zero() -> None:
+    """A zero rate would assert a published price that does not exist, and would make every
+    dollar ceiling trivially satisfiable for that model for ever.
+    """
+    billing = billing_for("nvidia", NEMOTRON)
+    assert billing is not None
+    assert billing.mode is BillingMode.FREE_HOSTED_TRIAL
+    assert billing.price is None
+    assert not billing.is_metered
+    assert price_for("nvidia", NEMOTRON) is None
+    assert "no per-token price" in billing.describe()
+
+
+def test_the_free_entry_makes_no_claim_about_permanence_or_production_use() -> None:
+    billing = billing_for("nvidia", NEMOTRON)
+    assert billing is not None
+    assert "not claim it is permanent" in billing.source or "permanent" in billing.source
+
+
+def test_a_model_nobody_recorded_terms_for_has_none_rather_than_a_default() -> None:
+    """The same posture unknown pricing already had, extended to "is there a price at all"."""
+    assert billing_for("nvidia", "nvidia/nemotron-3-nano-30b") is None
+    assert billing_for("openai", "gpt-4o-mini") is None
+    assert billing_for("bedrock", NEMOTRON) is None
+    assert billing_for("nvidia", None) is None
+
+
+def test_the_two_invalid_billing_records_cannot_be_constructed() -> None:
+    """A metered entry with no price is an unenforceable ceiling; a free entry with a price is
+    the fabrication this type exists to prevent. Both are refused at construction.
+    """
+    price = PRICES[("openai", "gpt-4o-mini-2024-07-18")]
+    with pytest.raises(ValueError, match="metered"):
+        Billing(
+            provider="openai",
+            model_id="x",
+            mode=BillingMode.METERED,
+            source="none",
+            price=None,
+        )
+    with pytest.raises(ValueError, match="free hosted trial"):
+        Billing(
+            provider="nvidia",
+            model_id="y",
+            mode=BillingMode.FREE_HOSTED_TRIAL,
+            source="none",
+            price=price,
+        )
+
+
+def test_a_free_endpoint_still_starts_under_call_and_token_ceilings() -> None:
+    """No dollar meter is not no bound. What is at risk is quota, and quota is calls and tokens."""
+    ceiling = EvalBudget(max_calls=12, max_input_tokens=100_000, max_output_tokens=10_000)
+    assert not ceiling.has_dollar_cap
+    guard = BudgetGuard(ceiling, price=None, live=True)
+    for _ in range(12):
+        guard.authorise()
+    with pytest.raises(BudgetExhaustedError, match="call budget exhausted"):
+        guard.authorise()
+
+
+def test_a_metered_model_with_no_price_still_refuses_to_start_a_live_run() -> None:
+    """The guard the dollar cap gives the paid providers is untouched by the free one."""
+    with pytest.raises(PricingUnavailableError):
+        BudgetGuard(EvalBudget(max_estimated_usd=Decimal("1")), price=None, live=True)
+
+
+def test_an_unpriced_call_adds_no_money_rather_than_adding_zero() -> None:
+    """A zero would sum across a run into a total that looked like a measurement."""
+    guard = BudgetGuard(EvalBudget(max_calls=5), price=None, live=True)
+    guard.authorise()
+    guard.record(
+        SemanticTelemetry(
+            job=SemanticJob.CLASSIFY_REPLY_INTENT,
+            provider="nvidia",
+            model_id=NEMOTRON,
+            attempts=1,
+            usage=SemanticUsage(input_tokens=400, output_tokens=8),
+        )
+    )
+    assert guard.spend.input_tokens == 400
+    assert guard.spend.estimated_usd is None
+
+
+def test_the_billing_catalog_holds_exactly_the_models_somebody_chose_to_run() -> None:
+    """One entry per model this repository has deliberately selected. An SDK supporting a
+    hundred does not put a hundred here: an entry is a decision, not a capability.
+    """
+    assert set(BILLING) == set(PRICES) | {("nvidia", NEMOTRON)}

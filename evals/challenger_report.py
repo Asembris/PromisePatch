@@ -13,19 +13,26 @@ Nothing here computes a metric. Every number comes from :mod:`evals.challenger` 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 
-from evals.budget import ModelPrice
+from evals.budget import Billing, ModelPrice
 from evals.challenger import (
     ClusterDelta,
     MaterialityVerdict,
     PairedCase,
+    PairedOutcome,
     PairedTotals,
+    Role,
     StageAOutcome,
     UsageProfile,
+    predicted_label,
 )
+from evals.results import CaseResult
+from promisepatch.semantic import ApparentIntent
 
 NA = "n/a"
+NEWLINE = chr(10)
 
 
 def _rate(value: float | None, digits: int = 3) -> str:
@@ -244,6 +251,179 @@ def render_stage_b(
     return "\n".join(lines)
 
 
+# ------------------------------------------------ several challengers, one frozen selection
+
+
+@dataclass(frozen=True, slots=True)
+class PriorColumn:
+    """One earlier challenger's readings of the same twelve cases, for the comparison table.
+
+    A *column*, deliberately, and not a second baseline. Every outcome in this report is still
+    computed against the model being challenged, because that is what makes two challengers
+    comparable with each other: they were selected from the same failures, matched to the same
+    controls and judged against the same labels. Redefining "repaired" relative to whichever
+    challenger ran previously would make each new model's number depend on the order the models
+    happened to be run in.
+
+    So this carries readings and nothing else. It contributes no outcome, no aggregate that
+    feeds the materiality gate and no threshold of its own.
+    """
+
+    label: str
+    model_id: str | None
+    readings: Mapping[str, ApparentIntent | None]
+    """Case id to what that model said, or absent where it produced no reading."""
+
+    unanswered: frozenset[str] = frozenset()
+    """Cases this model was asked about and did not answer. Kept apart from a wrong answer,
+    because "the endpoint refused" and "the model misread the sentence" are different facts and
+    only one of them is about a model."""
+
+    def show(self, case_id: str) -> str:
+        if case_id in self.unanswered:
+            return "no reading"
+        reading = self.readings.get(case_id)
+        return NA if reading is None else reading.value
+
+    def correct(self, cases: Sequence[PairedCase]) -> int:
+        return sum(1 for case in cases if self.readings.get(case.case_id) is case.gold)
+
+    def repairs(self, cases: Sequence[PairedCase]) -> int:
+        """How many of the challenged model's failures this column read correctly.
+
+        The same definition the paired taxonomy uses for the challenger, applied to a stored
+        column: a failure case answered with the gold label. Computed here rather than lifted
+        from that model's own run so both numbers mean exactly the same thing.
+        """
+        return sum(
+            1
+            for case in cases
+            if case.role is Role.FAILURE and self.readings.get(case.case_id) is case.gold
+        )
+
+    def control_regressions(self, cases: Sequence[PairedCase]) -> int:
+        return sum(
+            1
+            for case in cases
+            if case.role is Role.CONTROL
+            and case.case_id not in self.unanswered
+            and self.readings.get(case.case_id) is not case.gold
+        )
+
+
+def column_from_results(
+    label: str, model_id: str | None, results: Sequence[CaseResult]
+) -> PriorColumn:
+    """One stored challenger run as a column. Reads results and calls nothing."""
+    readings: dict[str, ApparentIntent | None] = {}
+    unanswered: set[str] = set()
+    for result in results:
+        if result.has_reading:
+            readings[result.case_id] = predicted_label(result)
+        else:
+            unanswered.add(result.case_id)
+    return PriorColumn(
+        label=label, model_id=model_id, readings=readings, unanswered=frozenset(unanswered)
+    )
+
+
+def render_comparison(
+    outcome: StageAOutcome,
+    *,
+    challenger_label: str,
+    priors: Sequence[PriorColumn] = (),
+) -> str:
+    """Every challenger's reading of the same cases, side by side, with outcomes unchanged.
+
+    One table and one aggregate block. The outcome column is the challenger's against the model
+    being challenged and is the only one there is: a prior column's number appears beside it for
+    a reader to compare, never as a second definition of what a repair is.
+    """
+    cases = outcome.cases
+    source = outcome.selection.source_model_id or "source"
+    heads = ["case", "gold", _short(source)]
+    heads.extend(_short(column.label) for column in priors)
+    heads.append(_short(challenger_label))
+    lines = [
+        "STAGE-A COMPARISON  -- the same frozen selection, read by every challenger so far",
+        "",
+        "  Outcomes are the challenger's against the model being challenged. Earlier "
+        "challengers appear",
+        "  as columns for comparison and define nothing: the pairing, the thresholds and the "
+        "vocabulary",
+        "  are the ones fixed before the first call.",
+        "",
+        "  " + _row(heads) + "  outcome vs " + _short(source),
+    ]
+    for case in cases:
+        cells = [case.case_id, case.gold.value, _label(_value(case.source_predicted))]
+        cells.extend(column.show(case.case_id) for column in priors)
+        cells.append(case.challenger_predicted.value if case.challenger_predicted else "no reading")
+        lines.append("  " + _row(cells) + "  " + case.outcome.value)
+
+    failures = [case for case in cases if case.role is Role.FAILURE]
+    controls = [case for case in cases if case.role is Role.CONTROL]
+    repairs = sum(1 for case in failures if case.outcome is PairedOutcome.REPAIRED)
+    regressions = sum(1 for case in controls if case.outcome is PairedOutcome.CONTROL_REGRESSION)
+    total = str(len(cases))
+    lines.extend(
+        [
+            "",
+            "  AGGREGATES  (every column against the same gold labels and the same roles)",
+            "    "
+            + "column".ljust(28)
+            + ("correct/" + total).ljust(12)
+            + ("repairs/" + str(len(failures))).ljust(12)
+            + "control regressions",
+            "    "
+            + _short(source).ljust(28)
+            + str(sum(1 for case in cases if case.source_correct)).ljust(12)
+            + "-".ljust(12)
+            + "-",
+        ]
+    )
+    for column in priors:
+        lines.append(
+            "    "
+            + _short(column.label).ljust(28)
+            + str(column.correct(cases)).ljust(12)
+            + str(column.repairs(cases)).ljust(12)
+            + str(column.control_regressions(cases))
+        )
+    lines.append(
+        "    "
+        + _short(challenger_label).ljust(28)
+        + str(sum(1 for case in cases if case.challenger_correct)).ljust(12)
+        + str(repairs).ljust(12)
+        + str(regressions)
+    )
+    lines.extend(["", "  BY SIDE  (which half of the customer's answer each repair was on)"])
+    for side, name in (
+        (ApparentIntent.APPARENT_APPROVE, "approve-side"),
+        (ApparentIntent.APPARENT_DECLINE, "decline-side"),
+        (ApparentIntent.UNCLEAR, "unclear-side"),
+    ):
+        wanted = [case for case in failures if case.gold is side]
+        repaired = sum(1 for case in wanted if case.outcome is PairedOutcome.REPAIRED)
+        lines.append(
+            "    " + name.ljust(28) + str(repaired) + " of " + str(len(wanted)) + " repaired"
+        )
+    lines.append("")
+    return NEWLINE.join(lines)
+
+
+_WIDTHS = (34, 17, 18, 18, 18, 18, 18)
+
+
+def _row(cells: Sequence[str]) -> str:
+    return " ".join(cell.ljust(width) for cell, width in zip(cells, _WIDTHS, strict=False))
+
+
+def _short(value: str) -> str:
+    """A model id trimmed to the column, from the right, because the tail is what differs."""
+    return value if len(value) <= 18 else "..." + value[-15:]
+
+
 def render_cost(
     *,
     source: UsageProfile,
@@ -252,8 +432,15 @@ def render_cost(
     challenger_price: ModelPrice | None,
     source_latency: Mapping[str, object] | None,
     challenger_latency: Mapping[str, object] | None,
+    challenger_billing: Billing | None = None,
 ) -> str:
-    """The cost section, kept apart from quality because it is a different decision."""
+    """The cost section, kept apart from quality because it is a different decision.
+
+    ``challenger_billing`` says *why* a money figure is missing when one is. An empty column
+    reads as a measurement nobody took; a challenger on a free hosted endpoint has no per-token
+    price to measure, which is a different and less alarming fact, and saying which of the two
+    it is costs one line.
+    """
     source_k = source.usd_per_thousand(source_price)
     challenger_k = challenger.usd_per_thousand(challenger_price)
     lines = [
@@ -284,6 +471,19 @@ def render_cost(
         f"    {'estimated $ / 1,000 calls'.ljust(34)} {_money(source_k).ljust(18)} "
         f"{_money(challenger_k)}",
     ]
+    if challenger_billing is not None and not challenger_billing.is_metered:
+        lines.extend(
+            [
+                "",
+                f"  CHALLENGER BILLING  {challenger_billing.mode.value}",
+                "    No per-token price is modelled for this endpoint, so every money figure "
+                "above is absent",
+                "    rather than zero. What bounded the run was its call and token ceilings. "
+                "Nothing here says",
+                "    this endpoint is free permanently or that production use would be.",
+            ]
+        )
+
     lines.extend(["", "  PREMIUM"])
     if source_k is None or challenger_k is None or source_k == 0:
         lines.append("    not computable -- one side has no priced token measurement")
