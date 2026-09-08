@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from evals.cases import CustomerCase, EvalJob, EvalSplit
 from evals.challenger import (
+    FAILURE_CATEGORIES,
     SEMANTIC_OUTCOMES,
     PairedOutcome,
     ProviderFailureCategory,
@@ -208,6 +209,46 @@ def test_the_category_is_coarse_and_carries_no_provider_message(dataset: GoldDat
         is ProviderFailureCategory.UNKNOWN_PROVIDER_FAILURE
     )
     assert provider_failure_category(reading(case, case.expected)) is None
+
+
+def test_a_boundary_that_names_its_faults_gets_named_categories(dataset: GoldDataset) -> None:
+    """Resolution follows the exception type, because that is all a stored result may keep.
+
+    A provider's own message can carry an account id, an organisation or a fragment of the
+    request, so none of it is persisted. A boundary that wants "the key was rejected" told apart
+    from "we could not connect" therefore has to raise two types, and the OpenAI adapter does.
+    The Bedrock adapter raises one, so its faults stay collapsed -- which is honest rather than
+    unfortunate: inventing the distinction from a stored result would be a guess.
+    """
+    case = development(dataset)[0]
+    expected = {
+        "OpenAiAuthenticationError": ProviderFailureCategory.AUTHENTICATION,
+        "OpenAiPermissionError": ProviderFailureCategory.PERMISSION,
+        "OpenAiRateLimitError": ProviderFailureCategory.RATE_LIMITED,
+        "OpenAiInvalidRequestError": ProviderFailureCategory.INVALID_REQUEST,
+        "OpenAiUnavailableError": ProviderFailureCategory.PROVIDER_UNAVAILABLE,
+    }
+    for class_name, category in expected.items():
+        assert provider_failure_category(refusal(case, category=class_name)) is category
+
+
+def test_no_category_is_ever_a_semantic_label(dataset: GoldDataset) -> None:
+    """The whole reason these exist. Not one member of this enum is a reading of a sentence.
+
+    ``UNCLEAR`` is a thing a model said. Every value below is a thing that happened instead of a
+    model saying anything, and a report that let one stand in for the other would describe an
+    account as if it were a model.
+    """
+    case = development(dataset)[0]
+    labels = {intent.value for intent in ApparentIntent}
+    for category in ProviderFailureCategory:
+        assert category.value not in labels
+
+    for class_name in (*FAILURE_CATEGORIES, "SomethingNobodyHasSeen"):
+        result = refusal(case, category=class_name)
+        assert provider_failure_category(result) is not None
+        assert result.observed.get("apparent_intent") is None
+        assert not result.has_reading
 
 
 # ------------------------------------------------------- a failure is not a quality outcome

@@ -361,34 +361,74 @@ class ProviderFailureCategory(StrEnum):
     """Why nobody was reached, in the coarsest terms the evaluator can state truthfully.
 
     Derived from the exception class the semantic boundary raised, which is the only thing
-    about the failure that reaches a stored result. Production distinguishes a retryable
-    transport fault from a non-retryable one on the exception object, and puts the provider's
-    own code in the message; neither is carried into the surface the evaluator sees, and this
-    gate does not widen production logging to fetch them. So the categories are deliberately
-    coarse, and no raw provider message is ever persisted here.
+    about the failure that reaches a stored result. A provider's own message may carry an
+    account id, an organisation, a request context or a fragment of what was sent, so none of
+    it is persisted and none of it is read here -- the category has to be in the type, and a
+    boundary that wants a finer category raises a finer exception.
+
+    That is what separates the two adapters' resolution. The Bedrock boundary raises one
+    ``SemanticProviderError`` for authentication, access denial, throttling and network faults
+    alike, so those collapse into :data:`PROVIDER_UNREACHABLE` and cannot honestly be told
+    apart from a stored result. The OpenAI boundary raises a distinct type per class of fault,
+    so they arrive already distinguished. Neither adapter's answer is a claim about model
+    quality: every member here means no reading was obtained.
     """
 
     TIMEOUT = "TIMEOUT"
     """The model did not answer inside the bound. Retryable in the transport sense."""
 
+    AUTHENTICATION = "AUTHENTICATION"
+    """The credential was rejected. A fact about a key, and never about a model."""
+
+    PERMISSION = "PERMISSION"
+    """The credential was accepted and this account may not call this model. Access or billing."""
+
+    RATE_LIMITED = "RATE_LIMITED"
+    """Throttled, or out of quota. Retryable in the transport sense; still no reading."""
+
+    INVALID_REQUEST = "INVALID_REQUEST"
+    """The provider understood the request and refused it. Retrying is being refused twice."""
+
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    """The service could not be reached, or answered with a fault of its own."""
+
     PROVIDER_UNREACHABLE = "PROVIDER_UNREACHABLE"
-    """The provider refused, could not be reached, or did not answer with a response. Covers
-    authentication, access denial, throttling and network faults alike: telling those apart
-    from a stored result would need a sanitised provider code production does not publish."""
+    """A boundary that reports one undifferentiated transport failure. Covers authentication,
+    access denial, throttling and network faults alike, because telling those apart from a
+    stored result would need a sanitised provider code that boundary does not publish."""
 
     UNKNOWN_PROVIDER_FAILURE = "UNKNOWN_PROVIDER_FAILURE"
     """A failure whose recorded category names nothing this evaluator knows."""
+
+
+FAILURE_CATEGORIES: Mapping[str, ProviderFailureCategory] = {
+    "SemanticTimeoutError": ProviderFailureCategory.TIMEOUT,
+    "SemanticProviderError": ProviderFailureCategory.PROVIDER_UNREACHABLE,
+    "OpenAiAuthenticationError": ProviderFailureCategory.AUTHENTICATION,
+    "OpenAiPermissionError": ProviderFailureCategory.PERMISSION,
+    "OpenAiRateLimitError": ProviderFailureCategory.RATE_LIMITED,
+    "OpenAiInvalidRequestError": ProviderFailureCategory.INVALID_REQUEST,
+    "OpenAiUnavailableError": ProviderFailureCategory.PROVIDER_UNAVAILABLE,
+}
+"""Exception class names, as a stored result records them, to the category they mean.
+
+Strings rather than the types themselves, and deliberately: an import contract stops this
+package from reaching the integration modules those classes live in, which is the same rule
+that stops the evaluator from being able to construct a paid provider. A name it does not know
+becomes :data:`ProviderFailureCategory.UNKNOWN_PROVIDER_FAILURE` rather than a guess, so a new
+boundary is legible here as "unrecognised" instead of silently mislabelled.
+"""
 
 
 def provider_failure_category(result: CaseResult) -> ProviderFailureCategory | None:
     """The coarse category of one provider failure, or ``None`` when the case is not one."""
     if result.execution_status is not ExecutionStatus.PROVIDER_FAILURE:
         return None
-    if result.error_category == "SemanticTimeoutError":
-        return ProviderFailureCategory.TIMEOUT
-    if result.error_category == "SemanticProviderError":
-        return ProviderFailureCategory.PROVIDER_UNREACHABLE
-    return ProviderFailureCategory.UNKNOWN_PROVIDER_FAILURE
+    if result.error_category is None:
+        return ProviderFailureCategory.UNKNOWN_PROVIDER_FAILURE
+    return FAILURE_CATEGORIES.get(
+        result.error_category, ProviderFailureCategory.UNKNOWN_PROVIDER_FAILURE
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1045,6 +1085,7 @@ def latency_profile(results: Sequence[CaseResult], field: str) -> dict[str, obje
 
 
 __all__ = [
+    "FAILURE_CATEGORIES",
     "MAX_STAGE_A_CASES",
     "SELECTION_ALGORITHM_VERSION",
     "SEMANTIC_OUTCOMES",

@@ -31,6 +31,7 @@ from evals.budget import (
     PricingUnavailableError,
     append_to_ledger,
     estimate_usd,
+    ledger_totals,
     price_for,
     tightest,
 )
@@ -101,14 +102,24 @@ def test_the_catalog_holds_only_the_models_that_have_actually_been_benchmarked()
     half. `Settings.bedrock_model_id` defaults to Haiku 4.5, which is now priced because the
     customer-intent challenger measures it -- and ADR-0004's configured escalation is not, so
     escalating to it under a dollar ceiling still refuses rather than proceeding unmeasured.
+
+    The OpenAI entry is the replacement challenger and it is exactly one: an SDK that supports
+    a hundred models does not put a hundred rows here, and the floating `gpt-4o-mini` alias is
+    deliberately absent so that a run naming it fails closed rather than being priced against
+    whichever snapshot the alias points at today.
     """
     assert set(PRICES) == {
         ("bedrock", "us.amazon.nova-2-lite-v1:0"),
         ("bedrock", "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
+        ("openai", "gpt-4o-mini-2024-07-18"),
     }
     assert not [key for key in PRICES if "sonnet" in key[1]]
     assert price_for("bedrock", "example.model-v1:0") is None
     assert price_for("bedrock", None) is None
+    assert price_for("openai", "gpt-4o-mini") is None
+    # The pair is the key, so neither half identifies a model on its own.
+    assert price_for("bedrock", "gpt-4o-mini-2024-07-18") is None
+    assert price_for("openai", "us.anthropic.claude-haiku-4-5-20251001-v1:0") is None
 
 
 def test_the_challenger_is_priced_from_a_dated_published_snapshot() -> None:
@@ -143,6 +154,152 @@ def test_the_benchmarked_model_is_priced_from_a_dated_published_snapshot() -> No
     assert price.snapshot_date == date(2026, 9, 8)
     assert "FY8T82UUN7VZR55K" in price.source
     assert "DY69Q8C3F88CHA2Q" in price.source
+
+
+def test_the_replacement_challenger_is_priced_against_its_pinned_snapshot() -> None:
+    """The figures the OpenAI challenger's spend is computed from, and what they are pinned to.
+
+    The dated snapshot, never the floating alias. A price recorded against ``gpt-4o-mini``
+    would be a price against whichever model that name resolved to on the day, so a budget and
+    a quality number computed a week apart could describe two different models.
+    """
+    price = price_for("openai", "gpt-4o-mini-2024-07-18")
+    assert price is not None
+    assert price.provider == "openai"
+    assert price.model_id == "gpt-4o-mini-2024-07-18"
+    assert price.input_usd_per_million == Decimal("0.15")
+    assert price.output_usd_per_million == Decimal("0.60")
+    assert price.snapshot_date == date(2026, 9, 8)
+    assert "gpt-4o-mini-2024-07-18" in price.source
+
+
+def test_the_openai_token_ceilings_cost_less_than_the_openai_dollar_ceiling() -> None:
+    """The arithmetic the OpenAI ceilings were chosen from, in decimals rather than floats.
+
+    100k input at $0.15/M is $0.015 and 10k output at $0.60/M is $0.006, so the token bounds
+    permit $0.021 in total and a three-cent dollar cap sits above them. That ordering is the
+    intended one: the dollar cap is a backstop for arithmetic nobody re-checked, not the bound
+    expected to bite, and Stage A's own cent is stricter than either.
+    """
+    price = price_for("openai", "gpt-4o-mini-2024-07-18")
+    ceiling_cost = estimate_usd(price, input_tokens=100_000, output_tokens=10_000)
+    assert ceiling_cost == Decimal("0.021")
+    assert ceiling_cost < Decimal("0.03")
+
+    twelve_stage_a_calls = estimate_usd(price, input_tokens=12 * 900, output_tokens=12 * 12)
+    assert twelve_stage_a_calls is not None
+    assert twelve_stage_a_calls < Decimal("0.01")
+
+
+# ------------------------------------------------- one ledger, two challengers, no crossover
+
+
+def _ledger_line(
+    *, provider: str, model_id: str | None, calls: int, usd: str | None
+) -> CostLedgerEntry:
+    return CostLedgerEntry(
+        run_id=f"{provider}-{model_id}-{calls}",
+        recorded_at="2026-09-08T00:00:00+00:00",
+        git_sha="0" * 40,
+        dataset_version="1.0.0",
+        dataset_hash="hash",
+        provider=provider,
+        model_id=model_id,
+        mode="live",
+        calls=calls,
+        attempts=calls,
+        input_tokens=None,
+        output_tokens=None,
+        estimated_usd=usd,
+        pricing_snapshot="2026-09-08",
+    )
+
+
+def test_one_challengers_history_does_not_debit_another_challengers_allowance(
+    tmp_path: Path,
+) -> None:
+    """The ledger is one file and the ceilings are not one ceiling.
+
+    Two challengers share a cost ledger, and each has its own allowance because their prices
+    are an order of magnitude apart. A total that ignored the provider would let a Bedrock
+    run's dollars eat an OpenAI run's cent, and a spend nobody made would refuse a call nobody
+    had budgeted against.
+    """
+    path = tmp_path / "cost-ledger.jsonl"
+    append_to_ledger(
+        path, _ledger_line(provider="bedrock", model_id="haiku", calls=9, usd="0.0900")
+    )
+    append_to_ledger(
+        path,
+        _ledger_line(provider="openai", model_id="gpt-4o-mini-2024-07-18", calls=4, usd="0.0010"),
+    )
+
+    openai_spend = ledger_totals(
+        path, mode="live", provider="openai", model_id="gpt-4o-mini-2024-07-18"
+    )
+    assert openai_spend.runs == 1
+    assert openai_spend.calls == 4
+    assert openai_spend.estimated_usd == Decimal("0.0010")
+
+    bedrock_spend = ledger_totals(path, mode="live", provider="bedrock", model_id="haiku")
+    assert bedrock_spend.calls == 9
+    assert bedrock_spend.estimated_usd == Decimal("0.0900")
+
+
+def test_the_same_model_name_under_two_providers_is_two_models(tmp_path: Path) -> None:
+    """Half an identity identifies nothing.
+
+    Both halves are matched, or the line does not belong to this run.
+    """
+    path = tmp_path / "cost-ledger.jsonl"
+    append_to_ledger(
+        path, _ledger_line(provider="bedrock", model_id="shared-name", calls=7, usd="0.0700")
+    )
+
+    assert ledger_totals(path, mode="live", provider="openai", model_id="shared-name").calls == 0
+    assert ledger_totals(path, mode="live", provider="bedrock", model_id="shared-name").calls == 7
+
+
+def test_an_alias_and_its_snapshot_do_not_share_a_ledger_total(tmp_path: Path) -> None:
+    """A floating name and the snapshot it points at are two models, and bill as two."""
+    path = tmp_path / "cost-ledger.jsonl"
+    append_to_ledger(
+        path,
+        _ledger_line(provider="openai", model_id="gpt-4o-mini", calls=5, usd="0.0050"),
+    )
+
+    pinned = ledger_totals(path, mode="live", provider="openai", model_id="gpt-4o-mini-2024-07-18")
+    assert pinned.calls == 0
+    assert pinned.estimated_usd == Decimal(0)
+
+
+def test_a_run_that_named_no_model_debits_no_models_ceiling(tmp_path: Path) -> None:
+    """The lines a wholly failed run leaves behind, and why they are counted separately.
+
+    A run whose every call failed reports no model id, because the id is read from what came
+    back. Those attempts are real and they are not attributable: charging them to whichever
+    model asks next would let one challenger's outage eat another challenger's allowance. So
+    they are reported beside the totals and are in none of them.
+    """
+    path = tmp_path / "cost-ledger.jsonl"
+    append_to_ledger(path, _ledger_line(provider="bedrock", model_id=None, calls=3, usd=None))
+    append_to_ledger(
+        path,
+        _ledger_line(provider="openai", model_id="gpt-4o-mini-2024-07-18", calls=2, usd="0.0004"),
+    )
+
+    openai_spend = ledger_totals(
+        path, mode="live", provider="openai", model_id="gpt-4o-mini-2024-07-18"
+    )
+    assert openai_spend.calls == 2
+    assert openai_spend.unattributed_calls == 0
+
+    bedrock_spend = ledger_totals(path, mode="live", provider="bedrock", model_id="haiku")
+    assert bedrock_spend.calls == 0
+    assert bedrock_spend.runs == 0
+    assert bedrock_spend.unattributed_runs == 1
+    assert bedrock_spend.unattributed_calls == 3
+    assert "unattributed_calls" in bedrock_spend.as_payload()
 
 
 def test_neither_benchmarked_model_is_priced_at_its_global_tier() -> None:

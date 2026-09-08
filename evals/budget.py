@@ -19,8 +19,9 @@ measured cannot be enforced, and pretending otherwise is how a cheap benchmark b
 expensive one.
 
 **Prices live in one place and say when they were true.** :data:`PRICES` is a catalog, not a
-number scattered through the runner, and every entry carries the day it was recorded and where
-it came from. It is an estimate. AWS Billing is the truth, and this is not it.
+number scattered through the runner, and every entry carries the provider, the exact model
+snapshot, the day it was recorded and where it came from. It is an estimate. The provider's own
+invoice is the truth, and this is not it.
 """
 
 from __future__ import annotations
@@ -134,9 +135,39 @@ cannot be assumed to be covered by whatever covers the other.
 """
 
 
+GPT_4O_MINI = ModelPrice(
+    provider="openai",
+    model_id="gpt-4o-mini-2024-07-18",
+    input_usd_per_million=Decimal("0.15"),
+    output_usd_per_million=Decimal("0.60"),
+    snapshot_date=date(2026, 9, 8),
+    source=(
+        "OpenAI published API pricing for the pinned snapshot gpt-4o-mini-2024-07-18, text "
+        "tokens, standard (non-batch, non-cached) tier: $0.15 per 1M input tokens and $0.60 "
+        "per 1M output tokens, verified 2026-09-08"
+    ),
+)
+"""The replacement challenger's price, against the dated model snapshot it is pinned to.
+
+Priced by snapshot rather than by the floating ``gpt-4o-mini`` alias, and that is the whole
+reason the identity is written out in full. An alias is a pointer somebody else may move: a
+budget computed against one and a quality number measured against another would be two
+statements about two models sharing a name.
+
+The standard tier is the one recorded because it is the one a plain Chat Completions call
+bills at. Cached input and the batch API are cheaper and are not what this experiment does, so
+pricing them here would make a ceiling look satisfied by a discount the run will not get.
+
+An *estimated pricing snapshot*, not billing truth, exactly as the two entries above it are.
+OpenAI's own invoice is the truth; this is a number recorded with the day it was verified so a
+spend figure computed from it can be checked rather than believed.
+"""
+
+
 PRICES: Mapping[tuple[str, str], ModelPrice] = {
     (NOVA_2_LITE.provider, NOVA_2_LITE.model_id): NOVA_2_LITE,
     (CLAUDE_HAIKU_4_5.provider, CLAUDE_HAIKU_4_5.model_id): CLAUDE_HAIKU_4_5,
+    (GPT_4O_MINI.provider, GPT_4O_MINI.model_id): GPT_4O_MINI,
 }
 """Verified prices, by ``(provider, model id)``. One entry per model somebody has run.
 
@@ -144,9 +175,11 @@ Nothing is written here from memory. A stale price silently understates a budget
 one failure mode this whole module exists to prevent, so an unverified number is worse than no
 number: with none, :func:`estimate_usd` returns ``None`` and a dollar budget refuses to start.
 
-The catalog holds the models a run has actually been priced and executed against and nothing
-else. A price for a model nobody has benchmarked would be a number with no run behind it, and
-the first thing it would do is make an unbudgeted call look budgeted.
+The catalog holds the models this repository has deliberately selected to run and nothing else.
+A price for a model nobody intends to call would be a number with no experiment behind it, and
+the first thing it would do is make an unbudgeted call look budgeted. That is why an SDK
+supporting a hundred models does not put a hundred entries here: the challenger is one pinned
+snapshot, so the catalog gains exactly one.
 """
 
 
@@ -407,6 +440,18 @@ class LedgerTotals:
     output_tokens: int = 0
     estimated_usd: Decimal = Decimal(0)
 
+    unattributed_runs: int = 0
+    """Lines of this provider whose model could not be named, and so debit no model's ceiling.
+
+    A run whose every call failed reports no model id, because the id is read from what came
+    back rather than from what was asked for. Those lines are real attempts and they are not
+    nothing -- but they cannot be charged to a model without guessing which one, and guessing
+    would let one model's outage eat another model's allowance. So they are counted here,
+    beside the totals rather than inside them, and the preflight prints the count.
+    """
+
+    unattributed_calls: int = 0
+
     def as_payload(self) -> dict[str, object]:
         return {
             "runs": self.runs,
@@ -415,11 +460,23 @@ class LedgerTotals:
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "estimated_usd": str(self.estimated_usd),
+            "unattributed_runs": self.unattributed_runs,
+            "unattributed_calls": self.unattributed_calls,
         }
 
 
-def ledger_totals(path: Path, *, mode: str, model_id: str | None = None) -> LedgerTotals:
-    """Sum the ledger lines for one mode, and optionally one model. Missing file means zero.
+def ledger_totals(
+    path: Path, *, mode: str, provider: str | None = None, model_id: str | None = None
+) -> LedgerTotals:
+    """Sum the ledger lines for one mode, one provider and one model. Missing file means zero.
+
+    **Both halves of the identity, never one.** A model id alone is not a model: two providers
+    may publish the same name, an alias and the snapshot it points at are different models
+    wearing one, and a line that names no model at all belongs to whichever provider wrote it
+    and to nothing narrower. Filtering on the pair is what keeps one challenger's history out
+    of another challenger's allowance -- in both directions, which matters here because a
+    discontinued attempt left lines behind and a new challenger must neither inherit them nor
+    be charged for them.
 
     Unparseable lines are skipped rather than raising: a ledger is an append-only local
     artifact, and a run must not be blocked from starting by a line somebody's editor mangled.
@@ -429,6 +486,7 @@ def ledger_totals(path: Path, *, mode: str, model_id: str | None = None) -> Ledg
     if not path.exists():
         return LedgerTotals()
     runs = calls = attempts = input_tokens = output_tokens = 0
+    unattributed_runs = unattributed_calls = 0
     spend = Decimal(0)
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -439,7 +497,12 @@ def ledger_totals(path: Path, *, mode: str, model_id: str | None = None) -> Ledg
             continue
         if not isinstance(entry, dict) or entry.get("mode") != mode:
             continue
+        if provider is not None and entry.get("provider") != provider:
+            continue
         if model_id is not None and entry.get("model_id") != model_id:
+            if entry.get("model_id") is None:
+                unattributed_runs += 1
+                unattributed_calls += _int(entry.get("calls"))
             continue
         runs += 1
         calls += _int(entry.get("calls"))
@@ -456,6 +519,8 @@ def ledger_totals(path: Path, *, mode: str, model_id: str | None = None) -> Ledg
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         estimated_usd=spend,
+        unattributed_runs=unattributed_runs,
+        unattributed_calls=unattributed_calls,
     )
 
 
@@ -535,6 +600,7 @@ def utc_now_iso() -> str:
 
 __all__ = [
     "CLAUDE_HAIKU_4_5",
+    "GPT_4O_MINI",
     "NOVA_2_LITE",
     "PRICES",
     "TOKENS_PER_PRICE_UNIT",
