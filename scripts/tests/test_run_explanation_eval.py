@@ -29,7 +29,14 @@ from evals.authorisation import (
     authorise,
     required_phrase,
 )
-from evals.budget import NEMOTRON_3_SUPER, BillingMode, ledger_totals
+from evals.budget import (
+    NEMOTRON_3_SUPER,
+    NOVA_2_LITE,
+    BillingMode,
+    CostLedgerEntry,
+    append_to_ledger,
+    ledger_totals,
+)
 from evals.cases import EvalSplit
 from evals.explanation_dataset import load_explanation_dataset
 from evals.explanation_judge import (
@@ -796,3 +803,210 @@ async def test_every_record_carries_the_frozen_dataset_hash_across_a_resumed_run
     assert header.dataset_hash == frozen
     assert {result.identity.dataset_hash for result in generations} == {frozen}
     assert {result.identity.dataset_hash for result in judgements} == {frozen}
+
+
+# =====================================================================================
+# 11. one original run, at most one repaired rerun, and the ceiling is per run
+# =====================================================================================
+
+
+def offline_run(results: Path, *extra: str) -> argparse.Namespace:
+    """A generation invocation under a named identity, answered by the scripted provider."""
+    namespace = namespace_for(generation_argv(results) + list(extra))
+    namespace.factory = scripted_provider(ScriptedExplanations.from_file())
+    return namespace
+
+
+def development_case_count() -> int:
+    return len(load_explanation_dataset().split([EvalSplit.DEVELOPMENT]).cases)
+
+
+def development_spend() -> command.GateSpend:
+    return command.gate_spend(EvalSplit.DEVELOPMENT, model_id=NOVA_2_LITE.model_id)
+
+
+def test_the_development_allowance_is_one_original_run_and_one_repaired_rerun() -> None:
+    assert command.MAX_GENERATION_RUNS[EvalSplit.DEVELOPMENT] == 2
+    assert command.MAX_GENERATION_RUNS[EvalSplit.HOLDOUT] == 1
+
+
+async def test_a_repaired_rerun_under_a_new_identity_gets_the_whole_per_run_ceiling(
+    sandbox: Path,
+) -> None:
+    """The first run's spend narrows the first run and the gate, never the rerun's own ceiling.
+
+    The ceiling the dataset derives is per run. A rerun that inherited what the first run left
+    would be refused after one call, which is what the lifetime accounting did before this.
+    """
+    first = sandbox / "explanation-first.jsonl"
+    rerun = sandbox / "explanation-rerun.jsonl"
+    assert await command.run_generation(offline_run(first, "--run-id", "first")) == 0
+    assert await command.run_generation(offline_run(rerun, "--run-id", "rerun")) == 0
+
+    header, generations, _ = read_run(rerun)
+    assert header.run_id == "rerun"
+    assert len(generations) == development_case_count()
+
+    spend = development_spend()
+    assert [run.run_id for run in spend.bought] == ["first", "rerun"]
+    assert spend.total.calls == 2 * development_case_count()
+    assert all(run.discrepancy is None for run in spend.runs)
+
+    lines = [json.loads(line) for line in command.LEDGER.read_text(encoding="utf-8").splitlines()]
+    assert [line["run_id"] for line in lines] == ["first", "rerun"]
+    assert all(line["splits"] == ["development"] for line in lines)
+
+
+async def test_a_third_development_run_identity_is_refused_before_any_call(
+    sandbox: Path,
+) -> None:
+    """Two runs is the whole allowance. A third identity buys nothing and leaves nothing behind."""
+    for run_id in ("first", "rerun"):
+        path = sandbox / f"explanation-{run_id}.jsonl"
+        assert await command.run_generation(offline_run(path, "--run-id", run_id)) == 0
+
+    third = sandbox / "explanation-third.jsonl"
+    calls: list[str] = []
+    with pytest.raises(command.ExplanationRunRefusedError, match="at most 2"):
+        await command.run_generation(canary_generation(third, calls, "--run-id", "third"))
+
+    assert calls == []
+    assert not third.exists()
+    assert len(command.LEDGER.read_text(encoding="utf-8").splitlines()) == 2
+
+
+async def test_a_resumed_run_is_one_run_and_charges_its_canary_against_its_own_ceiling(
+    sandbox: Path,
+) -> None:
+    """A canary and the resume that finishes it are one identity, one allowance, one run."""
+    first = sandbox / "explanation-first.jsonl"
+    calls: list[str] = []
+    await command.run_generation(
+        canary_generation(first, calls, "--run-id", "first", "--max-calls", "1")
+    )
+    assert await command.run_generation(canary_generation(first, calls, "--run-id", "first")) == 0
+    assert len(calls) == development_case_count()
+
+    spend = development_spend()
+    assert [run.run_id for run in spend.bought] == ["first"]
+    assert spend.for_run("first").calls == development_case_count()
+
+    cases = load_explanation_dataset().split([EvalSplit.DEVELOPMENT]).cases
+    namespace = offline_run(first, "--run-id", "first")
+    exhausted = command.generation_budget(cases, namespace, run_id="first", spend=spend)
+    assert exhausted.max_calls == 0
+    fresh = command.generation_budget(cases, namespace, run_id="rerun", spend=spend)
+    assert fresh.max_calls == development_case_count()
+
+
+async def test_a_call_in_the_run_file_but_not_the_ledger_is_recognised_and_reported(
+    sandbox: Path,
+) -> None:
+    """The first development run's canary was written down and never ledgered.
+
+    Neither record is rewritten. The larger is recognised, the disagreement is printed, and the
+    run whose ledger understated is still charged for every call its file says it made.
+    """
+    first = sandbox / "explanation-first.jsonl"
+    assert await command.run_generation(offline_run(first, "--run-id", "first")) == 0
+
+    # The historical shape: a ledger line one call short of the run file beside it.
+    entry = json.loads(command.LEDGER.read_text(encoding="utf-8").splitlines()[0])
+    entry["calls"] -= 1
+    entry["attempts"] -= 1
+    command.LEDGER.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+
+    spend = development_spend()
+    (run,) = spend.runs
+    assert run.ledgered.calls == development_case_count() - 1
+    assert run.recorded is not None
+    assert run.recorded.calls == development_case_count()
+    assert run.recognised.calls == development_case_count()
+    assert run.discrepancy is not None
+    assert f"ledger says {development_case_count() - 1}" in run.discrepancy
+    assert "neither record was rewritten" in run.discrepancy
+
+    cases = load_explanation_dataset().split([EvalSplit.DEVELOPMENT]).cases
+    printed = command.render_spend(spend, cases)
+    assert run.discrepancy in printed
+    assert "runs bought        1 of at most 2" in printed
+
+    namespace = offline_run(first, "--run-id", "first")
+    assert command.generation_budget(cases, namespace, run_id="first", spend=spend).max_calls == 0
+    assert (
+        command.generation_budget(cases, namespace, run_id="rerun", spend=spend).max_calls
+        == development_case_count()
+    )
+
+
+async def test_a_typed_ceiling_still_narrows_a_rerun(sandbox: Path) -> None:
+    first = sandbox / "explanation-first.jsonl"
+    rerun = sandbox / "explanation-rerun.jsonl"
+    assert await command.run_generation(offline_run(first, "--run-id", "first")) == 0
+    namespace = offline_run(rerun, "--run-id", "rerun", "--max-calls", "1")
+    assert await command.run_generation(namespace) == 1
+    _, generations, _ = read_run(rerun)
+    assert len(generations) == 1
+
+
+def test_the_holdout_allowance_is_one_run_and_development_spend_does_not_debit_it(
+    sandbox: Path,
+) -> None:
+    """Split-scoped, and closed rather than open when a line names no split.
+
+    A development line debits development only. A line written before lines named a split,
+    with no run file to attribute it through, is charged against every split: an unattributable
+    spend that debited nothing would be an allowance nobody granted.
+    """
+    model = NOVA_2_LITE.model_id
+    development = replace(
+        _ledger_entry(run_id="devrun", model_id=model, calls=21), splits=("development",)
+    )
+    append_to_ledger(command.LEDGER, development)
+
+    assert [run.run_id for run in development_spend().bought] == ["devrun"]
+    holdout = command.gate_spend(EvalSplit.HOLDOUT, model_id=model)
+    assert holdout.runs == ()
+
+    legacy_line = _ledger_entry(run_id="legacy", model_id=model, calls=3)
+    append_to_ledger(command.LEDGER, legacy_line)
+    holdout = command.gate_spend(EvalSplit.HOLDOUT, model_id=model)
+    (legacy,) = holdout.runs
+    assert legacy.splits == ()
+    cases = load_explanation_dataset().split([EvalSplit.HOLDOUT]).cases
+    namespace = namespace_for(generation_argv(sandbox / "h.jsonl", phrase=HOLDOUT, split="holdout"))
+    with pytest.raises(command.ExplanationRunRefusedError, match="at most 1"):
+        command.generation_budget(cases, namespace, run_id="holdout-one", spend=holdout)
+    printed = command.render_spend(holdout, cases)
+    assert "charged against every split" in printed
+    assert "refused: the allowance is used" in printed
+
+
+def _ledger_entry(*, run_id: str, model_id: str, calls: int) -> CostLedgerEntry:
+    return CostLedgerEntry(
+        run_id=run_id,
+        recorded_at="2026-09-09T00:00:00+00:00",
+        git_sha="0" * 40,
+        dataset_version="1.0.0",
+        dataset_hash="hash",
+        provider=NOVA_2_LITE.provider,
+        model_id=model_id,
+        mode=LIVE_MODE,
+        calls=calls,
+        attempts=calls,
+        input_tokens=None,
+        output_tokens=None,
+        estimated_usd=None,
+        pricing_snapshot="2026-09-08",
+    )
+
+
+async def test_two_run_files_claiming_one_identity_refuse_rather_than_pick_one(
+    sandbox: Path,
+) -> None:
+    first = sandbox / "explanation-first.jsonl"
+    assert await command.run_generation(offline_run(first, "--run-id", "first")) == 0
+    copy = sandbox / "explanation-copy.jsonl"
+    copy.write_text(first.read_text(encoding="utf-8"), encoding="utf-8")
+    with pytest.raises(command.ExplanationRunRefusedError, match="two run files claim"):
+        development_spend()

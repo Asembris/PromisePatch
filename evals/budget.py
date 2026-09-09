@@ -39,7 +39,7 @@ zero.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -535,9 +535,17 @@ class CostLedgerEntry:
     estimated_usd: str | None
     pricing_snapshot: str | None
     jobs: tuple[str, ...] = field(default_factory=tuple)
+    splits: tuple[str, ...] = field(default_factory=tuple)
+    """Which dataset split the run this line charges was over, when the gate has one.
+
+    Empty for a gate whose ceiling is not per split. Written so a later run can tell which
+    allowance a line debits without opening the run file that produced it; a line that names
+    none, written before this field existed, is attributed through its run file or, failing
+    that, charged against every split rather than none.
+    """
 
     def as_payload(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "run_id": self.run_id,
             "recorded_at": self.recorded_at,
             "git_sha": self.git_sha,
@@ -554,6 +562,9 @@ class CostLedgerEntry:
             "estimated_usd": self.estimated_usd,
             "pricing_snapshot": self.pricing_snapshot,
         }
+        if self.splits:
+            payload["splits"] = list(self.splits)
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -620,17 +631,7 @@ def ledger_totals(
     runs = calls = attempts = input_tokens = output_tokens = 0
     unattributed_runs = unattributed_calls = 0
     spend = Decimal(0)
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:  # pragma: no cover - a hand-mangled ledger line
-            continue
-        if not isinstance(entry, dict) or entry.get("mode") != mode:
-            continue
-        if provider is not None and entry.get("provider") != provider:
-            continue
+    for entry in _ledger_lines(path, mode=mode, provider=provider):
         if model_id is not None and entry.get("model_id") != model_id:
             if entry.get("model_id") is None:
                 unattributed_runs += 1
@@ -658,6 +659,101 @@ def ledger_totals(
 
 def _int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _ledger_lines(path: Path, *, mode: str, provider: str | None) -> Iterator[dict[str, object]]:
+    """Every readable line of one mode and, when named, one provider, in file order.
+
+    Unparseable lines are skipped rather than raising, for the reason :func:`ledger_totals`
+    gives: an append-only local artifact must not stop a run from starting because an editor
+    mangled a line. The direction that risks is understatement, which is why a caller that can
+    compare a ledger with the run file it describes recognises whichever says more.
+    """
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:  # pragma: no cover - a hand-mangled ledger line
+            continue
+        if not isinstance(entry, dict) or entry.get("mode") != mode:
+            continue
+        if provider is not None and entry.get("provider") != provider:
+            continue
+        yield entry
+
+
+@dataclass(frozen=True, slots=True)
+class LedgerRun:
+    """What one run identity's ledger lines add up to, and which split they said they were over.
+
+    A run is several lines when it was continued -- a canary of one call and the resume that
+    bought the rest each write their own -- and a ceiling that is *per run* has to add those
+    lines together and nothing else. The splits are the union of what the lines named; empty
+    when none of them named one, which a caller must treat as unknown rather than as none.
+    """
+
+    run_id: str
+    totals: LedgerTotals
+    splits: tuple[str, ...] = ()
+
+
+def ledger_runs(
+    path: Path, *, mode: str, provider: str, model_id: str | None
+) -> tuple[LedgerRun, ...]:
+    """The ledger grouped by run identity, for one mode, one provider and one model.
+
+    The same membership rule as :func:`ledger_totals` -- both halves of the model identity,
+    never one -- so the sum over these runs is that function's total. Lines naming no model are
+    left out here exactly as they are left out of a model's total there; a caller wanting them
+    reads ``unattributed_calls`` from the totals. Missing file means no runs. Runs come back in
+    the order their first line appears, which is the order they were bought in.
+    """
+    if not path.exists():
+        return ()
+    grouped: dict[str, tuple[LedgerTotals, tuple[str, ...]]] = {}
+    for entry in _ledger_lines(path, mode=mode, provider=provider):
+        if entry.get("model_id") != model_id:
+            continue
+        run_id = entry.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            continue
+        recorded = entry.get("estimated_usd")
+        line = LedgerTotals(
+            runs=1,
+            calls=_int(entry.get("calls")),
+            attempts=_int(entry.get("attempts")),
+            input_tokens=_int(entry.get("input_tokens")),
+            output_tokens=_int(entry.get("output_tokens")),
+            estimated_usd=Decimal(recorded) if isinstance(recorded, str) else Decimal(0),
+        )
+        named = entry.get("splits")
+        split_names = tuple(
+            item for item in (named if isinstance(named, list) else []) if isinstance(item, str)
+        )
+        so_far, splits = grouped.get(run_id, (LedgerTotals(), ()))
+        grouped[run_id] = (
+            add_totals(so_far, line),
+            splits + tuple(name for name in split_names if name not in splits),
+        )
+    return tuple(
+        LedgerRun(run_id=run_id, totals=totals, splits=splits)
+        for run_id, (totals, splits) in grouped.items()
+    )
+
+
+def add_totals(left: LedgerTotals, right: LedgerTotals) -> LedgerTotals:
+    """Two totals as one, field by field. The unattributed counts add too."""
+    return LedgerTotals(
+        runs=left.runs + right.runs,
+        calls=left.calls + right.calls,
+        attempts=left.attempts + right.attempts,
+        input_tokens=left.input_tokens + right.input_tokens,
+        output_tokens=left.output_tokens + right.output_tokens,
+        estimated_usd=left.estimated_usd + right.estimated_usd,
+        unattributed_runs=left.unattributed_runs + right.unattributed_runs,
+        unattributed_calls=left.unattributed_calls + right.unattributed_calls,
+    )
 
 
 def remaining_budget(ceiling: EvalBudget, spent: LedgerTotals) -> EvalBudget:
@@ -745,13 +841,16 @@ __all__ = [
     "BudgetedSemanticProvider",
     "CostLedgerEntry",
     "EvalBudget",
+    "LedgerRun",
     "LedgerTotals",
     "ModelPrice",
     "PricingUnavailableError",
     "Spend",
+    "add_totals",
     "append_to_ledger",
     "billing_for",
     "estimate_usd",
+    "ledger_runs",
     "ledger_totals",
     "price_for",
     "remaining_budget",

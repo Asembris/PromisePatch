@@ -87,8 +87,11 @@ from evals.budget import (
     BudgetGuard,
     CostLedgerEntry,
     EvalBudget,
+    LedgerTotals,
+    add_totals,
     append_to_ledger,
-    ledger_totals,
+    estimate_usd,
+    ledger_runs,
     price_for,
     remaining_budget,
     tightest,
@@ -132,6 +135,7 @@ from evals.explanation_store import (
     ExplanationStoreError,
     read_run,
 )
+from evals.explanation_thresholds import MAX_PRODUCTION_REPAIRS_BEFORE_HOLDOUT
 from evals.prompts import prompt_identity
 from evals.summary import git_sha
 
@@ -646,15 +650,253 @@ def narrow(dataset: ExplanationDataset, case_ids: frozenset[str]) -> Explanation
     return dataset.select(case_ids)
 
 
-def generation_budget(
-    cases: Sequence[ExplanationEvalCase], namespace: argparse.Namespace
-) -> EvalBudget:
-    """The ceiling this generation run may use: the derived one, narrowed twice.
+MAX_GENERATION_RUNS: Mapping[EvalSplit, int] = {
+    EvalSplit.DEVELOPMENT: 1 + MAX_PRODUCTION_REPAIRS_BEFORE_HOLDOUT,
+    EvalSplit.HOLDOUT: 1,
+}
+"""How many generation runs each split may buy, ever: one original development run plus one
+rerun for the single repair the protocol permits, and the holdout exactly once.
 
-    Narrowed by anything the operator typed, and narrowed again by what this gate's own ledger
-    says it has already spent. Composition only: a flag can make the bound tighter and never
-    wider than the ceiling the dataset derives.
+A run is a run identity that bought at least one call. A canary and the resume that finishes
+it are one run, so continuing one never spends a second; a run identity that was refused
+before its first call spent nothing and is not counted. The derived ceiling is *per run*, so a
+repaired rerun gets the whole allowance the dataset derives and not what the first run left,
+and the gate ceiling is that allowance times this count, so nothing here resets to unlimited.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class RecognisedRun:
+    """One run identity's spend, recognised from every record of it rather than from one.
+
+    The ledger says what a pass charged on its way out; the run file says what was written down
+    as each call returned. They agree when nothing went wrong. When they do not -- the first
+    development run's canary was written to its run file before the ledger line on the way out
+    existed -- the larger is recognised, field by field, and the disagreement is reported rather
+    than either record being rewritten to match the other.
     """
+
+    run_id: str
+    ledgered: LedgerTotals
+    recorded: LedgerTotals | None
+    """What the run file's generation records add up to, or ``None`` when no run file was
+    found for this identity."""
+
+    splits: tuple[str, ...]
+    """Which split the run was over, from the ledger lines or the run file's header. Empty
+    means nobody said, and the run is charged against every split rather than none."""
+
+    @property
+    def recognised(self) -> LedgerTotals:
+        if self.recorded is None:
+            return self.ledgered
+        return LedgerTotals(
+            runs=1,
+            calls=max(self.ledgered.calls, self.recorded.calls),
+            attempts=max(self.ledgered.attempts, self.recorded.attempts),
+            input_tokens=max(self.ledgered.input_tokens, self.recorded.input_tokens),
+            output_tokens=max(self.ledgered.output_tokens, self.recorded.output_tokens),
+            estimated_usd=max(self.ledgered.estimated_usd, self.recorded.estimated_usd),
+        )
+
+    @property
+    def bought(self) -> bool:
+        return self.recognised.calls > 0
+
+    @property
+    def discrepancy(self) -> str | None:
+        """One line saying how the two records differ, or ``None`` when they agree."""
+        if self.recorded is None:
+            return None if self.ledgered.calls == 0 else "no run file found; ledger only"
+        if self.recorded.calls == self.ledgered.calls:
+            return None
+        return (
+            f"ledger says {self.ledgered.calls} call(s), run file holds {self.recorded.calls} "
+            f"generation record(s); the larger is recognised and neither record was rewritten"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GateSpend:
+    """Everything this gate has spent on one split with one model, run by run."""
+
+    split: EvalSplit
+    runs: tuple[RecognisedRun, ...]
+
+    @property
+    def total(self) -> LedgerTotals:
+        total = LedgerTotals()
+        for run in self.runs:
+            total = add_totals(total, run.recognised)
+        return total
+
+    @property
+    def bought(self) -> tuple[RecognisedRun, ...]:
+        return tuple(run for run in self.runs if run.bought)
+
+    def for_run(self, run_id: str) -> LedgerTotals:
+        for run in self.runs:
+            if run.run_id == run_id:
+                return run.recognised
+        return LedgerTotals()
+
+
+def _recorded_totals(
+    generations: Sequence[NovaExplanationResult], *, model_id: str | None
+) -> LedgerTotals:
+    """What a run file's generation records add up to, priced the way the guard prices."""
+    input_tokens = sum(result.usage.input_tokens or 0 for result in generations)
+    output_tokens = sum(result.usage.output_tokens or 0 for result in generations)
+    usd = estimate_usd(
+        price_for(NOVA_2_LITE.provider, model_id),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+    return LedgerTotals(
+        runs=1 if generations else 0,
+        calls=len(generations),
+        attempts=sum(result.usage.provider_attempts for result in generations),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        estimated_usd=Decimal(0) if usd is None else usd,
+    )
+
+
+def _run_files(
+    results_dir: Path, ledger: Path, extra: Path | None
+) -> dict[str, tuple[ExplanationRunHeader, LedgerTotals]]:
+    """Every explanation run file on disk, by run identity: its header and what it recorded.
+
+    Files that are not run files -- the ledger lives beside them under the same prefix -- are
+    passed over. Two files claiming one run identity are conflicting evidence about one spend
+    and refuse the run rather than letting either be picked.
+    """
+    candidates = sorted(results_dir.glob("explanation-*.jsonl")) if results_dir.is_dir() else []
+    if extra is not None and extra.is_file():
+        candidates.append(extra)
+    found: dict[str, tuple[ExplanationRunHeader, LedgerTotals]] = {}
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen or resolved == ledger.resolve():
+            continue
+        seen.add(resolved)
+        try:
+            header, generations, _ = read_run(path)
+        except ExplanationStoreError:
+            continue
+        if header.mode != LIVE_MODE or header.provider != NOVA_2_LITE.provider:
+            continue
+        if header.run_id in found:
+            raise ExplanationRunRefusedError(
+                f"two run files claim the run identity {header.run_id!r}: {path.name} and "
+                f"another under {results_dir}. One identity is one spend; resolve which file "
+                f"is the run before buying anything against it."
+            )
+        found[header.run_id] = (header, _recorded_totals(generations, model_id=header.model_id))
+    return found
+
+
+def gate_spend(
+    split: EvalSplit,
+    *,
+    model_id: str | None,
+    results_path: Path | None = None,
+) -> GateSpend:
+    """What this gate has bought on one split with one model, from the ledger and the run files.
+
+    A ledger line is attributed to the split it names; one written before lines named a split
+    is attributed through the run file with its identity; one with neither is charged against
+    every split, because an unattributable spend that debited nothing would be an allowance
+    nobody granted. A run file with no ledger line at all is still a spend and is counted too.
+    """
+    files = _run_files(RESULTS_DIR, LEDGER, results_path)
+    runs: list[RecognisedRun] = []
+    ledgered_ids: set[str] = set()
+    for ledger_run in ledger_runs(
+        LEDGER, mode=LIVE_MODE, provider=NOVA_2_LITE.provider, model_id=model_id
+    ):
+        ledgered_ids.add(ledger_run.run_id)
+        file = files.get(ledger_run.run_id)
+        if file is not None and file[0].model_id != model_id:
+            file = None  # a file for another model is not evidence about this one's spend
+        header = None if file is None else file[0]
+        splits = ledger_run.splits or (() if header is None else tuple(header.splits))
+        runs.append(
+            RecognisedRun(
+                run_id=ledger_run.run_id,
+                ledgered=ledger_run.totals,
+                recorded=None if file is None else file[1],
+                splits=splits,
+            )
+        )
+    for run_id, (header, recorded) in files.items():
+        if run_id in ledgered_ids or header.model_id != model_id:
+            continue
+        runs.append(
+            RecognisedRun(
+                run_id=run_id, ledgered=LedgerTotals(), recorded=recorded, splits=header.splits
+            )
+        )
+    return GateSpend(
+        split=split,
+        runs=tuple(run for run in runs if not run.splits or split.value in run.splits),
+    )
+
+
+def effective_run_id(namespace: argparse.Namespace) -> str:
+    """The identity this pass will run under: the file's own when continuing, else the typed
+    or a fresh one. Decided before the budget, because the budget is per run."""
+    if namespace.results or namespace.run_id:
+        path = _results_path(namespace, str(namespace.run_id or ""))
+        if path.is_file() and path.read_text(encoding="utf-8").strip():
+            header, _generations, _judgements = read_run(path)
+            return header.run_id
+    return str(namespace.run_id or uuid.uuid4().hex[:12])
+
+
+def _times(budget: EvalBudget, factor: int) -> EvalBudget:
+    return EvalBudget(
+        max_calls=None if budget.max_calls is None else budget.max_calls * factor,
+        max_input_tokens=(
+            None if budget.max_input_tokens is None else budget.max_input_tokens * factor
+        ),
+        max_output_tokens=(
+            None if budget.max_output_tokens is None else budget.max_output_tokens * factor
+        ),
+        max_estimated_usd=(
+            None if budget.max_estimated_usd is None else budget.max_estimated_usd * factor
+        ),
+    )
+
+
+def generation_budget(
+    cases: Sequence[ExplanationEvalCase],
+    namespace: argparse.Namespace,
+    *,
+    run_id: str,
+    spend: GateSpend,
+) -> EvalBudget:
+    """The ceiling this generation pass may use: the derived one, per run, narrowed three ways.
+
+    Per run: the derived ceiling minus what this run identity has already been recognised as
+    spending, so a resumed run charges its canary and a repaired rerun starts with the whole
+    allowance. Per gate: that ceiling times the runs the split may ever buy, minus everything
+    every run spent, so two runs are the most this gate can ever be. And by anything the
+    operator typed. Composition only: nothing here widens what the dataset derives, and a run
+    identity beyond the count is refused before any call rather than given a budget of nought.
+    """
+    split = spend.split
+    bought = {run.run_id for run in spend.bought}
+    allowed = MAX_GENERATION_RUNS[split]
+    if run_id not in bought and len(bought) >= allowed:
+        raise ExplanationRunRefusedError(
+            f"{split.value} has already bought {len(bought)} run(s) "
+            f"({', '.join(sorted(bought))}) and may buy at most {allowed}: one original run"
+            + (" and one repaired rerun" if allowed > 1 else "")
+            + f". A new run identity {run_id!r} is refused before any call; continue an "
+            f"existing run file to resume, and change nothing to buy a third."
+        )
     derived = nova_ceiling(cases).budget()
     typed = EvalBudget(
         max_calls=namespace.max_calls,
@@ -662,10 +904,56 @@ def generation_budget(
             None if namespace.max_estimated_usd is None else Decimal(namespace.max_estimated_usd)
         ),
     )
-    spent = ledger_totals(
-        LEDGER, mode=LIVE_MODE, provider=NOVA_2_LITE.provider, model_id=namespace.model
+    per_run = remaining_budget(derived, spend.for_run(run_id))
+    per_gate = remaining_budget(_times(derived, allowed), spend.total)
+    return tightest(per_run, per_gate, typed)
+
+
+def render_spend(spend: GateSpend, cases: Sequence[ExplanationEvalCase]) -> str:
+    """What one split has bought so far, run by run, and what a new run could still buy."""
+    derived = nova_ceiling(cases).budget()
+    allowed = MAX_GENERATION_RUNS[spend.split]
+    bought = spend.bought
+    lines = [
+        f"P4.8 {spend.split.value.upper()} SPEND SO FAR",
+        "-" * (len(spend.split.value) + 18),
+        f"  runs bought        {len(bought)} of at most {allowed}"
+        + (" (one original + one repaired rerun)" if allowed > 1 else " (one run)"),
+    ]
+    for run in spend.runs:
+        lines.append(f"  {run.run_id:<18} {_totals_line(run.recognised)}")
+        if not run.splits:
+            lines.append("                     split not recorded; charged against every split")
+        if run.discrepancy is not None:
+            lines.append(f"                     {run.discrepancy}")
+    lines.extend(
+        [
+            f"  cumulative         {_totals_line(spend.total)}",
+            f"  per-run ceiling    {_budget_line(derived)}",
+            f"  gate ceiling       {_budget_line(_times(derived, allowed))}  ({allowed} run(s))",
+        ]
     )
-    return remaining_budget(tightest(derived, typed), spent)
+    if len(bought) >= allowed:
+        lines.append("  a new run          refused: the allowance is used")
+    else:
+        fresh = tightest(derived, remaining_budget(_times(derived, allowed), spend.total))
+        lines.append(f"  a new run          {_budget_line(fresh)}")
+    return "\n".join(lines)
+
+
+def _totals_line(totals: LedgerTotals) -> str:
+    return (
+        f"calls {totals.calls:<3} attempts {totals.attempts:<3} in {totals.input_tokens:<6} "
+        f"out {totals.output_tokens:<5} ${totals.estimated_usd}"
+    )
+
+
+def _budget_line(budget: EvalBudget) -> str:
+    return (
+        f"calls {_count(budget.max_calls):<3} in {_count(budget.max_input_tokens):<6} "
+        f"out {_count(budget.max_output_tokens):<5} "
+        f"${'--' if budget.max_estimated_usd is None else budget.max_estimated_usd}"
+    )
 
 
 async def run_generation(namespace: argparse.Namespace) -> int:
@@ -676,7 +964,10 @@ async def run_generation(namespace: argparse.Namespace) -> int:
     if not selected.cases:  # pragma: no cover - the dataset always holds both splits
         raise ExplanationRunRefusedError(f"{split.value} selected no cases")
 
-    budget = generation_budget(selected.cases, namespace)
+    run_id = effective_run_id(namespace)
+    path = _results_path(namespace, run_id)
+    spend = gate_spend(split, model_id=namespace.model, results_path=path)
+    budget = generation_budget(selected.cases, namespace, run_id=run_id, spend=spend)
     authorisation = authorise(
         namespace.authorise_paid_inference,
         GENERATION_SCOPES[split],
@@ -687,7 +978,6 @@ async def run_generation(namespace: argparse.Namespace) -> int:
     authorisation.require(GENERATION_SCOPES[split])
 
     prompt = prompt_identity(SemanticJob.VERBALISE)
-    run_id = namespace.run_id or uuid.uuid4().hex[:12]
     header = ExplanationRunHeader(
         run_id=run_id,
         started_at=utc_now_iso(),
@@ -703,7 +993,7 @@ async def run_generation(namespace: argparse.Namespace) -> int:
         schema_hash=prompt.schema_hash,
         region=namespace.region,
     )
-    store = ExplanationResultStore(_results_path(namespace, header.run_id), header)
+    store = ExplanationResultStore(path, header)
     outstanding = narrow(
         selected, frozenset(case.id for case in selected.cases) - store.completed()
     )
@@ -743,6 +1033,12 @@ async def run_generation(namespace: argparse.Namespace) -> int:
         if guard.spend.calls:
             _append_generation_ledger(store, guard, namespace)
     print(render_generation(store, guard, split))
+    print()
+    print(
+        render_spend(
+            gate_spend(split, model_id=namespace.model, results_path=store.path), selected.cases
+        )
+    )
     if stopped is not None:
         print(f"  stopped            {stopped}")
         return 1
@@ -1049,6 +1345,13 @@ def run_plan(namespace: argparse.Namespace) -> int:
     for split in splits or list(EvalSplit):
         print(f"  generate --split {split.value}: {required_phrase(GENERATION_SCOPES[split])}")
         print(f"  judge    --split {split.value}: {required_phrase(JUDGING_SCOPES[split])}")
+    for split in splits or list(EvalSplit):
+        print()
+        print(
+            render_spend(
+                gate_spend(split, model_id=NOVA_2_LITE.model_id), dataset.split([split]).cases
+            )
+        )
     print()
     print("  clients constructed          0")
     print("  model calls                  0")
@@ -1097,6 +1400,7 @@ def _append_generation_ledger(
             ),
             pricing_snapshot=NOVA_2_LITE.snapshot_date.isoformat(),
             jobs=(SemanticJob.VERBALISE.value,),
+            splits=tuple(header.splits),
         ),
     )
 

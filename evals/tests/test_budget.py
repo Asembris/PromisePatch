@@ -20,6 +20,8 @@ rate in the catalog, and would switch off the dollar guard for every model that 
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -40,6 +42,7 @@ from evals.budget import (
     append_to_ledger,
     billing_for,
     estimate_usd,
+    ledger_runs,
     ledger_totals,
     price_for,
     tightest,
@@ -681,3 +684,39 @@ def test_the_billing_catalog_holds_exactly_the_models_somebody_chose_to_run() ->
     hundred does not put a hundred here: an entry is a decision, not a capability.
     """
     assert set(BILLING) == set(PRICES) | {("nvidia", NEMOTRON)}
+
+
+def test_ledger_runs_groups_lines_by_run_identity_and_keeps_the_splits_they_named(
+    tmp_path: Path,
+) -> None:
+    """A continued run is several lines and one run; the sum over runs is the model's total."""
+    path = tmp_path / "cost-ledger.jsonl"
+    canary = replace(
+        _ledger_line(provider="bedrock", model_id="nova", calls=1, usd="0.0007"),
+        run_id="first",
+        splits=("development",),
+    )
+    resume = replace(canary, calls=20, attempts=20, estimated_usd="0.0152")
+    other = replace(canary, run_id="second", splits=())
+    append_to_ledger(path, canary)
+    append_to_ledger(path, resume)
+    append_to_ledger(path, other)
+    append_to_ledger(path, _ledger_line(provider="bedrock", model_id=None, calls=3, usd=None))
+    append_to_ledger(path, _ledger_line(provider="openai", model_id="nova", calls=9, usd="0.09"))
+
+    runs = ledger_runs(path, mode="live", provider="bedrock", model_id="nova")
+    assert [run.run_id for run in runs] == ["first", "second"]
+    first, second = runs
+    assert first.totals.runs == 2
+    assert first.totals.calls == 21
+    assert first.totals.estimated_usd == Decimal("0.0159")
+    assert first.splits == ("development",)
+    assert second.splits == ()
+
+    totals = ledger_totals(path, mode="live", provider="bedrock", model_id="nova")
+    assert sum(run.totals.calls for run in runs) == totals.calls == 22
+    assert totals.unattributed_calls == 3
+
+    lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert lines[0]["splits"] == ["development"]
+    assert "splits" not in lines[2]

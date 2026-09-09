@@ -263,6 +263,40 @@ from the repaired verbalise instruction (see *One repair* below); the first deve
 bounded by the pre-repair figures, 73,807 input tokens from 63,367 characters, under the same $0.07
 ceiling.
 
+### The ceiling is per run, and a split buys at most two runs
+
+The derived ceiling bounds **one run identity**: a canary and the resume that finishes it are one
+run, one file and one allowance, and a resumed pass is charged for every call the identity already
+made. It does not bound the gate's lifetime, because the protocol below authorises exactly one
+repaired rerun after the one repair, and a rerun that inherited what the first run left would have
+been refused after one call -- which is what the first accounting did, and why it was fixed.
+
+```text
+per run      21 logical calls, the derived token ceilings, $0.07
+per split    that ceiling times the runs the split may ever buy, minus everything every run spent
+             DEVELOPMENT  2 runs   one original + one repaired rerun   42 calls, $0.14
+             HOLDOUT      1 run                                        14 calls, its own ceiling
+a third development run identity is refused before its first call
+```
+
+A run is an identity that bought at least one call; an identity refused before its first call is
+not a run and does not use the allowance. A typed `--max-calls` or `--max-estimated-usd` still only
+narrows. Nothing resets: the split's cumulative spend is recognised across both runs and printed
+run by run, with the cumulative total, by `plan --split development` and after every generation
+pass.
+
+**What a run spent is recognised from every record of it.** The ledger says what a pass charged on
+its way out; the run file says what was written down as each call returned. Where they disagree,
+the larger is recognised field by field, and the disagreement is printed rather than either record
+being edited. That is how the first run is accounted for: `p48dev`'s canary was written to its run
+file before the ledger-on-the-way-out fix existed, so its ledger line says 20 calls while its run
+file holds 21 generation records. The line is not rewritten. The run is recognised as 21 logical
+calls, 25 provider attempts, 35,214 input and 1,575 output tokens, $0.01595 -- one call, one
+attempt, 1,630 input and 74 output tokens, $0.00074 more than the ledger alone says -- and the plan
+prints both figures. New ledger lines name their split; a line that names none is attributed
+through the run file with its identity, and one with neither is charged against **every** split,
+because an unattributable spend that debited nothing would be an allowance nobody granted.
+
 ---
 
 ## Authorisations
@@ -469,7 +503,10 @@ Four properties, each a test rather than a claim:
   line on the way out, whichever way it ends -- a `--max-calls` ceiling refusing the next call, a
   provider fault, an interrupt -- so a canary of one paid call cannot be recorded in the run file
   and missing from the ledger. One line per pass, so a resumed run charges its own calls and never
-  the canary's again; a pass that bought nothing writes nothing.
+  the canary's again; a pass that bought nothing writes nothing. The ceiling is per run identity
+  and a split buys at most the runs the protocol authorises (see *The ceiling is per run* above), so
+  a repaired rerun starts with the whole derived allowance and a third identity is refused before
+  any call.
 - **`report` and `review` call nothing.** Both are rebuilt from the run file, which is what makes a
   lost terminal cheap and the manual review of all twenty-one free.
 - **The two providers never share a counter or a ledger.** Nova's ceiling is the one this dataset
