@@ -226,13 +226,17 @@ Generation and judging never share a counter.
 
 | | Nova generation | Nemotron judging |
 |---|---|---|
-| billing | metered | free hosted prototype |
+| billing | metered | `free_hosted_trial` |
 | price | $0.33 in / $2.75 out per 1M (Regional, verified 2026-09-08) | none published |
 | known USD | computed with `Decimal` | **not modelled** |
 
 `$0.00` is never written for the judge. That would assert a commercial rate nobody published and
 would switch off the dollar guard for the model that has one. What bounds a free endpoint is calls
 and tokens -- the resource actually at risk is quota.
+
+The judge's billing mode has exactly one repository value, `BillingMode.FREE_HOSTED_TRIAL` in
+`evals.budget`, and every plan, report and judging summary renders that enum rather than a
+string of its own. It is a mode, never a price.
 
 ### Derived development ceilings
 
@@ -241,19 +245,23 @@ no provider, no number copied from another run.
 
 ```text
 NOVA        logical calls 21   provider attempts 42
-            input tokens  73,807   output tokens 13,440
-            derived from 63,367 measured prompt characters
-            projected $0.049   hard ceiling $0.07
+            input tokens  83,677   output tokens 13,440
+            derived from 75,211 measured prompt characters
+            projected $0.052   hard ceiling $0.07
 
 JUDGE       logical calls 21   provider attempts 42
             input tokens  92,072   output tokens 21,504
             derived from 85,287 measured prompt characters
-            billing mode free_hosted_prototype   known USD not modelled
+            billing mode free_hosted_trial   known USD not modelled
 ```
 
 Characters are converted at three per token where English is nearer four, every case is assumed to
 take both permitted attempts, and the dollar ceiling carries a further 25%. The point is not a
 forecast. The point is that a runaway is refused **before** the provider call that would cause it.
+The Nova figures above are the ones `python -m evals explanation-plan --split development` derives
+from the repaired verbalise instruction (see *One repair* below); the first development run was
+bounded by the pre-repair figures, 73,807 input tokens from 63,367 characters, under the same $0.07
+ceiling.
 
 ---
 
@@ -284,6 +292,17 @@ Two records, kept apart:
   that has changed.
 - **`ExplanationJudgeResult`** binds to judge provider, judge model, rubric version, judge prompt
   hash, verdict schema hash **and the generation fingerprint it judged**.
+
+Every record's `dataset_hash` is the frozen dataset's hash -- the one the manifest, the run header
+and the authorisation name. A split, and the narrowed selection a resumed run generates from, are
+views of that dataset and inherit its identity; they never hash the handful of cases they hold.
+
+**Compatibility.** Generation and judge records written before this was pinned (the first
+development run, `p48dev`) carry the hash of the selection they were generated from -- one value
+for the single-case canary, another for the twenty cases the resume covered -- while their run
+header carries the authoritative hash. Those files are not rewritten: `report` and `review` read
+them as they are, the header is what gates a resume and a judge pass, and the records are refused
+for rejudging anyway because the verbalise prompt has moved since they were written.
 
 That separation buys the three replay properties:
 
@@ -350,6 +369,20 @@ JUDGE_DEFECT                      FIXTURE_DEFECT  EXPECTED_FALLBACK
 
 Only a genuine architecture/contract or prompt defect may spend it. No case-specific hacks, and no
 weakening a gate to make a run pass.
+
+**The repair has been spent.** The first development run (`p48dev`, 2026-09-09) passed six of the
+seven families and failed `PLAN_SUMMARY` with two outcome contradictions: the count of promises
+*affected* was said as promises *blocked*, once against a `case.blocked` of `0`. Manual diagnosis
+classified it `PROMPT_DEFECT`: the payload carries all five counts with their labels, the engine
+keeps the four postures apart, and the verbalise instruction explained none of that while its only
+outcome vocabulary was the word *blocked*. The four causal-completeness misses in the same run
+(`auto.002`, `blocked.002`, `wait.003`, `revalidation.001`) shared one cause -- a required fact cited
+in `fact_refs` and left out of the words, which the instruction framed as an id-list requirement.
+One revision of the verbalise system instruction, two generic rules, no fixture text, no case id,
+no phrase list: counts of promises are a whole and its parts, and a required fact must be said,
+not only cited. The prompt hash moved with it, so `p48dev`'s passages cannot be rejudged as answers
+to the current question and DEVELOPMENT must be generated again. No second repair remains before
+the holdout.
 
 ### Model selection is not reopened automatically
 
@@ -432,6 +465,11 @@ Four properties, each a test rather than a claim:
   and schema hash. An interrupted run continues; a file from another experiment is refused. The
   judge reads passages from that file and never reaches Nova, and a passage written under a prompt
   or schema that has since moved is refused rather than rejudged.
+- **A call that happened is in the ledger, exactly once.** The generation pass writes its ledger
+  line on the way out, whichever way it ends -- a `--max-calls` ceiling refusing the next call, a
+  provider fault, an interrupt -- so a canary of one paid call cannot be recorded in the run file
+  and missing from the ledger. One line per pass, so a resumed run charges its own calls and never
+  the canary's again; a pass that bought nothing writes nothing.
 - **`report` and `review` call nothing.** Both are rebuilt from the run file, which is what makes a
   lost terminal cheap and the manual review of all twenty-one free.
 - **The two providers never share a counter or a ledger.** Nova's ceiling is the one this dataset
