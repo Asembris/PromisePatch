@@ -236,9 +236,16 @@ def extract_tool_input(spec: JobSpec, response: Mapping[str, Any]) -> object:
     A response with no call to the one tool that was forced is not an answer in a different
     format; it is the model declining the shape of the question. Reading its prose instead
     would be exactly the free-form parsing this boundary exists to avoid.
+
+    Every level of the envelope is read defensively, because an envelope is untrusted input
+    like anything else that arrives from outside. A body whose ``output``, ``message`` or
+    ``content`` is null, or is some other shape entirely, is a model that did not call the
+    tool -- which is a typed refusal this boundary already has a name for. Reaching into it
+    optimistically would raise an ``AttributeError`` out of a boundary whose whole contract is
+    that it fails in exactly two ways, past every caller, which each catch only those two.
     """
-    message = response.get("output", {}).get("message", {})
-    for block in message.get("content", []):
+    message = _mapping(_mapping(response.get("output")).get("message"))
+    for block in _sequence(message.get("content")):
         tool_use = block.get("toolUse") if isinstance(block, Mapping) else None
         if isinstance(tool_use, Mapping) and tool_use.get("name") == spec.tool_name:
             return tool_use.get("input")
@@ -249,9 +256,13 @@ def extract_tool_input(spec: JobSpec, response: Mapping[str, Any]) -> object:
 
 
 def read_usage(response: Mapping[str, Any]) -> SemanticUsage:
-    """What the call cost, if Bedrock said. Never load-bearing, so absence is not a failure."""
-    usage = response.get("usage") or {}
-    metrics = response.get("metrics") or {}
+    """What the call cost, if Bedrock said. Never load-bearing, so absence is not a failure.
+
+    Telemetry must never be the thing that fails a call, so a field of an unexpected shape is
+    read as an absent one rather than as a problem.
+    """
+    usage = _mapping(response.get("usage"))
+    metrics = _mapping(response.get("metrics"))
     return SemanticUsage(
         input_tokens=_as_int(usage.get("inputTokens")),
         output_tokens=_as_int(usage.get("outputTokens")),
@@ -261,6 +272,20 @@ def read_usage(response: Mapping[str, Any]) -> SemanticUsage:
 
 def _as_int(value: object) -> int | None:
     return value if isinstance(value, int) else None
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    """A response field read as the object it should be, or as an absent one."""
+    return value if isinstance(value, Mapping) else {}
+
+
+def _sequence(value: object) -> list[Any]:
+    """A response field read as the list it should be, or as an empty one.
+
+    A string is a sequence and is deliberately not one here: iterating it would hand each
+    character to the block reader, which is a way of finding nothing slowly.
+    """
+    return list(value) if isinstance(value, list) else []
 
 
 __all__ = [

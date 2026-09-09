@@ -221,12 +221,55 @@ def test_a_call_to_some_other_tool_is_a_failure() -> None:
     assert raised.value.category is ValidationFailure.MISSING_TOOL_USE
 
 
+@pytest.mark.parametrize(
+    ("name", "response"),
+    [
+        ("no output at all", {}),
+        ("a null output", {"output": None}),
+        ("an output that is not an object", {"output": []}),
+        ("a null message", {"output": {"message": None}}),
+        ("a null content list", {"output": {"message": {"content": None}}}),
+        ("content that is a string", {"output": {"message": {"content": "approved!"}}}),
+        ("a null block", {"output": {"message": {"content": [None]}}}),
+        ("a null toolUse", {"output": {"message": {"content": [{"toolUse": None}]}}}),
+    ],
+)
+def test_an_envelope_of_the_wrong_shape_is_a_refusal_and_not_a_traceback(
+    name: str, response: dict[str, Any]
+) -> None:
+    """A response body is untrusted input, and every level of it is read as such.
+
+    The boundary promises exactly two kinds of failure, and every caller of it -- the worker's
+    preparation step, the consent protocol, the explanation path -- catches exactly those two.
+    An envelope reached into optimistically raises ``AttributeError`` or ``TypeError`` instead,
+    which is neither, so it travels past all three and out of the worker loop. Whatever shape
+    arrives, the answer is the same: the model did not call the tool.
+    """
+    with pytest.raises(SemanticValidationError) as raised:
+        extract_tool_input(INTENT_SPEC, response)
+    assert raised.value.category is ValidationFailure.MISSING_TOOL_USE, name
+
+
 def test_usage_is_read_when_reported_and_absent_when_not() -> None:
     usage = read_usage(tool_answer(INTENT_SPEC.tool_name, {}))
     assert (usage.input_tokens, usage.output_tokens, usage.latency_ms) == (412, 31, 640)
 
     empty = read_usage({})
     assert (empty.input_tokens, empty.output_tokens, empty.latency_ms) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [{"usage": None}, {"usage": [1, 2]}, {"metrics": "640"}, {"usage": 0, "metrics": 0}],
+)
+def test_telemetry_of_the_wrong_shape_never_fails_a_call(response: dict[str, Any]) -> None:
+    """Nothing here is load-bearing, so an unreadable field is an absent one.
+
+    A call that succeeded and was then failed by the shape of its own token counter would be
+    the least useful failure in the system.
+    """
+    usage = read_usage(response)
+    assert (usage.input_tokens, usage.output_tokens, usage.latency_ms) == (None, None, None)
 
 
 async def test_one_call_end_to_end_through_the_transport_boundary() -> None:
