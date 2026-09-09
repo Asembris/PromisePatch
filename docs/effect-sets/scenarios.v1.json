@@ -1,0 +1,1051 @@
+{
+  "name": "promisepatch-effect-sets",
+  "schema_version": "1",
+  "version": "1.0.0",
+  "authored_at": "2026-09-09",
+  "authored_by": "Asembris",
+  "authored_in_phase": "P5",
+  "provenance": [
+    "Hand-labelled from the stipulated facts of each scenario, before the P7 runner and the P8 execution exist.",
+    "No label on this page was read from, compared against, or reconciled with any PromisePatch classification output.",
+    "Entity identities are reused from the frozen Hollow Oak fixture so that this is one scenario universe and not a competing one.",
+    "Developer-authored, finite and public. Not an independently validated or held-out benchmark."
+  ],
+  "fixture": {
+    "module": "promise_graph.examples.hollow_oak",
+    "note": "Every scenario starts from hollow_oak() at its own anchor, then applies its stipulated facts in the order listed.",
+    "case_universe": ["ord-a", "ord-b", "ord-c", "ord-d", "ord-e", "ord-f"],
+    "orders": {
+      "ord-a": {"external_id": "EXT-A", "customer": "cus-priya", "channel": "tg:1001", "promise": "pr-a", "line": "ol-a", "pinned_version": "rv-raspberry-almond-3", "constraint": "cn-a-preapproved"},
+      "ord-b": {"external_id": "EXT-B", "customer": "cus-tomas", "channel": "tg:1002", "promise": "pr-b", "line": "ol-b", "pinned_version": "rv-raspberry-rose-2", "constraint": "cn-b-ask"},
+      "ord-c": {"external_id": "EXT-C", "customer": "cus-okafor-reyes", "channel": "tg:1003", "promise": "pr-c", "line": "ol-c", "pinned_version": "rv-raspberry-charlotte-1", "constraint": "cn-c-nosub"},
+      "ord-d": {"external_id": "EXT-D", "customer": "cus-lena", "channel": "tg:1004", "promise": "pr-d", "line": "ol-d", "pinned_version": "rv-raspberry-lemon-2", "constraint": "cn-d-ask"},
+      "ord-e": {"external_id": "EXT-E", "customer": "cus-ahmed", "channel": "tg:1005", "promise": "pr-e", "line": "ol-e", "pinned_version": "rv-dark-chocolate-ganache-5", "constraint": null},
+      "ord-f": {"external_id": "EXT-F", "customer": "cus-cafe-marlow", "channel": "tg:1006", "promise": "pr-f", "line": "ol-f", "pinned_version": "rv-blueberry-danish-1", "constraint": null}
+    }
+  },
+  "vocabulary": {
+    "partitions": {
+      "auto_repairable": "A pre-authored recovery exists and the order's recorded constraints already permit it. No customer is asked.",
+      "consent_required": "A pre-authored recovery exists but the order's recorded constraints require the customer's permission first.",
+      "blocked": "No recovery this system may take is available, so the promise needs its owner.",
+      "untouched": "The exception does not threaten this promise: it is unreachable from the exception, or its shortfall is already covered."
+    },
+    "partition_algebra": "threatened = auto_repairable union consent_required union blocked; the three are disjoint; untouched = case_universe minus threatened. Threatened is a parent set, never a fifth category.",
+    "checkpoints": {
+      "PLANNED": "The case has been opened, any clarification answered, and analysis completed. No step is runnable; the case is waiting for the worker to confirm.",
+      "CONFIRMED": "The worker's confirmation of the bounded plan has been recorded and every step it enqueued has run to quiescence. The case is waiting on a customer, on a timer, or is terminal.",
+      "CONSENT_SETTLED": "The scenario's declared consent event has been delivered and drained to quiescence. Where a scenario declares a fault instead of a decision, this is the checkpoint that fault lands on.",
+      "SETTLED": "The case is terminal, or every track that is not terminal is on the owner's desk. Drained to quiescence."
+    },
+    "checkpoint_order": ["PLANNED", "CONFIRMED", "CONSENT_SETTLED", "SETTLED"],
+    "effect_kinds": {
+      "order_amendment": "A governed recovery amendment for this order reached the external order system and was applied there.",
+      "customer_message": "An outbound message for this order left PromisePatch towards that order's customer channel.",
+      "reservation_change": "This order's reservations changed as a consequence of this case.",
+      "task_hold": "This order's production task was held by this case.",
+      "owner_escalation": "This order's track was escalated to the owner."
+    },
+    "refusal_kinds": {
+      "clarification_required": "The reported exception was ambiguous in scope, so nothing was mutated until a human answered.",
+      "amendment_refused_stale_order_version": "A planned amendment was refused because the external order had moved on since it was planned.",
+      "approval_refused_stale_plan": "A recorded customer decision authorised nothing because revalidation found the world had moved since the ask.",
+      "consent_refused_foreign_sender": "A reply was not treated as this order's customer's answer because it did not come from that order's channel.",
+      "consent_not_decided_nonliteral": "A reply that was not a literal YES or NO decided nothing and earned one confirmation prompt.",
+      "duplicate_delivery_absorbed": "The same inbound message was delivered more than once and produced one logical outcome.",
+      "duplicate_amendment_suppressed": "A retry under the same idempotency key produced no second external effect."
+    },
+    "effect_semantics": [
+      "A checkpoint declares effects_added: the incident-caused effects that first occurred between the previous checkpoint and this one.",
+      "The cumulative effect set at a checkpoint is the sum of effects_added over every checkpoint up to and including it.",
+      "Any (order, effect kind) pair absent from that cumulative sum is expected to be exactly zero at that checkpoint.",
+      "Only incident-caused effects are counted. An external edit a customer made in the order system is attributed to that customer's own command and is never an incident-caused effect, whether it happened before or after the exception.",
+      "Case-track records, analysis rows and audit rows are evidence that a promise was considered. They are not operational effects and are never counted here."
+    ],
+    "labelling_rules": [
+      "R1 - Every escalation to the owner holds that order's production task: owner_escalation implies task_hold on the same order.",
+      "R2 - An applied recovery amendment changes that order's reservations: order_amendment implies reservation_change on the same order.",
+      "R3 - A partition says what the case decided about a promise. It does not move when a track later fails, expires or is refused; progress is recorded in effects, not in the partition.",
+      "R4 - A partition may change between checkpoints only where the scenario stipulates a fact that changes what is true, and the manifest then states the new partition at that checkpoint.",
+      "R5 - Untouched orders receive no incident-caused operational effect of any kind, at any checkpoint."
+    ]
+  },
+  "pass_rule": "A scenario passes only on exact order-set equality for all four partitions at every declared checkpoint AND exact equality of the cumulative effect multiset at every declared checkpoint, including the zeros implied by absence. A missing, extra or misclassified order or effect fails the entire scenario. Rationale, notes and refusal fields are diagnostic, not pass criteria.",
+  "scenarios": [
+    {
+      "id": "S01",
+      "slug": "single-ingredient-canonical",
+      "roadmap_item": 1,
+      "title": "One ingredient of one delivery did not arrive",
+      "stipulated_facts": [
+        "The base Hollow Oak world, unmodified.",
+        "Maya reports: today's raspberry delivery didn't arrive.",
+        "The report is ambiguous in scope, and Maya answers the clarification: just the raspberries -- the strawberries came.",
+        "The strawberry line of the same commitment is therefore attested received: 6.0 kg, on top of the 2.0 kg on hand.",
+        "Maya confirms the bounded plan.",
+        "Tomas replies YES from tg:1002, inside the window."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Raspberries fill Priya's cake and Priya recorded a standing preapproval for a strawberry alternative. A pre-authored strawberry version of that recipe exists and 8.0 kg of strawberries are attested available. Nobody needs to be asked.",
+        "ord-b": "Raspberries are the visible crown of Tomas's cake and his recorded constraint is to be asked before any visible change. A pre-authored strawberry version exists, so a recovery is available -- but only with his permission.",
+        "ord-c": "The wedding order forbids substitution outright, and the fixture authors no strawberry variant of the Charlotte. Two independent reasons, either one sufficient. It needs the owner.",
+        "ord-d": "Lena's order still names the raspberry version of the Raspberry Lemon Layer and no substitution policy offers a variant for it. Her ASK constraint never comes into play, because there is nothing to ask about.",
+        "ord-e": "Ahmed's ganache reserves dark chocolate and cream. No path runs from a raspberry shortfall to it.",
+        "ord-f": "The cafe's danishes reserve blueberries and butter. No path runs from a raspberry shortfall to them."
+      }
+    },
+    {
+      "id": "S02",
+      "slug": "whole-delivery-counterfactual",
+      "roadmap_item": 2,
+      "title": "The whole delivery did not arrive",
+      "counterfactual_of": "S01",
+      "stipulated_facts": [
+        "The base Hollow Oak world, unmodified.",
+        "Maya reports: today's raspberry delivery didn't arrive.",
+        "Maya answers the clarification differently: the whole Valley Produce delivery.",
+        "Both lines of that commitment are therefore attested not received. Strawberries stay at the 2.0 kg already on hand.",
+        "Maya confirms the bounded plan."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": [], "consent_required": [], "blocked": ["ord-a", "ord-b", "ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": [], "consent_required": [], "blocked": ["ord-a", "ord-b", "ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-a", "kind": "task_hold", "count": 1},
+            {"order": "ord-b", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-b", "kind": "task_hold", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": [], "consent_required": [], "blocked": ["ord-a", "ord-b", "ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "The preapproval is still recorded and the strawberry version still exists, but the strawberries did not arrive either. 2.0 kg on hand is less than the 2.4 kg this cake needs, so there is no recovery to authorise. Permission was never the binding constraint.",
+        "ord-b": "The same shortage. A rejected candidate reserves nothing, so Tomas's cake still sees the whole 2.0 kg on hand and still needs 2.2 kg. Asking him would be asking about a change that cannot be made.",
+        "ord-c": "Unchanged from S01: the constraint forbids substitution and no Charlotte variant is authored.",
+        "ord-d": "Unchanged from S01: no pre-authored variant for the version her order names.",
+        "ord-e": "Reserves neither raspberries nor strawberries.",
+        "ord-f": "Reserves neither raspberries nor strawberries."
+      },
+      "note": "Whole-delivery scope must change substitute feasibility, not merely widen the affected set. Nobody is asked here, because there is nothing to ask about."
+    },
+    {
+      "id": "S03",
+      "slug": "no-dependent-promises",
+      "roadmap_item": 3,
+      "title": "A real physical exception that threatens nobody",
+      "stipulated_facts": [
+        "The base Hollow Oak world, unmodified.",
+        "Maya reports: the mascarpone in the walk-in went off.",
+        "The fact is authoritative and is recorded: the mascarpone stock is unusable.",
+        "No recipe version any accepted order names carries a mascarpone line, so no promise reserves it."
+      ],
+      "untouched_baseline": 6,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": [], "consent_required": [], "blocked": [], "untouched": ["ord-a", "ord-b", "ord-c", "ord-d", "ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        },
+        {
+          "ordinal": 2,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": [], "consent_required": [], "blocked": [], "untouched": ["ord-a", "ord-b", "ord-c", "ord-d", "ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "No mascarpone line on the version this order names.",
+        "ord-b": "No mascarpone line on the version this order names.",
+        "ord-c": "No mascarpone line on the version this order names.",
+        "ord-d": "No mascarpone line on the version this order names.",
+        "ord-e": "No mascarpone line on the version this order names.",
+        "ord-f": "No mascarpone line on the version this order names."
+      },
+      "note": "The physical fact is still recorded and still true. An exception with no threatened promise must produce a case that says so and touches nothing, rather than no case at all."
+    },
+    {
+      "id": "S04",
+      "slug": "substitute-unavailable",
+      "roadmap_item": 4,
+      "title": "The substitute arrived and was unusable",
+      "stipulated_facts": [
+        "The base Hollow Oak world, unmodified.",
+        "Maya reports the raspberry delivery and answers the clarification: just the raspberries.",
+        "Maya then attests a second, independent physical fact: the strawberries that arrived on that delivery were spoiled on receipt and were rejected.",
+        "The strawberry line is therefore received and its 6.0 kg unusable. The 2.0 kg already on hand is unaffected and remains usable.",
+        "Maya confirms the bounded plan."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": [], "consent_required": [], "blocked": ["ord-a", "ord-b", "ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": [], "consent_required": [], "blocked": ["ord-a", "ord-b", "ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-a", "kind": "task_hold", "count": 1},
+            {"order": "ord-b", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-b", "kind": "task_hold", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": [], "consent_required": [], "blocked": ["ord-a", "ord-b", "ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Preapproved and pre-authored, but 2.0 kg of usable strawberries is less than the 2.4 kg the substitution needs. Blocked on substitute stock, not on permission.",
+        "ord-b": "The same shortage against a 2.2 kg need.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Reserves neither berry.",
+        "ord-f": "Reserves neither berry."
+      },
+      "note": "Deliberately reaches the same partition as S02 through different physical facts. A delivery that never came and a delivery that came unusable are different attestations and must not be conflated, even where they authorise the same thing."
+    },
+    {
+      "id": "S05",
+      "slug": "constraint-blocks-substitution",
+      "roadmap_item": 5,
+      "title": "A recovery exists, is in stock, and the customer forbade it",
+      "stipulated_facts": [
+        "The base Hollow Oak world, plus one authoring change made in advance: a strawberry Charlotte version (rv-raspberry-charlotte-2) and its substitution policy entry exist.",
+        "The wedding order keeps its recorded NO_SUBSTITUTION constraint.",
+        "Maya reports the raspberry delivery and answers: just the raspberries -- the strawberries came. 8.0 kg of strawberries are available.",
+        "8.0 kg covers all three candidate substitutions at once: 2.4 for Priya, 2.2 for Tomas and 3.0 for the wedding.",
+        "Maya confirms the bounded plan. Tomas replies YES from tg:1002."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Unchanged from S01.",
+        "ord-b": "Unchanged from S01.",
+        "ord-c": "This is the point of the scenario. A validated strawberry Charlotte now exists and there is enough stock for it. The only remaining reason not to make it is the constraint the customer recorded, so the block is attributable to the constraint alone.",
+        "ord-d": "Unchanged from S01: still no pre-authored variant. Her ASK constraint is never reached.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "S01 blocks the wedding order for two independent reasons at once. This scenario removes one of them so the surviving cause is provable."
+    },
+    {
+      "id": "S06",
+      "slug": "stale-approved-order-version",
+      "roadmap_item": 6,
+      "title": "The customer said yes, then changed the order",
+      "stipulated_facts": [
+        "S01 through Tomas's literal YES from tg:1002.",
+        "Between that YES and the revalidation that would authorise the amendment, Tomas changes ord-b in the external order system: quantity 1 becomes 2, external version 1 becomes 2.",
+        "The change crosses as a signed event and the mirror updates.",
+        "The re-planned ask that follows is never answered and expires at its deadline."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "customer_message", "count": 1}
+          ],
+          "refusals": ["approval_refused_stale_plan"]
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-b", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Unaffected by Tomas's edit; recovers exactly as in S01.",
+        "ord-b": "The decision is real and is kept. It authorises nothing, because it was given about one cake and the order now names two. The plan is stale, consent does not carry over to the new plan, and a fresh ask is sent. Two cakes need 4.4 kg of strawberries; 5.6 kg remain after Priya's recovery, so a recovery is still available and the fresh classification is still consent_required.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "The claim under test is exactly one order_amendment for ord-b across this whole scenario: zero. A recorded YES plus a moved order must not become a mutation."
+    },
+    {
+      "id": "S07",
+      "slug": "stale-approved-stock-state",
+      "roadmap_item": 7,
+      "title": "The customer said yes, then the substitute was gone",
+      "stipulated_facts": [
+        "S01 through Tomas's literal YES from tg:1002.",
+        "Between that YES and the revalidation, an inventory ledger entry records that counter sales consumed 5.6 kg of strawberries.",
+        "That leaves exactly the 2.4 kg already committed to Priya's completed recovery and nothing uncommitted.",
+        "No order was edited and no promise was reclassified by anything external."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": [], "blocked": ["ord-b", "ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["approval_refused_stale_plan"]
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": [], "blocked": ["ord-b", "ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-b", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Its recovery was already applied and its 2.4 kg is already committed. The later consumption does not reach back into a completed amendment.",
+        "ord-b": "Tomas approved a strawberry crown that the kitchen can no longer make. Revalidation refuses on substitute availability, the plan is re-made against what is true now, and the re-plan finds no valid option at all. This is the one scenario where a partition legitimately moves between checkpoints, under labelling rule R4.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "A stale approval must not be repaired by asking again for something impossible. The second ask that S06 sends is correct there and would be wrong here."
+    },
+    {
+      "id": "S08",
+      "slug": "foreign-sender",
+      "roadmap_item": 8,
+      "title": "A yes from the wrong person",
+      "stipulated_facts": [
+        "S01 through the ask reaching Tomas, with ord-b waiting for his answer.",
+        "A message reading YES arrives on tg:1005, which is Ahmed's channel and ord-e's channel, referencing ord-b's request.",
+        "Tomas himself never answers, and the request expires at its deadline."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["consent_refused_foreign_sender"]
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-b", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Unchanged from S01.",
+        "ord-b": "The word is literal and the request is open, and neither of those makes the sender its customer. Nothing is decided, the message is kept as written and put on the owner's desk, and the request expires unanswered.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Ahmed's own order stays untouched. A message arriving on his channel is not an instruction about his cake, and the incident never reached it. This scenario exists as much for ord-e's zero as for ord-b's refusal.",
+        "ord-f": "Unreachable."
+      },
+      "note": "The partition does not move here at all. What moves is what was authorised, which is why partitions alone would be an insufficient benchmark."
+    },
+    {
+      "id": "S09",
+      "slug": "nonliteral-apparent-assent",
+      "roadmap_item": 9,
+      "title": "Strawberries work",
+      "stipulated_facts": [
+        "S01 through the ask reaching Tomas, with ord-b waiting for his answer.",
+        "Tomas replies from tg:1002: Strawberries work.",
+        "The reply is not a literal YES or NO.",
+        "Tomas then replies again from tg:1002: YES."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "customer_message", "count": 1}
+          ],
+          "refusals": ["consent_not_decided_nonliteral"]
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Unchanged from S01.",
+        "ord-b": "An agreeable sentence is not an authorisation. The reply is stored exactly as written, decides nothing, and earns exactly one confirmation prompt carrying the literal instruction. The literal YES that follows is what authorises the amendment.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "This outcome is independent of any apparent-intent reading. It is the same for an approve-shaped label, a decline-shaped label, an unclear label, a malformed model response and no model call at all. See ADR-0008."
+    },
+    {
+      "id": "S10",
+      "slug": "replayed-approval-webhook",
+      "roadmap_item": 10,
+      "title": "The same yes, delivered twice",
+      "stipulated_facts": [
+        "S01 through the ask reaching Tomas, with ord-b waiting for his answer.",
+        "Tomas replies YES from tg:1002.",
+        "The provider delivers that same update twice, under the same provider message identity."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": ["duplicate_delivery_absorbed"]
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Unchanged from S01.",
+        "ord-b": "One customer, one answer, one decision, one amendment. The transport delivered twice; the ledger records one decision and the order system receives one change.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "The partition is identical to S01. The whole content of this scenario is the count."
+    },
+    {
+      "id": "S11",
+      "slug": "external-edit-removes-dependency-before",
+      "roadmap_item": 11,
+      "title": "Lena changed her cake before the delivery failed",
+      "stipulated_facts": [
+        "Before any exception is reported, Lena changes ord-d in the external order system from the Raspberry Lemon Layer to the Lemon Curd Layer (rv-lemon-curd-1), external version 1 becomes 2.",
+        "The change crosses as a signed event and the mirror updates.",
+        "Maya then reports the raspberry delivery and answers: just the raspberries -- the strawberries came.",
+        "Maya confirms the bounded plan. Tomas replies YES from tg:1002."
+      ],
+      "untouched_baseline": 3,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c"], "untouched": ["ord-d", "ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c"], "untouched": ["ord-d", "ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c"], "untouched": ["ord-d", "ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c"], "untouched": ["ord-d", "ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Unchanged from S01.",
+        "ord-b": "Unchanged from S01.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Her order no longer names a raspberry version, so no path runs from the raspberry shortfall to her promise. She is untouched because of what is stored, not because of who she is. Her own external amendment is her command and is never an incident-caused effect.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "This is the demo order of events: the external change first, the exception second. It is what makes the outcome contingent on current reality rather than on a prepared table."
+    },
+    {
+      "id": "S12",
+      "slug": "external-edit-adds-dependency-before",
+      "roadmap_item": 12,
+      "title": "Ahmed changed his cake into the blast radius",
+      "stipulated_facts": [
+        "Before any exception is reported, Ahmed changes ord-e in the external order system from the Dark Chocolate Ganache to the Raspberry Lemon Layer (rv-raspberry-lemon-2), external version 1 becomes 2.",
+        "The change crosses as a signed event and the mirror updates.",
+        "ord-e carries no recorded customer constraint, and no substitution policy offers a variant of rv-raspberry-lemon-2.",
+        "ord-e's production task is already in a started state, and that is stipulated rather than changed.",
+        "Maya then reports the raspberry delivery and answers: just the raspberries -- the strawberries came.",
+        "Maya confirms the bounded plan. Tomas replies YES from tg:1002."
+      ],
+      "untouched_baseline": 1,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d", "ord-e"], "untouched": ["ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d", "ord-e"], "untouched": ["ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1},
+            {"order": "ord-e", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-e", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d", "ord-e"], "untouched": ["ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d", "ord-e"], "untouched": ["ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Unchanged from S01.",
+        "ord-b": "Unchanged from S01.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "His order now names a raspberry version, so the shortfall reaches it. There is no pre-authored variant of that version to offer and no recorded constraint that could permit one, so nothing this system may do repairs it. The started task is stipulated and does not change the label: with no valid option, the promise needs its owner whatever the kitchen has begun.",
+        "ord-f": "Unreachable."
+      },
+      "note": "The mirror image of S11. Membership of the threatened set is decided by stored state at the moment of the exception, in both directions."
+    },
+    {
+      "id": "S13",
+      "slug": "related-external-edit-after-exception",
+      "roadmap_item": 13,
+      "title": "Priya edited the order the plan was about",
+      "stipulated_facts": [
+        "S01 through Maya's confirmation of the bounded plan.",
+        "After the plan is confirmed and before its amendment reaches the order system, Priya changes ord-a in the external order system: quantity 1 becomes 2, external version 1 becomes 2.",
+        "The change crosses as a signed event and the mirror updates.",
+        "Tomas replies YES from tg:1002."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-a", "kind": "task_hold", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": ["amendment_refused_stale_order_version"]
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "The recovery was authorised by a standing preapproval against the order as it stood. The order has moved, so the amendment is refused on its version rather than applied to a cake nobody planned for. The track goes to the owner instead of claiming success. Its classification does not change: what the case decided about Priya's promise was right, and what failed was the write.",
+        "ord-b": "Unaffected by Priya's edit; recovers on the customer's own authority as in S01.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "An automatic recovery has no customer waiting on it, which makes it the easiest place to quietly claim success. The declared ord-a order_amendment count for this scenario is zero."
+    },
+    {
+      "id": "S14",
+      "slug": "unrelated-external-edit-after-exception",
+      "roadmap_item": 14,
+      "title": "The cafe changed a standing order in the middle of it all",
+      "stipulated_facts": [
+        "S01 in full, including Maya's confirmation and Tomas's literal YES.",
+        "After the exception is reported, Cafe Marlow changes ord-f in the external order system: quantity 24 becomes 30, external version 1 becomes 2.",
+        "The change crosses as a signed event and the mirror updates.",
+        "That change has no causal relationship to the raspberry shortfall."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Unchanged from S01.",
+        "ord-b": "Unchanged from S01.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Untouched by the incident. The cafe's own amendment is real, is recorded in the order system and changed that order's version and reservations -- and none of it is an incident-caused effect, because the cafe commanded it. A counter that cannot tell those apart would report a false positive here."
+      },
+      "note": "This scenario exists to make the untouched-order claim survive a busy order book. It is byte-for-byte S01 in partitions and in incident-caused effects."
+    },
+    {
+      "id": "S15",
+      "slug": "crash-after-external-acceptance",
+      "roadmap_item": 15,
+      "title": "The order system said yes and the worker died",
+      "stipulated_facts": [
+        "S01 through Maya's confirmation of the bounded plan.",
+        "The external order system applies Priya's amendment.",
+        "The worker process dies before the acknowledgement of that amendment is persisted.",
+        "A fresh worker with a different boot identity starts and picks the work up.",
+        "Tomas replies YES from tg:1002."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": ["duplicate_amendment_suppressed"]
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "The amendment happened once, in the order system, before the crash. The replacement worker retries under the same derived idempotency key and must observe that outcome rather than produce a second one. Exactly one amendment, exactly one reservation change, exactly one recovery.",
+        "ord-b": "Unchanged from S01. A crash on another track must not disturb it.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "The dangerous failure here is a second cake, not a lost one. The declared count is one, and two fails the scenario as surely as zero would."
+    },
+    {
+      "id": "S16",
+      "slug": "restart-while-waiting-for-consent",
+      "roadmap_item": 16,
+      "title": "The worker restarted while the customer was thinking",
+      "stipulated_facts": [
+        "S01 through Maya's confirmation, with ord-b waiting for Tomas's answer.",
+        "The worker process is stopped and a new worker with a different boot identity starts.",
+        "No fixture, order, stock level or constraint changes across the restart.",
+        "Tomas then replies YES from tg:1002, inside the window."
+      ],
+      "untouched_baseline": 2,
+      "checkpoints": [
+        {
+          "ordinal": 1,
+          "name": "PLANNED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": ["clarification_required"]
+        },
+        {
+          "ordinal": 2,
+          "name": "CONFIRMED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-a", "kind": "order_amendment", "count": 1},
+            {"order": "ord-a", "kind": "reservation_change", "count": 1},
+            {"order": "ord-b", "kind": "customer_message", "count": 1},
+            {"order": "ord-c", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-c", "kind": "task_hold", "count": 1},
+            {"order": "ord-d", "kind": "owner_escalation", "count": 1},
+            {"order": "ord-d", "kind": "task_hold", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 3,
+          "name": "CONSENT_SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [
+            {"order": "ord-b", "kind": "order_amendment", "count": 1},
+            {"order": "ord-b", "kind": "reservation_change", "count": 1}
+          ],
+          "refusals": []
+        },
+        {
+          "ordinal": 4,
+          "name": "SETTLED",
+          "partition": {"auto_repairable": ["ord-a"], "consent_required": ["ord-b"], "blocked": ["ord-c", "ord-d"], "untouched": ["ord-e", "ord-f"]},
+          "effects_added": [],
+          "refusals": []
+        }
+      ],
+      "rationale": {
+        "ord-a": "Its recovery completed before the restart and is not redone by the worker that replaces it.",
+        "ord-b": "The wait is durable state, not a process holding a socket. A different worker accepts the answer, and the customer never learns that anything restarted.",
+        "ord-c": "Unchanged from S01.",
+        "ord-d": "Unchanged from S01.",
+        "ord-e": "Unreachable.",
+        "ord-f": "Unreachable."
+      },
+      "note": "Identical to S01 in every partition and every effect. The scenario passes only if the restart is invisible in the result and visible in the worker identity that produced it."
+    }
+  ]
+}
