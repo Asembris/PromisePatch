@@ -38,10 +38,28 @@ response envelope of the wrong shape, an order-system display label too long for
 persisted reading carrying none. Eight adversarial proofs were added, offline, zero model calls,
 $0. Both holdouts remain sealed. See `docs/p4.9-semantic-failure-hardening.md`.
 
+**P5 is open, and its G5 contract-locking work is done.** Before any P5 implementation, four
+things were fixed and committed. The **frozen 16-scenario effect-set manifest**
+(`docs/effect-sets/scenarios.v1.json`, `promisepatch-effect-sets` v1.0.0, manifest SHA
+`d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`) declares, per scenario, the
+expected order partitions at every ordered checkpoint plus the exact operational effects and
+refusals, hand-labelled from stipulated facts and never from engine output; it reuses the
+Hollow Oak fixture universe and is structurally verified by
+`scripts/verify_effect_set_manifest.py`, which imports no classifier. **ADR-0008** records the
+superseding decision to remove the runtime apparent-intent classifier, keeping the literal
+parser, the confirmation prompt and every historical measurement unedited. **The P5 product
+contract** (`docs/p5-product-contract.md`) locks the conversational authority boundary, the
+truthful `PLANNED`/`REQUESTED`/`RECOVERED` state vocabulary, the zero-incident-caused-effect
+definition and the first case-workspace hierarchy. Labels precede the *remaining*
+implementation, not the pre-existing engine, and that chronology is stated wherever the score
+will be. Both holdouts stay sealed; P4.8 stays closed. See `docs/effect-set-manifest.md`.
+
 ## Authoritative documents
 
-`PROMISEPATCH_PRODUCT_SPEC.md` and `ARCHITECTURE_PLAN.md` are frozen, gitignored, local-only
-and **authoritative whenever present**. Read them before deciding anything they cover. Never
+`PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
+local-only and **authoritative whenever present**. `new_roadmap.md` is the locked P5-P9 roadmap and
+its per-phase acceptance gates; reopening it requires a reproduced correctness or eligibility blocker,
+or a documented official rule change. Read them before deciding anything they cover. Never
 modify them unless explicitly asked. Never commit them.
 
 ## Core rule

@@ -17,6 +17,32 @@ order system that owns order state, a signed event ingress, and governed recover
 pushed back at it — and the semantic boundary an Amazon Bedrock model answers through, now
 wired into exception intake. There is no deployment.
 
+## The frozen effect-set manifest
+
+Sixteen scenarios, hand-labelled from stipulated facts, committed before the runner that will
+execute them exists. Each declares the orders it expects in each partition at each ordered
+checkpoint, and the exact operational effects and refusals it expects — including the zeros.
+
+| | |
+|---|---|
+| Manifest | `promisepatch-effect-sets` v1.0.0, 16 scenarios |
+| File | [`docs/effect-sets/scenarios.v1.json`](docs/effect-sets/scenarios.v1.json) |
+| **Manifest SHA** | `d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc` |
+| Frozen at commit | `9a7f4a899ade132507f015f65688c8be8b373827` |
+
+Recompute that hash and check the manifest's coherence with no database, no credential and no
+network:
+
+```bash
+uv run python scripts/verify_effect_set_manifest.py
+```
+
+The labels are **not** derived from PromisePatch's own output, and the verifier is structural
+only — it never asks the engine what it would classify. The suite has not been executed yet;
+there is no score to report, and the first complete run will be published whatever it says. Read
+[`docs/effect-set-manifest.md`](docs/effect-set-manifest.md) for the method, the partition
+algebra, the pass rule and the disclosure that these labels are developer-authored and finite.
+
 ## The deterministic engine
 
 `promise_graph` is a separate, pure package on purpose. It owns reachability, temporal
@@ -216,6 +242,12 @@ The order system's own suite needs nothing but Python:
 
 ```bash
 uv run pytest apps/order-simulator packages/order-contract
+```
+
+The frozen effect-set manifest's identity and coherence are checked with nothing at all:
+
+```bash
+uv run pytest scripts/tests/test_effect_set_manifest.py
 ```
 
 The frontend gates:

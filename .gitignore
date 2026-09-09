@@ -1,6 +1,7 @@
 # Planning documents — local only, never tracked
 ARCHITECTURE_PLAN.md
 PROMISEPATCH_PRODUCT_SPEC.md
+new_roadmap.md
 
 # Python environments
 .venv/

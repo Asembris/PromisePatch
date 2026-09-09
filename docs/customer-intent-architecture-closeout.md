@@ -1,5 +1,13 @@
 # Customer-intent architecture closeout
 
+> **SUPERSEDED on 2026-09-09 by [ADR-0008](adr/0008-remove-runtime-customer-intent-classifier.md).**
+> The RETAIN decision below no longer describes the intended production path: P5 withdraws the
+> frozen contract that was this page's stated reason for keeping the classifier, and the runtime
+> apparent-intent call leaves the consent path. **Nothing on this page has been edited or
+> rescored.** Every measurement, challenger result and argument is preserved exactly as it was
+> recorded, including the reasoning that was correct at the time, because a component that was
+> evaluated and then not selected is a result worth keeping.
+
 > **Zero model calls.** Nova: 0. GPT-4o-mini: 0. Nemotron: 0. Haiku: 0. Ollama: 0. Holdout: 0.
 > Spend: $0. Every number on this page is read from persisted run artifacts and from the code
 > in this commit. **Production routing is unchanged by this page.**
@@ -142,6 +150,8 @@ be persuaded. Per `CLAUDE.md`, frozen architecture is not redesigned in place; a
 that is amended first, deliberately, and this gate is not that amendment.
 
 ## Decision
+
+*Superseded 2026-09-09 by [ADR-0008](adr/0008-remove-runtime-customer-intent-classifier.md); preserved unedited.*
 
 **RETAIN the runtime classifier.** No production routing changes. No provider is selected on the
 strength of the targeted set: no measured challenger cleared materiality, and a 12-case
