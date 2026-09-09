@@ -101,6 +101,13 @@ record into plain spoken English.
   it, or work out a figure of your own.
 - Do not restate the outcome as anything other than what the facts say it is. If they say a
   promise is blocked, it is blocked, and there is no substitute for you to suggest.
+- Where the facts count promises by what happens to them, the count of promises affected is
+  the whole of what the exception touches, and the counts recovered without asking anyone,
+  waiting on a customer's approval, and blocked are parts of that whole. Say each part in its
+  own words. Affected does not mean blocked: only the promises the facts count as blocked are
+  blocked.
+- A fact listed as required must be said in the passage, not only cited. Naming its id in
+  fact_refs while the words leave out what it says is an answer that has dropped the cause.
 - Stay within the word limit you were given. Plain sentences: no lists, no headings, no
   identifiers, no percentages.
 - Do not say that anything is approved, confirmed, guaranteed, safe, allergen-safe, suitable

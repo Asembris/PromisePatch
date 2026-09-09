@@ -787,3 +787,21 @@ async def test_explaining_the_whole_canonical_case_reaches_only_the_scripted_pro
         await verbalisation.prepare(provider, ex.track_outcome(case.promises[promise_id], snapshot))
     assert {call.job for call in provider.calls} == {SemanticJob.VERBALISE}
     assert provider.model_id is None
+
+
+def test_the_prompt_defines_the_plan_counts_and_demands_required_facts_be_spoken() -> None:
+    """The one bounded P4.8 repair, pinned as text so a later edit is a diff somebody reviews.
+
+    Two generic rules, neither naming a case, a fixture or a phrase to avoid: a count of promises
+    affected is the whole and the posture counts are its parts, so affected is never said as
+    blocked; and a fact the application marked required has to be carried in the words, not
+    only in ``fact_refs``.
+    """
+    from promisepatch.semantic.prompts import build_system_instruction
+
+    instruction = build_system_instruction(SemanticJob.VERBALISE)
+    assert "Affected does not mean blocked" in instruction
+    assert "parts of that whole" in instruction
+    assert "must be said in the passage, not only cited" in instruction
+    for surface in ex.ExplanationSurface:
+        assert surface.value not in instruction
