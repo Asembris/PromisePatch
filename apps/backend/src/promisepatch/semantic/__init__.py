@@ -30,6 +30,7 @@ from promisepatch.semantic.contracts import (
 from promisepatch.semantic.errors import (
     SemanticError,
     SemanticProviderError,
+    SemanticProviderNotPreparedError,
     SemanticTimeoutError,
     SemanticValidationError,
     ValidationFailure,
@@ -69,6 +70,7 @@ __all__ = [
     "SemanticMetadata",
     "SemanticProvider",
     "SemanticProviderError",
+    "SemanticProviderNotPreparedError",
     "SemanticRequest",
     "SemanticResult",
     "SemanticTelemetry",

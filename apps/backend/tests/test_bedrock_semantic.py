@@ -42,6 +42,7 @@ from promisepatch.semantic import (
     ReplyIntentReading,
     SemanticJob,
     SemanticProviderError,
+    SemanticProviderNotPreparedError,
     SemanticTimeoutError,
     SemanticValidationError,
     UntrustedText,
@@ -378,6 +379,33 @@ async def test_a_client_that_cannot_be_opened_is_a_typed_failure_not_a_traceback
 
     assert raised.value.retryable is False
     assert "does-not-exist" in str(raised.value)
+
+
+async def test_a_client_that_cannot_be_opened_says_no_request_was_sent() -> None:
+    """The pre-request failure is typed as one, and its sentence is part of the contract.
+
+    An evaluation has to tell "the model answered badly" from "nobody asked it anything", and
+    this is the boundary where the second is known: the client could not be built, so nothing
+    left the process and nothing was billed. Still a :class:`SemanticProviderError`, so every
+    caller that only wants to fall back is unaffected -- the test above proves that path is
+    untouched.
+
+    The message prefix is pinned because the harness recognises records written before the
+    type existed by exactly this sentence; ``evals.explanation_results
+    .NOT_PREPARED_DETAIL_PREFIX`` is its other half, and rewording one without the other is
+    what this assertion catches.
+    """
+
+    def refuse() -> ConverseTransport:
+        raise ProfileNotFound(profile="does-not-exist")
+
+    semantic = BedrockSemanticProvider(open_transport=refuse, model_id=MODEL)
+    with pytest.raises(SemanticProviderNotPreparedError) as raised:
+        await semantic.run(ClassifyReplyIntentRequest(reply=UntrustedText(text="ok")))
+
+    assert isinstance(raised.value, SemanticProviderError)
+    assert raised.value.retryable is False
+    assert str(raised.value).startswith("the AWS SDK could not be prepared for Bedrock:")
 
 
 def test_settings_carry_the_bedrock_client_configuration() -> None:

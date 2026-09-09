@@ -688,19 +688,30 @@ class RecognisedRun:
 
     @property
     def recognised(self) -> LedgerTotals:
+        """The larger of the two records, field by field, minus what was never sent.
+
+        A ledger line written before the pre-request failure had a name counted the permission
+        the guard took as a call. The run file is the per-case evidence of which of those
+        requests never left the process, so those are discounted from both records before the
+        larger is taken. Nothing on disk is edited: this is how the two are *read*, and the
+        discount is printed by :attr:`discrepancy` like every other disagreement.
+        """
         if self.recorded is None:
             return self.ledgered
+        unsent = self.recorded.unsent_calls
         return LedgerTotals(
-            runs=1,
-            calls=max(self.ledgered.calls, self.recorded.calls),
-            attempts=max(self.ledgered.attempts, self.recorded.attempts),
+            runs=1 if max(self.ledgered.calls - unsent, self.recorded.calls) else 0,
+            calls=max(self.ledgered.calls - unsent, self.recorded.calls, 0),
+            attempts=max(self.ledgered.attempts - unsent, self.recorded.attempts, 0),
             input_tokens=max(self.ledgered.input_tokens, self.recorded.input_tokens),
             output_tokens=max(self.ledgered.output_tokens, self.recorded.output_tokens),
             estimated_usd=max(self.ledgered.estimated_usd, self.recorded.estimated_usd),
+            unsent_calls=unsent,
         )
 
     @property
     def bought(self) -> bool:
+        """Whether this identity ever sent a request. An identity that did not is not a run."""
         return self.recognised.calls > 0
 
     @property
@@ -708,6 +719,12 @@ class RecognisedRun:
         """One line saying how the two records differ, or ``None`` when they agree."""
         if self.recorded is None:
             return None if self.ledgered.calls == 0 else "no run file found; ledger only"
+        unsent = self.recorded.unsent_calls
+        if unsent:
+            return (
+                f"{unsent} attempt(s) reached no provider and sent nothing; not counted as "
+                f"bought inference, and the record was neither removed nor rewritten"
+            )
         if self.recorded.calls == self.ledgered.calls:
             return None
         return (
@@ -744,21 +761,29 @@ class GateSpend:
 def _recorded_totals(
     generations: Sequence[NovaExplanationResult], *, model_id: str | None
 ) -> LedgerTotals:
-    """What a run file's generation records add up to, priced the way the guard prices."""
-    input_tokens = sum(result.usage.input_tokens or 0 for result in generations)
-    output_tokens = sum(result.usage.output_tokens or 0 for result in generations)
+    """What a run file's generation records add up to, priced the way the guard prices.
+
+    A record whose provider could not be built is counted in ``unsent_calls`` and nowhere
+    else. No request left the process for it, so it is not a call, not an attempt and not a
+    dollar -- and a run whose every record is one of those bought nothing at all.
+    """
+    bought = [result for result in generations if result.terminal]
+    unsent = [result for result in generations if not result.terminal]
+    input_tokens = sum(result.usage.input_tokens or 0 for result in bought)
+    output_tokens = sum(result.usage.output_tokens or 0 for result in bought)
     usd = estimate_usd(
         price_for(NOVA_2_LITE.provider, model_id),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
     )
     return LedgerTotals(
-        runs=1 if generations else 0,
-        calls=len(generations),
-        attempts=sum(result.usage.provider_attempts for result in generations),
+        runs=1 if bought else 0,
+        calls=len(bought),
+        attempts=sum(result.usage.provider_attempts for result in bought),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         estimated_usd=Decimal(0) if usd is None else usd,
+        unsent_calls=len(unsent),
     )
 
 
@@ -1214,7 +1239,11 @@ def _count(value: int | None) -> str:
 
 def render_generation(store: ExplanationResultStore, guard: BudgetGuard, split: EvalSplit) -> str:
     """What the generation pass did, in the terms the checkpoint after it has to check."""
-    results = store.generations
+    # Acceptance is measured over the cases that were actually asked. A case whose provider
+    # could not be built was not refused and did not fall back to anything -- counting it here
+    # would report an availability problem as a rate about the model's prose.
+    results = [result for result in store.generations if result.terminal]
+    not_prepared = [result for result in store.generations if not result.terminal]
     accepted = sum(1 for result in results if result.accepted)
     fallback = len(results) - accepted
     failures = sum(1 for result in results if result.failure is not None)
@@ -1242,6 +1271,8 @@ def render_generation(store: ExplanationResultStore, guard: BudgetGuard, split: 
             f"  fallback           {fallback}",
             f"  provider failures  {provider_failures}",
             f"  validator refusals {failures - provider_failures}",
+            f"  not prepared       {len(not_prepared)} "
+            f"(reached no provider, 0 tokens, $0; still outstanding)",
             "",
             f"  logical calls      {guard.spend.calls}",
             f"  provider attempts  {guard.spend.attempts}",
@@ -1252,7 +1283,8 @@ def render_generation(store: ExplanationResultStore, guard: BudgetGuard, split: 
             f"  latency p50/p95    {_ms(percentile(latencies, 0.5))} / "
             f"{_ms(percentile(latencies, 0.95))}",
             "",
-            f"  holdout touched    {sum(1 for r in results if r.split is EvalSplit.HOLDOUT)}",
+            f"  holdout touched    "
+            f"{sum(1 for r in store.generations if r.split is EvalSplit.HOLDOUT)}",
         ]
     )
 

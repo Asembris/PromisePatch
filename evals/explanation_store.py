@@ -174,8 +174,23 @@ class ExplanationResultStore:
         self.judgements = judgements
 
     def completed(self) -> frozenset[str]:
-        """Case ids Nova has already answered and that are written down. Never asked again."""
-        return frozenset(result.case_id for result in self.generations)
+        """Case ids Nova has already answered and that are written down. Never asked again.
+
+        Only *terminal* records answer. A case whose provider could not be built was never
+        asked, so its record is evidence that the attempt happened and not an answer to the
+        question -- it stays outstanding and the next pass under this identity finishes it.
+        The record itself is never removed or rewritten; this reads past it.
+        """
+        return frozenset(result.case_id for result in self.generations if result.terminal)
+
+    def not_prepared(self) -> frozenset[str]:
+        """Case ids whose provider could not be built, and which are still outstanding."""
+        answered = self.completed()
+        return frozenset(
+            result.case_id
+            for result in self.generations
+            if not result.terminal and result.case_id not in answered
+        )
 
     def judged(self) -> frozenset[str]:
         """Case ids the judge has already answered about. Never asked again."""

@@ -48,6 +48,14 @@ evals = [
     # every other CI job installs no evaluation dependency at all, so a deployed process cannot
     # import the SDK even if a module tried to.
     "openai>=1.60,<4",
+    # The live explanation gate reaches Bedrock through whatever credential provider the
+    # operator's AWS profile names, and the `aws login` provider refuses to resolve without
+    # botocore's CRT extra -- which surfaces as a client that cannot be built, before any
+    # request is sent. Declared here rather than in the backend because production authenticates
+    # with an instance or task role, which needs none of this: only the workstation that runs a
+    # paid evaluation does. A missing dependency that stops a run should be a sync away, not a
+    # manual pip install somebody has to rediscover from a traceback.
+    "botocore[crt]>=1.35,<2",
 ]
 
 # --------------------------------------------------------------------------- ruff

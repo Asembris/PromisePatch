@@ -37,6 +37,25 @@ class SemanticProviderError(SemanticError):
         self.retryable = retryable
 
 
+class SemanticProviderNotPreparedError(SemanticProviderError):
+    """The provider could not be built, so no request was ever sent.
+
+    A subclass of :class:`SemanticProviderError` because, to every caller that has to keep
+    working when a model is unavailable, this *is* that: not retryable, fall back, carry on.
+    Production behaviour is unchanged by its existence.
+
+    It is named apart for the one caller that must not read it as evidence about the model.
+    An evaluation has to tell "the model answered badly" from "nobody asked it anything", and
+    a missing profile, a missing credential dependency or an unset Region are the second. No
+    request left the process, no token was billed, and nothing was learned about the model --
+    so a gate that recorded this as the model's answer would be reporting an observation it
+    never made.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, retryable=False)
+
+
 class SemanticTimeoutError(SemanticProviderError):
     """The model did not answer inside the configured bound.
 
@@ -108,6 +127,7 @@ class SemanticValidationError(SemanticError):
 __all__ = [
     "SemanticError",
     "SemanticProviderError",
+    "SemanticProviderNotPreparedError",
     "SemanticTimeoutError",
     "SemanticValidationError",
     "ValidationFailure",

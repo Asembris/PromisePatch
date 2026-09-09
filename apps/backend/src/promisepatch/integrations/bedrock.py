@@ -33,6 +33,7 @@ from typing import Any, Final, Protocol
 from promisepatch.config import Settings
 from promisepatch.semantic.errors import (
     SemanticProviderError,
+    SemanticProviderNotPreparedError,
     SemanticTimeoutError,
     SemanticValidationError,
     ValidationFailure,
@@ -145,9 +146,13 @@ class BedrockSemanticProvider(StructuredSemanticProvider):
             try:
                 self._opened = self._open_transport()
             except (BotoCoreError, ClientError) as error:
-                raise SemanticProviderError(
-                    f"the AWS SDK could not be prepared for Bedrock: {error}",
-                    retryable=False,
+                # Nothing has been sent at this point and nothing will be billed. Named as the
+                # pre-request failure it is, so a caller that must not mistake "nobody asked"
+                # for "the model answered badly" can tell them apart. Still a
+                # SemanticProviderError, so every caller that only wants to fall back is
+                # unaffected.
+                raise SemanticProviderNotPreparedError(
+                    f"the AWS SDK could not be prepared for Bedrock: {error}"
                 ) from error
         return self._opened
 

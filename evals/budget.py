@@ -48,6 +48,7 @@ from pathlib import Path
 
 from promisepatch.semantic import (
     SemanticProvider,
+    SemanticProviderNotPreparedError,
     SemanticRequest,
     SemanticResult,
     SemanticTelemetry,
@@ -389,6 +390,14 @@ class Spend:
     tokens_reported: bool = False
     estimated_usd: Decimal | None = None
 
+    unsent_calls: int = 0
+    """Permissions taken by :meth:`BudgetGuard.authorise` and given back unused.
+
+    A provider that could not be built never sent the request the permission was for. Counted
+    beside the totals rather than inside them: it is a real event worth printing, and it is not
+    a call, because no request left the process and no token was billed.
+    """
+
     def as_payload(self) -> dict[str, object]:
         return {
             "calls": self.calls,
@@ -461,6 +470,18 @@ class BudgetGuard:
             )
         self.spend.calls += 1
 
+    def discard(self) -> None:
+        """Give back the permission :meth:`authorise` took, for a request never sent.
+
+        The counterpart of ``authorise``, and the only way a call count goes down. Permission
+        has to be taken before a call, because nothing can know in advance that a provider is
+        about to fail to exist -- so the honest accounting for a provider that could not be
+        built is to hand the permission back rather than to charge an allowance for a request
+        nobody made. Kept as a count of its own so the event is still reported.
+        """
+        self.spend.calls -= 1
+        self.spend.unsent_calls += 1
+
     def record(self, telemetry: SemanticTelemetry | None) -> None:
         """Add what one call actually used. A provider that publishes nothing adds nothing."""
         if telemetry is None:
@@ -497,11 +518,20 @@ class BudgetedSemanticProvider:
         self._inner = inner
         self._guard = guard
         self.name = inner.name
+        self.not_prepared = False
+        """Whether this provider failed before sending anything. Read by the runner."""
 
     async def run(self, request: SemanticRequest) -> SemanticResult:
         self._guard.authorise()
         try:
             result = await self._inner.run(request)
+        except SemanticProviderNotPreparedError:
+            # No request left the process, so there is nothing to record and nothing to
+            # charge. The permission goes back and the error goes on: production's own
+            # fallback path is reached exactly as it was before this branch existed.
+            self.not_prepared = True
+            self._guard.discard()
+            raise
         except BaseException:
             self._guard.record(None)
             raise
@@ -594,6 +624,12 @@ class LedgerTotals:
     """
 
     unattributed_calls: int = 0
+
+    unsent_calls: int = 0
+    """Calls a run took permission for and never sent, because the provider could not be built.
+
+    Beside the totals for the same reason as ``unattributed_calls``: printed, never charged.
+    """
 
     def as_payload(self) -> dict[str, object]:
         return {
@@ -753,6 +789,7 @@ def add_totals(left: LedgerTotals, right: LedgerTotals) -> LedgerTotals:
         estimated_usd=left.estimated_usd + right.estimated_usd,
         unattributed_runs=left.unattributed_runs + right.unattributed_runs,
         unattributed_calls=left.unattributed_calls + right.unattributed_calls,
+        unsent_calls=left.unsent_calls + right.unsent_calls,
     )
 
 

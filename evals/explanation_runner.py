@@ -225,6 +225,16 @@ async def generate(
         model_input = to_model_input(case)
         provider = BudgetedSemanticProvider(factory(model_input), guard)
         explanation = await verbalisation.prepare(provider, case.explanation_facts())
+        # A provider that could not be built never sent this case's request, so what came back
+        # is production's fallback rather than an observation about the model. Recorded as the
+        # non-terminal kind, with the call it never made counted as neither a call nor an
+        # attempt: the guard has already handed that permission back.
+        not_prepared = provider.not_prepared
+        usage = (
+            Usage(logical_calls=0, provider_attempts=0)
+            if not_prepared
+            else Usage(logical_calls=1, provider_attempts=explanation.attempts or 1)
+        )
         result = NovaExplanationResult(
             identity=_identity(
                 case,
@@ -239,9 +249,13 @@ async def generate(
             source=ExplanationSource(explanation.source.value),
             speech=explanation.speech,
             fact_refs=explanation.fact_refs,
-            failure=_failure_kind(explanation),
+            failure=(
+                ExplanationFailureKind.PROVIDER_NOT_PREPARED
+                if not_prepared
+                else _failure_kind(explanation)
+            ),
             detail=explanation.detail,
-            usage=Usage(logical_calls=1, provider_attempts=explanation.attempts or 1),
+            usage=usage,
         )
         results.append(result)
         if on_result is not None:

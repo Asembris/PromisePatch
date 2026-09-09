@@ -35,6 +35,20 @@ from evals.explanation_cases import ExplanationFamily
 FINGERPRINT_LENGTH = 16
 """How much of a SHA-256 identity digest is kept. Enough to distinguish, short enough to read."""
 
+NOT_PREPARED_DETAIL_PREFIX: Final = "the AWS SDK could not be prepared for Bedrock:"
+"""Production's own sentence for a Bedrock client that could not be built.
+
+Compatibility, for records written before :data:`ExplanationFailureKind.PROVIDER_NOT_PREPARED`
+existed. One such record exists -- ``p48dev-repaired``'s canary, which reached no provider
+because the AWS login credential provider needed a dependency that was not installed -- and it
+is stored as a plain ``PROVIDER_FAILURE`` because that was the only kind there was. The file is
+append-only evidence and is not rewritten, so the sentence is what identifies it.
+
+The literal lives here rather than being imported because the import contract keeps ``evals``
+out of ``promisepatch.integrations``. ``tests/test_bedrock.py`` asserts the producer still emits
+it, so a reworded message is a failing test rather than a record this stops recognising.
+"""
+
 
 class ExplanationSource(StrEnum):
     """Who phrased the passage. Mirrors production's own provenance vocabulary, never widens it.
@@ -60,6 +74,20 @@ class ExplanationFailureKind(StrEnum):
     The rest are content-level findings no validator produces. They exist because P4.7 does not
     claim arbitrary prose is checkable, and a failure taxonomy that stopped at what a validator
     can see would have nowhere to put the passage that was well-formed and wrong.
+    """
+
+    PROVIDER_NOT_PREPARED = "PROVIDER_NOT_PREPARED"
+    """The provider could not be built, so this case was never asked. **Not terminal.**
+
+    The one kind here that is not an observation about the model. Every other kind is something
+    that happened to a request: this one is a request that never left the process, because a
+    profile, a Region or a credential dependency was missing. No token was billed and no
+    passage was refused -- there was nothing to refuse.
+
+    Kept in this enum rather than thrown away because the attempt is evidence and the run file
+    is append-only: an operator reading a run has to be able to see that a case was reached,
+    found the environment broken, and was left outstanding. :meth:`NovaExplanationResult
+    .terminal` is what stops it being mistaken for an answer.
     """
 
     PROVIDER_FAILURE = "PROVIDER_FAILURE"
@@ -200,6 +228,26 @@ class NovaExplanationResult(Frozen):
     def accepted(self) -> bool:
         """Whether a model's words survived the production acceptance path and are on screen."""
         return self.source is ExplanationSource.VERBALISED
+
+    @property
+    def terminal(self) -> bool:
+        """Whether this record answers the question the case asks. A resume skips only these.
+
+        Every outcome the model can produce is terminal, including a refused answer and a
+        provider that failed mid-request: each is something that was observed about a request
+        that was actually sent, and asking again would be buying a second opinion the protocol
+        did not authorise.
+
+        :data:`ExplanationFailureKind.PROVIDER_NOT_PREPARED` is the exception, because nothing
+        was observed. The case is still outstanding, and a resume under the same run identity
+        is what finishes it.
+        """
+        if self.failure is ExplanationFailureKind.PROVIDER_NOT_PREPARED:
+            return False
+        return not (
+            self.failure is ExplanationFailureKind.PROVIDER_FAILURE
+            and (self.detail or "").startswith(NOT_PREPARED_DETAIL_PREFIX)
+        )
 
     @property
     def case_id(self) -> str:
