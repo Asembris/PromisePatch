@@ -53,14 +53,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from promisepatch.db.clock import database_now
 from promisepatch.db.models import Case, CaseStep
 from promisepatch.db.runtime import RuntimeDatabase
-from promisepatch.domain import crash, grounding, interpretation, physical
-from promisepatch.domain.observation import (
-    CASE_INTERPRETING,
-    EscalationReason,
-    HumanInterpretationRequired,
-    ObservationContext,
-    statement_id_of,
-)
+from promisepatch.domain import crash, grounding, physical
+from promisepatch.domain.observation import CASE_INTERPRETING, statement_id_of
 from promisepatch.domain.steps import StepClaim
 from promisepatch.observability import get_logger
 from promisepatch.semantic import (
@@ -88,8 +82,9 @@ STATUS_UNNEEDED: Final = "UNNEEDED"
 
 ``READ`` is an answer to consume. ``REJECTED`` is a model that answered something PromisePatch
 will not accept, which asking again does not fix. ``UNAVAILABLE`` is a provider that could not
-be reached, which asking again might. ``UNNEEDED`` is the deterministic reading having resolved
-in the meantime -- the sentence is understood, and no model was asked.
+be reached, which asking again might. ``UNNEEDED`` is nobody having been asked: either the
+deterministic reading resolved in the meantime, or the statement is not one a second reading
+may be put to at all.
 """
 
 
@@ -129,11 +124,13 @@ async def prepare(
             statement_id=statement_id_of(claim.step_key),
             now=await database_now(connection),
         )
-        request = grounding.build_request(context, case_id=claim.case_id)
-        fingerprint = grounding.request_fingerprint(request, context)
-        reason = _fallback_reason(context)
+        # One pure decision, and it settles both halves at once: whether a model is asked at
+        # all, and what it would be asked. Asked in that order rather than built first and
+        # gated afterwards, because a statement no reading may be put to must not reach the
+        # request that would refuse to carry it.
+        question = grounding.question_for(context, case_id=claim.case_id)
 
-    if reason is None:
+    if question is None:
         return await _store(
             database,
             claim=claim,
@@ -141,14 +138,18 @@ async def prepare(
                 status=STATUS_UNNEEDED,
                 payload={
                     "status": STATUS_UNNEEDED,
-                    "detail": "the deterministic reading resolved before a model was asked",
+                    "detail": (
+                        "no model was asked: the deterministic reading resolved, or this "
+                        "statement is not one a second reading may be put to"
+                    ),
                 },
             ),
         )
 
+    request = question.request
     common: dict[str, Any] = {
-        "request_hash": fingerprint,
-        "reason": reason.value,
+        "request_hash": question.fingerprint,
+        "reason": question.reason.value,
         "provider": provider.name,
         "candidates": {
             "resources": len(request.resources),
@@ -246,22 +247,6 @@ async def _store(
     return prepared
 
 
-def _fallback_reason(context: ObservationContext) -> EscalationReason | None:
-    """The deterministic stop that still warrants a second reading, or ``None``.
-
-    The deterministic interpreter runs first here as well as in the step before, and that
-    repetition is the point: between the two, a clarification may have been answered or a
-    delivery corrected, and a sentence the lexicon can now read is a sentence no model is asked
-    about. Deterministic understanding is never paid for twice, and never paid for at all.
-    """
-    outcome = interpretation.interpret(context)
-    if isinstance(outcome, HumanInterpretationRequired) and grounding.is_fallback_eligible(
-        context, outcome
-    ):
-        return outcome.reason
-    return None
-
-
 async def _case_state(connection: AsyncConnection, case_id: UUID) -> str | None:
     """The case's state, read without a lock: this is a decision about whether to spend money.
 
@@ -289,13 +274,20 @@ def stored_reading(result: object) -> dict[str, Any] | None:
     return stored if isinstance(stored, dict) else None
 
 
-def reading_of(payload: dict[str, Any]) -> ObservationInterpretation:
-    """Rebuild the typed reading from what was persisted, through the same strict model.
+def reading_of(payload: dict[str, Any]) -> ObservationInterpretation | None:
+    """Rebuild the typed reading from what was persisted, or ``None`` if there is not one.
 
-    Validated on the way back out as well as on the way in. A row edited by hand, or written by
-    an older build, is refused here rather than becoming a binding nobody checked.
+    Validated on the way back out as well as on the way in, and through the same strict model:
+    a row edited by hand, or written by a build that shaped this payload differently, is refused
+    here rather than becoming a binding nobody checked. A row carrying no reading at all is that
+    same refusal and not an exception -- the caller's answer to both is the sentence going to a
+    person, and a payload shape is not worth crashing a worker over. The consent protocol reads
+    its own stored label the same way.
     """
-    return ObservationInterpretation.model_validate(payload["reading"])
+    reading = payload.get("reading")
+    if not isinstance(reading, dict):
+        return None
+    return ObservationInterpretation.model_validate(reading)
 
 
 __all__: Sequence[str] = [

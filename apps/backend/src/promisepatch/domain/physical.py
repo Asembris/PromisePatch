@@ -436,8 +436,24 @@ async def _consume_semantic(
     if reading.get("request_hash") != fingerprint:
         return _stale_semantic()
 
+    proposal = semantic_intake.reading_of(reading)
+    if proposal is None:
+        # The row says a model was read and carries nothing a model could have said -- a
+        # payload written by a build that shaped it differently, or edited underneath us.
+        # Treated exactly as a refused answer is: no binding, and the sentence goes to a person
+        # under the stop it was always unread for.
+        return await _escalate(
+            connection,
+            case=case,
+            context=context,
+            outcome=outcome,
+            now=now,
+            worker=worker,
+            semantic=dict(reading),
+        )
+
     resolution = grounding.resolve_semantic_observation(
-        context, semantic_intake.reading_of(reading), deterministic_reason=outcome.reason
+        context, proposal, deterministic_reason=outcome.reason
     )
     settled = await _settle_outcome(
         connection,

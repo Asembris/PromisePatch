@@ -37,7 +37,11 @@ from promisepatch.semantic import (
     CandidateNodeType,
     ObservationInterpretation,
 )
+from promisepatch.semantic.contracts import MAX_UNTRUSTED_CHARACTERS
 from promisepatch.semantic.jobs import validate
+
+DECK_OVEN_SENTENCE = "the deck oven packed up in the middle of service"
+"""Equipment, in words the lexicon has no marker for. Stops at ``NO_CATEGORY``."""
 
 NOW = datetime(2026, 3, 14, 9, 0, tzinfo=UTC)
 DAY_START = datetime(2026, 3, 14, 0, 0, tzinfo=UTC)
@@ -181,6 +185,53 @@ def test_only_the_original_report_is_ever_read_semantically() -> None:
             observed_at=NOW,
         )
         assert grounding.is_fallback_eligible(context("x", current=answer), stopped) is False
+
+
+def test_a_statement_too_long_to_be_one_report_is_never_put_to_a_model() -> None:
+    """The bound on somebody's words is a gate, not a surprise raised deep inside a request.
+
+    ``UntrustedText`` refuses to carry more than four thousand characters, so a caller that
+    built the request for an over-long statement would raise a ``pydantic.ValidationError`` --
+    which is neither of the two failures the semantic boundary promises, and which every caller
+    of it therefore does not catch. The gate answers first, so no caller ever gets there.
+    """
+    stopped = HumanInterpretationRequired(reason=EscalationReason.NO_CATEGORY, detail="")
+    oversized = "the deck oven packed up " + "x" * MAX_UNTRUSTED_CHARACTERS
+
+    assert grounding.is_fallback_eligible(context(oversized), stopped) is False
+    assert grounding.question_for(context(oversized)) is None
+
+
+def test_a_statement_at_the_bound_is_still_a_sentence_somebody_said() -> None:
+    """Refused for being too long, and not one character sooner."""
+    stopped = HumanInterpretationRequired(reason=EscalationReason.NO_CATEGORY, detail="")
+    at_the_bound = ("the deck oven packed up ").ljust(MAX_UNTRUSTED_CHARACTERS, "x")
+    assert len(at_the_bound) == MAX_UNTRUSTED_CHARACTERS
+
+    assert grounding.is_fallback_eligible(context(at_the_bound), stopped) is True
+    question = grounding.question_for(context(at_the_bound))
+    assert question is not None
+    assert question.request.utterance.text == at_the_bound
+
+
+def test_the_question_is_decided_before_it_is_built() -> None:
+    """One pure call answers both halves, in the order that keeps the bound reachable.
+
+    A sentence the lexicon reads produces no question at all, and no candidate set is
+    constructed for it -- which is the same property asserted as a call count in the workflow
+    suite, here without a database.
+    """
+    read_by_the_lexicon = "the raspberries did not arrive from Valley Produce today"
+    read = interpretation.interpret(context(read_by_the_lexicon))
+    assert isinstance(read, ClarificationRequired)
+    assert grounding.question_for(context(read_by_the_lexicon)) is None
+
+    unread = context(DECK_OVEN_SENTENCE)
+    question = grounding.question_for(unread)
+    assert question is not None
+    assert question.reason is EscalationReason.NO_CATEGORY
+    assert question.request == grounding.build_request(unread)
+    assert question.fingerprint == grounding.request_fingerprint(question.request, unread)
 
 
 # ------------------------------------------------------------------------ the candidate set

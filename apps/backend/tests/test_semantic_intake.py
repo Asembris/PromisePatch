@@ -50,6 +50,7 @@ from _semantic_support import (
     reading,
     scripted,
 )
+from pydantic import ValidationError
 from sqlalchemy import update
 
 from promise_graph.model import ExceptionCategory
@@ -662,6 +663,29 @@ async def _corrupt_fingerprint(physical: Intake, case_id: UUID) -> None:
         await connection.execute(
             update(CaseStep).where(CaseStep.id == step.id).values(result=payload)
         )
+
+
+def test_a_stored_row_that_carries_no_reading_is_refused_rather_than_believed() -> None:
+    """The durable half of the acceptance path, and it is read as strictly as the wire half.
+
+    A reading survives a restart on ``case_steps.result``, so what comes back off that row is
+    model output that has been through a database. It is re-validated through the same strict
+    model on the way out -- and a payload that says a model was read while carrying nothing a
+    model could have said is that same refusal rather than an exception, because a payload
+    shape is not worth crashing a worker over. The consuming transition escalates the sentence
+    to a person, which is where it was going before anybody was asked.
+    """
+    assert semantic_intake.reading_of({"status": semantic_intake.STATUS_READ}) is None
+    assert semantic_intake.reading_of({"reading": None}) is None
+    assert semantic_intake.reading_of({"reading": "EQUIPMENT_UNAVAILABLE"}) is None
+
+    honest = semantic_intake.reading_of({"reading": {"category": None, "bindings": []}})
+    assert honest is not None and honest.bindings == ()
+
+    with pytest.raises(ValidationError):
+        # Still strict about what it *does* carry: a shape is refused loudly, because that is a
+        # payload claiming to be a reading rather than a row that has none.
+        semantic_intake.reading_of({"reading": {"category": "NOT_A_CATEGORY"}})
 
 
 async def test_a_replayed_report_produces_one_case_and_one_reading(physical: Intake) -> None:

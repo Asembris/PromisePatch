@@ -76,6 +76,7 @@ from promisepatch.semantic import (
     SemanticMetadata,
     UntrustedText,
 )
+from promisepatch.semantic.contracts import MAX_UNTRUSTED_CHARACTERS
 
 SUPPORTED_CATEGORIES: Final[tuple[ExceptionCategory, ...]] = (
     ExceptionCategory.SUPPLY_NOT_RECEIVED,
@@ -236,16 +237,66 @@ class SemanticResolution:
 def is_fallback_eligible(context: ObservationContext, outcome: HumanInterpretationRequired) -> bool:
     """Whether this deterministic stop is one a second reading may be asked about.
 
-    Three conditions, all of them cheap and all of them about state rather than about words.
-    A statement that is not the original report is excluded outright: a clarification answer is
-    resolved against option codes derived from stored rows, and a correction may only restate
-    the outcome of lines that are already bound. Neither is an open-ended sentence, and putting
-    either in front of a model would be inviting it to choose a physical outcome.
+    Four conditions, all of them cheap. A statement that is not the original report is excluded
+    outright: a clarification answer is resolved against option codes derived from stored rows,
+    and a correction may only restate the outcome of lines that are already bound. Neither is an
+    open-ended sentence, and putting either in front of a model would be inviting it to choose a
+    physical outcome.
+
+    The fourth is about the statement's size rather than its stop, and it is here because this
+    is the gate every caller already asks. Anything longer than
+    :data:`~promisepatch.semantic.contracts.MAX_UNTRUSTED_CHARACTERS` is not a worker reporting
+    a delivery, and :class:`~promisepatch.semantic.contracts.UntrustedText` refuses to carry it
+    -- so a caller that built the request anyway would raise out of the semantic layer's own
+    two-kind failure vocabulary, at a point where every caller is only catching those two. It is
+    refused rather than truncated: a reading of the first four thousand characters of something
+    else is not a reading, and the sentence stays unread for the reason the lexicon stopped on,
+    in front of a person. The consent protocol refuses an over-long customer reply for the same
+    reason and in the same words.
     """
     return (
         context.current.kind is ReportKind.REPORT
         and context.bound is None
         and outcome.reason in FALLBACK_REASONS
+        and len(context.report.raw_text) <= MAX_UNTRUSTED_CHARACTERS
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Question:
+    """The one question a context permits a model, named so it can be asked exactly once."""
+
+    reason: EscalationReason
+    """The deterministic stop that made a second reading worth buying."""
+
+    request: InterpretUtteranceRequest
+    fingerprint: str
+
+
+def question_for(context: ObservationContext, *, case_id: UUID | None = None) -> Question | None:
+    """The question this sentence may be put to a model as, or ``None`` when there is none.
+
+    Pure, and the whole of the decision: it runs the deterministic reader, asks whether the stop
+    it reached is one a second reading may improve on, and only then builds the request. That
+    order is the point rather than an implementation detail. Building the request is where the
+    statement's own bounds are enforced, so a statement that may not be read at all must never
+    reach them -- a check that happened afterwards would be a check that never happened.
+
+    The deterministic reader runs here as well as in the step before, and that repetition is
+    deliberate: between the two, a clarification may have been answered or a delivery corrected,
+    and a sentence the lexicon can now read is a sentence no model is asked about. Deterministic
+    understanding is never paid for twice, and never paid for at all.
+    """
+    outcome = interpretation.interpret(context)
+    if not (
+        isinstance(outcome, HumanInterpretationRequired) and is_fallback_eligible(context, outcome)
+    ):
+        return None
+    request = build_request(context, case_id=case_id)
+    return Question(
+        reason=outcome.reason,
+        request=request,
+        fingerprint=request_fingerprint(request, context),
     )
 
 
@@ -527,9 +578,11 @@ __all__: Sequence[str] = [
     "SUPPORTED_CATEGORIES",
     "Grounding",
     "GroundingFailure",
+    "Question",
     "SemanticResolution",
     "build_request",
     "is_fallback_eligible",
+    "question_for",
     "request_fingerprint",
     "resolve_semantic_observation",
 ]

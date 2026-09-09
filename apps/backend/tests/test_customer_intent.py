@@ -37,6 +37,7 @@ depend on the answer.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -56,6 +57,7 @@ from promisepatch.semantic import (
     SemanticJob,
     SemanticTimeoutError,
 )
+from promisepatch.semantic.contracts import MAX_UNTRUSTED_CHARACTERS
 from promisepatch.semantic.jobs import JobSpec
 from promisepatch.semantic.provider import Attempt
 
@@ -989,6 +991,48 @@ def test_the_semantic_module_cannot_record_a_decision() -> None:
     }
     assert not (named & forbidden), (
         f"{sorted(named & forbidden)} is reachable from the semantic reply path"
+    )
+
+
+def test_a_reply_too_long_to_be_one_message_is_never_sent_to_a_model() -> None:
+    """``inbound_replies.raw_text`` is unbounded; one semantic request carries four thousand.
+
+    Pure, because the gate is pure and the property is about what never happens: a reply longer
+    than one customer message is refused before the request that would refuse to carry it is
+    built. Truncating instead would put the first four thousand characters of something else in
+    front of a model and call the answer a reading of the customer's reply.
+
+    The observation path refuses an over-long worker statement the same way, in
+    :func:`promisepatch.domain.grounding.is_fallback_eligible`.
+    """
+    now = datetime(2026, 3, 14, 9, 0, tzinfo=UTC)
+    within = _binding("yes please, the strawberry one", now)
+    beyond = _binding("y" * (MAX_UNTRUSTED_CHARACTERS + 1), now)
+    live = next(iter(approvals.LIVE_CASE_STATES))
+
+    assert customer_intent._blocking_reason(within, case_state=live, now=now) is None
+    assert (
+        customer_intent._blocking_reason(beyond, case_state=live, now=now)
+        == "the reply is longer than one customer message"
+    )
+
+
+def _binding(text: str, now: datetime) -> customer_intent.ReplyBinding:
+    """One reply on an open, in-date request from the customer's own channel."""
+    return customer_intent.ReplyBinding(
+        reply_id=UUID(int=1),
+        provider_message_id="tg:9",
+        sender=TOMAS_CHANNEL,
+        text=text,
+        request_id=UUID(int=2),
+        track_id=UUID(int=3),
+        option_id=UUID(int=4),
+        option_code="OPT-ABCDEF",
+        order_id=ho.ORDER_B,
+        customer_channel=TOMAS_CHANNEL,
+        deadline=now + timedelta(hours=1),
+        state=ApprovalRequestState.SENT.value,
+        decided=False,
     )
 
 
