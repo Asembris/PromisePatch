@@ -548,3 +548,41 @@ def test_validation_messages_never_quote_a_holdout_passage(
     joined = " ".join(problems)
     assert broken.id in joined
     assert sealed.reference not in joined
+
+
+def test_a_view_keeps_the_identity_of_the_dataset_it_was_cut_from(
+    dataset: ExplanationDataset,
+) -> None:
+    """A split or a narrowed selection is the same dataset, selected differently.
+
+    The hash a run records against is the one the manifest, the header and the authorisation
+    name. A view that hashed only the cases it holds would let a resumed run stamp its records
+    with the identity of whatever happened to be outstanding, which is not a dataset anybody
+    froze.
+    """
+    frozen = dataset.content_hash
+    development = dataset.split([EvalSplit.DEVELOPMENT])
+    assert development.content_hash == frozen
+    assert 0 < len(development.cases) < len(dataset.cases)
+
+    one = development.select([development.cases[0].id])
+    assert len(one.cases) == 1
+    assert one.content_hash == frozen
+
+    assert dataset.split(None) is dataset
+    assert dataset.select([]).content_hash == frozen
+
+
+def test_the_hash_of_a_loaded_dataset_is_still_over_its_own_content(
+    dataset: ExplanationDataset,
+) -> None:
+    """The identity is inherited by views only. The dataset as loaded still hashes its cases."""
+    rebuilt = ExplanationDataset(
+        version=dataset.version, provenance=dataset.provenance, cases=dataset.cases
+    )
+    assert rebuilt.identity_hash is None
+    assert rebuilt.content_hash == dataset.content_hash
+    fewer = ExplanationDataset(
+        version=dataset.version, provenance=dataset.provenance, cases=dataset.cases[1:]
+    )
+    assert fewer.content_hash != dataset.content_hash

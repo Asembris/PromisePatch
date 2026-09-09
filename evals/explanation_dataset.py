@@ -403,10 +403,25 @@ class ExplanationDataset:
     version: str
     provenance: str
     cases: tuple[ExplanationEvalCase, ...]
+    identity_hash: str | None = None
+    """The frozen dataset a selection was cut from, or ``None`` for the dataset as loaded.
+
+    A split or a narrowed selection is a view of the committed dataset, not a dataset of its
+    own. The records a run writes name the dataset they measured, and the hash they carry has
+    to be the one the manifest, the run header and the authorisation all name -- so a view
+    keeps its source's identity rather than hashing the handful of cases it happens to hold.
+    """
 
     @property
     def content_hash(self) -> str:
-        """SHA-256 over every case in canonical form. Changes when the data changes."""
+        """The identity of the frozen dataset. Changes when the committed data changes.
+
+        For the dataset as loaded this is a SHA-256 over every case in canonical form. For a
+        view produced by :meth:`split` or :meth:`select` it is the identity of the dataset the
+        view was cut from: the same cases, selected differently, are the same dataset.
+        """
+        if self.identity_hash is not None:
+            return self.identity_hash
         payload = [json.loads(case.model_dump_json()) for case in self.cases]
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -415,10 +430,16 @@ class ExplanationDataset:
         if splits is None:
             return self
         wanted = frozenset(splits)
+        return self.select(case.id for case in self.cases if case.split in wanted)
+
+    def select(self, case_ids: Iterable[str]) -> ExplanationDataset:
+        """The same dataset with only the named cases in it. Identity is unchanged."""
+        chosen = frozenset(case_ids)
         return ExplanationDataset(
             version=self.version,
             provenance=self.provenance,
-            cases=tuple(case for case in self.cases if case.split in wanted),
+            cases=tuple(case for case in self.cases if case.id in chosen),
+            identity_hash=self.content_hash,
         )
 
     def family(self, family: ExplanationFamily) -> tuple[ExplanationEvalCase, ...]:

@@ -29,6 +29,7 @@ from evals.authorisation import (
     authorise,
     required_phrase,
 )
+from evals.budget import NEMOTRON_3_SUPER, BillingMode, ledger_totals
 from evals.cases import EvalSplit
 from evals.explanation_dataset import load_explanation_dataset
 from evals.explanation_judge import (
@@ -40,11 +41,12 @@ from evals.explanation_judge import (
 )
 from evals.explanation_results import JudgeOutcome
 from evals.explanation_runner import (
+    LIVE_MODE,
     ScriptedExplanations,
     scripted_provider,
     scripted_verdicts,
 )
-from evals.explanation_store import read_run
+from evals.explanation_store import ExplanationResultStore, read_run
 
 from promisepatch.config import Settings
 
@@ -621,3 +623,176 @@ def test_no_fixture_here_authorises_spending() -> None:
 def test_the_off_machine_connection_count_is_zero() -> None:
     """The claim this whole file rests on, as a number rather than an intention."""
     assert OFF_MACHINE_CONNECTIONS == []
+
+
+# =====================================================================================
+# 8. every call that happened is in the ledger, exactly once
+# =====================================================================================
+
+
+class CountingProvider:
+    """The scripted provider with every call it actually makes counted at the seam."""
+
+    def __init__(self, inner: object, calls: list[str]) -> None:
+        self._inner = inner
+        self._calls = calls
+        self.name = getattr(inner, "name", "fake")
+
+    async def run(self, request: object) -> object:
+        self._calls.append(type(request).__name__)
+        return await self._inner.run(request)  # type: ignore[attr-defined]
+
+
+def counting_factory(calls: list[str]) -> object:
+    inner = scripted_provider(ScriptedExplanations.from_file())
+
+    def build(model_input: object) -> object:
+        return CountingProvider(inner(model_input), calls)  # type: ignore[arg-type]
+
+    return build
+
+
+def canary_generation(results: Path, calls: list[str], *extra: str) -> argparse.Namespace:
+    namespace = namespace_for(generation_argv(results) + list(extra))
+    namespace.factory = counting_factory(calls)
+    return namespace
+
+
+async def test_a_canary_call_the_ceiling_stopped_after_is_still_in_the_ledger(
+    sandbox: Path,
+) -> None:
+    """One call was bought, the next was refused, and the ledger must say one -- not nothing.
+
+    The pass ends on ``BudgetExhaustedError`` after the first call, which is after the passage
+    was written to the run file. A ledger line written only on the happy path would leave a
+    paid call unrecorded and hand the resumed run one call more than the ceiling allows.
+    """
+    results = sandbox / "run.jsonl"
+    calls: list[str] = []
+    assert await command.run_generation(canary_generation(results, calls, "--max-calls", "1")) == 1
+
+    _header, generations, _ = read_run(results)
+    assert len(generations) == 1
+    assert calls == ["VerbaliseRequest"]
+
+    lines = command.LEDGER.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["calls"] == 1
+    assert entry["attempts"] == 1
+    assert entry["run_id"] == _header.run_id
+
+
+async def test_a_resumed_run_charges_its_own_calls_and_never_the_canary_again(
+    sandbox: Path,
+) -> None:
+    """Two passes, two ledger lines, and the total is exactly the calls that happened."""
+    results = sandbox / "run.jsonl"
+    calls: list[str] = []
+    await command.run_generation(canary_generation(results, calls, "--max-calls", "1"))
+    assert await command.run_generation(canary_generation(results, calls)) == 0
+
+    header, generations, _ = read_run(results)
+    development = load_explanation_dataset().split([EvalSplit.DEVELOPMENT])
+    assert len(generations) == len(development.cases)
+    assert len({item.case_id for item in generations}) == len(generations)
+    assert len(calls) == len(development.cases)
+
+    totals = ledger_totals(
+        command.LEDGER, mode=LIVE_MODE, provider=header.provider, model_id=header.model_id
+    )
+    assert totals.runs == 2
+    assert totals.calls == len(development.cases)
+    assert totals.attempts == sum(result.usage.provider_attempts for result in generations)
+    assert totals.attempts >= totals.calls
+
+
+async def test_a_ceiling_that_refuses_the_first_call_writes_no_ledger_line(
+    sandbox: Path,
+) -> None:
+    """Nothing was bought, so nothing is recorded. A measured nought is not a spend."""
+    results = sandbox / "run.jsonl"
+    calls: list[str] = []
+    assert await command.run_generation(canary_generation(results, calls, "--max-calls", "0")) == 1
+    _header, generations, _ = read_run(results)
+    assert generations == ()
+    assert calls == []
+    assert not command.LEDGER.exists()
+
+
+async def test_a_provider_fault_mid_run_still_leaves_the_calls_made_in_the_ledger(
+    sandbox: Path,
+) -> None:
+    """The invariant holds for any exit, not only the ceiling's: calls made are calls recorded."""
+    results = sandbox / "run.jsonl"
+    calls: list[str] = []
+    inner = counting_factory(calls)
+
+    def faulting(model_input: object) -> object:
+        if len(calls) >= 2:
+            raise RuntimeError("the transport fell over")
+        return inner(model_input)  # type: ignore[operator]
+
+    namespace = namespace_for(generation_argv(results))
+    namespace.factory = faulting
+    with pytest.raises(RuntimeError):
+        await command.run_generation(namespace)
+
+    entry = json.loads(command.LEDGER.read_text(encoding="utf-8").splitlines()[0])
+    assert entry["calls"] == len(calls) == 2
+
+
+# =====================================================================================
+# 9. the judge's billing mode is the repository's own value
+# =====================================================================================
+
+
+async def test_the_judge_billing_mode_is_rendered_from_the_evaluation_foundation(
+    sandbox: Path,
+) -> None:
+    results = sandbox / "run.jsonl"
+    await command.run_generation(offline_generation(results))
+    header, _generations, _ = read_run(results)
+    store = ExplanationResultStore(results, header)
+
+    printed = command.render_judging(store, None, 21)
+    assert f"billing mode       {NEMOTRON_3_SUPER.mode.value}" in printed
+    assert NEMOTRON_3_SUPER.mode is BillingMode.FREE_HOSTED_TRIAL
+    assert "prototype" not in printed
+    assert "$0" not in printed
+
+
+# =====================================================================================
+# 10. every record names the frozen dataset, never the selection it was generated from
+# =====================================================================================
+
+
+async def test_every_record_carries_the_frozen_dataset_hash_across_a_resumed_run(
+    sandbox: Path,
+) -> None:
+    """A canary of one case and a resume of twenty are one dataset, and every row says so."""
+    results = sandbox / "run.jsonl"
+    calls: list[str] = []
+    await command.run_generation(canary_generation(results, calls, "--max-calls", "1"))
+    await command.run_generation(canary_generation(results, calls))
+
+    namespace = namespace_for(
+        [
+            "judge",
+            "--live",
+            "--split",
+            "development",
+            "--authorise-paid-inference",
+            JUDGING,
+            "--results",
+            str(results),
+        ]
+    )
+    namespace.judge = ScriptedJudge(scripted_verdicts())
+    await command.run_judging(namespace)
+
+    frozen = load_explanation_dataset().content_hash
+    header, generations, judgements = read_run(results)
+    assert header.dataset_hash == frozen
+    assert {result.identity.dataset_hash for result in generations} == {frozen}
+    assert {result.identity.dataset_hash for result in judgements} == {frozen}

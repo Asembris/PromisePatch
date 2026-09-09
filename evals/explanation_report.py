@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from evals.budget import NEMOTRON_3_SUPER
 from evals.cases import EvalSplit
 from evals.explanation_budget import DerivedCeiling, judge_ceiling, nova_ceiling
 from evals.explanation_cases import ExplanationFamily
@@ -92,7 +93,7 @@ def plan(dataset: ExplanationDataset, splits: Sequence[EvalSplit] | None = None)
         _rule("USD ACCOUNTING"),
         f"  nova           priced, projected ${nova.projected_usd} "
         f"(ceiling ${nova.max_estimated_usd})",
-        "  nvidia judge   free hosted prototype billing; commercial USD not modelled",
+        f"  nvidia judge   {NEMOTRON_3_SUPER.mode.value} billing; commercial USD not modelled",
         f"  repairs        at most {MAX_PRODUCTION_REPAIRS_BEFORE_HOLDOUT} bounded production "
         f"repair before holdout",
         _rule("THIS INVOCATION"),

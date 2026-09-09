@@ -81,7 +81,9 @@ from evals.authorisation import (
     required_phrase,
 )
 from evals.budget import (
+    NEMOTRON_3_SUPER,
     NOVA_2_LITE,
+    BudgetExhaustedError,
     BudgetGuard,
     CostLedgerEntry,
     EvalBudget,
@@ -635,12 +637,13 @@ def _as_int(value: object) -> int | None:
 
 
 def narrow(dataset: ExplanationDataset, case_ids: frozenset[str]) -> ExplanationDataset:
-    """The same dataset with only the named cases in it. Identity is unchanged and unused."""
-    return ExplanationDataset(
-        version=dataset.version,
-        provenance=dataset.provenance,
-        cases=tuple(case for case in dataset.cases if case.id in case_ids),
-    )
+    """The same dataset with only the named cases in it, still carrying the frozen identity.
+
+    A view, not a new dataset: every record a resumed run writes names the committed dataset's
+    hash, the same one the header, the manifest and the authorisation name, and never the hash
+    of whichever cases happened to be outstanding when the run was continued.
+    """
+    return dataset.select(case_ids)
 
 
 def generation_budget(
@@ -716,20 +719,34 @@ async def run_generation(namespace: argparse.Namespace) -> int:
     def written(result: NovaExplanationResult) -> None:
         store.record_generation(_with_measured_usage(result, records))
 
-    outcome = await generate(
-        outstanding,
-        factory,
-        guard=guard,
-        provider_name=NOVA_2_LITE.provider,
-        model_id=namespace.model,
-        git_sha=store.header.git_sha,
-        run_id=store.header.run_id,
-        mode=LIVE_MODE,
-        on_result=written,
-    )
-    _append_generation_ledger(store, guard, namespace)
+    stopped: str | None = None
+    try:
+        await generate(
+            outstanding,
+            factory,
+            guard=guard,
+            provider_name=NOVA_2_LITE.provider,
+            model_id=namespace.model,
+            git_sha=store.header.git_sha,
+            run_id=store.header.run_id,
+            mode=LIVE_MODE,
+            on_result=written,
+        )
+    except BudgetExhaustedError as ceiling:
+        stopped = str(ceiling)
+    finally:
+        # A call that happened is a call that was paid for, however this pass ended. The
+        # ledger line is written on the way out -- after a ceiling refused the next call, after
+        # a provider fault, after an interrupt -- so the spend a later pass is measured against
+        # can never be smaller than the spend the run file already holds. One line per pass:
+        # a resumed run opens its own guard and writes its own line, so nothing is charged twice.
+        if guard.spend.calls:
+            _append_generation_ledger(store, guard, namespace)
     print(render_generation(store, guard, split))
-    return 0 if len(outcome.results) == len(outstanding.cases) else 1
+    if stopped is not None:
+        print(f"  stopped            {stopped}")
+        return 1
+    return 0 if store.completed() >= frozenset(case.id for case in selected.cases) else 1
 
 
 def _with_measured_usage(
@@ -960,7 +977,7 @@ def render_judging(store: ExplanationResultStore, stopped: str | None, ceiling: 
             f"  provider attempts  {usage.provider_attempts}",
             f"  input tokens       {_count(usage.input_tokens)}",
             f"  output tokens      {_count(usage.output_tokens)}",
-            "  billing mode       free_hosted_prototype",
+            f"  billing mode       {NEMOTRON_3_SUPER.mode.value}",
             "  known USD          not modelled -- no published per-token price",
             f"  latency p50/p95    {_ms(percentile(latencies, 0.5))} / "
             f"{_ms(percentile(latencies, 0.95))}",
