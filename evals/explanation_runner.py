@@ -282,6 +282,7 @@ async def judge_explanations(
     judge: CountedJudge | None,
     *,
     run_id: str,
+    on_result: Callable[[ExplanationJudgeResult], object] | None = None,
 ) -> JudgingOutcome:
     """One structured verdict per accepted passage, and none for anything else.
 
@@ -292,6 +293,11 @@ async def judge_explanations(
     Judging stops after :data:`~evals.explanation_thresholds.MAX_JUDGE_PROVIDER_FAILURES`
     unexpected transport failures. The generation results are untouched by that: an outage at the
     judge is an outage at the judge.
+
+    ``on_result`` is called with each verdict as it is produced, which is how a live run writes
+    one down before anything else can go wrong with it -- the same seam :func:`generate` has,
+    for the same reason. A judge call against a free endpoint costs no money and still spends a
+    quota nobody gets back.
     """
     if judge is None:
         raise JudgeNotConfiguredError(
@@ -313,15 +319,16 @@ async def judge_explanations(
             case.id, case.family, to_model_input(case).request, result.speech
         )
         judgement = await judge.judge(request)
-        verdicts.append(
-            to_judge_result(
-                result,
-                judgement,
-                provider=judge.name,
-                model_id=judge.model_id,
-                run_id=run_id,
-            )
+        verdict = to_judge_result(
+            result,
+            judgement,
+            provider=judge.name,
+            model_id=judge.model_id,
+            run_id=run_id,
         )
+        verdicts.append(verdict)
+        if on_result is not None:
+            on_result(verdict)
         if judge.provider_failures >= MAX_JUDGE_PROVIDER_FAILURES:
             stopped = (
                 f"{judge.provider_failures} judge provider failures; subjective quality is "

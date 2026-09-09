@@ -400,6 +400,45 @@ python -m evals explanation-manifest --write    # after a deliberate dataset cha
 There is no live command here, and nothing reachable from `python -m evals` can construct a Bedrock
 or NVIDIA client. The plan prints counts and ceilings and no sealed passage.
 
+### The live surface
+
+Reaching a model is a **composition root outside both cores**, `scripts/run_explanation_eval.py`,
+for the reason the import contract exists: `evals` may not import a vendor SDK, so the package that
+scores cannot be the package that spends.
+
+```bash
+python -m scripts.run_explanation_eval plan --split development
+
+python -m scripts.run_explanation_eval generate --live --split development \
+    --authorise-paid-inference AUTHORISE-PAID-INFERENCE-P4-8-NOVA-DEVELOPMENT-GENERATION
+
+python -m scripts.run_explanation_eval judge --live --split development \
+    --results .eval-results/explanation-<run>.jsonl \
+    --authorise-paid-inference AUTHORISE-PAID-INFERENCE-P4-8-NEMOTRON-DEVELOPMENT-JUDGING
+
+python -m scripts.run_explanation_eval report --results .eval-results/explanation-<run>.jsonl
+python -m scripts.run_explanation_eval review --results .eval-results/explanation-<run>.jsonl
+```
+
+Four properties, each a test rather than a claim:
+
+- **Two passes, two authorisations, neither implying the other.** `--live` names a code path; the
+  scope-bound phrase is typed at the invocation, read from nowhere else and never defaulted. A
+  generation phrase cannot buy judging, and neither can open the holdout -- `--split holdout` maps
+  to `AUTHORISE-PAID-INFERENCE-P4-8-EXPLANATION-HOLDOUT` in both passes. A process running under
+  pytest constructs no paid provider whatever it was handed.
+- **Every passage and verdict is on disk the moment it exists**, in one JSONL run file whose header
+  gates the resume on commit, dataset name/version/hash, provider, model, mode, split, prompt hash
+  and schema hash. An interrupted run continues; a file from another experiment is refused. The
+  judge reads passages from that file and never reaches Nova, and a passage written under a prompt
+  or schema that has since moved is refused rather than rejudged.
+- **`report` and `review` call nothing.** Both are rebuilt from the run file, which is what makes a
+  lost terminal cheap and the manual review of all twenty-one free.
+- **The two providers never share a counter or a ledger.** Nova's ceiling is the one this dataset
+  derives and its spend lands in `.eval-results/explanation-cost-ledger.jsonl`, separate from the
+  customer-intent gate's: a ceiling for this evaluation is not a ceiling on everything the account
+  has ever spent. NVIDIA's usage is recorded in calls and tokens with its dollars absent.
+
 ---
 
 ## What this gate spent
@@ -418,3 +457,7 @@ MODEL SPEND                 $0
 EXPLANATION HOLDOUT MODEL CALLS   0
 SEMANTIC HOLDOUT MODEL CALLS      0
 ```
+
+The live surface described above was built and exercised **offline**, against the scripted factory
+and a scripted judge passed in as parameters. Building the path that can spend is not spending, and
+this count stays at zero until a development run is separately authorised.
