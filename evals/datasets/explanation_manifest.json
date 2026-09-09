@@ -1,0 +1,66 @@
+{
+  "name": "promisepatch-explanation-gold",
+  "schema_version": "1",
+  "version": "1.0.0",
+  "content_hash": "ebb9b6791e1eb453762b94a5c1d68c14b708a69d8f59a83bff059ee5cf7f1c57",
+  "cases": 35,
+  "by_family": {
+    "PLAN_SUMMARY": 5,
+    "TRACK_AUTO_RECOVERABLE": 5,
+    "TRACK_APPROVAL_REQUIRED": 5,
+    "TRACK_BLOCKED": 5,
+    "TRACK_UNAFFECTED": 5,
+    "CUSTOMER_WAIT": 5,
+    "REVALIDATION": 5
+  },
+  "by_split": {
+    "development": 21,
+    "holdout": 14
+  },
+  "by_family_split": {
+    "PLAN_SUMMARY": {
+      "development": 3,
+      "holdout": 2
+    },
+    "TRACK_AUTO_RECOVERABLE": {
+      "development": 3,
+      "holdout": 2
+    },
+    "TRACK_APPROVAL_REQUIRED": {
+      "development": 3,
+      "holdout": 2
+    },
+    "TRACK_BLOCKED": {
+      "development": 3,
+      "holdout": 2
+    },
+    "TRACK_UNAFFECTED": {
+      "development": 3,
+      "holdout": 2
+    },
+    "CUSTOMER_WAIT": {
+      "development": 3,
+      "holdout": 2
+    },
+    "REVALIDATION": {
+      "development": 3,
+      "holdout": 2
+    }
+  },
+  "by_tag": {
+    "authority_sensitive": 8,
+    "canonical": 7,
+    "instruction_like_data": 3,
+    "long_entity": 3,
+    "multiple_numbers": 8,
+    "multiple_required_facts": 3,
+    "negative_fact": 12,
+    "number_words": 3,
+    "punctuation": 4,
+    "quantity": 14,
+    "similar_reason_codes": 8,
+    "stale_reason": 6,
+    "unaffected_precision": 6,
+    "voice_brevity": 6
+  }
+}

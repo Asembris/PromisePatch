@@ -305,6 +305,45 @@ CONSENT_AUTHORITY: Final = "only a literal yes or no on their own channel record
 """Spec 13.6 in one clause. A fact, so a passage about a wait can be required to carry it."""
 
 
+def _by_value[Key: StrEnum](table: Mapping[Key, str]) -> Mapping[str, str]:
+    """One phrase table keyed by the enum member's own value rather than by the member."""
+    return {key.value: phrase for key, phrase in table.items()}
+
+
+CLOSED_VOCABULARIES: Final[Mapping[FactId, Mapping[str, str]]] = {
+    FactId.CASE_EXCEPTION: _by_value(_CATEGORY_PHRASES),
+    FactId.IMPACT_OUTCOME: _by_value(_OUTCOME_PHRASES),
+    FactId.IMPACT_REACHABILITY: _by_value(_REACHABILITY_PHRASES),
+    FactId.IMPACT_REASON: _by_value(_REASON_PHRASES),
+    FactId.RECOVERY_OPTION: _by_value(_OPTION_PHRASES),
+    FactId.APPROVAL_STATE: _by_value(_REQUEST_PHRASES),
+    FactId.CONSENT_AUTHORITY: {"CONSENT_AUTHORITY": CONSENT_AUTHORITY},
+    FactId.REVALIDATION_OUTCOME: _by_value(_REVALIDATION_PHRASES),
+    FactId.REVALIDATION_NEXT: _by_value(_REVALIDATION_NEXT),
+}
+"""The facts whose value comes from a closed set, and what each member of that set renders as.
+
+A projection of the phrase tables above -- derived from them rather than restated, so the two
+cannot disagree -- keyed by the engine enum member's own value. Nothing reads it at runtime and
+nothing here decides anything. It exists so that "this is a value the engine can actually
+produce, and it is the one that goes with *that* rule" is a question somebody outside this
+module can ask: a reviewer, or a fixture that has to be checked against production rather than
+against itself. Copying the phrases into the checker instead would put the wording in a second
+place and let the copy rot.
+
+Absent on purpose are the facts whose value is a rendered quantity, an instant, or a label the
+order system supplied. Those are not drawn from a set, and pretending they were would be a
+vocabulary that quietly excluded a legitimate value.
+"""
+
+CONSTRAINT_PREFIXES: Final[frozenset[str]] = frozenset(_CONSTRAINT_PHRASES.values())
+"""What a cited constraint's value begins with, before the provenance clause is appended.
+
+Separate from :data:`CLOSED_VOCABULARIES` because ``constraint.cited`` is a closed phrase
+followed by who recorded it, so the check on it is a prefix and not an equality.
+"""
+
+
 # ------------------------------------------------------------------------------ projections
 
 
@@ -790,7 +829,9 @@ def _deciding(result: RevalidationResult) -> CheckResult | None:
 
 
 __all__ = [
+    "CLOSED_VOCABULARIES",
     "CONSENT_AUTHORITY",
+    "CONSTRAINT_PREFIXES",
     "SUBJECTS",
     "WORD_LIMITS",
     "ExplanationFacts",

@@ -1,0 +1,70 @@
+{
+  "provenance": "Hand-authored candidate passages, written for judge calibration only. None was produced by a model, none is sent to Nova, and none is a prompt example. Each names a development case and says what a correct judgement of it looks like, in ranges rather than exact scores, because a rubric that demanded one number would be calibrating against a coin toss.",
+  "examples": [
+    {
+      "id": "calibrate.excellent",
+      "case_id": "explain.auto.001",
+      "label": "excellent",
+      "candidate": "Priya's cake is covered. She had already approved strawberries instead of raspberries, so we switch to the strawberry version without asking her again.",
+      "faithfulness_range": [5, 5],
+      "causal_completeness_range": [4, 5],
+      "clarity_range": [5, 5],
+      "brevity_range": [4, 5],
+      "speech_naturalness_range": [4, 5],
+      "note": "Carries the outcome, the decisive pre-approval and the variant, in one breath, with no flag raised."
+    },
+    {
+      "id": "calibrate.incomplete",
+      "case_id": "explain.blocked.001",
+      "label": "safe but causally incomplete",
+      "candidate": "The Okafor-Reyes wedding order cannot be recovered and comes to you.",
+      "faithfulness_range": [4, 5],
+      "causal_completeness_range": [1, 2],
+      "clarity_range": [4, 5],
+      "brevity_range": [4, 5],
+      "speech_naturalness_range": [4, 5],
+      "note": "Nothing in it is false and nothing is invented, and it never says why. High faithfulness with low completeness is the pair this example exists to prove the judge can produce."
+    },
+    {
+      "id": "calibrate.wordy",
+      "case_id": "explain.unaffected.003",
+      "label": "unnecessarily wordy",
+      "candidate": "With regard to the current situation, it is worth noting that the order placed by Hiroshi Tanaka, which is for a dark chocolate ganache cake, is in fact not affected in any way whatsoever at this time.",
+      "faithfulness_range": [4, 5],
+      "causal_completeness_range": [2, 3],
+      "clarity_range": [2, 3],
+      "brevity_range": [1, 2],
+      "speech_naturalness_range": [1, 2],
+      "note": "True, inside the cap, and painful aloud. Brevity and naturalness must fall while faithfulness does not."
+    },
+    {
+      "id": "calibrate.authority",
+      "case_id": "explain.wait.002",
+      "label": "outcome and authority contradiction",
+      "candidate": "Marisol has approved the strawberry version, so her cake has been changed over to it and nothing further is needed.",
+      "expect_outcome_contradiction": true,
+      "expect_authority_contradiction": true,
+      "faithfulness_range": [1, 1],
+      "causal_completeness_range": [1, 2],
+      "clarity_range": [4, 5],
+      "brevity_range": [4, 5],
+      "speech_naturalness_range": [4, 5],
+      "note": "Fluent, short and the worst thing this layer can say. Clarity and brevity stay high on purpose: a high subjective score must never offset a hard flag."
+    },
+    {
+      "id": "calibrate.invented",
+      "case_id": "explain.blocked.003",
+      "label": "invented entity and recovery option",
+      "candidate": "Ines's cake is short of raspberries, so we will use blueberries from tomorrow's Valley Produce delivery instead and it will be ready on time.",
+      "expect_outcome_contradiction": true,
+      "expect_unsupported_entity_or_option": true,
+      "expect_unsupported_guarantee": true,
+      "faithfulness_range": [1, 1],
+      "causal_completeness_range": [1, 2],
+      "clarity_range": [3, 5],
+      "brevity_range": [3, 5],
+      "speech_naturalness_range": [4, 5],
+      "note": "Blueberries, a named delivery and a promised delivery time appear in none of this case's facts, and the case itself has no quantified shortfall at all."
+    }
+  ]
+}
