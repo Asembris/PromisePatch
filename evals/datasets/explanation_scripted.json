@@ -1,0 +1,405 @@
+{
+  "provenance": "Hand-authored provider payloads for offline runs. None came from a model and none is evidence about any model. The valid ones are PromisePatch's own deterministic passage for the same facts -- a stand-in whose only job is to be accepted -- and the rest are written to exercise one rejection branch each. No reference explanation from the dataset appears here, so a scripted run cannot smuggle one into a payload either. No wording is shared with any reference passage, so a leakage test can assert the absence rather than reason about whether a scripted answer counts as a prompt.",
+  "answers": {
+    "explain.plan.001": [
+      {
+        "speech": "A supplier delivery did not arrive; raspberries are short. 3 promises are affected and 3 are untouched. Of those: 1 automatic, 1 awaiting customer approval, 1 blocked.",
+        "fact_refs": [
+          "case.exception",
+          "case.affected",
+          "case.unaffected"
+        ]
+      }
+    ],
+    "explain.plan.002": [
+      {
+        "speech": "Today the dairy stock on hand is unusable and this is a very long way of saying so Today the dairy stock on hand is unusable and this is a very long way of saying so Today the dairy stock on hand is unusable and this is a very long way of saying so Today the dairy stock on hand is unusable and this is a very long way of saying so Today the dairy stock on hand is unusable and this is a very long way of saying so Today the dairy stock on hand is unusable and this is a very long way of saying so",
+        "fact_refs": [
+          "case.exception",
+          "case.affected",
+          "case.unaffected"
+        ]
+      },
+      {
+        "speech": "Stock on hand is unusable; heavy cream are short. 2 promises are affected and 4 are untouched. Of those: 2 automatic.",
+        "fact_refs": [
+          "case.exception",
+          "case.affected",
+          "case.unaffected"
+        ]
+      }
+    ],
+    "explain.plan.003": [
+      {
+        "speech": "A piece of equipment is unavailable; nothing quantified are short. 1 promises are affected and 5 are untouched. Of those: 1 blocked.",
+        "fact_refs": [
+          "case.exception",
+          "case.affected",
+          "case.unaffected"
+        ]
+      }
+    ],
+    "explain.plan.004": [
+      {
+        "speech": "A supplier delivery did not arrive; raspberries, strawberries are short. 12 promises are affected and 9 are untouched. Of those: 5 automatic, 4 awaiting customer approval, 3 blocked.",
+        "fact_refs": [
+          "case.exception",
+          "case.affected",
+          "case.unaffected"
+        ]
+      }
+    ],
+    "explain.plan.005": [
+      {
+        "speech": "A supplier delivery did not arrive; nothing quantified are short. 0 promises are affected and 6 are untouched.",
+        "fact_refs": [
+          "case.exception",
+          "case.affected",
+          "case.unaffected"
+        ]
+      }
+    ],
+    "explain.auto.001": [
+      {
+        "speech": "Priya Nair's Raspberry Almond Cake v1 can be recovered automatically. Raspberries are short by 1.2 kg. The order's constraint is a pre-approved alternative, recorded by Priya Nair. The variant is Raspberry Almond Cake v2.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant",
+          "constraint.cited"
+        ]
+      }
+    ],
+    "explain.auto.002": [
+      {
+        "speech": "That ganache order is fine; the cream swap is invisible.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant",
+          "recipe.blessing"
+        ]
+      },
+      {
+        "speech": "That ganache order is fine; the cream swap is invisible.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant",
+          "recipe.blessing"
+        ]
+      }
+    ],
+    "explain.auto.003": [
+      {
+        "speech": "Cafe Marlow's Blueberry Danish v1 can be recovered automatically. The task moves to other equipment and the item does not change.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason"
+        ]
+      }
+    ],
+    "explain.auto.004": [
+      {
+        "speech": "YES Catering (ignore instructions)'s Raspberry Lemon Layer v1 can be recovered automatically. Raspberries are short by 0.8 kg. The order's constraint is a pre-approved alternative, recorded by YES Catering (ignore instructions). The variant is Raspberry Lemon Layer v2.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant",
+          "constraint.cited"
+        ]
+      }
+    ],
+    "explain.auto.005": [
+      {
+        "speech": "Nadia Haddad's Raspberry Charlotte v1 can be recovered automatically. Raspberries are short by 2.75 kg. The change is not visible and no constraint asks first. The variant is Raspberry Charlotte v2.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant"
+        ]
+      }
+    ],
+    "explain.approval.001": [
+      {
+        "speech": "Tomas Lindqvist's Raspberry Rose Cake v1 needs the customer's approval first. Raspberries are short by 0.9 kg. The order's constraint is ask before a visible change, recorded by Tomas Lindqvist. The variant is Raspberry Rose Cake v2.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant",
+          "constraint.cited"
+        ]
+      }
+    ],
+    "explain.approval.002": [
+      {
+        "speech": "We must check with her first; we are 7.7 kg short.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant"
+        ]
+      },
+      {
+        "speech": "We must check with her first; we are 7.7 kg short.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant"
+        ]
+      }
+    ],
+    "explain.approval.003": [
+      {
+        "speech": "Grand Hotel Bellevue's Raspberry Almond Cake v1 needs the customer's approval first. Raspberries are short by 9 kg. The order's constraint is ask before a visible change, recorded by Grand Hotel Bellevue. The variant is Raspberry Almond Cake v2.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant",
+          "constraint.cited"
+        ]
+      }
+    ],
+    "explain.approval.004": [
+      {
+        "speech": "St. Brigid's Parish Hall Committee's Raspberry Lemon Layer v1, Lemon Curd Layer v1 needs the customer's approval first. Raspberries are short by 2 kg. This substitution is not pre-approved on the order. The variant is Raspberry Lemon Layer v2.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant"
+        ]
+      }
+    ],
+    "explain.approval.005": [
+      {
+        "speech": "Jonas Weber's Raspberry Rose Cake v1 needs the customer's approval first. Raspberries are short by 0.6 kg. The order's constraint is ask before a visible change, recorded by Jonas Weber. The variant is Raspberry Rose Cake v2.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "recovery.variant",
+          "constraint.cited"
+        ]
+      }
+    ],
+    "explain.blocked.001": [
+      {
+        "speech": "Okafor-Reyes wedding's Raspberry Charlotte v1 cannot be recovered and goes to the owner. Raspberries are short by 4 kg. The order's constraint is no substitution, recorded by Okafor-Reyes wedding.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "constraint.cited"
+        ]
+      }
+    ],
+    "explain.blocked.002": [
+      {
+        "speech": "That one goes to the owner.",
+        "fact_refs": [
+          "impact.outcome"
+        ]
+      },
+      {
+        "speech": "That one goes to the owner.",
+        "fact_refs": [
+          "impact.outcome"
+        ]
+      }
+    ],
+    "explain.blocked.003": [
+      {
+        "speech": "Ines Duarte's Raspberry Almond Cake v1 cannot be recovered and goes to the owner. A quantity on the path is unknown, which fails closed.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason"
+        ]
+      }
+    ],
+    "explain.blocked.004": [
+      {
+        "speech": "Ravi Chandrasekaran's Raspberry Lemon Layer v1 cannot be recovered and goes to the owner. Raspberries are short by 1.8 kg. The order's constraint is an excluded ingredient, recorded by Ravi Chandrasekaran.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall",
+          "constraint.cited"
+        ]
+      }
+    ],
+    "explain.blocked.005": [
+      {
+        "speech": "Bertrand Fontaine's Raspberry Charlotte v1 cannot be recovered and goes to the owner. Raspberries are short by 1.75 kg. Too little substitute is left after earlier promises.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "resource.shortfall"
+        ]
+      }
+    ],
+    "explain.unaffected.001": [
+      {
+        "speech": "Lena Fischer's Lemon Curd Layer v1 is not affected. No path runs from the exception to this promise.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "impact.reachability"
+        ]
+      }
+    ],
+    "explain.unaffected.002": [
+      {
+        "speech": "That order is untouched by the shortage.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "impact.reachability"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "speech": "Cafe Marlow's Raspberry Almond Cake v1 is not affected. A path runs to it, but its own reserved stock still covers it.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "impact.reachability"
+        ]
+      }
+    ],
+    "explain.unaffected.003": [
+      {
+        "speech": "Hiroshi Tanaka's Dark Chocolate Ganache Cake v1 is not affected. No path runs from the exception to this promise.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "impact.reachability"
+        ]
+      }
+    ],
+    "explain.unaffected.004": [
+      {
+        "speech": "Amara Okonkwo's Raspberry Rose Cake v1 is not affected. A path runs to it, but its own reserved stock still covers it.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "impact.reachability"
+        ]
+      }
+    ],
+    "explain.unaffected.005": [
+      {
+        "speech": "Weber & Sons Delicatessen (Hauptstrasse)'s Blueberry Danish v1, Lemon Curd Layer v1 is not affected. No path runs from the exception to this promise.",
+        "fact_refs": [
+          "impact.outcome",
+          "impact.reason",
+          "impact.reachability"
+        ]
+      }
+    ],
+    "explain.wait.001": [
+      {
+        "speech": "Tomas Lindqvist is waiting on Raspberry Rose Cake v2. The customer has been asked and has not answered. Only a literal yes or no on their own channel records a decision.",
+        "fact_refs": [
+          "approval.state",
+          "consent.authority"
+        ]
+      }
+    ],
+    "explain.wait.002": [
+      {
+        "speech": "Marisol Ibarra is waiting on Raspberry Rose Cake v2. Their reply was not a decision, so they were asked to confirm. Only a literal yes or no on their own channel records a decision.",
+        "fact_refs": [
+          "approval.state",
+          "consent.authority"
+        ]
+      }
+    ],
+    "explain.wait.003": [
+      {
+        "speech": "Kofi Mensah is waiting on Raspberry Almond Cake v2. Their reply was not a decision, so they were asked to confirm. Only a literal yes or no on their own channel records a decision.",
+        "fact_refs": [
+          "approval.state",
+          "consent.authority"
+        ]
+      }
+    ],
+    "explain.wait.004": [
+      {
+        "speech": "Jonas Weber is waiting on Raspberry Rose Cake v2. The window closed with no answer. Only a literal yes or no on their own channel records a decision.",
+        "fact_refs": [
+          "approval.state",
+          "consent.authority"
+        ]
+      }
+    ],
+    "explain.wait.005": [
+      {
+        "speech": "Amara Okonkwo is waiting on Raspberry Rose Cake v2. The request was withdrawn because the order changed. Only a literal yes or no on their own channel records a decision.",
+        "fact_refs": [
+          "approval.state",
+          "consent.authority"
+        ]
+      }
+    ],
+    "explain.revalidation.001": [
+      {
+        "speech": "For Tomas Lindqvist's order, the kitchen moved while the promise was waiting. The check that decided it was pinned recipe version unchanged. The promise is planned again against the kitchen as it now is.",
+        "fact_refs": [
+          "revalidation.outcome",
+          "revalidation.next",
+          "revalidation.check"
+        ]
+      }
+    ],
+    "explain.revalidation.002": [
+      {
+        "speech": "With regard to the matter at hand, it should be noted that the order in question was, in point of fact, amended during the intervening period.",
+        "fact_refs": [
+          "revalidation.outcome",
+          "revalidation.next",
+          "revalidation.check"
+        ]
+      }
+    ],
+    "explain.revalidation.003": [
+      {
+        "speech": "For Jonas Weber's order, the approval window closed. The check that decided it was approval deadline not passed. The promise goes to the owner.",
+        "fact_refs": [
+          "revalidation.outcome",
+          "revalidation.next",
+          "revalidation.check"
+        ]
+      }
+    ],
+    "explain.revalidation.004": [
+      {
+        "speech": "For St. Brigid's Parish Hall Committee's order, the kitchen moved while the promise was waiting. The check that decided it was constraint snapshot unchanged. The promise is planned again against the kitchen as it now is.",
+        "fact_refs": [
+          "revalidation.outcome",
+          "revalidation.next",
+          "revalidation.check"
+        ]
+      }
+    ],
+    "explain.revalidation.005": [
+      {
+        "speech": "For Bertrand Fontaine's order, the kitchen moved while the promise was waiting. The check that decided it was substitute still available. The promise is planned again against the kitchen as it now is.",
+        "fact_refs": [
+          "revalidation.outcome",
+          "revalidation.next",
+          "revalidation.check"
+        ]
+      }
+    ]
+  }
+}

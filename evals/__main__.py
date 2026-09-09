@@ -29,6 +29,22 @@ from evals.dataset import (
     validate_dataset,
     write_manifest,
 )
+from evals.explanation_dataset import (
+    ExplanationDatasetError,
+    calibration_problems,
+    load_calibration,
+    load_explanation_dataset,
+    validate_explanation_dataset,
+)
+from evals.explanation_dataset import (
+    manifest_problems as explanation_manifest_problems,
+)
+from evals.explanation_dataset import (
+    write_manifest as write_explanation_manifest,
+)
+from evals.explanation_report import plan as explanation_plan
+from evals.explanation_report import render as render_explanation
+from evals.explanation_runner import run_offline as run_explanations_offline
 from evals.report import render
 from evals.runner import ScriptedAnswers, run_offline
 from evals.summary import build_summary, ledger_entry
@@ -91,10 +107,75 @@ async def _run(namespace: argparse.Namespace) -> int:
     return 0 if summary.gate_status == "pass" else 1
 
 
+# ---------------------------------------------------------------- explanation quality
+
+
+def _explanation_validate(_: argparse.Namespace) -> int:
+    """Check the explanation dataset against production. Prints counts, never holdout prose."""
+    dataset = load_explanation_dataset()
+    manifest = dataset.manifest()
+    problems = [
+        *validate_explanation_dataset(dataset),
+        *explanation_manifest_problems(dataset, manifest),
+        *calibration_problems(dataset, load_calibration()),
+    ]
+    print(f"{manifest.name} v{manifest.version}  {manifest.content_hash[:12]}")  # noqa: T201
+    print(f"  cases          {manifest.cases}")  # noqa: T201
+    print(f"  by split       {manifest.by_split}")  # noqa: T201
+    for family, counts in manifest.by_family_split.items():
+        print(f"  {family:<24} {counts}")  # noqa: T201
+    if problems:
+        print(f"\n{len(problems)} problem(s):")  # noqa: T201
+        for problem in problems:
+            print(f"  - {problem}")  # noqa: T201
+        return 1
+    print("\nEvery case is one production could produce.")  # noqa: T201
+    return 0
+
+
+def _explanation_manifest(namespace: argparse.Namespace) -> int:
+    dataset = load_explanation_dataset()
+    if namespace.write:
+        manifest = write_explanation_manifest(dataset)
+        print(  # noqa: T201
+            f"wrote {manifest.name} v{manifest.version} {manifest.content_hash[:12]}"
+        )
+        return 0
+    print(dataset.manifest().model_dump_json(indent=2))  # noqa: T201
+    return 0
+
+
+def _explanation_plan(namespace: argparse.Namespace) -> int:
+    """The zero-call preflight. Builds no client and prints no sealed passage."""
+    dataset = load_explanation_dataset()
+    splits = None if not namespace.split else [EvalSplit(value) for value in namespace.split]
+    print(explanation_plan(dataset, splits))  # noqa: T201
+    return 0
+
+
+async def _explanation_replay(namespace: argparse.Namespace) -> int:
+    dataset = load_explanation_dataset()
+    splits = None if not namespace.split else [EvalSplit(value) for value in namespace.split]
+    summary = await run_explanations_offline(dataset.split(splits))
+    if namespace.json:
+        print(json.dumps(summary.as_payload(), indent=2))  # noqa: T201
+    else:
+        print(render_explanation(summary))  # noqa: T201
+    if namespace.out:
+        directory = Path(namespace.out)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"explanation-{summary.run_id}.json").write_text(
+            json.dumps(summary.as_payload(), indent=2), encoding="utf-8"
+        )
+    return 0 if summary.gate_status == "pass" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m evals",
-        description="PromisePatch semantic evaluation. Offline; no provider is ever called.",
+        description=(
+            "PromisePatch semantic and explanation evaluation. Offline; no provider is ever called."
+        ),
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -126,6 +207,50 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     replay.set_defaults(handler=_run, is_async=True)
+
+    explain_validate = commands.add_parser(
+        "explanation-validate",
+        help="check the explanation dataset against production",
+    )
+    explain_validate.set_defaults(handler=_explanation_validate)
+
+    explain_manifest = commands.add_parser(
+        "explanation-manifest",
+        help="print or regenerate the explanation dataset manifest",
+    )
+    explain_manifest.add_argument(
+        "--write", action="store_true", help="rewrite the committed manifest"
+    )
+    explain_manifest.set_defaults(handler=_explanation_manifest)
+
+    explain_plan = commands.add_parser(
+        "explanation-plan",
+        help="print the P4.8 preflight: identity, ceilings and spend. Calls nothing.",
+    )
+    explain_plan.add_argument(
+        "--split",
+        action="append",
+        choices=[split.value for split in EvalSplit],
+        help="restrict to one split; repeatable. Omit for the whole dataset.",
+    )
+    explain_plan.set_defaults(handler=_explanation_plan)
+
+    explain_replay = commands.add_parser(
+        "explanation-replay",
+        help="score the explanation dataset from scripted passages and verdicts",
+    )
+    explain_replay.add_argument(
+        "--split",
+        action="append",
+        choices=[split.value for split in EvalSplit],
+        help="restrict to one split; repeatable. Omit for the whole dataset.",
+    )
+    explain_replay.add_argument(
+        "--json", action="store_true", help="emit the machine-readable summary"
+    )
+    explain_replay.add_argument("--out", help="directory to write the summary into")
+    explain_replay.set_defaults(handler=_explanation_replay, is_async=True)
+
     return parser
 
 
@@ -139,7 +264,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return result
         code: int = namespace.handler(namespace)
         return code
-    except DatasetError as error:
+    except (DatasetError, ExplanationDatasetError) as error:
         print(f"dataset error: {error}", file=sys.stderr)  # noqa: T201
         return 2
 

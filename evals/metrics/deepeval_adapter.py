@@ -11,10 +11,22 @@ checked by running the framework, and a score nobody can reproduce by hand is no
 also keeps the dependency where it belongs: this is the only module in the package that imports
 DeepEval, so the dataset, the metrics, the runner and the report all work without it installed.
 
-**No model judges anything.** There is no ``GEval``, no LLM-backed metric and no judge of any
-kind. Both jobs here have objectively knowable answers -- a category, an identity, a label from
-a closed set -- and asking a model to grade another model on those would replace a verifiable
-comparison with an opinion.
+**No model is judged from inside this module, and no model is called from it.** There is no
+``GEval``, no ``FaithfulnessMetric``, no ``AnswerRelevancyMetric`` and no LLM-backed metric of any
+kind. The two semantic jobs have objectively knowable answers -- a category, an identity, a label
+from a closed set -- and asking a model to grade another model on those would replace a
+verifiable comparison with an opinion.
+
+Explanation quality *is* subjective and is judged by a model, and that judgement still does not
+happen here. PromisePatch owns one combined judge protocol in :mod:`evals.explanation_judge`:
+**one structured call per accepted passage**, producing every safety flag and all five scores at
+once. This module receives the verdict that call already produced and reports it.
+
+That ordering is a cost boundary as much as a design one. Five LLM-backed metrics over one
+result is five provider calls where PromisePatch spends one, and a framework default judge is a
+model nobody chose being billed to somebody who did not know it had been selected. So the rule
+is structural: **no metric in this module may hold, construct or reach a model**, and the
+explanation metric is a shell over a verdict that already exists.
 
 **Nothing leaves the machine.** DeepEval is used through its local API with telemetry opted out
 in the eval suite's environment; no Confident AI account, key or upload is involved, and none is
@@ -29,6 +41,7 @@ from deepeval.metrics import BaseMetric
 from deepeval.test_case import LLMTestCase
 
 from evals.cases import EvalJob
+from evals.explanation_metrics import CaseScore
 from evals.metrics.customer import customer_verdict
 from evals.metrics.verdict import Verdict
 from evals.metrics.worker import worker_verdict
@@ -36,6 +49,7 @@ from evals.results import CaseResult
 
 METRIC_KEY = "promisepatch_metrics"
 JOB_KEY = "promisepatch_job"
+EXPLANATION_KEY = "promisepatch_explanation"
 
 
 def to_test_case(result: CaseResult) -> LLMTestCase:
@@ -130,6 +144,98 @@ class CustomerIntentMetric(PromisePatchMetric):
         return customer_verdict(metrics)
 
 
+class ExplanationQualityMetric(BaseMetric):
+    """Reports one explanation's already-computed verdict. Holds no model and calls nothing.
+
+    Its ``measure`` is arithmetic over a :class:`~evals.explanation_metrics.CaseScore` that was
+    produced before DeepEval was involved: the structural findings come from production's own
+    validator and the subjective ones from the single judge call PromisePatch already made. Run
+    it over twenty-one results and exactly zero provider calls happen, which is the property the
+    fan-out regression test asserts.
+
+    A hard finding fails the case outright, whatever the scores say. That is the same rule the
+    report follows and it is enforced here too, so a framework summary can never disagree with
+    the gate about whether a passage was safe.
+    """
+
+    def __init__(self, threshold: float = 0.8) -> None:
+        self.threshold = threshold
+        self.async_mode = False
+        self.include_reason = True
+        self.strict_mode = True
+
+    @property
+    def __name__(self) -> str:
+        return "PromisePatch explanation quality"
+
+    def measure(self, test_case: LLMTestCase, *args: object, **kwargs: object) -> float:
+        metadata = test_case.metadata or {}
+        payload = metadata.get(EXPLANATION_KEY)
+        if not isinstance(payload, Mapping):
+            self.skipped = True
+            self.score = 0.0
+            self.success = True
+            self.reason = "not an explanation case"
+            return self.score
+        self.score, self.success, self.reason = _explanation_verdict(payload)
+        return self.score
+
+    async def a_measure(self, test_case: LLMTestCase, *args: object, **kwargs: object) -> float:
+        return self.measure(test_case, *args, **kwargs)
+
+    def is_successful(self) -> bool:
+        return bool(self.success)
+
+
+def _strings(value: object) -> list[str]:
+    """Whatever a stored payload put there, read as the list of names it is meant to be."""
+    return [str(item) for item in value] if isinstance(value, list | tuple) else []
+
+
+def _explanation_verdict(payload: Mapping[str, object]) -> tuple[float, bool, str]:
+    """Score, pass and reason for one explanation, from values that already exist.
+
+    Structural findings and semantic flags are absolute. Only when there are none does the mean
+    of the five dimensions decide anything, and a case with no verdict is reported as unscored
+    rather than as a zero -- because a judge nobody reached said nothing about this passage.
+    """
+    structural = _strings(payload.get("structural_failures"))
+    flags = _strings(payload.get("semantic_flags"))
+    if structural:
+        return 0.0, False, f"the acceptance gate leaked: {', '.join(structural)}"
+    if flags:
+        return 0.0, False, f"hard semantic finding: {', '.join(flags)}"
+    scores = payload.get("scores")
+    if not isinstance(scores, Mapping) or not scores:
+        source = payload.get("source")
+        if source == "FALLBACK":
+            return 0.0, True, "PromisePatch phrased this one; there is no model prose to score"
+        return 0.0, True, "no verdict: subjective quality was not scored for this passage"
+    mean = sum(float(value) for value in scores.values()) / len(scores)
+    return mean / 5.0, True, f"mean of five judged dimensions: {mean:.2f}"
+
+
+def to_explanation_test_case(score: CaseScore) -> LLMTestCase:
+    """One explanation case result in the shape DeepEval iterates over.
+
+    ``input`` is the case id and nothing else. The passage, the facts and the verdict travel in
+    metadata, where the metric reads them structurally instead of parsing prose -- and where no
+    reference explanation, threshold or split can reach a provider, because nothing in this
+    module reaches one.
+    """
+    return LLMTestCase(
+        name=score.case_id,
+        input=score.case_id,
+        actual_output=score.source.value,
+        expected_output=score.family.value,
+        metadata={EXPLANATION_KEY: score.as_payload()},
+    )
+
+
+def to_explanation_test_cases(scores: Sequence[CaseScore]) -> list[LLMTestCase]:
+    return [to_explanation_test_case(score) for score in scores]
+
+
 def metric_for(job: EvalJob) -> PromisePatchMetric:
     """The metric that judges this job."""
     if job is EvalJob.WORKER_SEMANTICS:
@@ -142,12 +248,16 @@ def to_test_cases(results: Sequence[CaseResult]) -> list[LLMTestCase]:
 
 
 __all__ = [
+    "EXPLANATION_KEY",
     "JOB_KEY",
     "METRIC_KEY",
     "CustomerIntentMetric",
+    "ExplanationQualityMetric",
     "PromisePatchMetric",
     "WorkerSemanticsMetric",
     "metric_for",
+    "to_explanation_test_case",
+    "to_explanation_test_cases",
     "to_test_case",
     "to_test_cases",
 ]

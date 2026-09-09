@@ -1,0 +1,485 @@
+{
+  "provenance": "Hand-authored judge verdicts for offline runs. None came from Nemotron or any other model and none is evidence about any judge. They exist so the judging pass, the one-call rule, the aggregation and the gates can be exercised with no provider in the room. The adversarial and malformed verdicts live in the test suite, where each one is asserted rather than merely present.",
+  "verdicts": {
+    "explain.plan.001": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.plan.002": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.plan.003": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.plan.004": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 4,
+        "clarity": 4,
+        "brevity": 4,
+        "speech_naturalness": 4,
+        "brief_rationale": "Every count is right; the list of postures is a little dense to hear."
+      }
+    ],
+    "explain.plan.005": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.auto.001": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.auto.003": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.auto.004": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.auto.005": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.approval.001": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 4,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 4,
+        "speech_naturalness": 4,
+        "brief_rationale": "Accurate and complete; the constraint clause reads more like a record than speech."
+      }
+    ],
+    "explain.approval.003": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.approval.004": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.approval.005": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.blocked.001": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 4,
+        "brevity": 5,
+        "speech_naturalness": 4,
+        "brief_rationale": "Names the rule that blocked it and offers nothing that does not exist."
+      }
+    ],
+    "explain.blocked.003": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.blocked.004": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.blocked.005": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.unaffected.001": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Says it is untouched and why, in one breath, with the right cause."
+      }
+    ],
+    "explain.unaffected.002": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.unaffected.003": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.unaffected.004": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.unaffected.005": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.wait.001": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.wait.002": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.wait.003": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.wait.004": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.wait.005": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.revalidation.001": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.revalidation.002": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 4,
+        "causal_completeness": 4,
+        "clarity": 3,
+        "brevity": 2,
+        "speech_naturalness": 2,
+        "brief_rationale": "True and correct, and padded with filler that would be painful aloud."
+      }
+    ],
+    "explain.revalidation.003": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.revalidation.004": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ],
+    "explain.revalidation.005": [
+      {
+        "outcome_contradiction": false,
+        "authority_contradiction": false,
+        "unsupported_entity_or_option": false,
+        "unsupported_guarantee": false,
+        "unsupported_quantity_in_words": false,
+        "faithfulness": 5,
+        "causal_completeness": 5,
+        "clarity": 5,
+        "brevity": 5,
+        "speech_naturalness": 5,
+        "brief_rationale": "Carries the outcome and the decisive cause, and adds nothing."
+      }
+    ]
+  }
+}

@@ -556,6 +556,15 @@ source_modules = [
     "evals.challenger_report",
     "evals.context",
     "evals.dataset",
+    "evals.explanation_budget",
+    "evals.explanation_cases",
+    "evals.explanation_dataset",
+    "evals.explanation_judge",
+    "evals.explanation_metrics",
+    "evals.explanation_report",
+    "evals.explanation_results",
+    "evals.explanation_runner",
+    "evals.explanation_thresholds",
     "evals.metrics.customer",
     "evals.metrics.verdict",
     "evals.metrics.worker",
@@ -584,4 +593,61 @@ layers = [
     "evals.observed",
     "evals.cases",
     "evals.context",
+]
+
+# The explanation gate is its own stack, and the order encodes two rules a reviewer should be
+# able to check without reading every import. A judge sits *below* the metrics that read its
+# verdicts and *above* the results it writes into, so nothing that scores can reach back into
+# how a verdict was obtained. And the dataset sits above the cases it loads and below the
+# runner that asks a provider, so a case can never learn what a run concluded about it.
+[[tool.importlinter.contracts]]
+name = "explanation evaluation module layering"
+type = "layers"
+layers = [
+    "evals.explanation_report",
+    "evals.explanation_runner",
+    "evals.explanation_metrics",
+    "evals.explanation_dataset",
+    "evals.explanation_budget",
+    "evals.explanation_judge",
+    "evals.explanation_results",
+    "evals.explanation_thresholds",
+    "evals.explanation_cases",
+]
+
+# The judge is offline evaluation infrastructure and has no authority anywhere. It may not reach
+# the application's domain, its semantic acceptance path, or the dataset it is judging output
+# from -- because each of those would be a route by which an opinion could become an input to
+# something that decides. What it may see is one request and one passage, handed to it.
+[[tool.importlinter.contracts]]
+name = "the explanation judge decides nothing and grades nothing it can reach"
+type = "forbidden"
+source_modules = ["evals.explanation_judge"]
+forbidden_modules = [
+    "evals.explanation_dataset",
+    "evals.explanation_metrics",
+    "evals.explanation_runner",
+    "evals.explanation_thresholds.QUALITY_TARGETS",
+    "promisepatch.domain.approvals",
+    "promisepatch.domain.consent",
+    "promisepatch.domain.verbalisation",
+]
+allow_indirect_imports = true
+
+# A dataset case is a question and a set of claims about it. It must not be able to see a
+# threshold, a verdict, a judge or a run: every one of those is an answer, and a case that could
+# reach one is a case whose projection into a prompt could carry it.
+[[tool.importlinter.contracts]]
+name = "an explanation case cannot reach an answer"
+type = "forbidden"
+source_modules = ["evals.explanation_cases"]
+forbidden_modules = [
+    "evals.explanation_budget",
+    "evals.explanation_dataset",
+    "evals.explanation_judge",
+    "evals.explanation_metrics",
+    "evals.explanation_report",
+    "evals.explanation_results",
+    "evals.explanation_runner",
+    "evals.explanation_thresholds",
 ]
