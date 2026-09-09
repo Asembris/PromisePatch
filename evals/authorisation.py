@@ -66,6 +66,17 @@ class SpendScope(StrEnum):
     SPLIT_DEVELOPMENT = "SPLIT-DEVELOPMENT"
     SPLIT_HOLDOUT = "SPLIT-HOLDOUT"
 
+    P4_8_NOVA_DEVELOPMENT_GENERATION = "P4-8-NOVA-DEVELOPMENT-GENERATION"
+    """Nova writing the twenty-one development explanations. Buys generation and nothing else."""
+
+    P4_8_NEMOTRON_DEVELOPMENT_JUDGING = "P4-8-NEMOTRON-DEVELOPMENT-JUDGING"
+    """Nemotron scoring those explanations. A separate act against a separate provider, so it
+    is a separate phrase: authorising the model under test to speak is not authorising somebody
+    else's model to grade it, and the two are metered on different surfaces."""
+
+    P4_8_EXPLANATION_HOLDOUT = "P4-8-EXPLANATION-HOLDOUT"
+    """The fourteen sealed explanation cases. Never implied by a development authorisation."""
+
 
 class SpendNotAuthorisedError(RuntimeError):
     """Nobody authorised paid inference for this scope, so no provider was built."""
