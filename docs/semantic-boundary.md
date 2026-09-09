@@ -89,6 +89,14 @@ the second attempt is answering a different question — the number the architec
 second failure is refused. Transport retries are the AWS SDK's own, bounded by
 `PP_BEDROCK_MAX_ATTEMPTS`; nothing loops above that.
 
+**Two kinds, and nothing else escapes as a third.** Every caller of this boundary catches
+those two and only those two, so an exception of any other type would travel past all of
+them and out of the worker loop. Both edges are therefore read as untrusted input rather
+than as trusted shape: a response body whose `output`, `message` or `content` is null or is
+some other type entirely is a model that did not call the tool, and an oversized worker
+statement or customer reply is refused by the deterministic gate before the request that
+would not carry it is ever built.
+
 Nothing ever guesses. A timeout is a failure, not an `UNCLEAR`; a rejected interpretation is a
 failure, not the first candidate.
 
@@ -184,9 +192,10 @@ deterministic interpreter         the fixed lexicon, unchanged
 
 ### When a model is asked
 
-Only when the deterministic reading stopped, the statement is the **original report**, and the
-stop is one of four *parse* failures: `NO_CATEGORY`, `AMBIGUOUS_CATEGORY`, `NO_RESOURCE`,
-`RESOURCE_KIND_MISMATCH`. Those are the cases where the lexicon did not recognise a phrasing.
+Only when the deterministic reading stopped, the statement is the **original report**, the
+statement fits in one request, and the stop is one of four *parse* failures: `NO_CATEGORY`,
+`AMBIGUOUS_CATEGORY`, `NO_RESOURCE`, `RESOURCE_KIND_MISMATCH`. Those are the cases where the
+lexicon did not recognise a phrasing.
 
 It is not asked for anything else, and the exclusions are the interesting half:
 
@@ -198,6 +207,7 @@ It is not asked for anything else, and the exclusions are the interesting half:
 | `UNKNOWN_QUANTITY` | A number the worker did not say. Supplying one would be attesting. |
 | A clarification answer | It says which lines arrived — a physical outcome. It never leaves the building. |
 | A correction | Same, and it is resolved against lines that are already bound. |
+| A statement longer than one worker report | `UntrustedText` carries at most 4 000 characters and `case_reports.raw_text` is unbounded, so anything past that is not somebody reporting a delivery. Refused rather than truncated — a reading of the first four thousand characters of something else is not a reading — and the sentence goes to a person under the stop the lexicon reached. The consent protocol refuses an over-long reply for the same reason. |
 
 ### What the model contributes
 

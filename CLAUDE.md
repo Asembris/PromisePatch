@@ -24,7 +24,19 @@ one variable away from a later phase with a repaired instrument or a different m
 stays ungoverned by that setting so the evaluation harness keeps measuring the model it is pointed
 at. Both holdouts -- explanation and customer-intent semantic -- remain sealed and unopened; the
 explanation one stays sealed permanently for P4.8, because DEVELOPMENT already answered the shipping
-question (see `docs/explanation-quality-gate.md`, *Closeout*). Next phase is P4.9.
+question (see `docs/explanation-quality-gate.md`, *Closeout*).
+
+**P4.9 is closed, and with it Phase 4.** The semantic layer was audited against a bounded threat
+set -- injection, cross-kind contamination, adversarial structured output, invented entities and
+authority, bootstrap failure, outage, timeout, bounded retry, stale and duplicated results,
+replay, consent-authority attacks, late arrival, and both explanation paths. No authority or
+correctness defect was found: nothing a model says, fails to say or fails to answer can reach a
+write, a consent decision or a physical attestation. Four containment defects were found and
+fixed, all of the same shape -- an untyped exception escaping the boundary's two-kind failure
+vocabulary, past callers that catch only those two: an over-long worker statement, a Bedrock
+response envelope of the wrong shape, an order-system display label too long for one fact, and a
+persisted reading carrying none. Eight adversarial proofs were added, offline, zero model calls,
+$0. Both holdouts remain sealed. See `docs/p4.9-semantic-failure-hardening.md`.
 
 ## Authoritative documents
 
