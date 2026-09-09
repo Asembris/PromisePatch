@@ -17,6 +17,14 @@ recorded. There is no branch in which the workflow waits, retries around the cal
 or refuses. That is what makes it safe for a recovery to be explained at all -- the explanation
 cannot become a precondition of the recovery.
 
+**Which of the two passages ships is a configured selection, not a race.** The P4.8
+explanation gate measured the model path and did not select it: it was safe and it was not
+reliably complete. :func:`explain` is therefore the production route, and with
+``PP_EXPLANATION_VERBALISATION`` off -- the default -- it returns the deterministic rendering
+without a provider being reached at all. :func:`prepare` is the evaluated capability
+underneath it, kept whole and exercised by the evaluation harness, which measures the model it
+was pointed at rather than the one this deployment ships.
+
 **Two entry points, because a durable caller needs both halves.** :func:`prepare` makes the
 call with no transaction held, exactly as every other provider call in PromisePatch does.
 :func:`accept` is what the transaction that consumes it runs under the lock: it compares the
@@ -32,6 +40,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from promisepatch.config import Settings, get_settings
 from promisepatch.domain.explanations import ExplanationFacts, ExplanationSurface, render
 from promisepatch.observability import get_logger
 from promisepatch.semantic import (
@@ -156,6 +165,38 @@ def fallback(
     )
 
 
+async def explain(
+    provider: SemanticProvider,
+    facts: ExplanationFacts,
+    *,
+    case_id: str | None = None,
+    correlation_id: str | None = None,
+    settings: Settings | None = None,
+) -> Explanation:
+    """The passage a user is shown: PromisePatch's own, unless this deployment selected a model.
+
+    The one production route to an explanation, and the only place the selection is read. It
+    exists because "which passage ships" is a decision somebody made on evidence, and a decision
+    made on evidence should be a line of configuration rather than a property of whichever call
+    site happened to be written first.
+
+    With verbalisation unselected no provider is reached, no token is spent and no answer has to
+    be refused, because there is no answer: the deterministic rendering of the same facts is
+    returned directly, recorded as :attr:`ExplanationFailure.NOT_ATTEMPTED`. That is not a
+    fallback and nothing failed. An operator reading a ledger of these rows can tell a
+    deployment that never asked from one that asked and did not like the answer.
+    """
+    if not (settings or get_settings()).explanation_verbalisation:
+        return _log(
+            fallback(
+                facts,
+                failure=ExplanationFailure.NOT_ATTEMPTED,
+                detail="model verbalisation is not the selected explanation path",
+            )
+        )
+    return await prepare(provider, facts, case_id=case_id, correlation_id=correlation_id)
+
+
 async def prepare(
     provider: SemanticProvider,
     facts: ExplanationFacts,
@@ -164,6 +205,10 @@ async def prepare(
     correlation_id: str | None = None,
 ) -> Explanation:
     """Ask for a passage, and return one for every way a semantic call can fail.
+
+    The evaluated capability rather than the production route. It always asks, because an
+    evaluation of a model must not be silenced by the deployment setting that says this product
+    does not ship that model's words; production reaches a passage through :func:`explain`.
 
     Both halves of the boundary's failure vocabulary are handled here -- the provider that
     could not be reached and the answer that will not be shown -- so no caller has to know
@@ -276,6 +321,7 @@ __all__ = [
     "ExplanationFailure",
     "ExplanationSource",
     "accept",
+    "explain",
     "fallback",
     "prepare",
 ]

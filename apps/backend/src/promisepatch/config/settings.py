@@ -183,6 +183,27 @@ class Settings(BaseSettings):
     the schema happens to be satisfied is how invented data becomes accepted data.
     """
 
+    explanation_verbalisation: bool = False
+    """Whether a model is asked to phrase a user-facing explanation, or PromisePatch phrases it.
+
+    Off, because the P4.8 explanation gate selected the deterministic renderer. The bounded
+    verbalisation path passed every safety property it exists to protect -- no outcome or
+    authority contradiction, no invented quantity, no unsupported option, faithfulness 5.00 --
+    and did not reliably *say* a fact it was required to say: nine of twenty-one DEVELOPMENT
+    passages cited a required fact in ``fact_refs`` while omitting it from the spoken words,
+    after the one repair authorised to fix exactly that. Safe was established; complete was not.
+
+    So the shipping passage is the one whose completeness is a property of the code rather than
+    of a sample. This is a selection, not a deprecation: the verbalisation path, its prompt, its
+    validator and its evidence are kept intact, and turning this on is how a later phase measures
+    a different model or a repaired instrument without rebuilding any of it.
+
+    Read by :func:`promisepatch.domain.verbalisation.explain`, which is the only production
+    route to a passage. :func:`~promisepatch.domain.verbalisation.prepare` is the evaluated
+    capability underneath it and is not governed by a deployment's setting -- an evaluation
+    harness measures the model it was pointed at, whatever this deployment ships.
+    """
+
     bakery_tz: str = "Africa/Tunis"
     """The bakery's local timezone.
 

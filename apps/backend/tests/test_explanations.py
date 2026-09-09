@@ -46,6 +46,7 @@ from promise_graph.model import (
 from promise_graph.options import approval_deadline
 from promise_graph.revalidation import RevalidationOutcome, RevalidationResult, revalidate
 from promise_graph.snapshot import GraphSnapshot
+from promisepatch.config import Settings
 from promisepatch.domain import explanations as ex
 from promisepatch.domain import verbalisation
 from promisepatch.domain.verbalisation import ExplanationFailure, ExplanationSource
@@ -360,6 +361,48 @@ def test_the_fallback_is_available_before_any_provider_is_asked() -> None:
     assert explanation.failure is ExplanationFailure.NOT_ATTEMPTED
     assert "Priya Nair" in explanation.speech
     assert "2.1 kg" in explanation.speech
+
+
+# ------------------------------------------------------------- the selected explanation path
+
+
+async def test_the_shipping_passage_is_the_deterministic_one_and_no_provider_is_reached() -> None:
+    """P4.8 selected the renderer, so the default deployment spends nothing to explain itself."""
+    facts = outcome_of(A)
+    provider = scripted(passage("A model would have said this.", facts))
+    explanation = await verbalisation.explain(provider, facts, settings=Settings())
+    assert explanation.source is ExplanationSource.FALLBACK
+    assert explanation.failure is ExplanationFailure.NOT_ATTEMPTED
+    assert explanation.speech == verbalisation.fallback(facts).speech
+    assert explanation.provider is None and explanation.attempts is None
+    assert provider.calls == []
+
+
+async def test_a_deployment_that_selects_verbalisation_still_gets_every_check() -> None:
+    """Not selected is not removed: the capability is one variable away, with its guards intact."""
+    facts = outcome_of(A)
+    selected = Settings(explanation_verbalisation=True)
+    accepted = await verbalisation.explain(
+        scripted(passage("Priya's cake switches to the approved strawberry variant.", facts)),
+        facts,
+        settings=selected,
+    )
+    assert accepted.source is ExplanationSource.VERBALISED
+
+    refused = await verbalisation.explain(
+        scripted({"speech": "It is handled.", "fact_refs": ["case.exception"]}),
+        facts,
+        settings=selected,
+    )
+    assert refused.source is ExplanationSource.FALLBACK
+    assert refused.failure is ExplanationFailure.GROUNDING_REJECTED
+
+
+def test_the_selection_is_off_by_default_and_read_in_exactly_one_place() -> None:
+    """A second reader would be a second answer to "does this product speak with a model"."""
+    assert Settings.model_fields["explanation_verbalisation"].default is False
+    source = pathlib.Path(verbalisation.__file__).read_text(encoding="utf-8")
+    assert source.count("explanation_verbalisation") == 1
 
 
 # ------------------------------------------------------------------ a passage decides nothing

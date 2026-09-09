@@ -9,14 +9,22 @@ recoveries, with the reasoning visible. Made-to-order bakery vertical.
 ## Current state
 
 Deterministic engine, backend foundation, and PostgreSQL baseline schema are complete. The
-P4.8 evaluation foundation and the P4.8 live evaluation harness are complete and CI-green.
-The first P4.8 DEVELOPMENT live run failed on PLAN_SUMMARY; the one bounded production repair
-before HOLDOUT has been spent on the verbalise instruction (see
-`docs/explanation-quality-gate.md`, *One repair*). The harness accounting is per run identity
-with a two-run DEVELOPMENT allowance, so the single repaired rerun fits under the committed
-ceilings. Next work is rerunning the P4.8 DEVELOPMENT live evaluation under the repaired prompt,
-under a new run identity. No further production repair is permitted before HOLDOUT. The
-explanation HOLDOUT remains separately authorized and sealed.
+P4.8 explanation quality gate is **closed**. Its two-run DEVELOPMENT allowance is spent, the one
+bounded production repair with it, and the repaired run (`7172c7c894ae`) established that Nova's
+verbalisation is safe -- every structural and semantic hard gate zero, faithfulness 5.00 -- and did
+not establish that it is complete: nine of twenty-one passages cite a required fact and never say
+it, and the judge scored causal completeness 5 on all nine.
+
+P4.8 therefore closes with a selection rather than a further measurement. **User-facing explanations
+are rendered deterministically by `promisepatch.domain.explanations.render`**, reached through
+`verbalisation.explain`, with `PP_EXPLANATION_VERBALISATION` off by default. The bounded Nova
+verbalisation path -- prompt, schema, validators, `prepare`, the dataset, the thresholds, the judge
+and both DEVELOPMENT result files -- is preserved intact as evaluated-but-not-selected capability,
+one variable away from a later phase with a repaired instrument or a different model. `prepare`
+stays ungoverned by that setting so the evaluation harness keeps measuring the model it is pointed
+at. Both holdouts -- explanation and customer-intent semantic -- remain sealed and unopened; the
+explanation one stays sealed permanently for P4.8, because DEVELOPMENT already answered the shipping
+question (see `docs/explanation-quality-gate.md`, *Closeout*). Next phase is P4.9.
 
 ## Authoritative documents
 

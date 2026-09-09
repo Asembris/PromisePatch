@@ -418,6 +418,9 @@ not only cited. The prompt hash moved with it, so `p48dev`'s passages cannot be 
 to the current question and DEVELOPMENT must be generated again. No second repair remains before
 the holdout.
 
+It was generated again as `7172c7c894ae`; what the repair achieved and what it did not is *The
+repaired DEVELOPMENT run* below.
+
 ### Model selection is not reopened automatically
 
 If Nova's quality is weak, the next step is **not** benchmarking GPT-4o-mini, Nemotron-as-generator,
@@ -431,6 +434,204 @@ development execution, development repair and development analysis. Requires its
 authorisation after the development evidence has been reviewed. There is no automatic continuation.
 
 The existing customer-intent semantic holdout is unrelated and was **not opened**.
+
+It was never opened, and P4.8 closed without opening it: DEVELOPMENT answered the shipping
+question on its own. See *The holdout stays sealed, and this is why* under *Closeout*.
+
+---
+
+## The repaired DEVELOPMENT run
+
+`7172c7c894ae`, 2026-09-09, commit `a7bb57d`. The rerun the one spent repair exists to measure.
+
+### Run identity, and why it is not `p48dev-repaired`
+
+The run this was meant to continue could not be continued, and a third identity was created by
+accident. Both are recorded here rather than tidied away.
+
+`p48dev-repaired` bought nothing: its single record is the pre-inference bootstrap failure
+`a7bb57d` was written to classify. It is therefore not a run and never used the allowance. But
+`git_sha` is one of `IDENTITY_FIELDS`, and `a7bb57d` -- the fix that made its resume *semantically*
+possible -- moved the commit, so reopening its file now fails the header check on `git_sha` alone.
+The resume the fix enabled is unreachable at the commit that contains the fix.
+
+Separately, the `generate` example in *The live surface* below passes neither `--run-id` nor
+`--results`, and `effective_run_id` mints a fresh `uuid4` when both are absent. Running it verbatim
+started `7172c7c894ae` instead of continuing anything. **To continue a run, name it:** `--run-id
+<id>` or `--results .eval-results/explanation-<id>.jsonl`.
+
+`7172c7c894ae` is accepted as the repaired DEVELOPMENT run on the ground that its header agrees
+with `p48dev-repaired`'s on every field that defines the experiment -- dataset name, version and
+hash `ebb9b679`, prompt `6e11c5eeae6fac46`, schema `2062449965a75297`, `bedrock`,
+`us.amazon.nova-2-lite-v1:0`, live, development -- and differs only in `run_id` and the harness
+commit. It generated each of the twenty-one cases exactly once, every call is ledgered once, and
+no ceiling was approached: the split has now bought the two runs the protocol authorises and a
+third is refused. Nothing was regenerated to satisfy the old run id, and no record of either
+earlier attempt was rewritten.
+
+### Generation
+
+```text
+accepted model verbalisations  21/21   validator rejections 0
+provider failures               0      deterministic fallbacks 0
+logical calls 21   provider attempts 26   in 37,835   out 1,634
+$0.01697905 of the $0.07 per-run ceiling      p50 1251 ms   p95 6157 ms
+```
+
+Cumulative known DEVELOPMENT Nova spend, both runs: 42 logical calls, 51 attempts, 73,049 input
+and 3,209 output tokens, **$0.03293092** of the $0.14 the split may ever buy.
+
+### Hard gates
+
+All six structural metrics zero, all fourteen semantic metrics zero, over twenty-one accepted
+passages and thirty-five fallbacks. The manual review confirms each independently.
+
+### Soft targets, and the manual review that does not confirm them
+
+Nemotron scored twenty-one of twenty-one, none unscored, one logical call each. Every committed
+threshold passes: faithfulness 5.00, causal completeness 4.857, clarity 4.952, brevity 4.952,
+speech naturalness 4.667, no per-family faithfulness below 5.00. The automated status is `PASS`.
+
+**The manual review does not accept the causal-completeness figure.** The repair carried two
+generic rules. The first -- counts of promises are a whole and its parts -- worked, and is
+independently confirmed: no outcome contradiction survives, `affected` is never a synonym for
+`blocked`, `plan.002` never says *blocked* against its `case.blocked` of 0, and `plan.003` keeps
+one affected and one blocked apart. The second -- a required fact must be said, not only cited --
+did not take. Nine passages omit a required fact from the spoken words while citing it in
+`fact_refs`, and Nemotron scored causal completeness 5 on every one of them:
+
+| case | required fact cited and not spoken |
+|---|---|
+| `explain.plan.001` | `case.unaffected` |
+| `explain.auto.002` | `resource.shortfall` -- "a shortfall of heavy cream", never 1.5 kg |
+| `explain.approval.001` | `resource.shortfall` (0.9 kg) |
+| `explain.approval.002` | `resource.shortfall` (1.5 kg) |
+| `explain.approval.003` | `recovery.variant` |
+| `explain.wait.002` | the "reply was not a decision" half of `approval.state` |
+| `explain.wait.003` | `consent.authority` |
+| `explain.revalidation.001` | `revalidation.check` |
+| `explain.revalidation.002` | `revalidation.check` |
+
+Three of `p48dev`'s four original causal-completeness misses -- `auto.002`, `wait.003`,
+`revalidation.001` -- are unchanged; only `blocked.002` is fixed. Two rationales are verifiably
+false: `wait.003` "precisely reflects approval.state and consent.authority" when the authority
+sentence is absent, and `revalidation.001` "accurately reflects the required facts" when the check
+is absent. The judge also deducted `plan.003` for omitting `case.automatic` and `case.approval`,
+which that surface does not require, and deducted `revalidation.003` for an omission it scored 5 on
+twice in the same family.
+
+So the primary diagnosis is `JUDGE_DEFECT` on one dimension -- which by the rule above cannot spend
+a repair, and none remains to spend. The residual model behaviour underneath it is
+`MODEL_QUALITY`: the instruction says the thing and Nova does not reliably do it.
+
+### Verdict
+
+**DEVELOPMENT PASSES ITS HARD GATES AND FAILS ITS MANUAL REVIEW.** Every safety property this gate
+exists to protect holds and is confirmed twice over. The causal-completeness result is `NOT
+ESTABLISHED`: its only measurement is a judge shown to score 5 where a required fact is missing.
+
+The holdout is **not** opened on this evidence. The one repair is spent, a second is not permitted,
+and a sealed set measured by an instrument this review has just discredited on one dimension would
+produce a number nobody could defend.
+
+---
+
+## Closeout — the deterministic renderer is the shipping explanation path
+
+P4.8 is closed on the DEVELOPMENT evidence above. It closes with a **selection**, which is the
+outcome *Model selection is not reopened automatically* names as legitimate: "the deterministic
+fallback is better than a model for one or more explanation surfaces." Here it is better for all
+four.
+
+### What the evidence decided, and what it did not
+
+The two questions this gate asks were answered separately, and only one of them was answered.
+
+**Is a model's passage safe to show?** Established, twice, by two independent readings of the same
+twenty-one passages. Every structural metric zero, every semantic metric zero: no outcome
+contradiction, no authority contradiction, no unsupported option or entity, no unsupported
+guarantee, no quantity in words the engine never computed. Faithfulness 5.00 with no per-family
+exception. Nothing a model said in this run would have misled a customer or contradicted the
+ledger, and nothing it said could have decided anything, because no field it fills is authority.
+
+**Is a model's passage complete?** `NOT ESTABLISHED`, and the observable behaviour underneath the
+unusable measurement is a model that does not reliably say what it is required to say. Nine of
+twenty-one passages cite a required fact in `fact_refs` and omit it from the spoken words -- after
+the one repair authorised, whose second rule exists to fix exactly that. `plan.001` never says how
+many promises were untouched, which is the product's selectivity claim. `auto.002`, `approval.001`
+and `approval.002` say "a shortfall" and never 1.5 kg, 0.9 kg, 1.5 kg. `revalidation.001` and
+`revalidation.002` never name the check that decided the outcome. These passages are safe and they
+are thin, and thin in a way the gate cannot currently detect, because the instrument scored causal
+completeness 5 on every one of them.
+
+Safe was proved. Complete was not, and the one bounded production repair that could have chased it
+is spent.
+
+### The selection
+
+**User-facing explanations are rendered by `promisepatch.domain.explanations.render`.** Not as a
+fallback, not on failure: as the selected path, reached deterministically on every turn.
+
+That follows from what was and was not established. Completeness is the one property the renderer
+holds by construction -- it is a function over the same `ExplanationFacts` object the model is
+handed, and it says every value that projection carries. The gate could not establish completeness
+for the model path and can no longer try before the holdout. Choosing the passage whose
+completeness is a property of the code rather than of a sample is the honest reading of an
+evidence set that proved safety and could not prove the other half.
+
+It is also the smaller claim. The renderer needs no provider, no credential, no token, no ceiling
+and no judge, and it cannot have a bad afternoon.
+
+### What ships, in code
+
+| | |
+|---|---|
+| production route to a passage | `verbalisation.explain` |
+| default behaviour | deterministic rendering, `ExplanationFailure.NOT_ATTEMPTED`, provider never reached |
+| the switch | `PP_EXPLANATION_VERBALISATION`, default `false` |
+| evaluated capability | `verbalisation.prepare`, unchanged and unconditional |
+
+`NOT_ATTEMPTED` is deliberate and is not a failure record: it distinguishes a deployment that never
+asked from one that asked and refused the answer, which are different facts about a system and were
+already separate values in this enum before the gate ran.
+
+`prepare` is not governed by the deployment setting. An evaluation must measure the model it was
+pointed at, not the model this product ships, and a harness silenced by a production flag would
+record a run that proves nothing. The explanation harness therefore keeps reaching `prepare`
+directly, and every P4.7 and P4.8 result stays reproducible against the code that produced it.
+
+### What is preserved, and on what terms
+
+Nothing is deleted, deprecated or weakened. The verbalise job, its prompt and repaired instruction,
+the schema, the word cap, the fact-reference and quantity validators, the corrective retry, the
+staleness discard, `prepare`, `accept`, the dataset, the thresholds, the judge, the calibration
+set, the harness and both DEVELOPMENT result files remain exactly as evaluated. This is
+**evaluated-but-not-selected capability**: a path that was built, measured, found safe, found
+unproven on one dimension, and left one variable away from a later phase that has a repaired
+instrument or a different model to measure.
+
+No ADR is amended. ADR-0004 lists verbalisation among the model's jobs; ADR-0007's runtime table
+already names only the two jobs that ship through Bedrock, and verbalisation is not one of them.
+This selection removes no capability and changes no model identity, so there is nothing here for an
+ADR to decide that one has not already recorded.
+
+### The holdout stays sealed, and this is why
+
+The explanation HOLDOUT is **not opened**, and P4.8 closes without opening it.
+
+Opening it would be spending fourteen sealed cases to grade a path this product has decided not to
+ship, through an instrument this review discredited on the dimension that decided it. Neither
+outcome would change anything: a good score would not un-spend the repair, and a bad one would not
+make the renderer more selected than it already is. A sealed set is worth something only while it
+can still answer a question somebody has -- and DEVELOPMENT answered the shipping question, which
+is the only question P4.8 was authorised to ask of a model.
+
+So it stays sealed, at fourteen cases and zero calls, available intact to whichever later phase
+brings a repaired judge or a different model. The customer-intent semantic holdout is unrelated and
+also remains sealed and unopened.
+
+No judge ran, no model ran, and no dataset, threshold, reference passage, authority boundary, graph,
+recovery, revalidation or external-effect behaviour moved to reach this closeout.
 
 ---
 
@@ -536,3 +737,23 @@ SEMANTIC HOLDOUT MODEL CALLS      0
 The live surface described above was built and exercised **offline**, against the scripted factory
 and a scripted judge passed in as parameters. Building the path that can spend is not spending, and
 this count stays at zero until a development run is separately authorised.
+
+**Those counts are the foundation slice's and are no longer the gate's.** Two DEVELOPMENT runs have
+since been separately authorised and bought:
+
+```text
+NOVA MODEL CALLS            42   (p48dev 21, 7172c7c894ae 21)
+NOVA MODEL SPEND            $0.03293092   of the $0.14 the split may ever buy
+NVIDIA JUDGE CALLS          21   (7172c7c894ae; free_hosted_trial, USD not modelled)
+GPT-4O-MINI JUDGE CALLS     0
+OPENAI OTHER MODEL CALLS    0
+HAIKU MODEL CALLS           0
+OLLAMA MODEL CALLS          0
+OTHER MODEL CALLS           0
+
+EXPLANATION HOLDOUT MODEL CALLS   0
+SEMANTIC HOLDOUT MODEL CALLS      0
+```
+
+**These are also the final counts.** P4.8 closed on this evidence: the closeout ran no generation
+and no judge, and the two holdouts stay sealed at zero.
