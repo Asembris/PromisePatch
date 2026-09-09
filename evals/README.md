@@ -37,8 +37,11 @@ does with each sentence, and `promisepatch.domain.grounding.resolve_semantic_obs
 check that the outcome a case claims is one PromisePatch can actually reach. A gold case that
 production would never produce fails CI.
 
-A judge becomes relevant only when something subjective is being measured — explanation
-quality, in a later slice. It is not relevant here.
+A judge becomes relevant only when something subjective is being measured. Explanation quality
+is that case, and it has its own dataset, its own contracts and its own protocol: see
+[**the explanation quality gate**](#the-explanation-quality-gate) below and
+[`docs/explanation-quality-gate.md`](../docs/explanation-quality-gate.md). It is not relevant to
+the two jobs above.
 
 ## Why DeepEval is a runner and not the truth
 
@@ -98,9 +101,23 @@ evals/
 │   ├── manifest.json            committed identity: version, counts, content hash
 │   ├── worker_semantics.json    worker interpretation cases
 │   ├── customer_intent.json     customer reply cases
-│   └── scripted_answers.json    hand-authored provider answers for offline runs
+│   ├── scripted_answers.json    hand-authored provider answers for offline runs
+│   ├── explanation_gold.json    35 explanation cases, 7 families
+│   ├── explanation_manifest.json        its committed identity
+│   ├── explanation_calibration.json     5 judge calibration examples
+│   ├── explanation_scripted.json        hand-authored passages for offline runs
+│   └── explanation_judge_scripted.json  hand-authored verdicts for offline runs
 ├── cases.py                     gold case contracts, and the gold -> model-input projection
 ├── context.py                   the frozen kitchen every worker case is read against
+├── explanation_cases.py         explanation case contracts, and the leakage boundary
+├── explanation_dataset.py       loading, and validation against the production projection
+├── explanation_thresholds.py    hard gates, quality targets, the rubric version
+├── explanation_results.py       generation and judge results, kept separate
+├── explanation_judge.py         the JudgeVerdict contract and the one-call judge protocol
+├── explanation_budget.py        ceilings derived from the fixtures; two accountings
+├── explanation_metrics.py       structural, semantic and quality scoring
+├── explanation_runner.py        generation, judging, rescore, rejudge
+├── explanation_report.py        the run report and the zero-call plan
 ├── dataset.py                   loading, and validation against production
 ├── metrics/                     deterministic scorers, plus the DeepEval adapter
 ├── authorisation.py             scope-bound spend consent, and the pytest interlock
@@ -126,6 +143,11 @@ python -m evals replay            # score it from scripted answers and print the
 python -m evals replay --json     # the machine-readable summary
 python -m evals replay --split holdout --out .eval-results
 python -m evals manifest --write  # regenerate the committed manifest after a dataset change
+
+python -m evals explanation-validate           # check the explanation dataset against production
+python -m evals explanation-plan               # the zero-call P4.8 preflight
+python -m evals explanation-replay             # score it offline and print the report
+python -m evals explanation-manifest --write   # after a deliberate explanation dataset change
 ```
 
 There is deliberately **no live command here**. A machine with AWS credentials in its
@@ -367,3 +389,100 @@ harness would refuse anyway.
    challenger workflow itself is not implemented and no challenger has been run.
 6. **Do not iterate a prompt against holdout results.** If a prompt changes, the development
    split is where it is judged, and the holdout is read again only for the next decision.
+
+---
+
+## The explanation quality gate
+
+The second thing this package measures, and the first one whose answer is a matter of opinion.
+The full protocol is in [`docs/explanation-quality-gate.md`](../docs/explanation-quality-gate.md);
+what follows is what a reader of this directory needs.
+
+**These are hand-authored software-evaluation fixtures, not evidence of business impact.**
+
+### What is under test
+
+```text
+ExplanationFacts  ->  SemanticJob.VERBALISE  ->  speech + fact_refs
+```
+
+Not whether the impact, the recovery, the approval or the revalidation was right. Those are
+deterministic outcomes the engine already settled, and they arrive here as inputs.
+
+```text
+promisepatch-explanation-gold  v1.0.0  ebb9b6791e1e
+35 cases   7 families x 5   ( 3 development + 2 holdout each )
+```
+
+Validation runs production over every case: closed vocabularies, projection fact order, the
+`required` set the projection would compute, classification/reason pairs the classifier can
+produce, the engine's own ten revalidation check names, a real `VerbaliseRequest`, and a
+deterministic passage inside the surface's cap carrying the fact the outcome turns on.
+
+### Two layers that never mix
+
+**Structural gates** are production's own validator run again over every accepted passage; a
+finding means the acceptance gate leaked. **Semantic gates** need content-level judgement, because
+P4.7 does not claim arbitrary prose is checkable structurally — including
+`unsupported_quantity_in_words`, which exists precisely because the digit guard cannot see "ten"
+where the facts say 9. Both have a ceiling of zero. **Quality targets** are means over accepted
+model prose only, printed under the acceptance rates rather than instead of them.
+
+A high subjective score never offsets a hard failure, in either direction: a passage the validator
+refused is a fallback whatever the judge thought of it.
+
+### One judge call per passage
+
+```text
+nvidia / nvidia/nemotron-3-super-120b-a12b     offline evaluation only, no authority
+one accepted passage -> ONE request -> ONE JudgeVerdict (5 flags + 5 scores + one rationale)
+```
+
+Twenty-one accepted development passages cost **at most twenty-one** ordinary judge calls, proved
+with instrumentation. DeepEval may not hold, construct or reach a model: no `GEval`, no
+`FaithfulnessMetric`, no default OpenAI judge, and a regression test asserts zero provider calls
+when the explanation metric runs over every case. A run with no explicitly configured judge
+**refuses to judge** rather than selecting a default.
+
+`JudgeVerdict` is strict Pydantic v2 — `extra="forbid"`, `strict=True`, no defaults. A 0, a 6, a
+float, a missing field, an unknown key or an over-long rationale produces `JUDGE_RESULT_INVALID`
+and an unscored case, never a guessed one.
+
+### Two accountings, never one counter
+
+Nova is metered and priced from the repository's own snapshot. NVIDIA's hosted endpoint publishes
+no per-token price, so its dollars stay **not modelled** rather than becoming a fabricated `$0.00`
+— which would both assert a rate nobody published and switch off the dollar guard for the model
+that has one. Ceilings are derived by measuring the serialised fixture requests, with no inference:
+21 logical calls, 42 provider attempts, ~$0.05 projected against a $0.07 ceiling for development.
+
+### Replay
+
+| Operation | Nova calls | Judge calls |
+|---|---|---|
+| rescore stored results | 0 | 0 |
+| rejudge stored results | 0 | one per accepted passage |
+
+Each is a test. Generation and judge results are separate records with separate identities, and a
+stored passage whose production request has since moved cannot be rejudged at all.
+
+### Holdout
+
+Fourteen sealed cases, two per family, sealed through prompt development, judge calibration,
+threshold changes and every development run. Opening them takes its own authorisation. Counts,
+families and ids are assertable in CI; prose is not, and no test failure message prints a sealed
+passage. The unrelated customer-intent semantic holdout was not opened.
+
+### Live authorisations
+
+Three, and none implies another:
+
+```text
+AUTHORISE-PAID-INFERENCE-P4-8-NOVA-DEVELOPMENT-GENERATION
+AUTHORISE-PAID-INFERENCE-P4-8-NEMOTRON-DEVELOPMENT-JUDGING
+AUTHORISE-PAID-INFERENCE-P4-8-EXPLANATION-HOLDOUT
+```
+
+At most **one** bounded production repair may be spent on a failed development run, and only for a
+genuine architecture, contract or prompt defect. A weak result does not automatically reopen model
+selection: that the deterministic fallback is better for a surface is a legitimate conclusion.

@@ -171,6 +171,26 @@ jobs:
       - name: The whole dataset, scored offline, gates and all
         run: uv run python -m evals replay
 
+      # The explanation gate's own instrument, checked the same way and for the same reason: a
+      # fixture describing a state the engine cannot reach measures nothing while looking
+      # exactly like a measurement. This runs the projection's closed vocabularies, the
+      # deterministic renderer and the request contract over all thirty-five cases, and it
+      # prints counts rather than passages so the fourteen sealed ones stay sealed in the log.
+      - name: The explanation dataset agrees with production
+        run: uv run python -m evals explanation-validate
+
+      # The preflight. It names the dataset, the model under test, the judge, the one-call rule
+      # and the derived ceilings, and it constructs no client to do any of it.
+      - name: The P4.8 preflight builds no client and calls nothing
+        run: uv run python -m evals explanation-plan
+
+      # Generation, acceptance, structural scoring, one judge verdict per accepted passage, and
+      # every gate. Every passage and every verdict comes from a hand-authored payload; nothing
+      # here reaches Bedrock, NVIDIA or OpenAI, and the one-call-per-passage rule is asserted
+      # with instrumentation in the suite above rather than assumed here.
+      - name: Explanation quality, scored offline, gates and all
+        run: uv run python -m evals explanation-replay
+
       # The live benchmark's composition root -- the one module that can spend money -- and the
       # refusals that decide whether it does. No AWS credential and no network: every case here
       # either refuses, stops at the preflight, or rebuilds a report from stored answers. The
@@ -210,6 +230,7 @@ jobs:
           scripts/tests/test_nvidia_challenger.py
           evals/tests/test_authorisation.py
           evals/tests/test_provider_failure.py
+          evals/tests/test_explanation_run.py
 
       # The same claim for the second provider, and a syntactically valid OpenAI key to make it
       # mean something. No repository secret exists for this and none is needed: the value below

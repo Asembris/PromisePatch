@@ -69,6 +69,15 @@ live benchmark will run under; `python -m evals replay` scores the whole thing w
 provider calls**, and no command there can reach Bedrock. [evals/README.md](evals/README.md)
 has the methodology, the thresholds and the cost policy.
 
+How well it *says* an outcome out loud is measured separately, because that answer is a matter of
+opinion where the other two are not. The explanation gate has its own thirty-five-case dataset
+checked against the production projection, structural gates computed by the application's own
+validator, and exactly **one** structured judge call per accepted passage — never one per quality
+dimension. `python -m evals explanation-plan` prints what a live run would spend and constructs no
+client to do it; `python -m evals explanation-replay` scores the whole thing offline.
+[docs/explanation-quality-gate.md](docs/explanation-quality-gate.md) has the protocol, the
+thresholds, the two separate cost accountings and the holdout rules.
+
 ## Prerequisites
 
 - Python 3.12 and [uv](https://docs.astral.sh/uv/)
