@@ -8,8 +8,10 @@ recoveries, with the reasoning visible. Made-to-order bakery vertical.
 
 ## Current state
 
-Deterministic engine, backend foundation, and PostgreSQL baseline schema are complete. Next
-work is the database audit, immutability, and least-privilege runtime boundary.
+Deterministic engine, backend foundation, and PostgreSQL baseline schema are complete. The
+P4.8 evaluation foundation and the P4.8 live evaluation harness are complete and CI-green.
+Next work is the P4.8 DEVELOPMENT live evaluation. The explanation HOLDOUT remains separately
+authorized and sealed.
 
 ## Authoritative documents
 
