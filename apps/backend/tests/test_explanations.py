@@ -58,6 +58,7 @@ from promisepatch.semantic import (
     UntrustedText,
     VerbaliseRequest,
 )
+from promisepatch.semantic.contracts import MAX_FACT_TEXT_CHARACTERS
 from promisepatch.semantic.prompts import DATA_CLOSE, DATA_OPEN, REDACTED_MARKER, build_user_content
 
 ANCHOR = ho.ANCHOR
@@ -654,6 +655,38 @@ async def test_preparing_a_passage_never_raises_whatever_the_provider_does(build
         explanation = await verbalisation.prepare(scripted(reply, reply), facts)
         assert explanation.source is ExplanationSource.FALLBACK
         assert explanation.speech == ex.render(facts)
+
+
+async def test_a_display_label_too_long_for_one_fact_asks_nobody_and_still_explains() -> None:
+    """The two values here PromisePatch did not author are unbounded where they came from.
+
+    A customer's name and an order's own reference arrive from the order system, whose columns
+    are ``Text``; an evidence fact carries at most two hundred characters. Building the request
+    for a name longer than that raises a ``pydantic.ValidationError``, which is neither of the
+    failures this boundary promises -- so a caller catching only those two would have an
+    explanation propagate an exception into the recovery it was describing. Nothing is
+    truncated: the deterministic renderer says the same facts in full, and says the whole name.
+    """
+    base = outcome_of(B)
+    long_name = "Tomas " + "R" * MAX_FACT_TEXT_CHARACTERS
+    facts = dataclasses.replace(
+        base,
+        facts=tuple(
+            dataclasses.replace(fact, value=long_name)
+            if fact.id is ex.FactId.PROMISE_CUSTOMER
+            else fact
+            for fact in base.facts
+        ),
+    )
+
+    provider = scripted(passage("Anything at all.", facts))
+    explanation = await verbalisation.prepare(provider, facts)
+
+    assert provider.calls == []
+    assert explanation.source is ExplanationSource.FALLBACK
+    assert explanation.failure is ExplanationFailure.NOT_ATTEMPTED
+    assert explanation.speech == ex.render(facts)
+    assert long_name in explanation.speech
 
 
 async def test_preparing_the_same_passage_twice_repeats_nothing_but_the_question() -> None:

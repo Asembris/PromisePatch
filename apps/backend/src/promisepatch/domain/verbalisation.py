@@ -11,11 +11,12 @@ of them would be wrong on screen rather than wrong in the ledger -- which is the
 between a presentation defect and a system that let a model decide something.
 
 **Failure is never a stall.** A provider that times out, a provider that is down, an answer
-that will not parse, an answer naming a fact nobody sent, an answer that dropped the cause: all
-five produce the deterministic rendering of the *same* facts, immediately, with the reason
-recorded. There is no branch in which the workflow waits, retries around the caller, degrades
-or refuses. That is what makes it safe for a recovery to be explained at all -- the explanation
-cannot become a precondition of the recovery.
+that will not parse, an answer naming a fact nobody sent, an answer that dropped the cause, and
+a set of facts that will not fit in a question at all: all six produce the deterministic
+rendering of the *same* facts, immediately, with the reason recorded. There is no branch in
+which the workflow waits, retries around the caller, degrades or refuses. That is what makes it
+safe for a recovery to be explained at all -- the explanation cannot become a precondition of
+the recovery.
 
 **Which of the two passages ships is a configured selection, not a race.** The P4.8
 explanation gate measured the model path and did not select it: it was safe and it was not
@@ -39,6 +40,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
+
+import pydantic
 
 from promisepatch.config import Settings, get_settings
 from promisepatch.domain.explanations import ExplanationFacts, ExplanationSurface, render
@@ -211,12 +214,34 @@ async def prepare(
     does not ship that model's words; production reaches a passage through :func:`explain`.
 
     Both halves of the boundary's failure vocabulary are handled here -- the provider that
-    could not be reached and the answer that will not be shown -- so no caller has to know
-    either exists. That is the contract rather than an implementation detail: a caller obliged
-    to handle an exception is a caller that could be made to do something other than continue,
-    and the recovery this passage describes has already been authorised.
+    could not be reached and the answer that will not be shown -- and so is the third way this
+    can end, which is that the question could not be built at all. No caller has to know any of
+    them exists. That is the contract rather than an implementation detail: a caller obliged to
+    handle an exception is a caller that could be made to do something other than continue, and
+    the recovery this passage describes has already been authorised.
     """
-    request = facts.request(case_id=case_id, correlation_id=correlation_id)
+    try:
+        request = facts.request(case_id=case_id, correlation_id=correlation_id)
+    except pydantic.ValidationError as unaskable:
+        # These facts will not fit in a question. The only values here PromisePatch did not
+        # author are display labels that reached it from the order system -- a customer's name,
+        # an order's own reference -- and one of them is longer than a fact may carry. Nothing
+        # is truncated and nothing is dropped: the deterministic renderer says the same facts
+        # in full, which is what a caller was going to be shown anyway. Recorded as
+        # NOT_ATTEMPTED because that is what happened -- no request was built, so no model was
+        # asked and nothing was learned about one.
+        return _log(
+            fallback(
+                facts,
+                failure=ExplanationFailure.NOT_ATTEMPTED,
+                detail=(
+                    "these facts cannot be put to a model: "
+                    f"{unaskable.error_count()} value(s) exceed what one request may carry"
+                ),
+                provider=provider.name,
+            )
+        )
+
     try:
         result = await provider.run(request)
     except SemanticValidationError as rejected:
