@@ -114,6 +114,29 @@ tokens, case at `EXECUTING` with nothing carried out -- no dollar figure is publ
 the rate could not be verified from this account. No benchmark program was started. Both
 holdouts stay sealed. See `docs/p5.3-conversational-orchestrator.md` and ADR-0011.
 
+**P5.4, truthful recovery and the first case workspace, is done.** The confirmed canonical case
+now runs through the recovery machinery to four real outcomes, and a person can see them. Over
+the real MCP transport, a real worker process and the real External Order System: `EXT-A` reaches
+`RECOVERED` only once the order system's own event came back, `EXT-B` reaches `REQUESTED` only
+once the provider acknowledged delivery, `EXT-C` and `EXT-D` stay an explicit owner action with a
+reason and a next action and no automatic step, and `EXT-E` and `EXT-F` carry **0 incident-caused
+operational effects**. Each of the three word-rules is proved by holding the intervening state
+open and reading the case out loud in the middle of it -- "changing the order now" before the
+echo, no `provider_ref` and no "asked" while a message is queued, and an escalation rather than a
+success when the order system refuses -- and a planned case drained through every worker cycle
+without a confirmation raises no effect at all. `status_view` gained one pure addition, band 2's
+single `next_action` with its `ActionOwner`, chosen by an ordered walk so an escalation outranks
+a customer's clock; the spoken `status` rendering is unchanged. Two session-authenticated reads,
+`GET /api/cases` and `GET /api/cases/{id}`, project one durable `read_case_status` into the
+contract's five bands, and the workspace at `?case=<id>` renders them: the worker's own words,
+one next action, promises grouped by authority, the untouched band with the backend's own count,
+and a collapsed evidence drawer that arrives with the case. The screen renders and does not
+decide -- every sentence, count and grouping arrives composed -- and the case id lives in the
+address bar, so a reload, a restored tab and a second application process all land on the same
+durable case. Proved by 9 end-to-end recovery tests, 13 workspace API tests against real
+PostgreSQL and 18 frontend tests. No live model call; both holdouts stay sealed. See
+`docs/p5.4-truthful-recovery-and-case-workspace.md`.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
