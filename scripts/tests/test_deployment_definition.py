@@ -27,14 +27,20 @@ from typing import Any
 
 import pytest
 import yaml
+from botocore.exceptions import ClientError
 from scripts.aws_preflight import (
+    AUTHORIZED_BUT_ABSENT_CODES,
     BEDROCK_FOUNDATION_MODEL,
     BEDROCK_INFERENCE_PROFILE,
+    DENIAL_CODES,
+    ECR_PROBE_REPOSITORY,
     READ_ONLY_APIS,
     MutatingProbeError,
     Plane,
     Requirement,
+    Result,
     Verdict,
+    _probe_ecr,
     requirements,
     run,
 )
@@ -627,6 +633,82 @@ def test_a_declared_requirement_is_reported_rather_than_called() -> None:
     (result,) = preflight.results
     assert result.verdict is Verdict.DECLARED
     assert preflight.blocked == []
+
+
+class _StubEcr:
+    """Records how it was called, and answers with whatever error the test wants."""
+
+    def __init__(self, error: Exception | None) -> None:
+        self.error = error
+        self.calls: list[dict[str, Any]] = []
+
+    def describe_repositories(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return {"repositories": []}
+
+
+class _StubSession:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def client(self, service: str, **kwargs: Any) -> Any:
+        assert service == "ecr"
+        return self._client
+
+
+def _client_error(code: str) -> ClientError:
+    return ClientError({"Error": {"Code": code, "Message": code}}, "DescribeRepositories")
+
+
+def _ecr_result(error: Exception | None) -> tuple[Result, _StubEcr]:
+    requirement = next(r for r in requirements() if r.probe is _probe_ecr)
+    stub = _StubEcr(error)
+    preflight = run(
+        session=_StubSession(stub),
+        region="us-east-1",
+        account="0",
+        required=[requirement],
+    )
+    (result,) = preflight.results
+    return result, stub
+
+
+def test_the_ecr_probe_names_a_repository_rather_than_listing_the_registry() -> None:
+    """The listing form asks a question the deployment's own scoping cannot answer.
+
+    ``describe_repositories(maxResults=5)`` is authorized against ``repository/*``, so a role
+    scoped to ``repository/promisepatch/*`` -- the scoping this deployment asks for -- is denied
+    it while being perfectly able to describe its own repositories. The first version of this
+    probe did exactly that and reported a blocker that did not exist.
+    """
+    _, stub = _ecr_result(None)
+    (call,) = stub.calls
+    assert call == {"repositoryNames": [ECR_PROBE_REPOSITORY]}
+    assert "maxResults" not in call, "a registry listing tests the wrong permission"
+
+
+def test_a_missing_repository_is_authorization_proved_not_a_blocker() -> None:
+    """``RepositoryNotFoundException`` is the expected first-run answer: the repo comes later.
+
+    AWS evaluates authorization before existence, so this code means the call was allowed and
+    there was simply nothing to describe -- which is the state before ``deploy.sh registry``
+    runs. Reporting it as a denial would block the deployment on its own absence.
+    """
+    result, _ = _ecr_result(_client_error("RepositoryNotFoundException"))
+    assert result.verdict is Verdict.ALLOWED
+
+
+def test_a_denied_repository_read_is_still_a_blocker() -> None:
+    """The distinction is the entire value of the probe, so both sides are asserted."""
+    result, _ = _ecr_result(_client_error("AccessDeniedException"))
+    assert result.verdict is Verdict.DENIED
+    assert result.detail == "AccessDeniedException"
+
+
+def test_absent_is_never_confused_with_denied() -> None:
+    assert not (AUTHORIZED_BUT_ABSENT_CODES & DENIAL_CODES)
 
 
 def test_the_preflight_declares_both_planes() -> None:

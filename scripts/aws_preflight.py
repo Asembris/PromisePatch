@@ -20,13 +20,20 @@ So this is a *preflight*, and it is read-only by construction rather than by pro
   consumed, nothing is billed.
 
 **What this can and cannot prove.** It proves read access per service, and it proves the one
-runtime model permission. It cannot prove a mutating permission without mutating, and
-``iam:SimulatePrincipalPolicy`` -- the API that exists precisely to answer this without side
-effects -- is itself denied to this role. Mutating requirements are therefore *declared* here,
-with the resource they act on and the reason they are needed, and are reported as ``DECLARED``
-rather than tested. When a service's read probe is denied the role has no access to that service
-at all, and every declared action against it is blocked with it; that inference is the useful
-signal and it is stated as an inference, not as a test result.
+runtime model permission. It does not yet prove a mutating permission: those are *declared*
+here, with the resource they act on and the reason they are needed, and are reported as
+``DECLARED`` rather than tested. ``iam:SimulatePrincipalPolicy`` -- the API that exists precisely
+to answer this without side effects -- was denied when this was written and is now allowed, so
+that limit is a to-do rather than a wall; see the P6.2 step in
+``docs/p6.1-deployment-preflight.md``. Simulate against the real resource ARN when it is added:
+a resource-scoped grant simulated against ``*`` returns ``implicitDeny`` and means nothing.
+
+Until then, when a service's read probe is denied the role has no access to that service at all,
+and every declared action against it is blocked with it; that inference is the useful signal and
+it is stated as an inference, not as a test result. The inverse does not hold, and one probe
+here has already been wrong about it: a read probe that asks an *account-wide* question --
+"list every repository", "list every log group" -- is authorized against ``*`` and will report a
+correctly resource-scoped role as denied. Name the resource.
 
 Run it::
 
@@ -65,6 +72,17 @@ DEFAULT_REGION = "us-east-1"
 
 DENIAL_CODES = frozenset({"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"})
 UNAVAILABLE_CODES = frozenset({"SubscriptionRequiredException", "OptInRequired"})
+
+# "You may, and there is nothing there." A resource-scoped probe has to name a resource, and on
+# a first run the resource the deployment will create does not exist yet. AWS evaluates
+# authorization before existence, so these codes prove the permission and say nothing else.
+AUTHORIZED_BUT_ABSENT_CODES = frozenset(
+    {"RepositoryNotFoundException", "ResourceNotFoundException", "ParameterNotFound"}
+)
+
+# The repository the ECR probe names. It has to be a concrete name rather than a listing,
+# because the permission being tested is scoped to `repository/promisepatch/*`.
+ECR_PROBE_REPOSITORY = "promisepatch/backend"
 
 # Frozen. Every API a probe in this file is allowed to call, and every one of them is a read.
 # ``bedrock:InvokeModel`` is listed for the reason given in the module docstring: the probe
@@ -210,7 +228,30 @@ def _probe_ec2(session: boto3.Session, region: str, account: str) -> None:
 
 
 def _probe_ecr(session: boto3.Session, region: str, account: str) -> None:
-    _client(session, "ecr", region).describe_repositories(maxResults=5)
+    """Ask about one named repository, not about the account's whole registry.
+
+    The first version of this probe called ``describe_repositories(maxResults=5)``, which is an
+    account-wide listing and is authorized against ``repository/*``. A role scoped to
+    ``repository/promisepatch/*`` -- which is the scoping this deployment asks for -- is denied
+    that call while being perfectly able to describe its own repositories. The probe therefore
+    reported a blocker that did not exist.
+
+    Naming the repository fixes it, and introduces the second half: the repository does not
+    exist yet, because ``deploy.sh registry`` creates it. ``RepositoryNotFoundException`` is
+    therefore the *expected* answer on a first run and means authorization passed -- AWS decided
+    the request was allowed and then found nothing to describe. ``AccessDeniedException`` still
+    means denied. Distinguishing the two is the whole point of this probe.
+
+    Still a read: describing a repository creates nothing whether or not one is there.
+    """
+    try:
+        _client(session, "ecr", region).describe_repositories(
+            repositoryNames=[ECR_PROBE_REPOSITORY]
+        )
+    except ClientError as error:
+        if str(error.response.get("Error", {}).get("Code", "")) in AUTHORIZED_BUT_ABSENT_CODES:
+            return
+        raise
 
 
 def _probe_rds(session: boto3.Session, region: str, account: str) -> None:
@@ -322,8 +363,8 @@ def requirements() -> tuple[Requirement, ...]:
         ),
         Requirement(
             api="ecr:DescribeRepositories, CreateRepository, PutLifecyclePolicy",
-            resource="repository/promisepatch/*",
-            why="the three image repositories the host pulls from",
+            resource=f"repository/{ECR_PROBE_REPOSITORY} (named, not a registry listing)",
+            why="the two image repositories the host pulls from",
             plane=Plane.DEPLOYMENT,
             probe=_probe_ecr,
         ),
