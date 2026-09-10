@@ -39,6 +39,7 @@ from promisepatch.semantic import (
     InterpretUtteranceRequest,
     ObservationInterpretation,
     ReplyIntentReading,
+    SelectToolRequest,
     SemanticJob,
     SemanticMetadata,
     SemanticProvider,
@@ -515,6 +516,7 @@ def test_every_person_written_field_is_typed_as_untrusted() -> None:
     text_fields: tuple[tuple[type[BaseModel], str], ...] = (
         (InterpretUtteranceRequest, "utterance"),
         (ClassifyReplyIntentRequest, "reply"),
+        (SelectToolRequest, "turn"),
     )
     for model, field in text_fields:
         assert typing.get_type_hints(model)[field] is UntrustedText

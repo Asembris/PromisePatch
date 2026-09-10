@@ -199,6 +199,29 @@ def test_the_mcp_server_refuses_to_start_with_no_engine_to_reach() -> None:
         create_app(settings)
 
 
+# ---------------------------------------------------------------------------- pp converse
+
+
+def test_converse_is_a_subcommand() -> None:
+    assert "converse" in runner.invoke(app, ["--help"]).output
+
+
+def test_a_conversation_refuses_to_start_with_no_tool_surface_to_reach(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No endpoint means no tools, and a conversation with no tools can only mislead.
+
+    A refusal before the first turn rather than a turn that reports the engine unreachable: the
+    second reads as an outage and this is a deployment that was never configured.
+    """
+    monkeypatch.delenv("PP_ORCHESTRATOR_MCP_URL", raising=False)
+    get_settings.cache_clear()
+    result = runner.invoke(app, ["converse", "--turn", "the delivery did not arrive"])
+    get_settings.cache_clear()
+    assert result.exit_code == 1
+    assert "PP_ORCHESTRATOR_MCP_URL" in result.output
+
+
 # ------------------------------------------------------------------------------ pp worker
 
 
