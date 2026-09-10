@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { screen, within } from '@testing-library/react'
+import { CASES } from './caseFixtures'
 import { MAYA, PROMISES, RESOURCES } from './fixtures'
 import { FakeStream, apiError, json, mockBackend, renderApp, streamResponse } from './harness'
 
@@ -17,6 +18,7 @@ function mountSignedIn(): FakeStream {
     '/api/auth/me': () => json(MAYA),
     '/api/promises': () => json(PROMISES),
     '/api/resources': () => json(RESOURCES),
+    '/api/cases': () => json(CASES),
     '/events': () => streamResponse(stream),
   })
   renderApp()
@@ -93,6 +95,7 @@ describe('promises', () => {
       '/api/auth/me': () => json(MAYA),
       '/api/promises': () => apiError(500, 'INTERNAL_ERROR', 'quote the correlation id'),
       '/api/resources': () => json(RESOURCES),
+    '/api/cases': () => json(CASES),
       '/events': () => streamResponse(stream),
     })
     renderApp()

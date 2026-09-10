@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
+import { CASES } from './caseFixtures'
 import { MAYA, PROMISES, RESOURCES } from './fixtures'
 import {
   FakeStream,
@@ -25,6 +26,7 @@ function mount(): { stream: FakeStream; backend: Backend } {
     '/api/auth/me': () => json(MAYA),
     '/api/promises': () => json(PROMISES),
     '/api/resources': () => json(RESOURCES),
+    '/api/cases': () => json(CASES),
     '/events': () => streamResponse(stream),
   })
   renderApp()
@@ -162,6 +164,7 @@ data: {"seq":${seq}}
       '/api/auth/me': () => json(MAYA),
       '/api/promises': () => json(PROMISES),
       '/api/resources': () => json(RESOURCES),
+    '/api/cases': () => json(CASES),
       '/events': () => apiError(503, 'UNAVAILABLE'),
     })
     renderApp()
@@ -180,6 +183,7 @@ data: {"seq":${seq}}
       '/api/auth/me': () => json(MAYA),
       '/api/promises': () => json(PROMISES),
       '/api/resources': () => json(RESOURCES),
+    '/api/cases': () => json(CASES),
       '/events': () => {
         opens += 1
         return streamResponse(opens === 1 ? first : second)
