@@ -90,6 +90,30 @@ plan, explicit yes, authorised status with nothing carried out -- plus staleness
 wrong-state cases, offline protocol tests, and pure tests for the identity and the vocabulary.
 No live model call. See `docs/p5.2-mcp-clarification-and-confirmation.md` and ADR-0010.
 
+**P5.3, the truthful conversational orchestrator, is done.** A model is now in the loop and has
+no authority it did not have outside it. One bounded semantic job, `select_tool`, returns a
+**verb and nothing else**: `ToolSelection` has no field for a case, a plan, a person or any
+wording, so a fabricated plan identity is refused because the field does not exist. Which verbs
+are on offer is computed deterministically from a `status` reading the server rendered -- seven
+closed phases, fail-closed to a read on any gap -- and is checked twice while remaining defence
+in depth, because the domain checks every call again. A confirmation needs three independent
+things: the phase permits it, the conversation holds the identity `status` returned, and the
+worker's own turn is a plain yes by a closed literal parser that is stricter than the domain and
+is not the consent parser. Everything a worker is told is rendered by `status_view` and
+delivered unchanged; the model's optional glue is capped at 25 words, may hold no digit and none
+of 39 outcome words, fails the whole answer rather than being trimmed, and is dropped unless the
+turn acted. Two tool calls per turn, at most one effecting, the second always `status`; nothing
+is retried. `promisepatch.orchestrator` is a client -- forbidden the domain, the database, the
+API, the engine, SQLAlchemy, an AWS SDK and the MCP server's internals. Proved by the canonical
+six-turn conversation end to end over the real transport against PostgreSQL, plus 73 offline
+tests including the adversarial set (invalid verb for the state, fabricated identity, a
+confirmation the worker never gave, provider and tool outages, staleness between decision and
+call, and an unsupported final-language claim). **One bounded live Nova conversation** ran once:
+all six verbs correct, one attempt each, 9,689 ms wall clock, 10,360 input and 165 output
+tokens, case at `EXECUTING` with nothing carried out -- no dollar figure is published because
+the rate could not be verified from this account. No benchmark program was started. Both
+holdouts stay sealed. See `docs/p5.3-conversational-orchestrator.md` and ADR-0011.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
@@ -124,7 +148,7 @@ modify them unless explicitly asked. Never commit them.
 
 ## Architecture summary
 
-One Python backend (`api`, `worker`, `mcp` entrypoints), one pure engine package
+One Python backend (`api`, `worker`, `mcp` entrypoints, plus the `converse` client), one pure engine package
 (`promise_graph`), one React evidence UI, one separate External Order System simulator,
 PostgreSQL as the single store, a persisted case state machine with a step ledger, Bedrock for
 understanding only, MCP for the five intent tools, Telegram for the customer channel.
