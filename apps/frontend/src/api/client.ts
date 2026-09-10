@@ -16,7 +16,14 @@
  * a readable cookie precisely so a client can echo it in `X-CSRF-Token` on a mutation, and
  * validates the header against the session row rather than against the cookie.
  */
-import type { ErrorResponse, PromisesResponse, ResourcesResponse, WorkerResponse } from './types'
+import type {
+  CaseListResponse,
+  CaseWorkspaceResponse,
+  ErrorResponse,
+  PromisesResponse,
+  ResourcesResponse,
+  WorkerResponse,
+} from './types'
 
 /** Empty by default: same-origin through the Vite proxy. See `vite.config.ts`. */
 export const API_BASE_URL: string = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
@@ -144,4 +151,19 @@ export async function fetchPromises(signal?: AbortSignal): Promise<PromisesRespo
 
 export async function fetchResources(signal?: AbortSignal): Promise<ResourcesResponse> {
   return requestJson<ResourcesResponse>('/api/resources', signal ? { signal } : {})
+}
+
+export async function fetchCases(signal?: AbortSignal): Promise<CaseListResponse> {
+  return requestJson<CaseListResponse>('/api/cases', signal ? { signal } : {})
+}
+
+/** One case workspace. The path carries the case id, which is what makes a reload return to it. */
+export async function fetchCase(
+  caseId: string,
+  signal?: AbortSignal,
+): Promise<CaseWorkspaceResponse> {
+  return requestJson<CaseWorkspaceResponse>(
+    `/api/cases/${encodeURIComponent(caseId)}`,
+    signal ? { signal } : {},
+  )
 }

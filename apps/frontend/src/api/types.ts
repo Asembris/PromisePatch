@@ -199,3 +199,172 @@ export interface ResyncEnvelope {
   reason: string
   detail: string
 }
+
+// ------------------------------------------------------------------------------------ cases
+
+/**
+ * The case workspace, transcribed from `promisepatch.api.schemas.cases`.
+ *
+ * Everything a worker reads is a string the backend composed: `phrase`, `sentence`, `reason`,
+ * `next_action` and the band titles all arrive decided. There is no field here a screen is
+ * expected to derive, and deriving one — grouping by classification, recounting the untouched,
+ * or writing a friendlier word for `RECOVERED` — would put the product's truthful vocabulary in
+ * two places, one of which nobody tests against a durable case.
+ */
+
+export interface QuestionOptionView {
+  code: string
+  label: string
+}
+
+export interface CaseQuestionView {
+  clarification_id: string
+  question: string
+  options: QuestionOptionView[]
+}
+
+export interface NextActionView {
+  owner: string
+  owner_label: string
+  action: string
+}
+
+export interface PromiseWorkspaceView {
+  promise_id: string
+  customer_name: string
+  order_external_id: string
+  state: string
+  phrase: string
+  authority: string
+  reason: string
+  deadline_at: string | null
+  owner: string
+  next_action: string
+  track_id: string
+  track_state: string
+  classification: string | null
+  rule_id: string | null
+}
+
+export interface AuthorityBandView {
+  authority: string
+  title: string
+  promises: PromiseWorkspaceView[]
+}
+
+export interface EffectEvidenceView {
+  kind: string
+  state: string
+  idempotency_key: string
+  provider_ref: string | null
+  attempts: number
+  result: Record<string, unknown> | null
+  delivered_at: string | null
+  last_error: string | null
+}
+
+export interface ApprovalEvidenceView {
+  request_id: string
+  option_code: string
+  state: string
+  decided: boolean
+  sent_at: string
+  deadline: string
+  provider_ref: string | null
+  decision: string | null
+  parser: string | null
+  replies: number
+}
+
+export interface RevalidationCheckView {
+  index: number
+  name: string
+  passed: boolean
+  expected: string
+  actual: string
+}
+
+export interface RevalidationEvidenceView {
+  outcome: string
+  deciding_check: number | null
+  detail: string | null
+  fingerprint: string | null
+  checks: RevalidationCheckView[]
+}
+
+export interface TrackEvidenceView {
+  promise_id: string
+  track_id: string
+  track_state: string
+  classification: string | null
+  rule_id: string | null
+  reason_detail: string | null
+  fingerprint: string | null
+  order_external_id: string
+  order_external_version: number
+  mirrored_versions: Record<string, string>
+  paths: number
+  watched_entities: number
+  effects: EffectEvidenceView[]
+  approval: ApprovalEvidenceView | null
+  revalidation: RevalidationEvidenceView | null
+}
+
+export interface InterpretationEvidenceView {
+  source: string
+  outcome: string | null
+  attestor: string | null
+  step_state: string | null
+  provider: string | null
+  model_id: string | null
+  deterministic_reason: string | null
+  grounded: string[]
+  rejected: string[]
+  failure: string | null
+  last_error: string | null
+}
+
+export interface EvidenceView {
+  case_id: string
+  case_state: string
+  case_version: number
+  plan_id: string
+  exception_id: string | null
+  interpretation: InterpretationEvidenceView | null
+  tracks: TrackEvidenceView[]
+}
+
+export interface CaseWorkspaceResponse {
+  case_id: string
+  headline: string
+  sentence: string
+  exception_category: string | null
+  reported_text: string | null
+  reported_by: string | null
+  reported_at: string | null
+  needs_owner_attention: boolean
+  question: CaseQuestionView | null
+  next_action: NextActionView
+  authority_bands: AuthorityBandView[]
+  untouched: PromiseWorkspaceView[]
+  untouched_count: number
+  threatened_count: number
+  plan_id: string | null
+  awaiting_confirmation: boolean
+  evidence: EvidenceView
+}
+
+export interface CaseSummaryView {
+  case_id: string
+  state: string
+  headline: string
+  sentence: string
+  needs_owner_attention: boolean
+  reported_text: string | null
+  opened_at: string
+  updated_at: string
+}
+
+export interface CaseListResponse {
+  cases: CaseSummaryView[]
+}

@@ -9,18 +9,25 @@
  * The feed is opened only when there is a session, and closed when there is not. That is not a
  * cosmetic detail: the stream is a session endpoint, so keeping one open across a sign-out
  * would be retrying an authenticated read on a session the server has revoked.
+ *
+ * Which case is open is read from the address bar rather than held here. That is the reload
+ * guarantee stated as code: there is no in-memory selection to lose, so a refresh mounts the
+ * app already pointing at the same case and renders whatever the durable case then says.
  */
 import type { ReactNode } from 'react'
 import { useMe } from '../api/queries'
 import { useEventStream } from '../api/useEventStream'
 import { LoginScreen } from '../features/auth/LoginScreen'
+import { CaseWorkspace } from '../features/case/CaseWorkspace'
 import { LiveOperations } from '../features/live-ops/LiveOperations'
 import { Header } from './Header'
+import { useCaseRoute } from './useCaseRoute'
 
 export function App(): ReactNode {
   const me = useMe()
   const worker = me.data?.worker ?? null
   const stream = useEventStream(worker !== null)
+  const route = useCaseRoute()
 
   if (me.isPending) {
     return (
@@ -47,7 +54,16 @@ export function App(): ReactNode {
   return (
     <div className="min-h-full">
       <Header worker={worker} stream={stream} />
-      <LiveOperations stream={stream} />
+      {route.caseId === null ? (
+        <LiveOperations stream={stream} onOpenCase={route.open} />
+      ) : (
+        <CaseWorkspace
+          caseId={route.caseId}
+          onClose={() => {
+            route.open(null)
+          }}
+        />
+      )}
     </div>
   )
 }

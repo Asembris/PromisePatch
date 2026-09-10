@@ -14,10 +14,17 @@ import { usePromises, useResources } from '../../api/queries'
 import type { StreamState } from '../../api/useEventStream'
 import { Notice, Panel } from '../../components/primitives'
 import { formatDateTime } from '../../components/time'
+import { CaseList } from '../case/CaseList'
 import { PromiseTable } from './PromiseTable'
 import { EquipmentList, IngredientTable } from './ResourcePanel'
 
-export function LiveOperations({ stream }: { stream: StreamState }): ReactNode {
+export function LiveOperations({
+  stream,
+  onOpenCase,
+}: {
+  stream: StreamState
+  onOpenCase: (caseId: string) => void
+}): ReactNode {
   const promises = usePromises(true)
   const resources = useResources(true)
 
@@ -31,6 +38,8 @@ export function LiveOperations({ stream }: { stream: StreamState }): ReactNode {
         generatedAt={promises.data?.generated_at ?? null}
         stream={stream}
       />
+
+      <CaseList onOpen={onOpenCase} />
 
       <Panel
         title="Customer promises"

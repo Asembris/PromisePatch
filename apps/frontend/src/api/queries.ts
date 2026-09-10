@@ -19,12 +19,33 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import { ApiError, fetchMe, fetchPromises, fetchResources, login, logout } from './client'
-import type { PromisesResponse, ResourcesResponse, WorkerResponse } from './types'
+import {
+  ApiError,
+  fetchCase,
+  fetchCases,
+  fetchMe,
+  fetchPromises,
+  fetchResources,
+  login,
+  logout,
+} from './client'
+import type {
+  CaseListResponse,
+  CaseWorkspaceResponse,
+  PromisesResponse,
+  ResourcesResponse,
+  WorkerResponse,
+} from './types'
 
 export const meKey = ['me'] as const
 export const promisesKey = ['promises'] as const
 export const resourcesKey = ['resources'] as const
+export const casesKey = ['cases'] as const
+
+/** One key per case, so a feed frame refreshes the case being read and not every case ever read. */
+export function caseKey(caseId: string): readonly [string, string] {
+  return ['case', caseId] as const
+}
 
 /** Long enough that the stream is what refreshes the screen, not a timer. */
 const OPERATIONAL_STALE_TIME = 60_000
@@ -71,6 +92,34 @@ export function useResources(enabled: boolean): UseQueryResult<ResourcesResponse
   })
 }
 
+export function useCases(enabled: boolean): UseQueryResult<CaseListResponse, Error> {
+  return useQuery({
+    queryKey: casesKey,
+    queryFn: ({ signal }) => fetchCases(signal),
+    enabled,
+    retry: retryTransportFailures,
+    staleTime: OPERATIONAL_STALE_TIME,
+  })
+}
+
+/**
+ * One case, read by id.
+ *
+ * `caseId` comes from the URL, so this is also the reload path: mounting the app at a case
+ * address issues exactly this read and renders whatever the durable case says. Nothing about
+ * the workspace survives in the browser between two visits, which is why the second one cannot
+ * disagree with the first.
+ */
+export function useCase(caseId: string | null): UseQueryResult<CaseWorkspaceResponse, Error> {
+  return useQuery({
+    queryKey: caseKey(caseId ?? ''),
+    queryFn: ({ signal }) => fetchCase(caseId as string, signal),
+    enabled: caseId !== null,
+    retry: retryTransportFailures,
+    staleTime: OPERATIONAL_STALE_TIME,
+  })
+}
+
 export interface Credentials {
   username: string
   password: string
@@ -111,6 +160,8 @@ export function useLogout(): UseMutationResult<void, Error, void> {
 export function forgetSession(client: QueryClient): void {
   client.removeQueries({ queryKey: promisesKey })
   client.removeQueries({ queryKey: resourcesKey })
+  client.removeQueries({ queryKey: casesKey })
+  client.removeQueries({ queryKey: ['case'] })
   client.setQueryData(meKey, null)
 }
 
@@ -119,5 +170,10 @@ export async function refreshOperationalState(client: QueryClient): Promise<void
   await Promise.all([
     client.invalidateQueries({ queryKey: promisesKey }),
     client.invalidateQueries({ queryKey: resourcesKey }),
+    client.invalidateQueries({ queryKey: casesKey }),
+    // Every open case, by prefix. A reconnecting browser is exactly the case that must not be
+    // left showing a plan the case has already moved past, and the case being read is the one
+    // thing on the screen a stale frame would misrepresent as current.
+    client.invalidateQueries({ queryKey: ['case'] }),
   ])
 }
