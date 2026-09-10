@@ -1,0 +1,126 @@
+# The deployed composition: stored as SSM /promisepatch/<env>/compose, written to
+# /opt/promisepatch/docker-compose.yml at every boot. Must stay under 4096 bytes to fit a
+# standard-tier parameter, so the reasoning lives in the CloudFormation template and in
+# docs/p6.1-deployment-preflight.md rather than here.
+#
+# Same images, commands and per-container environment files as the local stack. What changes:
+# the database is RDS, a TLS proxy is in front, output goes to CloudWatch Logs.
+
+name: promisepatch
+
+x-logging: &logging
+  driver: awslogs
+  options:
+    awslogs-region: ${AWS_REGION}
+    awslogs-group: ${LOG_GROUP}
+    awslogs-create-group: "false"
+
+networks:
+  stack:
+    driver: bridge
+    ipam:
+      config:
+        # Fixed subnet so the TLS proxy has a fixed address. The simulator must resolve the
+        # real public hostname to something, and it cannot be the Elastic IP: an instance has
+        # no route back to its own public address. Mapping it to the proxy keeps the handshake,
+        # the SNI and the certificate verification real; the packet does not leave the host.
+        - subnet: 172.29.0.0/24
+
+services:
+  migrate:
+    image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
+    command: ["alembic", "-c", "apps/backend/alembic.ini", "upgrade", "head"]
+    env_file: [env/migrate.env]
+    networks: [stack]
+    logging: *logging
+    restart: "no"
+
+  seed:
+    image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
+    command: ["pp", "reset-demo-state"]
+    env_file: [env/migrate.env]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    networks: [stack]
+    logging: *logging
+    restart: "no"
+
+  api:
+    image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
+    env_file: [env/api.env]
+    depends_on:
+      seed: { condition: service_completed_successfully }
+    networks: [stack]
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=5)"]
+      interval: 5s
+      timeout: 6s
+      retries: 30
+      start_period: 20s
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  worker:
+    image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
+    command: ["pp", "worker"]
+    env_file: [env/api.env]
+    depends_on:
+      seed: { condition: service_completed_successfully }
+    networks: [stack]
+    logging: *logging
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  mcp:
+    image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
+    command: ["pp", "mcp", "--host", "0.0.0.0", "--port", "8001"]
+    env_file: [env/mcp.env]
+    depends_on:
+      api: { condition: service_healthy }
+    networks: [stack]
+    logging: *logging
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  order-simulator:
+    image: ${REGISTRY}/promisepatch/order-simulator:${IMAGE_TAG}
+    env_file: [env/order-simulator.env]
+    volumes: [order-simulator-data:/data]
+    networks: [stack]
+    extra_hosts:
+      - "${TLS_HOSTNAME}:172.29.0.10"
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/readyz', timeout=5)"]
+      interval: 5s
+      timeout: 6s
+      retries: 30
+      start_period: 15s
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10-alpine
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificate and ACME account key on a named volume, so a restart does not re-order
+      # a certificate and walk into a rate limit.
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      TLS_HOSTNAME: ${TLS_HOSTNAME}
+    depends_on:
+      api: { condition: service_healthy }
+    networks:
+      stack:
+        ipv4_address: 172.29.0.10
+    logging: *logging
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+volumes:
+  order-simulator-data:
+  caddy-data:
+  caddy-config:

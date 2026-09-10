@@ -1,0 +1,253 @@
+{
+  "Comment": [
+    "Permissions for PromisePatchDeploymentRole -- the CloudFormation service role that",
+    "actually creates the P6 stack. Substitute ACCOUNT_ID before use.",
+    "",
+    "This is the only principal in the account that may create the deployment's compute,",
+    "database, network and log resources, and it can be assumed only by CloudFormation",
+    "acting on a promisepatch- stack. Deleting the stack is therefore the whole undo, and",
+    "the template is the whole audit trail.",
+    "",
+    "Two things it deliberately cannot do. It cannot create an IAM principal other than",
+    "PromisePatchInstanceRole and that role's instance profile, and it cannot pass any role",
+    "to anything except that one role to EC2. Both are enforced by explicit Deny at the",
+    "bottom, which no later Allow can override."
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "NetworkAndHostReads",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeInstanceAttribute",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeInstanceCreditSpecifications",
+        "ec2:DescribeImages",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeTags",
+        "ec2:DescribeNetworkInterfaces"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "OneSecurityGroupPerSideOfTheDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateSecurityGroup",
+        "ec2:DeleteSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:ModifySecurityGroupRules"
+      ],
+      "Resource": [
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:security-group/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:security-group-rule/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:vpc/*"
+      ]
+    },
+    {
+      "Sid": "OneHostAndTheVolumeItBootsFrom",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:RunInstances",
+        "ec2:TerminateInstances",
+        "ec2:StopInstances",
+        "ec2:StartInstances",
+        "ec2:RebootInstances",
+        "ec2:ModifyInstanceAttribute",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "Resource": [
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:instance/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:volume/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:network-interface/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:security-group/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:subnet/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:elastic-ip/*",
+        "arn:aws:ec2:us-east-1::image/ami-*"
+      ]
+    },
+    {
+      "Sid": "InstanceTypeIsCappedSoACostMistakeIsNotPossibleHere",
+      "Effect": "Deny",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:ACCOUNT_ID:instance/*",
+      "Condition": {
+        "StringNotEquals": {
+          "ec2:InstanceType": ["t4g.small", "t4g.medium", "t3a.small", "t3a.medium"]
+        }
+      }
+    },
+    {
+      "Sid": "AStableAddressForTheTlsHostname",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AllocateAddress",
+        "ec2:AssociateAddress",
+        "ec2:DisassociateAddress",
+        "ec2:ReleaseAddress"
+      ],
+      "Resource": [
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:elastic-ip/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:instance/*",
+        "arn:aws:ec2:us-east-1:ACCOUNT_ID:network-interface/*"
+      ]
+    },
+    {
+      "Sid": "TheDurablePostgresTheCaseStateLivesIn",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBInstance",
+        "rds:DeleteDBInstance",
+        "rds:ModifyDBInstance",
+        "rds:RebootDBInstance",
+        "rds:CreateDBSubnetGroup",
+        "rds:DeleteDBSubnetGroup",
+        "rds:ModifyDBSubnetGroup",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource",
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBSubnetGroups",
+        "rds:DescribeDBEngineVersions",
+        "rds:DescribeDBParameterGroups",
+        "rds:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:rds:us-east-1:ACCOUNT_ID:db:promisepatch-*",
+        "arn:aws:rds:us-east-1:ACCOUNT_ID:subgrp:promisepatch-*",
+        "arn:aws:rds:us-east-1:ACCOUNT_ID:pg:*",
+        "arn:aws:rds:us-east-1:ACCOUNT_ID:og:*"
+      ]
+    },
+    {
+      "Sid": "DatabaseClassIsCappedForTheSameReason",
+      "Effect": "Deny",
+      "Action": ["rds:CreateDBInstance", "rds:ModifyDBInstance"],
+      "Resource": "arn:aws:rds:us-east-1:ACCOUNT_ID:db:promisepatch-*",
+      "Condition": {
+        "StringNotEquals": {
+          "rds:DatabaseClass": ["db.t4g.micro", "db.t4g.small"]
+        }
+      }
+    },
+    {
+      "Sid": "LogGroupsWithARetentionLimit",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:DescribeLogGroups",
+        "logs:TagResource",
+        "logs:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/promisepatch/*"
+    },
+    {
+      "Sid": "ReadTheSecretsTheTemplateResolves",
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameter", "ssm:GetParameters"],
+      "Resource": "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/promisepatch/*"
+    },
+    {
+      "Sid": "DecryptThoseSecureStringsThroughSsmOnly",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:DescribeKey"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "kms:ViaService": "ssm.us-east-1.amazonaws.com" } }
+    },
+    {
+      "Sid": "ExactlyOneRuntimePrincipal",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:TagRole",
+        "iam:UntagRole"
+      ],
+      "Resource": "arn:aws:iam::ACCOUNT_ID:role/PromisePatchInstanceRole"
+    },
+    {
+      "Sid": "AndItsInstanceProfile",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateInstanceProfile",
+        "iam:DeleteInstanceProfile",
+        "iam:GetInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:TagInstanceProfile"
+      ],
+      "Resource": "arn:aws:iam::ACCOUNT_ID:instance-profile/PromisePatchInstanceProfile"
+    },
+    {
+      "Sid": "ThatRoleReachesThatHostAndNothingElse",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::ACCOUNT_ID:role/PromisePatchInstanceRole",
+      "Condition": { "StringEquals": { "iam:PassedToService": "ec2.amazonaws.com" } }
+    },
+    {
+      "Sid": "OnlyTheOneManagedPolicySessionManagerNeeds",
+      "Effect": "Deny",
+      "Action": ["iam:AttachRolePolicy", "iam:DetachRolePolicy"],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotEquals": {
+          "iam:PolicyARN": "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        }
+      }
+    },
+    {
+      "Sid": "NoOtherPrincipalMayBeCreatedOrAltered",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateUser",
+        "iam:CreateAccessKey",
+        "iam:CreateLoginProfile",
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:CreateServiceLinkedRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:AddUserToGroup",
+        "iam:PutUserPolicy",
+        "iam:PutGroupPolicy",
+        "iam:CreateSAMLProvider",
+        "iam:CreateOpenIDConnectProvider"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NoRolePassedAnywhereExceptThatOne",
+      "Effect": "Deny",
+      "Action": "iam:PassRole",
+      "NotResource": "arn:aws:iam::ACCOUNT_ID:role/PromisePatchInstanceRole"
+    },
+    {
+      "Sid": "NoDatabaseMayBeMadePublic",
+      "Effect": "Deny",
+      "Action": ["rds:CreateDBInstance", "rds:ModifyDBInstance"],
+      "Resource": "*",
+      "Condition": { "Bool": { "rds:PubliclyAccessible": "true" } }
+    }
+  ]
+}

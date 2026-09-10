@@ -33,6 +33,12 @@ dev = [
     "import-linter>=2.0",
     "httpx2>=2.0,<3",
     "pytest-asyncio>=0.24,<1",
+    # The P6 deployment definition is a CloudFormation template, and the test that reads it back
+    # needs a parser and its stubs. Declared rather than inherited: PyYAML arrives transitively
+    # today, and a test that depended on somebody else's dependency would break for a reason
+    # that had nothing to do with it.
+    "pyyaml>=6.0",
+    "types-PyYAML>=6.0",
 ]
 
 # Evaluation only, and deliberately its own group rather than part of `dev`. It is not a default

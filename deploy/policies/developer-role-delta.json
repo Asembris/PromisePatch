@@ -1,0 +1,204 @@
+{
+  "Comment": [
+    "The SMALLEST permission delta that unblocks the P6 deployment for a person.",
+    "",
+    "Substitute ACCOUNT_ID before use. Attach to PromisePatchDeveloperRole as an inline or",
+    "customer-managed policy named PromisePatchDeploymentEntry. Nothing here creates a",
+    "compute, database or network resource directly: the only mutation path is a",
+    "CloudFormation stack whose name must start with promisepatch-, executed with the",
+    "PromisePatchDeploymentRole service role. A person holding this delta cannot create an",
+    "EC2 instance, an RDS database or an IAM role by hand, and cannot pass any role other",
+    "than that one service role to any service other than CloudFormation.",
+    "",
+    "AdministratorAccess is not requested. No PassRole is wildcarded. Every statement is",
+    "scoped by resource, and the two that cannot be (an image-registry auth token and a",
+    "handful of account-wide Describe calls) are read-only."
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StackIsTheOnlyMutationPath",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateStack",
+        "cloudformation:UpdateStack",
+        "cloudformation:DeleteStack",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResource",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:GetTemplateSummary",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:ListChangeSets",
+        "cloudformation:ListStackResources"
+      ],
+      "Resource": "arn:aws:cloudformation:us-east-1:ACCOUNT_ID:stack/promisepatch-*/*"
+    },
+    {
+      "Sid": "StackListAndValidateAreAccountWideReads",
+      "Effect": "Allow",
+      "Action": ["cloudformation:ListStacks", "cloudformation:ValidateTemplate"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "HandTheStackItsServiceRoleAndNothingElse",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::ACCOUNT_ID:role/PromisePatchDeploymentRole",
+      "Condition": {
+        "StringEquals": { "iam:PassedToService": "cloudformation.amazonaws.com" }
+      }
+    },
+    {
+      "Sid": "PushImagesBecauseAPushIsNotAStackAction",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:CreateRepository",
+        "ecr:PutLifecyclePolicy",
+        "ecr:PutImageScanningConfiguration",
+        "ecr:TagResource",
+        "ecr:DescribeRepositories",
+        "ecr:DescribeImages",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:us-east-1:ACCOUNT_ID:repository/promisepatch/*"
+    },
+    {
+      "Sid": "RegistryAuthTokenHasNoResourceForm",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "WriteTheSecretsTheStackAndHostRead",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:PutParameter",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "ssm:DeleteParameter",
+        "ssm:AddTagsToResource"
+      ],
+      "Resource": "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/promisepatch/*"
+    },
+    {
+      "Sid": "EncryptAndDecryptThoseSecureStringsOnly",
+      "Effect": "Allow",
+      "Action": ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": { "kms:ViaService": "ssm.us-east-1.amazonaws.com" }
+      }
+    },
+    {
+      "Sid": "ReadTheDeployedLoopBackOut",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents",
+        "logs:StartLiveTail"
+      ],
+      "Resource": [
+        "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/promisepatch/*",
+        "arn:aws:logs:us-east-1:ACCOUNT_ID:log-group:/promisepatch/*:log-stream:*"
+      ]
+    },
+    {
+      "Sid": "RestartTheHostToProveTheCaseOutlivesIt",
+      "Effect": "Allow",
+      "Action": ["ec2:RebootInstances", "ec2:StopInstances", "ec2:StartInstances"],
+      "Resource": "arn:aws:ec2:us-east-1:ACCOUNT_ID:instance/*",
+      "Condition": {
+        "StringEquals": { "ec2:ResourceTag/Project": "promisepatch" }
+      }
+    },
+    {
+      "Sid": "ReachTheHostWithoutInboundSshOrAKeyPair",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:StartSession",
+        "ssm:TerminateSession",
+        "ssm:ResumeSession",
+        "ssm:DescribeSessions",
+        "ssm:DescribeInstanceInformation",
+        "ssm:GetConnectionStatus"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEqualsIfExists": { "ssm:resourceTag/Project": "promisepatch" }
+      }
+    },
+    {
+      "Sid": "PreflightAndDeployReadsOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeImages",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeVolumes",
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBSubnetGroups",
+        "rds:DescribeDBEngineVersions",
+        "iam:GetRole",
+        "iam:ListRoles",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:GetInstanceProfile",
+        "iam:SimulatePrincipalPolicy",
+        "ssm:DescribeParameters",
+        "pricing:GetProducts",
+        "pricing:DescribeServices",
+        "ce:GetCostAndUsage"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NeverBroadenIamFromHere",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:CreateUser",
+        "iam:CreateAccessKey",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:AddUserToGroup",
+        "iam:CreateInstanceProfile",
+        "iam:AddRoleToInstanceProfile"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NeverPassAnyOtherRoleAnywhere",
+      "Effect": "Deny",
+      "Action": "iam:PassRole",
+      "NotResource": "arn:aws:iam::ACCOUNT_ID:role/PromisePatchDeploymentRole"
+    }
+  ]
+}

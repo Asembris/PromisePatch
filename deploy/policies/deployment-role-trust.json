@@ -1,0 +1,24 @@
+{
+  "Comment": [
+    "Trust policy for PromisePatchDeploymentRole. Substitute ACCOUNT_ID before use.",
+    "",
+    "Only CloudFormation may assume it, and only when acting on a stack whose name starts",
+    "with promisepatch-. No person and no other service can assume this role, so the",
+    "resource-creating permissions it holds are reachable only through a template that was",
+    "submitted, recorded and can be read back."
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudformation.amazonaws.com" },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": { "aws:SourceAccount": "ACCOUNT_ID" },
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:cloudformation:us-east-1:ACCOUNT_ID:stack/promisepatch-*/*"
+        }
+      }
+    }
+  ]
+}

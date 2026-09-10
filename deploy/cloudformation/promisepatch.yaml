@@ -1,0 +1,524 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# The whole P6 deployment, in one stack.
+#
+#   internet ──443──▶ caddy (TLS) ──▶ api ──┬──▶ RDS PostgreSQL (private, encrypted)
+#                       │                   └──▶ Bedrock (one inference profile)
+#                       ├──▶ mcp   ──authenticated HTTP──▶ api
+#                       └──▶ order-simulator ──signed webhook over public HTTPS──▶ api
+#                                            (its own SQLite file on its own volume)
+#              worker ──▶ RDS         (no listening socket, restarted by the runtime)
+#
+# **One host, one database, and nothing else.** The local stack already separates these
+# processes by credential and by import graph rather than by machine, and that separation is
+# what the product's authority boundary rests on: `mcp` is given no database URL and cannot
+# import the domain, so it reaches a case only by an authenticated call to `api`. Splitting the
+# five containers across five AWS services would not strengthen that boundary -- it is enforced
+# by an import-linter contract and by which environment file each container receives -- and it
+# would add a load balancer, a service mesh's worth of task definitions and a NAT gateway to a
+# deployment whose job is to prove one loop survives outside a laptop.
+#
+# So the compute is a single EC2 instance running the same images with the same commands and
+# the same per-container environment files. What genuinely cannot stay on the host is the
+# state, and it does not: the case state and the step ledger live in RDS, which survives the
+# instance being stopped, replaced or terminated. That is the difference the deployment is
+# supposed to prove.
+#
+# **Honest limits.** One instance is one point of failure and is not a highly available
+# deployment; the restart proof here is a container and an instance restart against durable
+# state, not a failover. The order simulator is a separate system in the ways that matter --
+# its own image, process, store, port and zero shared credentials -- but in this stack it
+# shares a host, and its webhook to `api` therefore leaves the host and returns through the
+# public HTTPS endpoint so that the signature check crosses real TLS rather than a bridge
+# network. Both are named in docs/p6.1-deployment-preflight.md rather than left implicit.
+
+Description: >-
+  PromisePatch P6 deployed external loop: one EC2 host running api, worker, mcp, the order
+  simulator and a TLS proxy, against a private encrypted RDS PostgreSQL instance. The evidence
+  UI is not deployed by this stack: it is a Vite dev server locally and needs a static build
+  stage first, so it is a named P6 gap rather than a container here.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Placement }
+        Parameters: [VpcId, HostSubnetId, DatabaseSubnetIds]
+      - Label: { default: Ingress and TLS }
+        Parameters: [TlsHostname, AllowedIngressCidr]
+      - Label: { default: Sizing }
+        Parameters: [InstanceType, DatabaseInstanceClass, DatabaseStorageGiB]
+      - Label: { default: Release }
+        Parameters: [Environment, ImageTag]
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedPattern: "[a-z0-9-]{1,16}"
+    Description: Names the secret path, the log group and the database. Not a tier claim.
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: An existing VPC. The stack creates no VPC, no subnet and no NAT gateway.
+
+  HostSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: >-
+      A subnet with a route to an internet gateway. The host needs outbound 443 for Bedrock,
+      ECR, SSM, CloudWatch Logs and the ACME certificate order, and inbound 443 for the MCP
+      endpoint and the webhook. A public subnet with a public address is one NAT gateway
+      cheaper than a private subnet, and the security group is what limits the exposure.
+
+  DatabaseSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      Two or more subnets in different availability zones. RDS requires the subnet group to
+      span zones even for a single-AZ instance. The database is not publicly accessible.
+
+  TlsHostname:
+    Type: String
+    Description: >-
+      The hostname the certificate is issued for and the name every client verifies. Point a
+      DNS A record at the stack's ElasticIp output before the host finishes booting. Leaving
+      this empty is not supported: a deployment without a verifiable name would mean turning
+      TLS verification off somewhere, which is the one thing this stack must not do.
+    AllowedPattern: "[a-z0-9.-]{4,253}"
+
+  AllowedIngressCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: >-
+      Who may reach 80 and 443. The default is the internet because the loop is meant to be
+      reached from outside; narrow it to a known address range when only a single client and
+      the ACME validation need in.
+    AllowedPattern: "([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}"
+
+  InstanceType:
+    Type: String
+    Default: t4g.small
+    AllowedValues: [t4g.small, t4g.medium]
+    Description: Graviton. The images build for arm64 and the deployment role caps this list.
+
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues: [db.t4g.micro, db.t4g.small]
+
+  DatabaseStorageGiB:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+
+  ImageTag:
+    Type: String
+    Description: >-
+      The image tag the host pulls, and the one thing that says which release is deployed.
+      Use the release commit SHA, never `latest`: G8 requires verifying the deployed version
+      rather than an old image, and a moving tag makes that unanswerable.
+    AllowedPattern: "[A-Za-z0-9._-]{1,128}"
+
+  HostAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: Resolved from the AWS-published parameter, so no AMI id is pinned in git.
+
+Resources:
+  # --------------------------------------------------------------------------------- network
+
+  HostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PromisePatch host. Inbound 80/443 only; egress 443 and the database.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: HTTPS for the MCP endpoint, the workspace and the inbound webhook.
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref AllowedIngressCidr
+        - Description: >-
+            ACME HTTP-01 validation and the redirect to HTTPS. Nothing else is served here.
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref AllowedIngressCidr
+      SecurityGroupEgress:
+        # Egress is a closed list, not the default allow-all. Bedrock, ECR, SSM, CloudWatch
+        # Logs, the ACME directory and the public image registries are all 443; the database is
+        # the only other destination this host has any reason to reach.
+        - Description: Bedrock, ECR, SSM, CloudWatch Logs, ACME, image registries.
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags: [{ Key: Project, Value: promisepatch }]
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PromisePatch database. Reachable only from the host security group.
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - Description: The database initiates nothing.
+          IpProtocol: "-1"
+          CidrIp: 127.0.0.1/32
+      Tags: [{ Key: Project, Value: promisepatch }]
+
+  # Declared apart from the groups so the two can reference each other without a cycle. This
+  # is the only path to the database: no public address, no CIDR allowance, no bastion.
+  DatabaseIngressFromHost:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt DatabaseSecurityGroup.GroupId
+      Description: PostgreSQL from the application host, and from nothing else.
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !GetAtt HostSecurityGroup.GroupId
+
+  HostEgressToDatabase:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt HostSecurityGroup.GroupId
+      Description: PostgreSQL to the stack's database.
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      DestinationSecurityGroupId: !GetAtt DatabaseSecurityGroup.GroupId
+
+  # ------------------------------------------------------------------------------- durability
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: PromisePatch database subnets.
+      SubnetIds: !Ref DatabaseSubnetIds
+      Tags: [{ Key: Project, Value: promisepatch }]
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    # Retained on stack deletion on purpose. The case state is the evidence a deployed loop
+    # actually happened; a `delete-stack` typed at the wrong moment must not be able to erase
+    # it. Deleting it is a separate, deliberate act.
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub promisepatch-${Environment}
+      Engine: postgres
+      # Deliberately unpinned to a minor version: RDS selects the current default for the
+      # major, and the schema is Alembic's rather than any version's. The major matters and is
+      # the one the local stack uses.
+      EngineVersion: "16"
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      AllocatedStorage: !Ref DatabaseStorageGiB
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups: [!GetAtt DatabaseSecurityGroup.GroupId]
+      MasterUsername: postgres
+      # Never a literal, never a stack parameter, never in the template or in an event log.
+      # CloudFormation resolves the SecureString at create time and does not echo it.
+      MasterUserPassword: !Sub "{{resolve:ssm-secure:/promisepatch/${Environment}/db-master-password}}"
+      DBName: promisepatch
+      BackupRetentionPeriod: 7
+      CopyTagsToSnapshot: true
+      AutoMinorVersionUpgrade: true
+      DeletionProtection: false
+      Tags: [{ Key: Project, Value: promisepatch }]
+
+  # ---------------------------------------------------------------------------------- output
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /promisepatch/${Environment}
+      # Container output leaves the host, so restarting a process does not erase the evidence
+      # of what it did. Fourteen days is long enough to review a rehearsal and short enough
+      # that ingestion cost stays a rounding error.
+      RetentionInDays: 14
+      Tags: [{ Key: Project, Value: promisepatch }]
+
+  # ----------------------------------------------------------------------------- the runtime
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: PromisePatchInstanceRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      # The only managed policy anywhere in this stack, and it buys a real reduction: with
+      # Session Manager the host needs no inbound SSH port, no key pair and no bastion.
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: PromisePatchRuntime
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: PullOwnImages
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                # Named rather than referenced: the registry is not part of this stack. It
+                # has to exist before the stack does -- a host that booted before any image was
+                # pushed could not start -- and it should outlive `delete-stack` so a redeploy
+                # does not re-push every layer. deploy/deploy.sh creates it, idempotently.
+                Resource:
+                  - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/promisepatch/backend
+                  - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/promisepatch/order-simulator
+              - Sid: RegistryAuthTokenHasNoResourceForm
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: ReadOwnSecretsAtBoot
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/promisepatch/${Environment}/*
+              - Sid: DecryptThemThroughSsmOnly
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
+              - Sid: ShipContainerOutput
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !GetAtt LogGroup.Arn
+                  - !Sub ${LogGroup.Arn}:log-stream:*
+              # The orchestrator's one semantic job. A cross-region inference profile needs
+              # both the profile ARN and the foundation-model ARNs in every region it may
+              # route to -- scoping to the profile alone produces a denial at call time.
+              - Sid: InvokeExactlyOneModel
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.amazon.nova-2-lite-v1:0
+                  - arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-2-lite-v1:0
+                  - arn:aws:bedrock:us-east-2::foundation-model/amazon.nova-2-lite-v1:0
+                  - arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-2-lite-v1:0
+      Tags: [{ Key: Project, Value: promisepatch }]
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: PromisePatchInstanceProfile
+      Roles: [!Ref InstanceRole]
+
+  # A stable address, allocated before the host so the DNS record can be pointed at it and the
+  # certificate ordered on first boot. It also means stopping and starting the instance does
+  # not invalidate the hostname every client verifies.
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags: [{ Key: Project, Value: promisepatch }]
+
+  ElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt ElasticIp.AllocationId
+      InstanceId: !Ref Host
+
+  Host:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref HostAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref HostSubnetId
+      SecurityGroupIds: [!GetAtt HostSecurityGroup.GroupId]
+      # No KeyName. Access is Session Manager or nothing, which is why no inbound 22 exists.
+      Monitoring: false
+      MetadataOptions:
+        # IMDSv2 only. A token-less metadata read is how an application-layer request forgery
+        # turns into the instance's credentials, and this host holds a Bedrock permission.
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      Tags:
+        - { Key: Project, Value: promisepatch }
+        - { Key: Name, Value: !Sub "promisepatch-${Environment}" }
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          exec > >(tee /var/log/promisepatch-boot.log) 2>&1
+
+          # Everything below runs again on every boot, not only the first: the compose file,
+          # the environment files and the secrets are all re-read, so a restarted or replaced
+          # host converges on the same deployment rather than on whatever was left behind.
+
+          dnf -y update
+          dnf -y install docker amazon-cloudwatch-agent
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          systemctl enable --now docker
+
+          COMPOSE_VERSION=v2.32.4
+          curl -fsSL --proto '=https' --tlsv1.2 \
+            "https://github.com/docker/compose/releases/download/$${COMPOSE_VERSION}/docker-compose-linux-aarch64" \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
+
+          REGION=${AWS::Region}
+          ACCOUNT=${AWS::AccountId}
+          PREFIX=/promisepatch/${Environment}
+          REGISTRY=$${ACCOUNT}.dkr.ecr.$${REGION}.amazonaws.com
+          install -d -m 0750 /opt/promisepatch /opt/promisepatch/env
+
+          param () { aws ssm get-parameter --with-decryption --region "$${REGION}" \
+                       --name "$${PREFIX}/$${1}" --query Parameter.Value --output text; }
+
+          # The composition and the TLS configuration are stored as parameters rather than
+          # baked into this script, so a change to either is a parameter write and a restart
+          # instead of an instance replacement.
+          param compose   > /opt/promisepatch/docker-compose.yml
+          param caddyfile > /opt/promisepatch/Caddyfile
+
+          DB_PASSWORD=$(param db-app-password)
+          DB_MASTER_PASSWORD=$(param db-master-password)
+          MCP_BEARER_TOKEN=$(param mcp-bearer-token)
+          SESSION_SECRET=$(param session-secret)
+          WEBHOOK_SECRET=$(param order-webhook-secret)
+          INTERNAL_TOKEN=$(param internal-service-token)
+          WORKER_PASSWORD=$(param demo-worker-password)
+          OWNER_PASSWORD=$(param demo-owner-password)
+
+          HOST=${Database.Endpoint.Address}
+          PORT=${Database.Endpoint.Port}
+          PUBLIC=https://${TlsHostname}
+
+          # One file per container, exactly as the local stack does it. The migration and seed
+          # credential never reaches api, worker or mcp; mcp receives no database URL at all.
+          umask 0077
+          cat > /opt/promisepatch/env/migrate.env <<EOF
+          PP_ENV=aws
+          PP_AWS_REGION=$${REGION}
+          PP_MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:$${DB_MASTER_PASSWORD}@$${HOST}:$${PORT}/promisepatch
+          PP_DB_APP_PASSWORD=$${DB_PASSWORD}
+          PP_ALLOW_FIXTURE_RESET=true
+          PP_DEMO_WORKER_PASSWORD=$${WORKER_PASSWORD}
+          PP_DEMO_OWNER_PASSWORD=$${OWNER_PASSWORD}
+          EOF
+
+          cat > /opt/promisepatch/env/api.env <<EOF
+          PP_ENV=aws
+          PP_AWS_REGION=$${REGION}
+          PP_DATABASE_URL=postgresql+asyncpg://promisepatch_app:$${DB_PASSWORD}@$${HOST}:$${PORT}/promisepatch
+          PP_SESSION_SECRET=$${SESSION_SECRET}
+          PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
+          PP_ORDER_SYSTEM_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
+          PP_ORDER_SYSTEM_BASE_URL=http://order-simulator:8100
+          PP_CORS_ORIGINS=$${PUBLIC}
+          PP_SURFACE_WORKER_ID=worker-lena
+          PP_BEDROCK_MODEL_ID=us.amazon.nova-2-lite-v1:0
+          EOF
+
+          cat > /opt/promisepatch/env/mcp.env <<EOF
+          PP_ENV=aws
+          PP_MCP_BEARER_TOKEN=$${MCP_BEARER_TOKEN}
+          PP_MCP_INTENT_API_BASE_URL=http://api:8000
+          PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
+          PP_MCP_ALLOWED_ORIGINS=$${PUBLIC}
+          PP_MCP_ALLOWED_HOSTS=${TlsHostname}
+          PP_SURFACE_WORKER_ID=worker-lena
+          EOF
+
+          # The simulator holds no PostgreSQL credential and shares no environment file. Its
+          # webhook target is the public HTTPS name, so the signature it computes is verified
+          # across a real TLS connection rather than over a container bridge.
+          cat > /opt/promisepatch/env/order-simulator.env <<EOF
+          OS_LOG_LEVEL=info
+          OS_DATABASE_PATH=/data/order-simulator.sqlite3
+          OS_WEBHOOK_URL=$${PUBLIC}/api/integrations/order-system/events
+          OS_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
+          EOF
+
+          cat > /opt/promisepatch/env/stack.env <<EOF
+          REGISTRY=$${REGISTRY}
+          IMAGE_TAG=${ImageTag}
+          TLS_HOSTNAME=${TlsHostname}
+          LOG_GROUP=/promisepatch/${Environment}
+          AWS_REGION=$${REGION}
+          EOF
+          umask 0022
+
+          aws ecr get-login-password --region "$${REGION}" \
+            | docker login --username AWS --password-stdin "$${REGISTRY}"
+
+          cd /opt/promisepatch
+          docker compose --env-file env/stack.env pull
+          docker compose --env-file env/stack.env up -d --remove-orphans
+
+          # A systemd unit, so an instance reboot brings the stack back without this script.
+          cat > /etc/systemd/system/promisepatch.service <<'EOF'
+          [Unit]
+          Description=PromisePatch deployed stack
+          After=docker.service
+          Requires=docker.service
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          WorkingDirectory=/opt/promisepatch
+          ExecStart=/usr/bin/docker compose --env-file env/stack.env up -d
+          ExecStop=/usr/bin/docker compose --env-file env/stack.env down
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          systemctl daemon-reload
+          systemctl enable promisepatch.service
+
+Outputs:
+  PublicAddress:
+    Description: Point the TlsHostname DNS A record at this before the certificate is ordered.
+    Value: !Ref ElasticIp
+
+  PublicUrl:
+    Description: The verified HTTPS origin. The MCP endpoint is this plus /mcp.
+    Value: !Sub https://${TlsHostname}
+
+  McpEndpoint:
+    Value: !Sub https://${TlsHostname}/mcp
+
+  WebhookEndpoint:
+    Description: Where the separate order system posts its signed events.
+    Value: !Sub https://${TlsHostname}/api/integrations/order-system/events
+
+  DatabaseEndpoint:
+    Description: Private. Not reachable from outside the host security group.
+    Value: !GetAtt Database.Endpoint.Address
+
+  HostInstanceId:
+    Description: For `aws ssm start-session --target <this>`, and for the restart proof.
+    Value: !Ref Host
+
+  LogGroupName:
+    Value: !Ref LogGroup
+
+  InstanceRoleArn:
+    Description: The only runtime principal the deployment creates.
+    Value: !GetAtt InstanceRole.Arn
