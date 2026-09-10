@@ -19,6 +19,11 @@ malformed JSON -- it is confident, plausible, well-typed invention.
 For ``verbalise`` the second question has three parts, because a passage can go wrong in three
 directions: it can reach past the facts it was given, fall short of the ones the application
 said it could not leave out, or state a number that appears in none of them.
+
+For ``select_tool`` it has two. The verb must be one the caller actually offered for the phase
+the case is in -- ``CONFIRM`` is a real member of the enum and is not available to a case that
+is still being read -- and the optional glue must say nothing about the world. Both are checks
+against the request, which is the only side PromisePatch wrote.
 """
 
 from __future__ import annotations
@@ -32,12 +37,15 @@ import pydantic
 
 from promisepatch.semantic.contracts import (
     CandidateNodeType,
+    ConversationTool,
     InterpretUtteranceRequest,
     ObservationInterpretation,
     ReplyIntentReading,
+    SelectToolRequest,
     SemanticJob,
     SemanticRequest,
     SemanticValue,
+    ToolSelection,
     Verbalisation,
     VerbaliseRequest,
 )
@@ -127,6 +135,17 @@ JOB_SPECS: Final[Mapping[SemanticJob, JobSpec]] = {
         result_model=Verbalisation,
         max_tokens=256,
     ),
+    SemanticJob.SELECT_TOOL: JobSpec(
+        job=SemanticJob.SELECT_TOOL,
+        tool_name="record_tool_choice",
+        tool_description=(
+            "Record which permitted verb this turn is asking for. Calls nothing, runs "
+            "nothing and carries no arguments: PromisePatch decides whether to act on your "
+            "choice and supplies every argument itself."
+        ),
+        result_model=ToolSelection,
+        max_tokens=128,
+    ),
 }
 """The jobs that exist. A model reaches nothing that is not in this mapping."""
 
@@ -156,6 +175,8 @@ def validate(request: SemanticRequest, payload: object) -> SemanticValue:
         return _ground_interpretation(request, _parse(spec, ObservationInterpretation, data))
     if isinstance(request, VerbaliseRequest):
         return _ground_verbalisation(request, _parse(spec, Verbalisation, data))
+    if isinstance(request, SelectToolRequest):
+        return _ground_selection(request, _parse(spec, ToolSelection, data))
     return _parse(spec, ReplyIntentReading, data)
 
 
@@ -286,6 +307,136 @@ def _ground_verbalisation(request: VerbaliseRequest, value: Verbalisation) -> Ve
     return value
 
 
+MAX_PREFACE_WORDS = 25
+"""How long the glue may be, in words. Short enough that there is nothing to hide in.
+
+A character bound is on the contract already; this is the one a person would notice. Twenty-five
+words is a greeting and an acknowledgement, and it is not room for a summary of the sentence
+underneath it.
+"""
+
+CLAIM_WORDS: Final[frozenset[str]] = frozenset(
+    {
+        "applied",
+        "approved",
+        "arranged",
+        "asked",
+        "authorised",
+        "authorized",
+        "booked",
+        "called",
+        "cancelled",
+        "canceled",
+        "changed",
+        "complete",
+        "completed",
+        "confirmed",
+        "consented",
+        "declined",
+        "delivered",
+        "done",
+        "emailed",
+        "finished",
+        "fixed",
+        "guaranteed",
+        "handled",
+        "informed",
+        "messaged",
+        "notified",
+        "ordered",
+        "recovered",
+        "refunded",
+        "replaced",
+        "rescheduled",
+        "resolved",
+        "safe",
+        "sent",
+        "settled",
+        "sorted",
+        "substituted",
+        "texted",
+        "updated",
+    }
+)
+"""Words a preface may not contain, because each one reports an outcome.
+
+Every member is a thing the product says only when a durable source exists for it, and the
+sentence that says it is rendered deterministically and stands immediately after the glue. So
+a preface has no reason to reach for any of them, and a preface that does is either claiming
+something PromisePatch has not established or restating something it is about to.
+
+The list bans the word in either direction. "Nothing has been sent" is true and is still
+refused here: the trusted sentence is the place that says it, and a gate that had to work out
+which side of a negation a claim fell on would be a gate that read prose for meaning -- which
+is exactly the thing this boundary does not do.
+
+Narrow by construction. It is a floor, not a proof: a model determined to imply completion
+without any of these words can. What it establishes is that the outcome a worker acts on never
+comes from the glue at all, because the glue is never the sentence that reports one.
+"""
+
+
+def _ground_selection(request: SelectToolRequest, value: ToolSelection) -> ToolSelection:
+    """Two questions: was the verb on offer, and does the glue claim anything.
+
+    *Was the verb on offer.* ``ConversationTool`` is a closed enum and that is not enough:
+    ``CONFIRM`` is a real member and is not available to a case nobody has planned. The check
+    is against ``permitted`` on the request -- the set deterministic code computed from a case
+    reading the server rendered -- so a phase that was narrowed for a reason stays narrowed.
+    ``NONE`` is always acceptable, because declining to act is never something to withhold.
+
+    *Does the glue claim anything.* A preface is conversational and carries no information; a
+    preface with a number in it, or one of the words that report an outcome, is doing a job the
+    deterministic sentence behind it already does. Refused rather than trimmed: a repaired
+    sentence is one nobody wrote, and the caller already holds a rendering it can use instead.
+    """
+    if value.tool is not ConversationTool.NONE and value.tool not in request.permitted:
+        raise SemanticValidationError(
+            f"{value.tool.value} is not available in phase {request.phase.value}",
+            category=ValidationFailure.UNSUPPORTED_VOCABULARY,
+        )
+    if value.preface is not None:
+        _ground_preface(value.preface)
+    return value
+
+
+def _ground_preface(preface: str) -> None:
+    """A sentence of glue, or a refusal naming what made it a claim."""
+    words = preface.split()
+    if len(words) > MAX_PREFACE_WORDS:
+        raise SemanticValidationError(
+            f"the glue ran to {len(words)} words against a limit of {MAX_PREFACE_WORDS}",
+            category=ValidationFailure.UNSUPPORTED_CLAIM,
+        )
+    if _DIGITS.search(preface):
+        raise SemanticValidationError(
+            "the glue states a figure, and every figure this product says is rendered from a row",
+            category=ValidationFailure.UNSUPPORTED_CLAIM,
+        )
+    said = {_bare(word) for word in words}
+    claimed = sorted(said & CLAIM_WORDS)
+    if claimed:
+        raise SemanticValidationError(
+            f"the glue says {', '.join(claimed)}, which reports an outcome it cannot establish",
+            category=ValidationFailure.UNSUPPORTED_CLAIM,
+        )
+
+
+_TRIMMED: Final = "\"'.,!?;:()[]-" + chr(0x2014) + chr(0x2019)
+"""Punctuation a word may be wrapped in, including the two the typographers use.
+
+Built with :func:`chr` rather than written out, so the em dash and the curly apostrophe
+are named by codepoint instead of pasted into source where they read as their ASCII
+lookalikes. What they are is the point: a preface ending in a smart quote must still
+match the word it ends with.
+"""
+
+
+def _bare(word: str) -> str:
+    """One word, lowercased and stripped of the punctuation around it."""
+    return word.strip(_TRIMMED).lower()
+
+
 _DIGITS = re.compile(r"\d+(?:[.,]\d+)?")
 """Runs of digits, and nothing cleverer.
 
@@ -301,4 +452,11 @@ def _numbers(text: str) -> set[str]:
     return set(_DIGITS.findall(text))
 
 
-__all__ = ["JOB_SPECS", "JobSpec", "spec_for", "validate"]
+__all__ = [
+    "CLAIM_WORDS",
+    "JOB_SPECS",
+    "MAX_PREFACE_WORDS",
+    "JobSpec",
+    "spec_for",
+    "validate",
+]

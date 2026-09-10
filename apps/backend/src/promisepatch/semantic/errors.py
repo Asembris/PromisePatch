@@ -102,6 +102,16 @@ class ValidationFailure(StrEnum):
     is the failure that actually costs somebody a cake, and it is worth refusing outright.
     """
 
+    UNSUPPORTED_CLAIM = "UNSUPPORTED_CLAIM"
+    """Conversational glue that said something about the world instead of nothing.
+
+    The failure that matters in a spoken loop: a model wraps a deterministic sentence in a
+    friendly one, and the friendly one says "all sorted" about work that is only planned. The
+    check is a closed list of words plus a ban on digits -- narrow by construction, and narrow
+    on purpose, because the glue is allowed to carry no information at all. Anything it could
+    legitimately want to say is already in the sentence it is standing in front of.
+    """
+
     MISSING_REQUIRED_FACT = "MISSING_REQUIRED_FACT"
     """A passage that left out a fact the application said it could not leave out.
 

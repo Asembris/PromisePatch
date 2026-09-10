@@ -39,6 +39,7 @@ DEFAULT_REPLIES: Final[Mapping[SemanticJob, object]] = {
     SemanticJob.INTERPRET_UTTERANCE: {"clarification_needed": True},
     SemanticJob.CLASSIFY_REPLY_INTENT: {"apparent_intent": "UNCLEAR"},
     SemanticJob.VERBALISE: {"speech": "Recorded.", "fact_refs": []},
+    SemanticJob.SELECT_TOOL: {"tool": "NONE"},
 }
 """What the fake says when nothing was scripted: understood nothing, claimed nothing.
 
@@ -49,6 +50,10 @@ The verbalisation default accounts for no facts at all, which any real explanati
 refuses -- so an unconfigured deployment says the deterministic passage rather than the word
 "Recorded." That is the same answer it would give if the provider were unreachable, which is
 the property this file exists to preserve.
+
+``NONE`` is the tool-selection default for the same reason. A conversational loop wired to the
+fake by accident chooses no tool, reports the case as it stands and changes nothing, rather
+than picking the first verb on the list and opening a case out of a greeting.
 """
 
 

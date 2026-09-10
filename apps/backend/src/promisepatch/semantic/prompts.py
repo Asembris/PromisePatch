@@ -21,7 +21,9 @@ from __future__ import annotations
 
 from promisepatch.semantic.contracts import (
     ClassifyReplyIntentRequest,
+    ConversationPhase,
     InterpretUtteranceRequest,
+    SelectToolRequest,
     SemanticJob,
     SemanticRequest,
     UntrustedText,
@@ -114,6 +116,36 @@ record into plain spoken English.
   for somebody's diet, refunded, or will be delivered. Those are claims about the world, and
   you are phrasing a record of one.\
 """,
+    SemanticJob.SELECT_TOOL: """\
+Your job: read one thing a kitchen worker just said, and choose which of the listed verbs it
+is asking for.
+
+- Choose one verb from PERMITTED, or NONE. NONE is always allowed and is the right answer when
+  the turn is not asking for any of them. A verb that is not listed is not available in this
+  phase, and choosing one is refused rather than attempted.
+- You are not filling anything in. You return a verb and nothing else: no case, no plan, no
+  order, no customer, no quantity, no identifier, no wording. PromisePatch supplies every
+  argument itself, from the worker's own sentence and from what its own tools returned.
+- CONFIRM is a worker authorising a plan they have been read. Choose it only when the worker
+  themselves has just said yes to it in this turn. You cannot say yes on their behalf, and a
+  turn that discusses the plan, asks about it or agrees with the reasoning is not a yes.
+- CLARIFY is the worker answering the question that was put to them. Their answer is passed on
+  exactly as they said it; you are not choosing what it means.
+- REPORT is a worker telling PromisePatch that something physical has gone wrong.
+- STATUS is a request to hear where the case stands. It changes nothing, and it is the safe
+  choice whenever you are unsure between STATUS and something else.
+
+You may also return one short preface: a single sentence of ordinary conversational warmth
+that goes in front of the sentence PromisePatch has already written. It is optional and
+leaving it out is always correct.
+
+- The preface may not say what has happened, what will happen, or what anything now is. Do not
+  say that anything is done, changed, sent, asked, confirmed, approved, cancelled, delivered,
+  fixed, safe or handled -- not even to say that it is not. PromisePatch's own sentence
+  reports every one of those, and it goes immediately after yours.
+- No numbers, no names, no order references, no identifiers.
+- One short sentence. A preface that breaks any of these rules causes the whole answer to be
+  refused, and the worker hears PromisePatch's sentence on its own.""",
 }
 
 
@@ -154,6 +186,8 @@ def build_user_content(request: SemanticRequest) -> str:
         return _interpret_content(request)
     if isinstance(request, ClassifyReplyIntentRequest):
         return fence(request.reply)
+    if isinstance(request, SelectToolRequest):
+        return _select_tool_content(request)
     return _verbalise_content(request)
 
 
@@ -186,6 +220,46 @@ def _interpret_content(request: InterpretUtteranceRequest) -> str:
         )
 
     lines.extend(["", "WORKER STATEMENT", fence(request.utterance)])
+    return "\n".join(lines)
+
+
+_PHASE_SENTENCE = {
+    ConversationPhase.NO_CASE: "No case is open. Nothing has been reported yet.",
+    ConversationPhase.UNDERSTANDING: "A case is open and PromisePatch is still reading it.",
+    ConversationPhase.CLARIFYING: "A case is open and is waiting for the worker to answer one "
+    "question that has already been put to them.",
+    ConversationPhase.PLANNED: "A case is open, a plan has been prepared, and it is waiting for "
+    "this worker to say yes to it. Nothing has been done.",
+    ConversationPhase.WORKING: "A case is open, was already confirmed, and work is under way.",
+    ConversationPhase.NEEDS_HUMAN: "A case is open and needs a person to read it.",
+    ConversationPhase.SETTLED: "The case is finished.",
+}
+"""One fixed sentence per phase. Authored here, so the caller cannot write prose into a prompt.
+
+A phase is a closed label on the request rather than free text for the same reason every
+identifier is a candidate rather than a string: what the model is told about the world is
+something PromisePatch can be held to, and a sentence assembled at a call site is not.
+"""
+
+
+def _select_tool_content(request: SelectToolRequest) -> str:
+    """The phase, the offer, and the worker's turn last and fenced.
+
+    Nothing about the case travels: not its id, not the plan, not a promise, not a customer.
+    Choosing a verb needs the phase and the offer, and everything else would be a detail the
+    answer could repeat back as though the model had established it.
+    """
+    lines = [
+        f"PHASE: {request.phase.value}",
+        f"  {_PHASE_SENTENCE[request.phase]}",
+        "",
+        "PERMITTED",
+        *(f"  {tool.value}" for tool in request.permitted),
+        "  NONE",
+        "",
+        "WORKER TURN",
+        fence(request.turn),
+    ]
     return "\n".join(lines)
 
 
