@@ -157,6 +157,29 @@ half of it, and the expected labels are loaded from the manifest -- S02's frozen
 S11's frozen `ord-d` argument applied -- with its published identity asserted before anything
 else runs, rather than from anything the run observed.
 
+**P6 is open. Its first slice, the deployment preflight, is done, and the deployment itself is
+blocked on IAM.** The active identity is `PromisePatchDeveloperRole`, and a reproducible
+zero-mutation preflight (`scripts/aws_preflight.py`, read-only by construction: a probe naming
+an API outside a frozen list aborts the run) establishes that it holds **2 of 9 required
+permissions** -- `sts:GetCallerIdentity`, and `bedrock:InvokeModel` on exactly the
+`us.amazon.nova-2-lite-v1:0` inference profile. CloudFormation, EC2, RDS, ECR, SSM, CloudWatch
+Logs and IAM are all denied, the role cannot read its own policy, and the account is not
+subscribed to App Runner. **No AWS resource was created and IAM was not broadened.** The
+smallest architecture that closes G6 is chosen and fully written: one EC2 host running the same
+images with the same per-container environment files as the local stack, a private encrypted RDS
+PostgreSQL for the case state, Caddy terminating TLS with a publicly trusted certificate, ECR,
+SSM Parameter Store for secrets and configuration, and CloudWatch Logs -- no load balancer, no
+NAT gateway, no ECS, no Secrets Manager. Three roles with one job each, both `iam:PassRole`
+grants fenced to a single role and a single service and additionally denied by `NotResource`,
+and no `AdministratorAccess` anywhere. Cost is list-price arithmetic over declared quantities:
+about $33 a month standing, and about $0.0039 per conversation from the measured P5.3 token
+counts. **AgentCore is declined for this slice** and the roadmap's ordinary-compute fallback
+taken, because the role cannot reach AgentCore at all, adopting it would replace the
+authenticated Streamable HTTP boundary G5 closed, and it buys nothing this slice lacks. Nothing
+is deployed, no restart proof is taken, no deployed conversation has run and no Telegram work
+was started; G6 is not advanced beyond this preparation. See
+`docs/p6.1-deployment-preflight.md`.
+
 **Full G5 is not closed and is not claimed to be.** Three items are carried forward as explicit
 G7 obligations, exactly as the cutoff directs and with no promised capability silently deleted:
 the **bounded withdrawal**, which is the fifth frozen tool and remains absent rather than
