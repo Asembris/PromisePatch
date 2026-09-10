@@ -71,6 +71,25 @@ reconnect -- plus a PostgreSQL suite that drives the whole chain and asserts the
 model call: nothing in this slice reaches a provider. See `docs/p5.1-mcp-transport-spine.md` and
 ADR-0009.
 
+**P5.2, clarification and plan confirmation, is done.** The surface is now four of the five
+frozen tools -- `report`, `clarify`, `confirm`, `status` -- with the bounded withdrawal still
+absent rather than stubbed. `clarify` stores the worker's answer to the one open question byte
+for byte and hands the case back to the interpreter, concluding nothing; which physical outcome
+that answer selects is decided by the worker process, against options captured from the
+delivery's own rows when the question was asked. `confirm` requires a **`plan_id`**: a derived,
+opaque, never-stored SHA-256 identity of the plan `status` presented, covering the case version
+and every track including the untouched ones, recomputed and compared under the confirming lock
+and refused if the case has moved on. A yes therefore authorises the plan that was read out and
+nothing else -- stale, wrong-case, replayed and repeated confirmations all fail closed through
+existing domain semantics, and worker plan confirmation stays wholly distinct from customer
+consent. `status` now carries the open question with its options and, only on a `PLANNED` case,
+the plan identity and `awaiting_confirmation`; both new tools' speech is rendered by
+`status_view` and delivered as given, reporting permission and never completion. Proved by the
+canonical conversation driven end to end over the real protocol -- report, question, answer,
+plan, explicit yes, authorised status with nothing carried out -- plus staleness, replay and
+wrong-state cases, offline protocol tests, and pure tests for the identity and the vocabulary.
+No live model call. See `docs/p5.2-mcp-clarification-and-confirmation.md` and ADR-0010.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,

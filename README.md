@@ -15,8 +15,8 @@ An active hackathon build. What exists today is the deterministic engine
 case engine, the Live Operations screen, the external order-system integration — a separate
 order system that owns order state, a signed event ingress, and governed recovery amendments
 pushed back at it — the semantic boundary an Amazon Bedrock model answers through, now wired
-into exception intake, and an authenticated **MCP Streamable HTTP endpoint** carrying the first
-two of the five intent tools. There is no deployment.
+into exception intake, and an authenticated **MCP Streamable HTTP endpoint** carrying four of
+the five intent tools -- report, clarify, confirm and status. There is no deployment.
 
 ## The frozen effect-set manifest
 
@@ -173,8 +173,10 @@ A few properties are worth knowing before you use it:
   rather than intended. It speaks protocol revision **2025-11-25** over Streamable HTTP, refuses
   an unauthenticated caller before the protocol layer, and rejects an unlisted `Origin`. Point a
   client at it with the bearer token from `docker/env/mcp.env`;
-  [docs/p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) is the tool contract and
-  what was proved about it.
+  [docs/p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) is the transport contract
+  and [docs/p5.2-mcp-clarification-and-confirmation.md](docs/p5.2-mcp-clarification-and-confirmation.md)
+  is the current tool contract, including why a confirmation has to quote back the identity of
+  the plan it is confirming.
 - **The order system is a different system, and is meant to look like one.** It runs in its
   own process, over its own SQLite volume, on its own port, with its own UI. PromisePatch
   mirrors it and pushes governed amendments at it; neither reads the other's storage. It is a
@@ -239,7 +241,8 @@ protocol -- initialization, negotiation, discovery, framing, the bearer challeng
 and `Host` rejections, the JSON-RPC error codes and the absence of a session to resume:
 
 ```bash
-uv run pytest apps/backend/tests/test_mcp_protocol.py apps/backend/tests/test_status_view.py
+uv run pytest apps/backend/tests/test_mcp_protocol.py apps/backend/tests/test_status_view.py \
+  apps/backend/tests/test_plan_identity.py
 ```
 
 What a tool call *causes* needs the database. That suite drives the whole chain end to end --
