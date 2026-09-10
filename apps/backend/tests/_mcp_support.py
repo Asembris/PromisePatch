@@ -44,6 +44,10 @@ BEARER = "test-mcp-bearer-token"
 SERVICE_TOKEN = "test-internal-service-token"
 SURFACE_WORKER = "maya"
 ALLOWED_ORIGIN = "http://localhost:5173"
+PLAN_ID = "0" * 64
+"""A plan identity of the right shape for the offline suite. Opaque to the MCP process, which
+is the point: it forwards the string and computes nothing, so any 64 hex characters exercise
+exactly the code path a real digest would."""
 
 JSON_RPC_HEADERS = {
     "Content-Type": "application/json",
@@ -75,6 +79,10 @@ class RecordingIntents:
     calls: list[RecordedCall] = field(default_factory=list)
     report_status: int = 202
     report_body: dict[str, Any] | None = None
+    clarify_status: int = 202
+    clarify_body: dict[str, Any] | None = None
+    confirm_status: int = 202
+    confirm_body: dict[str, Any] | None = None
     status_status: int = 200
     status_body: dict[str, Any] | None = None
 
@@ -82,6 +90,8 @@ class RecordingIntents:
         return Starlette(
             routes=[
                 Route("/internal/intents/report", self._report, methods=["POST"]),
+                Route("/internal/intents/clarify", self._clarify, methods=["POST"]),
+                Route("/internal/intents/confirm", self._confirm, methods=["POST"]),
                 Route("/internal/intents/status", self._status, methods=["POST"]),
             ]
         )
@@ -102,6 +112,35 @@ class RecordingIntents:
         }
         return JSONResponse(payload, status_code=self.report_status)
 
+    async def _clarify(self, request: Request) -> JSONResponse:
+        body = await request.json()
+        self.calls.append(RecordedCall("clarify", dict(request.headers), body))
+        payload = self.clarify_body or {
+            "case_id": body.get("case_id"),
+            "statement_id": body.get("command_id"),
+            "state": "CLARIFYING",
+            "created": True,
+            "attested_by": SURFACE_WORKER,
+            "speech": "Got it, and I have written that down exactly as you said it.",
+        }
+        return JSONResponse(payload, status_code=self.clarify_status)
+
+    async def _confirm(self, request: Request) -> JSONResponse:
+        body = await request.json()
+        self.calls.append(RecordedCall("confirm", dict(request.headers), body))
+        payload = self.confirm_body or {
+            "case_id": body.get("case_id"),
+            "command_id": body.get("command_id"),
+            "state": "EXECUTING",
+            "created": True,
+            "confirmed_by": SURFACE_WORKER,
+            "applying": 1,
+            "awaiting_approval": 1,
+            "escalated": 1,
+            "speech": "Confirmed. Nothing has been changed yet.",
+        }
+        return JSONResponse(payload, status_code=self.confirm_status)
+
     async def _status(self, request: Request) -> JSONResponse:
         body = await request.json()
         self.calls.append(RecordedCall("status", dict(request.headers), body))
@@ -114,6 +153,9 @@ class RecordingIntents:
             "threatened": [],
             "untouched": [],
             "untouched_count": 0,
+            "question": None,
+            "plan_id": PLAN_ID,
+            "awaiting_confirmation": True,
         }
         return JSONResponse(payload, status_code=self.status_status)
 

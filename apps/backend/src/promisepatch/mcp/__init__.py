@@ -10,7 +10,13 @@ MCP is a transport and a delegation, never a second place where authority lives.
 from promisepatch.mcp.auth import BearerAuthMiddleware, Principal
 from promisepatch.mcp.engine import CaseEngine
 from promisepatch.mcp.envelope import Envelope, ToolCode, ToolRefusalError
-from promisepatch.mcp.results import PromiseResult, ReportResult, StatusResult
+from promisepatch.mcp.results import (
+    ClarifyResult,
+    ConfirmResult,
+    PromiseResult,
+    ReportResult,
+    StatusResult,
+)
 from promisepatch.mcp.server import (
     MCP_PATH,
     PROTOCOL_REVISION,
@@ -24,6 +30,8 @@ __all__ = [
     "PROTOCOL_REVISION",
     "BearerAuthMiddleware",
     "CaseEngine",
+    "ClarifyResult",
+    "ConfirmResult",
     "Envelope",
     "Principal",
     "PromiseResult",

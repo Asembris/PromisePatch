@@ -40,6 +40,74 @@ class ReportResult(Envelope):
     speech: str = Field(description="what to say back, rendered deterministically")
 
 
+class ClarifyResult(Envelope):
+    """A worker's answer to the open question was made durable, and nothing was concluded.
+
+    Same shape as a report on purpose: an answer is another thing somebody said, stored before
+    it is read. ``state`` is still ``CLARIFYING`` when this returns, because the interpreter
+    has not run and the case has therefore not moved.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    statement_id: str = Field(description="the stored answer, identical for a redelivery")
+    created: bool = Field(
+        description="false when this exact answer was already accepted, which is a success"
+    )
+    attested_by: str = Field(
+        description=(
+            "the worker the case engine attributed this answer to, resolved from server "
+            "configuration. Not something the caller chose and not something it can change."
+        )
+    )
+    speech: str = Field(description="what to say back, rendered deterministically by the engine")
+
+
+class ConfirmResult(Envelope):
+    """One worker's yes to one specific plan, and what that yes permits. Never what it did.
+
+    Every count here is a permission or a queued intention. ``applying`` is how many tracks a
+    standing preference covers -- the contract's ``AUTHORIZED``, which is explicitly not
+    ``RECOVERED`` -- and ``awaiting_approval`` is how many customers this authorises *asking*.
+    There is no field in this result that could say an order was changed, because when it is
+    returned none has been.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    created: bool = Field(
+        description="false when this exact confirmation was already accepted, which is a success"
+    )
+    confirmed_by: str = Field(
+        description="the worker whose yes this is, resolved from server configuration"
+    )
+    applying: int = Field(description="tracks a standing preference covers; permission, not an act")
+    awaiting_approval: int = Field(
+        description="tracks whose customer this authorises asking, and nothing further"
+    )
+    escalated: int = Field(description="tracks handed to the owner, with their tasks held")
+    speech: str = Field(description="what to say back, rendered deterministically by the engine")
+
+
+class OptionResult(BaseModel):
+    """One answer the open question will accept."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    code: str
+    label: str
+
+
+class QuestionResult(BaseModel):
+    """The question a case is waiting on, so a surface can ask it rather than invent it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    clarification_id: str
+    question: str
+    options: tuple[OptionResult, ...] = ()
+
+
 class PromiseResult(BaseModel):
     """One customer promise, in the product's own vocabulary."""
 
@@ -77,3 +145,17 @@ class StatusResult(Envelope):
     threatened: tuple[PromiseResult, ...] = ()
     untouched: tuple[PromiseResult, ...] = ()
     untouched_count: int = Field(description="how many promises this case left alone")
+    question: QuestionResult | None = Field(
+        default=None, description="the open clarification, while one is open"
+    )
+    plan_id: str | None = Field(
+        default=None,
+        description=(
+            "the identity of the plan on offer, present only while a plan is waiting for a "
+            "worker's yes. Quote it back to `confirm`. It names a plan this engine rendered "
+            "and cannot describe one it did not; nothing can be selected with it."
+        ),
+    )
+    awaiting_confirmation: bool = Field(
+        default=False, description="whether a worker's yes is what this case is waiting for"
+    )

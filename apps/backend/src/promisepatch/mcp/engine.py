@@ -121,6 +121,32 @@ class CaseEngine:
             correlation_id=correlation_id,
         )
 
+    async def clarify(
+        self, *, case_id: UUID, command_id: UUID, text: str, correlation_id: UUID
+    ) -> dict[str, Any]:
+        """Answer the one question a case is waiting on. The words travel exactly as given."""
+        return await self._post(
+            "/internal/intents/clarify",
+            {"command_id": str(command_id), "case_id": str(case_id), "text": text},
+            correlation_id=correlation_id,
+        )
+
+    async def confirm(
+        self, *, case_id: UUID, command_id: UUID, plan_id: str, correlation_id: UUID
+    ) -> dict[str, Any]:
+        """Confirm one specific plan. The plan identity travels; nothing about it is derived here.
+
+        This process cannot compute a plan identity and must not try: it has no rows, and a
+        transport that could construct one could construct one for a plan nobody was shown.
+        What it forwards is the string ``status`` handed the caller, and the engine decides
+        whether that is still the plan the case is offering.
+        """
+        return await self._post(
+            "/internal/intents/confirm",
+            {"command_id": str(command_id), "case_id": str(case_id), "plan_id": plan_id},
+            correlation_id=correlation_id,
+        )
+
     async def status(self, *, case_id: UUID, correlation_id: UUID) -> dict[str, Any]:
         """Read one case as it currently stands, already projected and already rendered."""
         return await self._post(

@@ -20,11 +20,17 @@ JSON-RPC layer sees a byte, so an unauthenticated caller cannot even discover th
 Neither is a substitute for the domain's own checks, which run again on every intent regardless
 of what this process believed.
 
-**The surface is closed and it is not an authority.** Two tools in this slice. Neither takes an
+**The surface is closed and it is not an authority.** Four tools in this slice. None takes an
 actor, a timestamp, a version, a customer or a consent: the case engine resolves who is
 speaking from its own configuration, and there is no argument here that a model could fill in
 to become somebody else. What this process adds is a transport and a delegation; every rule
 about who may do what still lives behind the intent API.
+
+**A confirmation quotes a plan back.** ``confirm`` requires the ``plan_id`` that ``status``
+returned, and the engine checks it against the plan the case is currently offering. So a yes
+is attached to something specific rather than to whatever the case holds when it lands, and a
+caller that never read the plan has nothing to quote. This process cannot compute that
+identity -- it has no rows -- which is exactly why it cannot fabricate one.
 """
 
 from __future__ import annotations
@@ -46,7 +52,15 @@ from promisepatch.config import Settings
 from promisepatch.mcp.auth import BearerAuthMiddleware, require_principal
 from promisepatch.mcp.engine import CaseEngine
 from promisepatch.mcp.envelope import ToolCode, ToolRefusalError
-from promisepatch.mcp.results import PromiseResult, ReportResult, StatusResult
+from promisepatch.mcp.results import (
+    ClarifyResult,
+    ConfirmResult,
+    OptionResult,
+    PromiseResult,
+    QuestionResult,
+    ReportResult,
+    StatusResult,
+)
 from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
@@ -69,11 +83,27 @@ a case and concludes nothing; nothing about any order has changed when it return
 
 Use `status` to read a case. It answers with sentences that were rendered from the durable case. \
 Deliver them. Do not restate them in your own words, do not round "planned" up to "done", and \
-do not describe an outcome the answer did not contain.
+do not describe an outcome the answer did not contain. When a case is waiting on a question, \
+`status` returns that question and the answers it will accept: ask it as given, and never \
+invent one or answer it yourself.
 
-You cannot confirm a plan, record a customer's consent, choose who is speaking, or name a recipe \
-version. Those are not tools you have not been given yet -- they are decisions this system does \
-not accept from a conversation."""
+Use `clarify` only to pass on what the worker actually answered, verbatim, exactly as with \
+`report`. If they said something you are unsure of, ask them again -- do not decide for them, \
+and do not turn a guess into an attestation.
+
+Use `confirm` only when the worker has explicitly said yes to the plan you read them, and pass \
+the `plan_id` that `status` returned for that case. You cannot confirm on a worker's behalf and \
+you cannot confirm a plan you have not read. A confirmation that quotes a plan the case has \
+moved past is refused: read `status` again, tell the worker what changed, and ask them again. \
+Confirming authorises work; it does not perform any, so do not say an order was changed -- ask \
+for `status` and deliver what it says.
+
+Worker confirmation is not customer consent. They are different people and different \
+authorities, and confirming a plan has agreed nothing on any customer's behalf.
+
+You cannot record a customer's consent, choose who is speaking, name a recipe version, or \
+attest a physical fact yourself. Those are not tools you have not been given yet -- they are \
+decisions this system does not accept from a conversation."""
 """What a model is told about this server. Deliberately about the boundary, not just the verbs."""
 
 COMMAND_NAMESPACE: Final = uuid5(NAMESPACE_URL, "https://promisepatch.local/mcp/command")
@@ -160,6 +190,149 @@ def build_server(engine: CaseEngine) -> MCPServer:
         )
 
     @server.tool(
+        name="clarify",
+        title="Answer the question a case is waiting on",
+        description=(
+            "Pass on the worker's answer to the one open question on a case, in their own "
+            "words and unedited. Stores the answer and hands the case back to the system to "
+            "read; concludes nothing and changes nothing about any order."
+        ),
+    )
+    async def clarify(
+        case_id: Annotated[
+            str,
+            Field(description="The case that is waiting for an answer, from `report` or `status`."),
+        ],
+        answer: Annotated[
+            str,
+            Field(
+                description=(
+                    "What the worker answered, verbatim. Stored exactly as sent and resolved "
+                    "against the options the question was asked with. Do not paraphrase it, "
+                    "do not choose for them, and do not answer on their behalf."
+                )
+            ),
+        ],
+        client_request_id: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "An optional idempotency key of your own. Sending the same key twice is "
+                    "the same answer arriving twice, not a second answer."
+                )
+            ),
+        ] = None,
+    ) -> ClarifyResult:
+        principal = require_principal()
+        case = _case_id(case_id)
+        if not answer.strip():
+            raise _refuse(
+                ToolCode.INVALID_ARGUMENT, "an answer needs something a worker actually said"
+            )
+        command_id = command_id_for(principal.client_id, client_request_id)
+        correlation_id = uuid4()
+        # Forwarded untouched, exactly as `report` forwards a statement. Which physical
+        # outcome these words select is decided by the engine against options captured when
+        # the question was asked -- never here, and never from a reading of them.
+        body = await _call(
+            engine.clarify(
+                case_id=case,
+                command_id=command_id,
+                text=answer,
+                correlation_id=correlation_id,
+            )
+        )
+        logger.info(
+            "mcp.tool.clarify",
+            client=principal.client_id,
+            case_id=case_id,
+            correlation_id=str(correlation_id),
+        )
+        return ClarifyResult(
+            ok=True,
+            intent="clarify",
+            correlation_id=str(correlation_id),
+            case_id=_text(body, "case_id"),
+            state=_text(body, "state"),
+            statement_id=_required(body, "statement_id"),
+            created=bool(body.get("created", False)),
+            attested_by=_required(body, "attested_by"),
+            speech=_required(body, "speech"),
+        )
+
+    @server.tool(
+        name="confirm",
+        title="Confirm the plan a worker was shown",
+        description=(
+            "Record the worker's explicit yes to one specific plan, identified by the "
+            "`plan_id` that `status` returned. Authorises the recoveries that plan already "
+            "permits and nothing else: no order has been changed and no customer has been "
+            "asked when this returns."
+        ),
+    )
+    async def confirm(
+        case_id: Annotated[
+            str,
+            Field(description="The case whose plan the worker is confirming."),
+        ],
+        plan_id: Annotated[
+            str,
+            Field(
+                description=(
+                    "The plan identity `status` returned for this case, quoted back exactly. "
+                    "If the case has moved on since you read it the confirmation is refused; "
+                    "read `status` again rather than guessing."
+                )
+            ),
+        ],
+        client_request_id: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "An optional idempotency key of your own. Sending the same key twice is "
+                    "the same yes arriving twice, and confirms nothing a second time."
+                )
+            ),
+        ] = None,
+    ) -> ConfirmResult:
+        principal = require_principal()
+        case = _case_id(case_id)
+        if not plan_id.strip():
+            raise _refuse(
+                ToolCode.INVALID_ARGUMENT,
+                "a confirmation has to name the plan it is confirming",
+            )
+        command_id = command_id_for(principal.client_id, client_request_id)
+        correlation_id = uuid4()
+        body = await _call(
+            engine.confirm(
+                case_id=case,
+                command_id=command_id,
+                plan_id=plan_id,
+                correlation_id=correlation_id,
+            )
+        )
+        logger.info(
+            "mcp.tool.confirm",
+            client=principal.client_id,
+            case_id=case_id,
+            correlation_id=str(correlation_id),
+        )
+        return ConfirmResult(
+            ok=True,
+            intent="confirm",
+            correlation_id=str(correlation_id),
+            case_id=_text(body, "case_id"),
+            state=_text(body, "state"),
+            created=bool(body.get("created", False)),
+            confirmed_by=_required(body, "confirmed_by"),
+            applying=int(body.get("applying", 0)),
+            awaiting_approval=int(body.get("awaiting_approval", 0)),
+            escalated=int(body.get("escalated", 0)),
+            speech=_required(body, "speech"),
+        )
+
+    @server.tool(
         name="status",
         title="Read a case",
         description=(
@@ -174,10 +347,7 @@ def build_server(engine: CaseEngine) -> MCPServer:
         ],
     ) -> StatusResult:
         principal = require_principal()
-        try:
-            case = UUID(case_id)
-        except ValueError as error:
-            raise _refuse(ToolCode.INVALID_ARGUMENT, "that is not a case identifier") from error
+        case = _case_id(case_id)
         correlation_id = uuid4()
         body = await _call(engine.status(case_id=case, correlation_id=correlation_id))
         logger.info(
@@ -199,6 +369,9 @@ def build_server(engine: CaseEngine) -> MCPServer:
             threatened=_promises(body, "threatened"),
             untouched=_promises(body, "untouched"),
             untouched_count=int(body.get("untouched_count", 0)),
+            question=_question(body),
+            plan_id=_text(body, "plan_id"),
+            awaiting_confirmation=bool(body.get("awaiting_confirmation", False)),
         )
 
     return server
@@ -306,6 +479,33 @@ def _required(body: dict[str, Any], key: str) -> str:
         logger.error("mcp.engine.incomplete", field=key)
         raise _refuse(ToolCode.ENGINE_UNAVAILABLE, "the case engine's answer was incomplete")
     return str(value)
+
+
+def _case_id(value: str) -> UUID:
+    """A case identifier, or a refusal before the engine is troubled.
+
+    One place, so every tool refuses a non-identifier the same way and none of them turns a
+    model's guess at an id into a request somebody has to answer.
+    """
+    try:
+        return UUID(value)
+    except ValueError as error:
+        raise _refuse(ToolCode.INVALID_ARGUMENT, "that is not a case identifier") from error
+
+
+def _question(body: dict[str, Any]) -> QuestionResult | None:
+    value = body.get("question")
+    if not isinstance(value, dict):
+        return None
+    return QuestionResult(
+        clarification_id=str(value.get("clarification_id", "")),
+        question=str(value.get("question", "")),
+        options=tuple(
+            OptionResult(code=str(item.get("code", "")), label=str(item.get("label", "")))
+            for item in value.get("options", [])
+            if isinstance(item, dict)
+        ),
+    )
 
 
 def _promises(body: dict[str, Any], key: str) -> tuple[PromiseResult, ...]:

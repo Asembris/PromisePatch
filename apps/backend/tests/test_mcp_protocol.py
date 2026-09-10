@@ -11,7 +11,7 @@ so what a tool *forwarded* is assertable without one. What a tool *caused* is a 
 question, answered against a real database in ``test_intent_api.py``.
 
 The order of the sections is the order a caller meets them: the pin, the handshake, discovery,
-the two tools, the ways a call is refused, and the checks that happen before any of that.
+the four tools, the ways a call is refused, and the checks that happen before any of that.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from _mcp_support import (
     ALLOWED_ORIGIN,
     BEARER,
     JSON_RPC_HEADERS,
+    PLAN_ID,
     SERVICE_TOKEN,
     SURFACE_WORKER,
     McpServer,
@@ -39,6 +40,7 @@ from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS, LATEST_HANDSHAKE_VERS
 from promisepatch.mcp import PROTOCOL_REVISION, ToolCode, command_id_for
 
 CANONICAL = "today's raspberry delivery didn't arrive"
+SERVICE_TOKEN_HEADER_LOWER = "x-service-token"
 
 
 def _text(result: object) -> str:
@@ -134,17 +136,42 @@ async def test_the_instructions_state_the_boundary(mcp: McpServer) -> None:
         )
     instructions = _sse_result(response.text)["instructions"]
     assert isinstance(instructions, str)
-    assert "cannot confirm a plan" in instructions
     assert "verbatim" in instructions
+    # The four sentences that are the authority posture, not the verb list. A model that reads
+    # only these still cannot decide who is speaking, confirm on somebody's behalf, confirm a
+    # plan it never read, or mistake a worker's yes for a customer's.
+    assert "cannot confirm on a worker's behalf" in instructions
+    assert "cannot confirm a plan you have not read" in instructions
+    assert "Worker confirmation is not customer consent." in instructions
+    assert "cannot record a customer's consent, choose who is speaking" in instructions
 
 
 # ------------------------------------------------------------------------------- discovery
 
 
-async def test_discovery_offers_exactly_the_two_tools_of_this_slice(mcp: McpServer) -> None:
+async def test_discovery_offers_exactly_the_four_tools_of_this_slice(mcp: McpServer) -> None:
+    """Four, and the withdrawal is still absent rather than present and refusing."""
     async with mcp.session() as session:
         tools = await session.list_tools()
-    assert sorted(tool.name for tool in tools.tools) == ["report", "status"]
+    assert sorted(tool.name for tool in tools.tools) == ["clarify", "confirm", "report", "status"]
+
+
+async def test_no_tool_lets_a_caller_choose_a_plan_it_was_not_shown(mcp: McpServer) -> None:
+    """``confirm`` takes a plan *identity*, and nothing that could describe a plan instead.
+
+    The distinction is the whole binding. An argument naming a track, an option or a recipe
+    version would let a confirmation assemble a plan of its own; an opaque identity can only
+    ever quote back one the engine rendered.
+    """
+    async with mcp.session() as session:
+        tools = await session.list_tools()
+    confirm = next(tool for tool in tools.tools if tool.name == "confirm")
+    assert sorted(confirm.input_schema["properties"]) == [
+        "case_id",
+        "client_request_id",
+        "plan_id",
+    ]
+    assert sorted(confirm.input_schema["required"]) == ["case_id", "plan_id"]
 
 
 async def test_no_tool_argument_can_carry_an_actor_a_time_or_a_version(mcp: McpServer) -> None:
@@ -281,6 +308,172 @@ async def test_a_report_with_nothing_in_it_is_refused(mcp: McpServer) -> None:
     assert ToolCode.INVALID_ARGUMENT.value in _text(result)
 
 
+# --------------------------------------------------------------------------------- clarify
+
+
+async def test_clarify_forwards_the_answer_byte_for_byte(mcp: McpServer) -> None:
+    """An answer is another thing somebody said, and the first thing a transport does is nothing."""
+    assert mcp.intents is not None
+    said = "  just raspberries - the strawberries CAME  "
+    case_id = str(uuid4())
+    async with mcp.session() as session:
+        result = await session.call_tool("clarify", {"case_id": case_id, "answer": said})
+    assert result.is_error is not True
+    assert mcp.intents.last.path == "clarify"
+    assert mcp.intents.last.body["text"] == said
+    assert mcp.intents.last.body["case_id"] == case_id
+    body = result.structured_content
+    assert body is not None
+    assert body["intent"] == "clarify"
+    assert body["state"] == "CLARIFYING"
+    assert body["attested_by"] == SURFACE_WORKER
+
+
+async def test_an_answer_that_names_a_worker_is_still_attested_by_the_server(
+    mcp: McpServer,
+) -> None:
+    """An answer is an attestation, and who made it is not a thing the wire can carry.
+
+    Same rule as ``report``, asserted separately because ``clarify`` is where a conversation
+    would most plausibly try to answer *for* somebody: the question is already on the screen
+    and the answer is one word long.
+    """
+    assert mcp.intents is not None
+    async with mcp.session() as session:
+        result = await session.call_tool(
+            "clarify",
+            {"case_id": str(uuid4()), "answer": "just raspberries", "worker_id": "owner"},
+        )
+    assert set(mcp.intents.last.body) == {"command_id", "case_id", "text"}
+    assert result.structured_content is not None
+    assert result.structured_content["attested_by"] == SURFACE_WORKER
+
+
+async def test_a_confirmation_that_names_a_worker_is_still_the_configured_one(
+    mcp: McpServer,
+) -> None:
+    """ "Confirm on Maya's behalf" names a value the server ignores. Nothing else is forwarded."""
+    assert mcp.intents is not None
+    async with mcp.session() as session:
+        result = await session.call_tool(
+            "confirm",
+            {"case_id": str(uuid4()), "plan_id": PLAN_ID, "on_behalf_of": "owner"},
+        )
+    assert set(mcp.intents.last.body) == {"command_id", "case_id", "plan_id"}
+    assert result.structured_content is not None
+    assert result.structured_content["confirmed_by"] == SURFACE_WORKER
+
+
+async def test_an_empty_answer_is_refused_before_the_engine(mcp: McpServer) -> None:
+    assert mcp.intents is not None
+    async with mcp.session() as session:
+        result = await session.call_tool("clarify", {"case_id": str(uuid4()), "answer": "  "})
+    assert result.is_error is True
+    assert ToolCode.INVALID_ARGUMENT.value in _text(result)
+    assert mcp.intents.calls == []
+
+
+async def test_clarifying_a_case_that_is_not_asking_is_refused(mcp: McpServer) -> None:
+    """The engine's 409 becomes the stable code, and the engine's own words stay behind."""
+    assert mcp.intents is not None
+    mcp.intents.clarify_status = 409
+    mcp.intents.clarify_body = {"error": {"code": "NOT_AWAITING_CLARIFICATION"}}
+    async with mcp.session() as session:
+        result = await session.call_tool(
+            "clarify", {"case_id": str(uuid4()), "answer": "just raspberries"}
+        )
+    assert result.is_error is True
+    assert ToolCode.CASE_NOT_IN_STATE.value in _text(result)
+    assert "NOT_AWAITING_CLARIFICATION" not in _text(result)
+
+
+async def test_a_repeated_clarify_key_reaches_one_command(mcp: McpServer) -> None:
+    assert mcp.intents is not None
+    case_id = str(uuid4())
+    async with mcp.session() as session:
+        await session.call_tool(
+            "clarify",
+            {"case_id": case_id, "answer": "just raspberries", "client_request_id": "turn-4"},
+        )
+        await session.call_tool(
+            "clarify",
+            {"case_id": case_id, "answer": "just raspberries", "client_request_id": "turn-4"},
+        )
+    commands = {call.body["command_id"] for call in mcp.intents.calls}
+    assert len(commands) == 1
+
+
+# --------------------------------------------------------------------------------- confirm
+
+
+async def test_confirm_forwards_the_plan_identity_it_was_given(mcp: McpServer) -> None:
+    """The transport quotes; it does not compute. It has no rows, so it cannot mint one."""
+    assert mcp.intents is not None
+    case_id = str(uuid4())
+    async with mcp.session() as session:
+        result = await session.call_tool("confirm", {"case_id": case_id, "plan_id": PLAN_ID})
+    assert result.is_error is not True
+    assert mcp.intents.last.path == "confirm"
+    assert mcp.intents.last.body["plan_id"] == PLAN_ID
+    assert mcp.intents.last.body["case_id"] == case_id
+    assert mcp.intents.last.headers[SERVICE_TOKEN_HEADER_LOWER] == SERVICE_TOKEN
+
+
+async def test_confirm_reports_permission_and_never_completion(mcp: McpServer) -> None:
+    """Counts, and no field anywhere in the result that could say an order was changed."""
+    async with mcp.session() as session:
+        result = await session.call_tool("confirm", {"case_id": str(uuid4()), "plan_id": PLAN_ID})
+    body = result.structured_content
+    assert body is not None
+    assert body["intent"] == "confirm"
+    assert body["state"] == "EXECUTING"
+    assert body["applying"] == 1
+    assert body["awaiting_approval"] == 1
+    assert body["escalated"] == 1
+    assert body["confirmed_by"] == SURFACE_WORKER
+    assert "changed" not in body["speech"].replace("has been changed yet", "")
+    assert not {"recovered", "applied", "sent", "amended"} & set(body)
+
+
+async def test_a_confirmation_without_a_plan_identity_is_refused(mcp: McpServer) -> None:
+    """A yes that names only a case is the blanket authorisation this binding exists to stop."""
+    assert mcp.intents is not None
+    async with mcp.session() as session:
+        missing = await session.call_tool("confirm", {"case_id": str(uuid4())})
+        blank = await session.call_tool("confirm", {"case_id": str(uuid4()), "plan_id": "   "})
+    assert missing.is_error is True
+    assert "plan_id" in _text(missing)
+    assert blank.is_error is True
+    assert ToolCode.INVALID_ARGUMENT.value in _text(blank)
+    assert mcp.intents.calls == []
+
+
+async def test_a_superseded_plan_is_refused_and_says_so_in_the_frozen_vocabulary(
+    mcp: McpServer,
+) -> None:
+    """The engine's ``PLAN_SUPERSEDED`` arrives as ``CASE_NOT_IN_STATE``, with no internals."""
+    assert mcp.intents is not None
+    mcp.intents.confirm_status = 409
+    mcp.intents.confirm_body = {"error": {"code": "PLAN_SUPERSEDED"}}
+    async with mcp.session() as session:
+        result = await session.call_tool("confirm", {"case_id": str(uuid4()), "plan_id": PLAN_ID})
+    assert result.is_error is True
+    assert ToolCode.CASE_NOT_IN_STATE.value in _text(result)
+    assert "PLAN_SUPERSEDED" not in _text(result)
+
+
+async def test_a_confirmation_for_a_case_this_surface_may_not_touch_is_refused(
+    mcp: McpServer,
+) -> None:
+    assert mcp.intents is not None
+    mcp.intents.confirm_status = 403
+    mcp.intents.confirm_body = {"error": {"code": "CASE_NOT_PERMITTED"}}
+    async with mcp.session() as session:
+        result = await session.call_tool("confirm", {"case_id": str(uuid4()), "plan_id": PLAN_ID})
+    assert result.is_error is True
+    assert ToolCode.UNAUTHORIZED_SURFACE.value in _text(result)
+
+
 # ---------------------------------------------------------------------------------- status
 
 
@@ -305,6 +498,61 @@ async def test_status_delivers_the_engine_s_own_sentences(mcp: McpServer) -> Non
     assert body["speech"] == "Planned, and waiting for you. Nothing has been done yet."
     assert body["headline"] == "PLANNED"
     assert body["untouched_count"] == 3
+
+
+async def test_status_hands_over_the_question_and_the_plan_the_engine_reported(
+    mcp: McpServer,
+) -> None:
+    """A surface asks the engine's question and quotes the engine's plan; it invents neither.
+
+    The two halves of P5.2's conversation, both delivered rather than derived. A ``status``
+    that only said "waiting for your answer" would leave the question to be reconstructed from
+    the original sentence, and one that withheld the plan identity would leave a confirmation
+    with nothing to bind to.
+    """
+    assert mcp.intents is not None
+    case_id = str(uuid4())
+    mcp.intents.status_body = {
+        "case_id": case_id,
+        "headline": "CLARIFYING",
+        "speech": "Waiting for your answer before anything is decided.",
+        "needs_owner_attention": False,
+        "exception_category": "DELIVERY_NOT_RECEIVED",
+        "threatened": [],
+        "untouched": [],
+        "untouched_count": 0,
+        "question": {
+            "clarification_id": str(uuid4()),
+            "question": "Was it the whole Valley Produce delivery, or only the raspberries?",
+            "options": [
+                {"code": "WHOLE_DELIVERY", "label": "the whole delivery"},
+                {"code": "LINE-RASP", "label": "only the raspberries"},
+            ],
+        },
+        "plan_id": None,
+        "awaiting_confirmation": False,
+    }
+    async with mcp.session() as session:
+        result = await session.call_tool("status", {"case_id": case_id})
+    body = result.structured_content
+    assert body is not None
+    assert body["awaiting_confirmation"] is False
+    assert body["plan_id"] is None
+    assert body["question"]["question"].startswith("Was it the whole Valley Produce delivery")
+    assert [option["code"] for option in body["question"]["options"]] == [
+        "WHOLE_DELIVERY",
+        "LINE-RASP",
+    ]
+
+
+async def test_a_planned_case_hands_back_a_plan_identity_to_quote(mcp: McpServer) -> None:
+    async with mcp.session() as session:
+        result = await session.call_tool("status", {"case_id": str(uuid4())})
+    body = result.structured_content
+    assert body is not None
+    assert body["awaiting_confirmation"] is True
+    assert body["plan_id"] == PLAN_ID
+    assert body["question"] is None
 
 
 async def test_an_identifier_that_is_not_one_is_refused_before_the_engine(
