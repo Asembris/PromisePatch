@@ -371,6 +371,44 @@ def test_every_policy_is_a_valid_iam_document(policies: dict[str, dict[str, Any]
                 assert "Sid" in statement, "an unnamed statement cannot be discussed in review"
 
 
+def test_only_the_account_wide_log_query_is_account_wide(
+    policies: dict[str, dict[str, Any]],
+) -> None:
+    """`logs:DescribeLogGroups` needs `*`; nothing that can read a log line is allowed it.
+
+    Scoping `DescribeLogGroups` to `log-group:/promisepatch/*` denies it outright -- it answers
+    "which groups exist", a question with no single resource -- which is what the first version
+    of this policy did, leaving the deployment unable to find its own log group. It therefore
+    gets `*`, alone, in its own statement, so the breadth is visible and bounded. Every action
+    that can return log *content* stays scoped.
+    """
+    delta = policies["developer-role-delta.json"]
+    unscoped: set[str] = set()
+    scoped: set[str] = set()
+    for statement in _statements(delta):
+        if statement.get("Effect") != "Allow":
+            continue
+        every = (str(x) for x in _as_list(statement.get("Action")))
+        actions = [a for a in every if a.startswith("logs:")]
+        if not actions:
+            continue
+        resources = [str(r) for r in _as_list(statement.get("Resource"))]
+        target = unscoped if "*" in resources else scoped
+        target.update(actions)
+        if target is scoped:
+            for resource in resources:
+                assert "log-group:/promisepatch/" in resource, (
+                    f"a logs statement is scoped to {resource}, which is not this deployment's"
+                )
+
+    assert unscoped == {"logs:DescribeLogGroups"}, (
+        f"exactly one logs action may be account-wide; found {sorted(unscoped)}"
+    )
+    assert scoped >= {"logs:GetLogEvents", "logs:FilterLogEvents", "logs:DescribeLogStreams"}, (
+        f"actions that read log content must stay scoped; found {sorted(scoped)}"
+    )
+
+
 def test_no_pass_role_is_wildcarded(policies: dict[str, dict[str, Any]]) -> None:
     """A wildcard ``PassRole`` escalates to whatever the best role in the account happens to be."""
     for name, policy in policies.items():

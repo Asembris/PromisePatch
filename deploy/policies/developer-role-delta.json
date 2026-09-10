@@ -99,10 +99,15 @@
       }
     },
     {
+      "Sid": "FindTheLogGroupAtAll",
+      "Effect": "Allow",
+      "Action": "logs:DescribeLogGroups",
+      "Resource": "*"
+    },
+    {
       "Sid": "ReadTheDeployedLoopBackOut",
       "Effect": "Allow",
       "Action": [
-        "logs:DescribeLogGroups",
         "logs:DescribeLogStreams",
         "logs:GetLogEvents",
         "logs:FilterLogEvents",
