@@ -52,6 +52,10 @@ docker/env/extra-ca.crt
 # committed just because it happened.
 .eval-results/
 
+# The record one bounded live conversational smoke writes. Evidence for a phase document,
+# quoted there rather than committed as a second copy.
+live-smoke.json
+
 # DeepEval's own local caches and its temporary test-run files.
 .deepeval*
 temp_test_run_data.json
