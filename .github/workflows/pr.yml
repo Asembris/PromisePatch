@@ -136,6 +136,34 @@ jobs:
           apps/backend/tests/test_openai_semantic.py
           apps/backend/tests/test_nvidia_semantic.py
 
+  transport:
+    name: mcp protocol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      # No database, no credential, no model, and no network beyond a loopback socket. The MCP
+      # server this job starts is the one `pp mcp` runs and the client is the official SDK's,
+      # so what is checked is the protocol -- initialization, negotiation, discovery, framing,
+      # the bearer challenge, the `Origin` and `Host` rejections, the JSON-RPC error codes and
+      # the absence of a session to resume. Registering two tools and listing them would prove
+      # none of it.
+      #
+      # The pin is asserted here too, and asserted as a *revision*: the SDK also speaks a later
+      # one through a different entry point, so a version bump that moved the handshake default
+      # has to fail a test rather than quietly change what this endpoint negotiates.
+      #
+      # What a tool call *causes* is a different question and needs PostgreSQL; it runs in the
+      # integration job below, which drives the whole chain end to end.
+      - run: >
+          uv run pytest
+          apps/backend/tests/test_mcp_protocol.py
+          apps/backend/tests/test_status_view.py
+
   evaluation:
     name: semantic evaluation
     runs-on: ubuntu-latest

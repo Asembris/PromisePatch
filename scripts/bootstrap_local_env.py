@@ -46,6 +46,7 @@ FILES: tuple[str, ...] = (
     "postgres.env",
     "migrate.env",
     "api.env",
+    "mcp.env",
     "host.env",
     "order-simulator.env",
 )
@@ -110,6 +111,12 @@ def generated_secrets() -> dict[str, str]:
         # Shared by two applications rather than held by one, which is what makes it a
         # shared secret: PromisePatch verifies exactly what the order system signs.
         "__ORDER_WEBHOOK_SECRET__": secrets.token_urlsafe(32),
+        # The MCP process presents this to the intent API. Shared by exactly those two, so an
+        # MCP endpoint somebody stands up elsewhere reaches no case in this stack.
+        "__INTERNAL_SERVICE_TOKEN__": secrets.token_urlsafe(32),
+        # What an MCP client presents to the MCP endpoint. Generated rather than defaulted,
+        # because a default would mean every copy of this repository shipped one usable token.
+        "__MCP_BEARER_TOKEN__": secrets.token_urlsafe(32),
     }
 
 

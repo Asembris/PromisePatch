@@ -156,6 +156,55 @@ services:
     stop_grace_period: 20s
     restart: unless-stopped
 
+  mcp:
+    # The Streamable HTTP MCP endpoint: the surface a third-party MCP client -- or a real
+    # Alexa+ registration -- would be pointed at.
+    #
+    # Its own service rather than a route on `api`, and that separation is the product's
+    # authority boundary rather than tidiness. This container is given no database URL, and the
+    # code in it cannot import `promisepatch.db` or `promisepatch.domain` at all; it reaches a
+    # case by making an authenticated call to `api` like any other client would. Running it
+    # inside the API process would put the domain on its import path and make the boundary a
+    # convention.
+    image: promisepatch-backend:local
+    pull_policy: never
+    command: ["pp", "mcp", "--host", "0.0.0.0", "--port", "8001"]
+    env_file: [docker/env/mcp.env]
+    ports:
+      # High host port for the reason given on every other one here. Inside the network it is
+      # `mcp:8001/mcp`, which is what an in-stack client uses; a deployment on AgentCore
+      # Runtime binds the port that contract expects instead.
+      - "127.0.0.1:58001:8001"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      # An unauthenticated POST, checked for exactly the answer an unauthenticated POST should
+      # get. A 200 here would mean the bearer check was not in front of the protocol, so this
+      # probe fails a server that came up *too* permissive rather than only one that is down.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.error, urllib.request
+          request = urllib.request.Request(
+              "http://127.0.0.1:8001/mcp",
+              data=b"{}",
+              headers={"Content-Type": "application/json"},
+          )
+          try:
+              urllib.request.urlopen(request, timeout=5)
+          except urllib.error.HTTPError as answer:
+              raise SystemExit(0 if answer.code == 401 else 1)
+          raise SystemExit(1)
+      interval: 3s
+      timeout: 6s
+      retries: 20
+      start_period: 10s
+    stop_grace_period: 20s
+    restart: unless-stopped
+
   order-simulator:
     # The External Order System — simulator. Not Square, not a production point of sale, and
     # not a real customer system: a stand-in that owns demo order state so that a change made
