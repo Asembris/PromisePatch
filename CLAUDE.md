@@ -137,6 +137,35 @@ durable case. Proved by 9 end-to-end recovery tests, 13 workspace API tests agai
 PostgreSQL and 18 frontend tests. No live model call; both holdouts stay sealed. See
 `docs/p5.4-truthful-recovery-and-case-workspace.md`.
 
+**The P5 deployment-entry subset is CLOSED, and P6 may begin.** The roadmap's 18 September
+cutoff names a non-negotiable subset rather than the whole of G5, and every item of it is
+closed in a committed record. Four real tools -- `report`, `clarify`, `confirm`, `status` --
+served over authenticated Streamable HTTP with protocol revision 2025-11-25 pinned, an unlisted
+`Origin` refused `403` and an unlisted `Host` `421` (P5.1, P5.2). Canonical orchestration, end
+to end over that transport, with the model holding no authority it did not have outside the
+loop (P5.3). Server-owned authority throughout: the worker identity and the original turn text
+come from the server, and a confirmation binds to the exact plan that was read out (P5.1-P5.3).
+Independent-client replay through the official SDK against the server `pp mcp` runs, and
+reconnect as a fresh stateless session that picks the same durable case up (P5.1). A minimal
+real-state case and status view in the truthful `PLANNED` / `REQUESTED` / `RECOVERED`
+vocabulary, reached by a case id in the address bar so a reload or a second process lands on
+the same durable case (P5.4). And the published frozen sixteen-scenario manifest, content hash
+`d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`. The whole-delivery branch
+is proved **against that frozen identity**: the customer's own external order edit crosses as a
+signed webhook before anybody speaks, the whole Valley Produce delivery then fails rather than
+half of it, and the expected labels are loaded from the manifest -- S02's frozen labels with
+S11's frozen `ord-d` argument applied -- with its published identity asserted before anything
+else runs, rather than from anything the run observed.
+
+**Full G5 is not closed and is not claimed to be.** Three items are carried forward as explicit
+G7 obligations, exactly as the cutoff directs and with no promised capability silently deleted:
+the **bounded withdrawal**, which is the fifth frozen tool and remains absent rather than
+stubbed; the **removal of the runtime customer-intent classifier**, whose superseding decision
+is recorded in ADR-0008 but whose removal is a separate implementation slice that has not been
+performed -- `domain.customer_intent` is still reached from the worker; and the **finishing of
+the case workspace** beyond the minimal real-state view P5.4 shipped. Nothing here reopens the
+locked roadmap, and P6 -- the deployed external loop -- may begin under it.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
