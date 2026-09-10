@@ -1,9 +1,30 @@
 name: pr
 
 on:
+  # Documentation is excluded rather than code being included, and the direction is the point.
+  # A filter that listed the paths worth testing would quietly stop testing the next language,
+  # package or fixture directory somebody adds, and nothing would fail to say so. This one
+  # names the single thing that is safe to skip -- Markdown -- so every other file in the
+  # repository, present and future, still runs every job below: Python, TypeScript, the
+  # lockfiles, the Dockerfiles, the migrations, the compose file, and this workflow itself.
+  #
+  # `docs/` is deliberately not excluded wholesale. It holds `docs/effect-sets/scenarios.v1.json`,
+  # the frozen sixteen-scenario manifest whose content hash is asserted as a literal by
+  # `scripts/tests/test_effect_set_manifest.py`. That file lives under `docs/` because it is
+  # published evidence, not because it is prose: editing it changes what this repository
+  # claims, and has to fail a test rather than skip one. Ignoring `docs/**` would have made the
+  # one change nobody may make silently the one change CI never looks at.
+  #
+  # A run skipped this way reports no check at all rather than a green one. Branch protection
+  # that requires these jobs by name must stop requiring them, or a documentation-only pull
+  # request waits for a status that will never arrive.
   pull_request:
+    paths-ignore:
+      - '**.md'
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
 
 permissions:
   contents: read
