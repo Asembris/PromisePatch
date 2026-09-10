@@ -371,6 +371,28 @@ def test_every_policy_is_a_valid_iam_document(policies: dict[str, dict[str, Any]
                 assert "Sid" in statement, "an unnamed statement cannot be discussed in review"
 
 
+def test_the_committed_trust_policy_is_exactly_the_one_in_aws(
+    policies: dict[str, dict[str, Any]],
+) -> None:
+    """Pinned to the live document, whitespace and all, because that is the claim it makes.
+
+    Verified against `aws iam get-role --role-name PromisePatchDeploymentRole` on 2026-09-10:
+    the live `AssumeRolePolicyDocument` compares equal to this file, with no `Sid` and no
+    condition. Anything added here -- even something harmless like a statement id -- reintroduces
+    the drift this file was corrected to remove.
+    """
+    assert policies["deployment-role-trust.json"] == {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {"Service": "cloudformation.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }
+        ],
+    }
+
+
 def test_only_the_account_wide_log_query_is_account_wide(
     policies: dict[str, dict[str, Any]],
 ) -> None:
@@ -470,11 +492,57 @@ def test_the_deployment_role_can_create_exactly_one_principal(
 def test_only_cloudformation_can_assume_the_deployment_role(
     policies: dict[str, dict[str, Any]],
 ) -> None:
+    """One service principal, and no way for a person or another account to assume it.
+
+    This trust policy deliberately carries no ``aws:SourceAccount`` or ``aws:SourceArn``
+    condition, because the role that exists in AWS carries none. An earlier draft of this file
+    did, and a repository that asserted the stricter version would have been asserting something
+    untrue about the account. What that condition would have guarded against is guarded instead
+    by ``iam:PassRole`` in the developer delta -- see the test below, which is the other half of
+    this one and would fail if that control were ever loosened.
+    """
     trust = policies["deployment-role-trust.json"]
     (statement,) = _statements(trust)
+    assert statement["Effect"] == "Allow"
+    assert statement["Action"] == "sts:AssumeRole"
     assert statement["Principal"] == {"Service": "cloudformation.amazonaws.com"}
-    condition = json.dumps(statement["Condition"])
-    assert "stack/promisepatch-*" in condition, "any stack could otherwise borrow this role"
+    assert "Condition" not in statement, (
+        "the live role has no trust condition; adding one here would make git disagree with AWS"
+    )
+
+
+def test_the_control_the_trust_policy_does_not_carry_lives_in_pass_role(
+    policies: dict[str, dict[str, Any]],
+) -> None:
+    """The only way the deployment role reaches a stack is for somebody to pass it.
+
+    So restricting *who may pass it where* is the load-bearing control, and it is the reason the
+    absent trust condition is a relocation rather than a removal. Both halves are asserted: the
+    single narrow ``Allow``, and the ``Deny`` that stops any other role being passed at all.
+    """
+    delta = policies["developer-role-delta.json"]
+    allows = [
+        statement
+        for statement in _statements(delta)
+        if statement.get("Effect") == "Allow"
+        and "iam:PassRole" in (str(a) for a in _as_list(statement.get("Action")))
+    ]
+    (allow,) = allows
+    assert _as_list(allow["Resource"]) == [
+        "arn:aws:iam::ACCOUNT_ID:role/PromisePatchDeploymentRole"
+    ]
+    assert allow["Condition"]["StringEquals"]["iam:PassedToService"] == (
+        "cloudformation.amazonaws.com"
+    )
+
+    denies = [
+        statement
+        for statement in _statements(delta)
+        if statement.get("Effect") == "Deny"
+        and "iam:PassRole" in (str(a) for a in _as_list(statement.get("Action")))
+    ]
+    (deny,) = denies
+    assert deny["NotResource"] == "arn:aws:iam::ACCOUNT_ID:role/PromisePatchDeploymentRole"
 
 
 def test_policies_carry_no_real_account_id(policies: dict[str, dict[str, Any]]) -> None:

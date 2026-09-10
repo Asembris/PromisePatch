@@ -6,15 +6,7 @@
       "Principal": {
         "Service": "cloudformation.amazonaws.com"
       },
-      "Action": "sts:AssumeRole",
-      "Condition": {
-        "StringEquals": {
-          "aws:SourceAccount": "ACCOUNT_ID"
-        },
-        "ArnLike": {
-          "aws:SourceArn": "arn:aws:cloudformation:us-east-1:ACCOUNT_ID:stack/promisepatch-*/*"
-        }
-      }
+      "Action": "sts:AssumeRole"
     }
   ]
 }
