@@ -447,6 +447,26 @@ async def _existing(
     return _Existing(case_id=row.case_id, state=row.state)
 
 
+async def observed_at_for(database: RuntimeDatabase, *, command_id: UUID) -> datetime | None:
+    """When this command's statement said the kitchen looked like that, if it is already stored.
+
+    For a caller with no natural clock of its own -- an HTTP handler, an MCP tool -- "when did
+    this happen" is the moment the words arrived, and it is the *server's* to decide: a caller
+    that could set it could backdate a physical claim. But a redelivery of one command is the
+    same statement, so it happened when that statement said it happened, and stamping a fresh
+    ``now()`` on the retry would change the request hash and turn an idempotent redelivery into
+    a conflict.
+
+    So this answers the narrow question a redelivery needs: has this exact command already been
+    stored, and if so, when did it say it was observed. It decides nothing and writes nothing.
+    """
+    async with database.connect() as connection:
+        stored: datetime | None = await connection.scalar(
+            select(CaseReport.observed_at).where(CaseReport.id == command_id)
+        )
+    return stored
+
+
 async def require_worker(connection: AsyncConnection, worker_id: str) -> None:
     exists = await connection.scalar(select(Worker.id).where(Worker.id == worker_id))
     if exists is None:

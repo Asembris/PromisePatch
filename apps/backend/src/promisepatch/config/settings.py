@@ -204,6 +204,89 @@ class Settings(BaseSettings):
     harness measures the model it was pointed at, whatever this deployment ships.
     """
 
+    # ----------------------------------------------------------------- the conversation edge
+    #
+    # Two hops, two credentials, and one thing neither of them may carry. An MCP client
+    # authenticates to the `mcp` process; the `mcp` process authenticates to the Intent API.
+    # *Who is speaking* is configured on the server at the far end of both hops and is never
+    # read off the wire, because a tool argument that could name an actor is an authority a
+    # model would eventually be asked to choose.
+
+    surface_worker_id: str | None = None
+    """The staff member every intent arriving through the conversational surface is attested by.
+
+    Server configuration, deliberately: this is the one place the actor behind an MCP tool call
+    is decided, and it is decided by whoever deployed the process rather than by anything in a
+    request. The Intent API refuses to serve an intent at all when it is unset -- an intake with
+    no attestor would be a physical claim nobody made.
+
+    One id today because one conversational surface exists. A deployment with several would map
+    the *authenticated service principal* to a worker here; it would still be a lookup on the
+    server, and a tool argument would still not appear in it.
+    """
+
+    internal_service_token: SecretStr | None = None
+    """The shared secret the ``/internal/intents`` endpoints require of their caller.
+
+    Service-to-service, not a session: the caller is the ``mcp`` process, it holds no cookie,
+    and a cookie it did hold would make every tool call a cross-site request. A
+    :class:`~pydantic.SecretStr` so it cannot reach a log line, and with it unset the Intent API
+    answers every call ``503`` rather than accepting unauthenticated ones.
+    """
+
+    mcp_bearer_token: SecretStr | None = None
+    """The bearer token an MCP client must present to the Streamable HTTP endpoint.
+
+    The local and self-hosted inbound credential. A deployment on AgentCore Runtime replaces it
+    with SigV4 at the edge, which is a hosting change rather than a protocol one; the tool
+    surface, the envelope and the identity rule are the same either way. With it unset the MCP
+    process refuses to start, because a server with no inbound credential is one that would
+    accept a tool call from anyone who found the port.
+    """
+
+    mcp_allowed_origins: str = ""
+    """Browser origins the MCP endpoint accepts, comma-separated. Empty means none.
+
+    The spec's DNS-rebinding protection: a page on another origin must not be able to drive a
+    locally bound MCP server. Empty by default and not derived from
+    :attr:`cors_origins`, because the evidence UI and the tool endpoint are different surfaces
+    with different callers, and inheriting one list into the other is how an origin ends up
+    trusted somewhere nobody meant it to be. A request with no ``Origin`` at all -- every
+    non-browser client -- is unaffected; it is authenticated by its bearer token like any other.
+    """
+
+    mcp_allowed_hosts: str = "127.0.0.1:*,localhost:*"
+    """``Host`` values the MCP endpoint accepts, comma-separated. ``:*`` matches any port.
+
+    The other half of rebinding protection. Defaulted to loopback because that is where the
+    development server binds; a deployment behind a real hostname sets its own.
+    """
+
+    mcp_intent_api_base_url: str | None = None
+    """Where the Intent API answers, or ``None`` when this process has no engine to reach.
+
+    The address of another application, not a feature flag, and deliberately not defaulted: a
+    default here would mean an ``mcp`` process that was never configured would try to open cases
+    on whatever answered on that port.
+    """
+
+    mcp_intent_timeout_seconds: float = 10.0
+    """How long one intent call may take before the tool reports the engine unreachable.
+
+    A timeout is an *unavailable reading*, never a reading: the tool answers with the
+    ``ENGINE_UNAVAILABLE`` refusal rather than with a guess about what the engine would have
+    said, and nothing is retried here, because the caller of a tool is a conversation and a
+    conversation can ask again.
+    """
+
+    mcp_json_response: bool = False
+    """Answer a tool call as one JSON body instead of an SSE stream.
+
+    Off, so the development server exercises the same event-stream framing a real Streamable
+    HTTP client meets. A host that cannot read ``text/event-stream`` turns it on; the JSON-RPC
+    messages are identical either way.
+    """
+
     bakery_tz: str = "Africa/Tunis"
     """The bakery's local timezone.
 
@@ -307,6 +390,48 @@ class Settings(BaseSettings):
     def require_demo_owner_password(self) -> str:
         """The demo owner's password, or a precise failure naming what to configure."""
         return _required(self.demo_owner_password, "PP_DEMO_OWNER_PASSWORD")
+
+    def require_surface_worker_id(self) -> str:
+        """The conversational surface's attestor, or a precise failure naming what to configure."""
+        if self.surface_worker_id is None:
+            raise RuntimeError(
+                "PP_SURFACE_WORKER_ID is not configured; the conversational surface has no "
+                "worker to attest what it reports."
+            )
+        return self.surface_worker_id
+
+    def require_internal_service_token(self) -> str:
+        """The Intent API's service credential, or a precise failure naming what to configure."""
+        return _required(self.internal_service_token, "PP_INTERNAL_SERVICE_TOKEN")
+
+    def require_mcp_bearer_token(self) -> str:
+        """The MCP endpoint's inbound credential, or a precise failure naming what to configure."""
+        return _required(self.mcp_bearer_token, "PP_MCP_BEARER_TOKEN")
+
+    def require_mcp_intent_api_base_url(self) -> str:
+        """Where the Intent API answers, or a precise failure naming what to configure."""
+        if self.mcp_intent_api_base_url is None:
+            raise RuntimeError(
+                "PP_MCP_INTENT_API_BASE_URL is not configured; the MCP server has no case "
+                "engine to reach."
+            )
+        return self.mcp_intent_api_base_url.rstrip("/")
+
+    @property
+    def intents_configured(self) -> bool:
+        """Whether this process can serve an intent at all: a token and an attestor."""
+        return self.internal_service_token is not None and self.surface_worker_id is not None
+
+    @property
+    def mcp_allowed_origin_list(self) -> tuple[str, ...]:
+        """``PP_MCP_ALLOWED_ORIGINS`` as a comma-separated list. Empty means no browser origin."""
+        values = self.mcp_allowed_origins.split(",")
+        return tuple(value.strip() for value in values if value.strip())
+
+    @property
+    def mcp_allowed_host_list(self) -> tuple[str, ...]:
+        """``PP_MCP_ALLOWED_HOSTS`` as a comma-separated list."""
+        return tuple(value.strip() for value in self.mcp_allowed_hosts.split(",") if value.strip())
 
     @property
     def cors_origin_list(self) -> tuple[str, ...]:
