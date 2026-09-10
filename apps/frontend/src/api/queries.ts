@@ -10,6 +10,9 @@
  * time would be polling wearing a disguise, and the brief is explicit that polling is not a
  * substitute for the stream. `refetchOnWindowFocus` stays on because returning to a tab is a
  * cheap, human-initiated moment to be sure.
+ *
+ * There is exactly one timer here and it only runs on a read that is already failing: see
+ * `recoverFromFailure`. A succeeding read is never polled, so the rule above is intact.
  */
 import {
   useMutation,
@@ -50,6 +53,31 @@ export function caseKey(caseId: string): readonly [string, string] {
 /** Long enough that the stream is what refreshes the screen, not a timer. */
 const OPERATIONAL_STALE_TIME = 60_000
 
+/** How often a read that has already failed tries again. Short, because it has nothing to show. */
+const FAILED_READ_RECOVERY_INTERVAL = 2_000
+
+/**
+ * Try again, but only while a read is failing.
+ *
+ * The screen is refreshed by the feed, not by a timer, and this does not change that: a read
+ * that is succeeding is never polled, so the "polling is not a substitute for the stream" rule
+ * still holds for every healthy path.
+ *
+ * What it fixes is the unhealthy one. `retryTransportFailures` gives up after three attempts,
+ * which is correct, and until now nothing tried again afterwards -- the only things that could
+ * were a feed frame and a window focus. A browser that is not being looked at and whose feed is
+ * also unhappy therefore sat on an empty screen indefinitely, with the panel heading rendered
+ * above it, and one unlucky first read was enough to cause it. That is precisely the shape the
+ * roadmap's "fragile demo" risk describes, and it is worse on a screen whose whole job is to
+ * say what is actually true right now.
+ *
+ * A signed-out read cannot be caught in this loop: the cache-level handler forgets the session
+ * on the first `401` and the protected queries are removed, so there is nothing left to poll.
+ */
+function recoverFromFailure(query: { state: { status: string } }): number | false {
+  return query.state.status === 'error' ? FAILED_READ_RECOVERY_INTERVAL : false
+}
+
 /**
  * Do not retry a request the server answered.
  *
@@ -79,6 +107,7 @@ export function usePromises(enabled: boolean): UseQueryResult<PromisesResponse, 
     enabled,
     retry: retryTransportFailures,
     staleTime: OPERATIONAL_STALE_TIME,
+    refetchInterval: recoverFromFailure,
   })
 }
 
@@ -89,6 +118,7 @@ export function useResources(enabled: boolean): UseQueryResult<ResourcesResponse
     enabled,
     retry: retryTransportFailures,
     staleTime: OPERATIONAL_STALE_TIME,
+    refetchInterval: recoverFromFailure,
   })
 }
 
@@ -99,6 +129,7 @@ export function useCases(enabled: boolean): UseQueryResult<CaseListResponse, Err
     enabled,
     retry: retryTransportFailures,
     staleTime: OPERATIONAL_STALE_TIME,
+    refetchInterval: recoverFromFailure,
   })
 }
 
@@ -117,6 +148,7 @@ export function useCase(caseId: string | null): UseQueryResult<CaseWorkspaceResp
     enabled: caseId !== null,
     retry: retryTransportFailures,
     staleTime: OPERATIONAL_STALE_TIME,
+    refetchInterval: recoverFromFailure,
   })
 }
 
