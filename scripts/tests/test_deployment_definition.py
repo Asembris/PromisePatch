@@ -12,6 +12,11 @@ anybody spends money finding out:
 * the runtime role can invoke exactly one model, by both the names a cross-region inference
   profile needs;
 * the preflight cannot grow a mutating call without its frozen read-only list changing;
+* the ECR probe names a repository instead of listing the registry, and tells "you may, and
+  there is nothing there" apart from "you may not";
+* exactly one CloudWatch Logs action is account-wide, and it is the one that cannot be scoped;
+* every policy file is a document IAM would actually accept, and the deployment role's trust
+  policy is the one that exists in AWS rather than a stricter draft of it;
 * the smoke check's pinned protocol revision is still the server's own.
 
 Several of these are the kind of thing that is obviously true the day it is written and quietly

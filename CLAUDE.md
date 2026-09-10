@@ -160,11 +160,21 @@ else runs, rather than from anything the run observed.
 **P6 is open. Its first slice, the deployment preflight, is done, and the deployment itself is
 blocked on IAM.** The active identity is `PromisePatchDeveloperRole`, and a reproducible
 zero-mutation preflight (`scripts/aws_preflight.py`, read-only by construction: a probe naming
-an API outside a frozen list aborts the run) establishes that it holds **2 of 9 required
-permissions** -- `sts:GetCallerIdentity`, and `bedrock:InvokeModel` on exactly the
-`us.amazon.nova-2-lite-v1:0` inference profile. CloudFormation, EC2, RDS, ECR, SSM, CloudWatch
-Logs and IAM are all denied, the role cannot read its own policy, and the account is not
-subscribed to App Runner. **No AWS resource was created and IAM was not broadened.** The
+an API outside a frozen list aborts the run) reported **2 of 9 required permissions** on its
+first run, when the role held nothing but `sts:GetCallerIdentity` and `bedrock:InvokeModel` on
+exactly the `us.amazon.nova-2-lite-v1:0` inference profile. One of those seven denials was the
+preflight's own fault -- the ECR probe listed the whole registry, which a role scoped to
+`repository/promisepatch/*` is correctly denied, so it manufactured a blocker that did not
+exist; it now names a repository and reads `RepositoryNotFoundException` as authorization
+proved. The account owner has since applied the delta and created both roles. **The preflight
+now reports 8 of 9, and one real blocker remains:** `logs:DescribeLogGroups` is evaluated
+account-wide and cannot be scoped to `/promisepatch/*`, so it needs its own statement with
+`Resource: "*"` -- names only, no log content, with everything that can read a line still
+scoped. Everything else simulates `allowed` against its real resource ARN. The committed
+deployment-role trust policy is byte-identical to the live one: CloudFormation service
+principal, no condition, the confused-deputy control having moved to the narrow `iam:PassRole`
+in the developer delta. **Nothing was created in AWS by this work and IAM was not broadened by
+it.** The
 smallest architecture that closes G6 is chosen and fully written: one EC2 host running the same
 images with the same per-container environment files as the local stack, a private encrypted RDS
 PostgreSQL for the case state, Caddy terminating TLS with a publicly trusted certificate, ECR,
