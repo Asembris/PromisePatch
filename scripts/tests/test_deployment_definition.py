@@ -318,11 +318,57 @@ def test_the_host_has_no_inbound_ssh_and_no_key_pair(template: dict[str, Any]) -
 
 def test_no_policy_asks_for_administrator_access(policies: dict[str, dict[str, Any]]) -> None:
     for name, policy in policies.items():
-        # The policy, not the file's own `Comment` prose: that key is documentation and is not
-        # an IAM element, so a sentence explaining what is *not* requested must not fail here.
         text = json.dumps(_statements(policy))
         assert "AdministratorAccess" not in text, f"{name} asks for AdministratorAccess"
         assert '"Action": "*"' not in text, f"{name} asks for every action"
+
+
+# IAM's policy grammar. Anything outside these sets is a `MalformedPolicyDocument`, not an
+# ignored annotation, so a file carrying explanatory prose cannot be applied as written.
+IAM_TOP_LEVEL_KEYS = frozenset({"Version", "Id", "Statement"})
+IAM_STATEMENT_KEYS = frozenset(
+    {
+        "Sid",
+        "Effect",
+        "Principal",
+        "NotPrincipal",
+        "Action",
+        "NotAction",
+        "Resource",
+        "NotResource",
+        "Condition",
+    }
+)
+
+
+def test_every_policy_is_a_valid_iam_document(policies: dict[str, dict[str, Any]]) -> None:
+    """These files exist to be applied verbatim, so they must be applicable verbatim.
+
+    An earlier version carried a top-level ``Comment`` array explaining each statement. It read
+    well and it could not be pasted: IAM rejects an unrecognised key rather than ignoring it, so
+    the reviewed form of the policy was not the form anyone could apply. The prose moved to
+    ``deploy/policies/README.md`` and this test is what keeps it there.
+    """
+    for name, policy in policies.items():
+        unknown_top = set(policy) - IAM_TOP_LEVEL_KEYS
+        assert not unknown_top, (
+            f"{name} has non-IAM top-level key(s) {sorted(unknown_top)}; IAM would reject the "
+            "document. Explanations belong in deploy/policies/README.md."
+        )
+        assert policy["Version"] == "2012-10-17"
+        statements = _statements(policy)
+        assert statements, f"{name} has no statements"
+        for statement in statements:
+            unknown = set(statement) - IAM_STATEMENT_KEYS
+            assert not unknown, (
+                f"{name}: statement {statement.get('Sid')} has non-IAM key(s) {sorted(unknown)}"
+            )
+            assert statement.get("Effect") in ("Allow", "Deny")
+            if len(statements) > 1:
+                # A multi-statement policy needs names to be reviewable. The single-statement
+                # trust policy deliberately has none, because the role in AWS has none and this
+                # file is asserted below to match it exactly.
+                assert "Sid" in statement, "an unnamed statement cannot be discussed in review"
 
 
 def test_no_pass_role_is_wildcarded(policies: dict[str, dict[str, Any]]) -> None:

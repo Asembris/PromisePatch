@@ -1,19 +1,4 @@
 {
-  "Comment": [
-    "The SMALLEST permission delta that unblocks the P6 deployment for a person.",
-    "",
-    "Substitute ACCOUNT_ID before use. Attach to PromisePatchDeveloperRole as an inline or",
-    "customer-managed policy named PromisePatchDeploymentEntry. Nothing here creates a",
-    "compute, database or network resource directly: the only mutation path is a",
-    "CloudFormation stack whose name must start with promisepatch-, executed with the",
-    "PromisePatchDeploymentRole service role. A person holding this delta cannot create an",
-    "EC2 instance, an RDS database or an IAM role by hand, and cannot pass any role other",
-    "than that one service role to any service other than CloudFormation.",
-    "",
-    "AdministratorAccess is not requested. No PassRole is wildcarded. Every statement is",
-    "scoped by resource, and the two that cannot be (an image-registry auth token and a",
-    "handful of account-wide Describe calls) are read-only."
-  ],
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -41,7 +26,10 @@
     {
       "Sid": "StackListAndValidateAreAccountWideReads",
       "Effect": "Allow",
-      "Action": ["cloudformation:ListStacks", "cloudformation:ValidateTemplate"],
+      "Action": [
+        "cloudformation:ListStacks",
+        "cloudformation:ValidateTemplate"
+      ],
       "Resource": "*"
     },
     {
@@ -50,7 +38,9 @@
       "Action": "iam:PassRole",
       "Resource": "arn:aws:iam::ACCOUNT_ID:role/PromisePatchDeploymentRole",
       "Condition": {
-        "StringEquals": { "iam:PassedToService": "cloudformation.amazonaws.com" }
+        "StringEquals": {
+          "iam:PassedToService": "cloudformation.amazonaws.com"
+        }
       }
     },
     {
@@ -95,10 +85,17 @@
     {
       "Sid": "EncryptAndDecryptThoseSecureStringsOnly",
       "Effect": "Allow",
-      "Action": ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
+      "Action": [
+        "kms:Encrypt",
+        "kms:Decrypt",
+        "kms:GenerateDataKey",
+        "kms:DescribeKey"
+      ],
       "Resource": "*",
       "Condition": {
-        "StringEquals": { "kms:ViaService": "ssm.us-east-1.amazonaws.com" }
+        "StringEquals": {
+          "kms:ViaService": "ssm.us-east-1.amazonaws.com"
+        }
       }
     },
     {
@@ -119,10 +116,16 @@
     {
       "Sid": "RestartTheHostToProveTheCaseOutlivesIt",
       "Effect": "Allow",
-      "Action": ["ec2:RebootInstances", "ec2:StopInstances", "ec2:StartInstances"],
+      "Action": [
+        "ec2:RebootInstances",
+        "ec2:StopInstances",
+        "ec2:StartInstances"
+      ],
       "Resource": "arn:aws:ec2:us-east-1:ACCOUNT_ID:instance/*",
       "Condition": {
-        "StringEquals": { "ec2:ResourceTag/Project": "promisepatch" }
+        "StringEquals": {
+          "ec2:ResourceTag/Project": "promisepatch"
+        }
       }
     },
     {
@@ -138,7 +141,9 @@
       ],
       "Resource": "*",
       "Condition": {
-        "StringEqualsIfExists": { "ssm:resourceTag/Project": "promisepatch" }
+        "StringEqualsIfExists": {
+          "ssm:resourceTag/Project": "promisepatch"
+        }
       }
     },
     {

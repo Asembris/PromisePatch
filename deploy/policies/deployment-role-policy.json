@@ -1,18 +1,4 @@
 {
-  "Comment": [
-    "Permissions for PromisePatchDeploymentRole -- the CloudFormation service role that",
-    "actually creates the P6 stack. Substitute ACCOUNT_ID before use.",
-    "",
-    "This is the only principal in the account that may create the deployment's compute,",
-    "database, network and log resources, and it can be assumed only by CloudFormation",
-    "acting on a promisepatch- stack. Deleting the stack is therefore the whole undo, and",
-    "the template is the whole audit trail.",
-    "",
-    "Two things it deliberately cannot do. It cannot create an IAM principal other than",
-    "PromisePatchInstanceRole and that role's instance profile, and it cannot pass any role",
-    "to anything except that one role to EC2. Both are enforced by explicit Deny at the",
-    "bottom, which no later Allow can override."
-  ],
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -85,7 +71,12 @@
       "Resource": "arn:aws:ec2:us-east-1:ACCOUNT_ID:instance/*",
       "Condition": {
         "StringNotEquals": {
-          "ec2:InstanceType": ["t4g.small", "t4g.medium", "t3a.small", "t3a.medium"]
+          "ec2:InstanceType": [
+            "t4g.small",
+            "t4g.medium",
+            "t3a.small",
+            "t3a.medium"
+          ]
         }
       }
     },
@@ -133,11 +124,17 @@
     {
       "Sid": "DatabaseClassIsCappedForTheSameReason",
       "Effect": "Deny",
-      "Action": ["rds:CreateDBInstance", "rds:ModifyDBInstance"],
+      "Action": [
+        "rds:CreateDBInstance",
+        "rds:ModifyDBInstance"
+      ],
       "Resource": "arn:aws:rds:us-east-1:ACCOUNT_ID:db:promisepatch-*",
       "Condition": {
         "StringNotEquals": {
-          "rds:DatabaseClass": ["db.t4g.micro", "db.t4g.small"]
+          "rds:DatabaseClass": [
+            "db.t4g.micro",
+            "db.t4g.small"
+          ]
         }
       }
     },
@@ -157,15 +154,25 @@
     {
       "Sid": "ReadTheSecretsTheTemplateResolves",
       "Effect": "Allow",
-      "Action": ["ssm:GetParameter", "ssm:GetParameters"],
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ],
       "Resource": "arn:aws:ssm:us-east-1:ACCOUNT_ID:parameter/promisepatch/*"
     },
     {
       "Sid": "DecryptThoseSecureStringsThroughSsmOnly",
       "Effect": "Allow",
-      "Action": ["kms:Decrypt", "kms:DescribeKey"],
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
       "Resource": "*",
-      "Condition": { "StringEquals": { "kms:ViaService": "ssm.us-east-1.amazonaws.com" } }
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "ssm.us-east-1.amazonaws.com"
+        }
+      }
     },
     {
       "Sid": "ExactlyOneRuntimePrincipal",
@@ -204,12 +211,19 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": "arn:aws:iam::ACCOUNT_ID:role/PromisePatchInstanceRole",
-      "Condition": { "StringEquals": { "iam:PassedToService": "ec2.amazonaws.com" } }
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ec2.amazonaws.com"
+        }
+      }
     },
     {
       "Sid": "OnlyTheOneManagedPolicySessionManagerNeeds",
       "Effect": "Deny",
-      "Action": ["iam:AttachRolePolicy", "iam:DetachRolePolicy"],
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
       "Resource": "*",
       "Condition": {
         "ArnNotEquals": {
@@ -245,9 +259,16 @@
     {
       "Sid": "NoDatabaseMayBeMadePublic",
       "Effect": "Deny",
-      "Action": ["rds:CreateDBInstance", "rds:ModifyDBInstance"],
+      "Action": [
+        "rds:CreateDBInstance",
+        "rds:ModifyDBInstance"
+      ],
       "Resource": "*",
-      "Condition": { "Bool": { "rds:PubliclyAccessible": "true" } }
+      "Condition": {
+        "Bool": {
+          "rds:PubliclyAccessible": "true"
+        }
+      }
     }
   ]
 }
