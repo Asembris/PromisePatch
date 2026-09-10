@@ -1,8 +1,8 @@
 """``/internal/intents/*`` -- the case engine's entrance for the conversational surface.
 
-Two endpoints in this slice, ``report`` and ``status``, and they are the only way a tool call
-reaches a case. Everything about them is shaped by one sentence: **the model understands; the
-deterministic protocol authorizes.**
+Four endpoints, ``report``, ``clarify``, ``confirm`` and ``status``, and they are the only way
+a tool call reaches a case. Everything about them is shaped by one sentence: **the model
+understands; the deterministic protocol authorizes.**
 
 **It authenticates a service, not a person.** The caller is the ``mcp`` process. There is no
 session cookie and no CSRF token, because a server holds neither and a cookie it did hold would
@@ -21,9 +21,16 @@ happen" is read here, because a caller that could set it could backdate a physic
 tool that was offered is not a tool that is allowed; this router adds a credential and subtracts
 nothing.
 
-**It interprets nothing.** ``report`` stores the words and enqueues the durable work. The
-interpreter runs in the worker, under a lease, in a transaction that can be rolled back --
-which is the only place a decision that settles a delivery belongs.
+**It interprets nothing.** ``report`` and ``clarify`` store the words and enqueue the durable
+work. The interpreter runs in the worker, under a lease, in a transaction that can be rolled
+back -- which is the only place a decision that settles a delivery belongs.
+
+**A confirmation is bound to a plan, not to a case.** ``confirm`` carries the identity of the
+plan ``status`` presented, and the domain compares it with the plan the case is offering under
+the lock it writes with. A yes that quotes a superseded plan is refused; it is never applied to
+whatever the case happens to hold when it arrives. Worker plan confirmation is also not
+customer consent: it authorises *asking* an approval-required customer and nothing more, and no
+endpoint here can record a decision on a customer's behalf.
 
 **``status`` is rendered here, not paraphrased there.** The answer carries sentences produced
 by :mod:`promisepatch.domain.status_view` from the durable case, so a conversational layer
@@ -46,13 +53,19 @@ from promisepatch.api.dependencies import DatabaseDep, SettingsDep
 from promisepatch.api.errors import ApiError
 from promisepatch.api.schemas.intents import (
     CaseStatusResponse,
+    ClarificationAccepted,
+    ClarifyIntent,
+    ConfirmationAccepted,
+    ConfirmIntent,
+    PendingQuestion,
     PromiseStatus,
+    QuestionOption,
     ReportAccepted,
     ReportIntent,
     StatusIntent,
 )
 from promisepatch.db.models import Case
-from promisepatch.domain import analysis, intake, status_view
+from promisepatch.domain import analysis, cases, intake, recovery, status_view
 from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
@@ -76,6 +89,19 @@ UNCONFIGURED = ApiError(
 )
 """No credential and no attestor, no intents. Defaulting either one would mean every copy of
 this repository shared a secret, or that an intake could arrive with nobody on the record."""
+
+NO_SUCH_CASE = ApiError(status_code=404, code="CASE_NOT_FOUND", message="no case by that id")
+"""A case id that names nothing. Case ids are UUIDs and the caller is an authenticated internal
+service, so this is not an enumeration surface -- and a conversation that could not tell "no
+such case" from "not yours" would have to guess which it was."""
+
+SURFACE_WORKER_MISSING = ApiError(
+    status_code=503,
+    code="SURFACE_WORKER_UNKNOWN",
+    message="the configured surface worker does not exist in this deployment",
+)
+"""This server named an attestor its own database does not have. A deployment problem, not a
+caller problem, so 4xx would tell the caller to fix something that is not theirs."""
 
 
 def _authenticate(settings: SettingsDep, presented: str | None) -> str:
@@ -145,15 +171,8 @@ async def report(
             correlation_id=_correlation_id(request),
         )
     except intake.UnknownWorkerError as error:
-        # A deployment problem, not a caller problem: this server named an attestor its own
-        # database does not have. Answering 4xx would tell the caller to fix something that is
-        # not theirs.
         logger.error("intents.surface_worker_unknown", worker=worker_id)
-        raise ApiError(
-            status_code=503,
-            code="SURFACE_WORKER_UNKNOWN",
-            message="the configured surface worker does not exist in this deployment",
-        ) from error
+        raise SURFACE_WORKER_MISSING from error
     except intake.IntakeConflictError as error:
         raise ApiError(
             status_code=409,
@@ -173,6 +192,164 @@ async def report(
         state=result.state,
         created=result.created,
         attested_by=worker_id,
+    )
+
+
+@router.post(
+    "/clarify",
+    response_model=ClarificationAccepted,
+    status_code=202,
+    summary="Answer the one question a case is waiting on",
+)
+async def clarify(
+    request: Request,
+    intent: ClarifyIntent,
+    settings: SettingsDep,
+    database: DatabaseDep,
+    service_token: Annotated[str | None, Header(alias=SERVICE_TOKEN_HEADER)] = None,
+) -> ClarificationAccepted:
+    """Store the worker's answer verbatim and hand the case back to the interpreter.
+
+    ``202``, for the same reason ``report`` is: what is durable when this returns is an answer
+    and a queued step. Which physical outcome the answer selects is decided by the worker
+    process, against the options that were captured from the delivery's own rows when the
+    question was asked -- so an answer can only ever choose among outcomes that were already
+    possible, and this endpoint cannot be talked into inventing one.
+    """
+    worker_id = _authenticate(settings, service_token)
+    try:
+        result = await intake.answer_clarification(
+            database,
+            case_id=intent.case_id,
+            command_id=intent.command_id,
+            worker_id=worker_id,
+            raw_text=intent.text,
+            correlation_id=_correlation_id(request),
+        )
+    except intake.UnknownWorkerError as error:
+        logger.error("intents.surface_worker_unknown", worker=worker_id)
+        raise SURFACE_WORKER_MISSING from error
+    except cases.CaseMissingError as error:
+        raise NO_SUCH_CASE from error
+    except intake.NotPermittedError as error:
+        raise ApiError(
+            status_code=403,
+            code="CASE_NOT_PERMITTED",
+            message="this surface may not speak on that case",
+        ) from error
+    except intake.NotAwaitingClarificationError as error:
+        # Not something the caller can fix by rephrasing: the case is not asking anything. A
+        # surface that recorded an answer anyway would be putting words on a case that never
+        # questioned them, which is the invented-evidence failure this boundary exists to stop.
+        raise ApiError(
+            status_code=409,
+            code="NOT_AWAITING_CLARIFICATION",
+            message="that case is not waiting for an answer",
+        ) from error
+    except intake.IntakeConflictError as error:
+        raise ApiError(
+            status_code=409,
+            code="COMMAND_CONFLICT",
+            message="this command id was already used for a different answer",
+        ) from error
+
+    logger.info(
+        "intents.clarify.accepted",
+        case_id=str(result.case_id),
+        created=result.created,
+        worker=worker_id,
+    )
+    return ClarificationAccepted(
+        case_id=result.case_id,
+        statement_id=result.statement_id,
+        state=result.state,
+        created=result.created,
+        attested_by=worker_id,
+        speech=status_view.render_clarification_receipt(),
+    )
+
+
+@router.post(
+    "/confirm",
+    response_model=ConfirmationAccepted,
+    status_code=202,
+    summary="Confirm one specific plan, so the recoveries it already authorises may execute",
+)
+async def confirm(
+    request: Request,
+    intent: ConfirmIntent,
+    settings: SettingsDep,
+    database: DatabaseDep,
+    service_token: Annotated[str | None, Header(alias=SERVICE_TOKEN_HEADER)] = None,
+) -> ConfirmationAccepted:
+    """Record the worker's yes to the plan they were shown, and enqueue only what it permits.
+
+    ``202``, and the counts in the answer are permissions rather than outcomes. Nothing has
+    been sent, no order has been amended and no customer has been asked when this returns: the
+    worker process is what executes against the confirmation, and until one runs the case sits
+    exactly where this left it.
+    """
+    worker_id = _authenticate(settings, service_token)
+    try:
+        result = await recovery.confirm_plan(
+            database,
+            case_id=intent.case_id,
+            command_id=intent.command_id,
+            worker_id=worker_id,
+            plan_id=intent.plan_id,
+            correlation_id=_correlation_id(request),
+        )
+    except intake.UnknownWorkerError as error:
+        logger.error("intents.surface_worker_unknown", worker=worker_id)
+        raise SURFACE_WORKER_MISSING from error
+    except cases.CaseMissingError as error:
+        raise NO_SUCH_CASE from error
+    except intake.NotPermittedError as error:
+        raise ApiError(
+            status_code=403,
+            code="CASE_NOT_PERMITTED",
+            message="this surface may not confirm that case",
+        ) from error
+    except recovery.StalePlanError as error:
+        raise ApiError(
+            status_code=409,
+            code="PLAN_SUPERSEDED",
+            message="that plan is not the one this case is offering",
+        ) from error
+    except recovery.PlanNotConfirmableError as error:
+        raise ApiError(
+            status_code=409,
+            code="PLAN_NOT_CONFIRMABLE",
+            message="that case is not waiting for a confirmation",
+        ) from error
+    except recovery.ConfirmationConflictError as error:
+        raise ApiError(
+            status_code=409,
+            code="COMMAND_CONFLICT",
+            message="this command id was already used for a different confirmation",
+        ) from error
+
+    logger.info(
+        "intents.confirm.accepted",
+        case_id=str(result.case_id),
+        created=result.created,
+        worker=worker_id,
+    )
+    return ConfirmationAccepted(
+        case_id=result.case_id,
+        command_id=result.command_id,
+        state=result.state,
+        created=result.created,
+        confirmed_by=worker_id,
+        applying=len(result.applying),
+        awaiting_approval=len(result.awaiting_approval),
+        escalated=len(result.escalated),
+        speech=status_view.render_confirmation(
+            applying=len(result.applying),
+            awaiting_approval=len(result.awaiting_approval),
+            escalated=len(result.escalated),
+            already_confirmed=not result.created,
+        ),
     )
 
 
@@ -213,11 +390,7 @@ async def status(
             message="this surface may not read that case",
         ) from error
     except analysis.CaseNotFoundError as error:
-        raise ApiError(
-            status_code=404,
-            code="CASE_NOT_FOUND",
-            message="no case by that id",
-        ) from error
+        raise NO_SUCH_CASE from error
 
     view = status_view.project(current)
     return CaseStatusResponse(
@@ -229,6 +402,21 @@ async def status(
         threatened=tuple(_promise(item) for item in view.threatened),
         untouched=tuple(_promise(item) for item in view.untouched),
         untouched_count=len(view.untouched),
+        question=_question(view),
+        plan_id=view.plan_id,
+        awaiting_confirmation=view.awaiting_confirmation,
+    )
+
+
+def _question(view: status_view.CaseView) -> PendingQuestion | None:
+    if view.question is None:
+        return None
+    return PendingQuestion(
+        clarification_id=UUID(view.question.clarification_id),
+        question=view.question.question,
+        options=tuple(
+            QuestionOption(code=option.code, label=option.label) for option in view.question.options
+        ),
     )
 
 
