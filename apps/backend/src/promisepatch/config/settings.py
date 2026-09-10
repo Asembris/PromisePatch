@@ -287,6 +287,26 @@ class Settings(BaseSettings):
     messages are identical either way.
     """
 
+    orchestrator_mcp_url: str | None = None
+    """Where the conversational orchestrator connects, as an ordinary MCP client would.
+
+    The endpoint's own address -- ``http://127.0.0.1:8001/mcp`` locally -- and deliberately not
+    derived from anything. The orchestrator is a client: it reaches the tools over the real
+    transport with the same bearer credential any third-party client presents, so a deployment
+    that pointed it somewhere else would be pointing a client somewhere else, which is a thing
+    clients are for. Unset means this process has no tool surface to talk to, and ``pp
+    converse`` says so rather than starting a conversation that cannot do anything.
+    """
+
+    orchestrator_timeout_seconds: float = 30.0
+    """How long one tool call from the orchestrator may take before it is unreachable.
+
+    Larger than the intent timeout it sits above, because it contains it: a client that gave up
+    before the server it is waiting on would report unavailability for a call that was about to
+    be refused for a reason worth hearing. It is still a ceiling -- a turn that never ends is a
+    worker standing in a kitchen with no answer.
+    """
+
     bakery_tz: str = "Africa/Tunis"
     """The bakery's local timezone.
 

@@ -245,6 +245,7 @@ layers = [
     "promisepatch.main",
     "promisepatch.worker",
     "promisepatch.api",
+    "promisepatch.orchestrator",
     "promisepatch.mcp",
     "promisepatch.integrations",
     "promisepatch.domain",
@@ -278,6 +279,74 @@ forbidden_modules = [
     "promisepatch.graph",
     "promisepatch.semantic",
     "sqlalchemy",
+]
+
+# The orchestrator is a client, and this is what makes that structural rather than described.
+# It cannot import the domain, the database, the API package, the engine or SQLAlchemy, and it
+# cannot import the MCP server's own internals either -- so it has no way to reach a case except
+# by calling a tool over the real transport with a credential, exactly as a third-party client
+# would. Everything a model can cause through it is therefore something an unrelated client
+# could already cause, which is the whole authority argument for putting a model in the loop.
+#
+# `promisepatch.mcp.envelope` is deliberately not forbidden: the refusal vocabulary is a wire
+# contract a client has to be able to read, and it is values only. The two modules that hold the
+# server and its engine hop are named instead.
+# `allow_indirect_imports` because the semantic contracts the loop depends on declare their
+# vocabulary in terms of the engine's own exception categories, so the *type* it imports lives
+# on a path that reaches `promise_graph`. The contract therefore says exactly one thing and says
+# it honestly: no module in this package names the domain, the database, the API, the engine or
+# an SDK itself, and therefore none of them can call one.
+[[tool.importlinter.contracts]]
+name = "the orchestrator reaches a case only as a client"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = ["promisepatch.orchestrator"]
+forbidden_modules = [
+    "alembic",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "promise_graph",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.domain",
+    "promisepatch.fixtures",
+    "promisepatch.graph",
+    "promisepatch.integrations",
+    "promisepatch.mcp.engine",
+    "promisepatch.mcp.server",
+    "sqlalchemy",
+    "starlette",
+]
+
+# Which verb a phase permits, whether a worker said yes, and what a refusal sounds like are all
+# decided by values. No socket, no client, no provider, no clock, no environment: a policy that
+# could reach one of those could decide differently on two runs of the same conversation, and
+# the confirmation gate in particular has to be a function of what the worker actually said.
+# `allow_indirect_imports` for the same reason and with the same honesty as the contract above:
+# the phase and verb vocabularies are declared beside contracts that carry a due date, so
+# `datetime` is on the import path of a module that never reads a clock. What is asserted is that
+# `policy` itself imports no clock, no socket, no client and no provider -- so a phase, a
+# permission and a worker's yes are functions of their arguments.
+[[tool.importlinter.contracts]]
+name = "the conversation policy decides without doing"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = ["promisepatch.orchestrator.policy"]
+forbidden_modules = [
+    "asyncio",
+    "datetime",
+    "httpx2",
+    "logging",
+    "mcp",
+    "os",
+    "promisepatch.orchestrator.loop",
+    "promisepatch.orchestrator.surface",
+    "random",
+    "socket",
+    "subprocess",
+    "time",
+    "urllib",
 ]
 
 # What a case currently *is* has one implementation, in the engine and the workflow. This module
