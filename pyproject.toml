@@ -241,9 +241,11 @@ name = "promisepatch module layering"
 type = "layers"
 layers = [
     "promisepatch.cli",
+    "promisepatch.mcp_server",
     "promisepatch.main",
     "promisepatch.worker",
     "promisepatch.api",
+    "promisepatch.mcp",
     "promisepatch.integrations",
     "promisepatch.domain",
     "promisepatch.semantic",
@@ -252,6 +254,30 @@ layers = [
     "promisepatch.db",
     "promisepatch.observability",
     "promisepatch.config",
+]
+
+# MCP is a transport and a delegation, never a second place where authority lives. The tool
+# process reaches a case the way any other client would -- an authenticated HTTP call to the
+# intent API -- and this contract is what makes that a fact rather than an intention. Without
+# it, the first inconvenient round trip becomes "just read the row here", and the boundary the
+# whole conversational authority argument rests on would exist only in a paragraph.
+[[tool.importlinter.contracts]]
+name = "the MCP surface reaches a case only over HTTP"
+type = "forbidden"
+source_modules = ["promisepatch.mcp"]
+forbidden_modules = [
+    "alembic",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "promise_graph",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.domain",
+    "promisepatch.fixtures",
+    "promisepatch.graph",
+    "promisepatch.semantic",
+    "sqlalchemy",
 ]
 
 # What a case currently *is* has one implementation, in the engine and the workflow. This module

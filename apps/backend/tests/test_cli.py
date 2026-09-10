@@ -146,6 +146,59 @@ def test_an_unknown_bakery_timezone_is_refused() -> None:
         resolve_anchor("2026-03-04T07:00", Settings(bakery_tz="Mars/Olympus_Mons"))
 
 
+# --------------------------------------------------------------------------------- pp mcp
+
+
+def test_mcp_is_a_subcommand() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "mcp" in result.stdout
+
+
+def test_mcp_serves_the_application_factory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A factory, not a module-level app.
+
+    Building the MCP server asserts things about the environment -- an inbound credential, an
+    engine to reach -- so a module-level instance would make *importing* it an assertion, and
+    the import has to succeed on a machine that has neither. ``--factory`` is how uvicorn is
+    told to call it at startup instead.
+    """
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def fake_run(*args: Any, **kwargs: Any) -> None:
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr("uvicorn.run", fake_run)
+
+    result = runner.invoke(app, ["mcp", "--host", "0.0.0.0", "--port", "9002"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        (
+            ("promisepatch.mcp_server:create_app",),
+            {"host": "0.0.0.0", "port": 9002, "reload": False, "factory": True},
+        )
+    ]
+
+
+def test_the_mcp_server_refuses_to_start_without_an_inbound_credential() -> None:
+    """A startup failure, not a runtime one. A server with no credential accepts everyone."""
+    from promisepatch.mcp_server import create_app
+
+    settings = Settings(mcp_intent_api_base_url="http://api:8000")
+    with pytest.raises(RuntimeError, match="PP_MCP_BEARER_TOKEN"):
+        create_app(settings)
+
+
+def test_the_mcp_server_refuses_to_start_with_no_engine_to_reach() -> None:
+    """One that came up anyway would answer every call ``ENGINE_UNAVAILABLE`` while looking well."""
+    from promisepatch.mcp_server import create_app
+
+    settings = Settings(mcp_bearer_token="a-token")
+    with pytest.raises(RuntimeError, match="PP_MCP_INTENT_API_BASE_URL"):
+        create_app(settings)
+
+
 # ------------------------------------------------------------------------------ pp worker
 
 

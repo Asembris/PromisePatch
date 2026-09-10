@@ -62,6 +62,26 @@ def api(
 
 
 @app.command()
+def mcp(
+    host: str = typer.Option("127.0.0.1", help="Interface to bind."),
+    port: int = typer.Option(8001, help="Port to bind."),
+    reload: bool = typer.Option(False, "--reload", help="Reload on source changes."),
+) -> None:
+    """Run the Streamable HTTP MCP server.
+
+    A separate process from the API on purpose: it is the endpoint a third-party MCP client is
+    pointed at, and it is the one process in this application that cannot reach a database.
+    Port 8001 locally so it does not clash with the API; a deployment on AgentCore Runtime
+    binds the port that contract expects instead.
+    """
+    import uvicorn
+
+    from promisepatch.mcp_server import APP_FACTORY
+
+    uvicorn.run(APP_FACTORY, host=host, port=port, reload=reload, factory=True)
+
+
+@app.command()
 def worker() -> None:
     """Run the durable workflow worker.
 
