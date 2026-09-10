@@ -19,6 +19,7 @@ from promisepatch.api.errors import register_error_handlers
 from promisepatch.api.middleware import CorrelationIdMiddleware
 from promisepatch.api.routers import (
     auth_router,
+    cases_router,
     events_router,
     health_router,
     integrations_router,
@@ -115,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(cases_router)
     app.include_router(promises_router)
     app.include_router(resources_router)
     app.include_router(events_router)
