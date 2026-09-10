@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+import time
+from collections.abc import Awaitable, Callable, Iterator
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -97,6 +99,90 @@ def worker() -> None:
     except RuntimeError as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from error
+
+
+@app.command()
+def converse(
+    turn: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--turn",
+            help="One thing the worker says. Repeat for a scripted conversation; omit to type.",
+        ),
+    ] = None,
+    show_tools: bool = typer.Option(
+        False, "--show-tools", help="Print the tool calls each turn made, and what was chosen."
+    ),
+) -> None:
+    """Hold one conversation with a case over the real MCP surface.
+
+    A client, and only a client. It connects to the MCP endpoint with the bearer credential any
+    third-party client would present, and every case it touches it touches through a tool call
+    -- there is no database handle in this process and no way for it to write anything itself.
+
+    The model chooses among the verbs the case's own state permits. It supplies no arguments:
+    what a worker says is forwarded verbatim, and a plan is confirmed only by quoting back the
+    identity ``status`` returned. Against the fake provider every turn chooses nothing, which
+    is the honest behaviour of a deployment with no model configured.
+    """
+    settings = get_settings()
+    url = settings.orchestrator_mcp_url
+    if not url:
+        typer.secho(
+            "set PP_ORCHESTRATOR_MCP_URL to the MCP endpoint this should talk to "
+            "(locally, http://127.0.0.1:8001/mcp).",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    scripted = list(turn or ())
+    try:
+        asyncio.run(_converse(settings, url, scripted, show_tools=show_tools))
+    except (RuntimeError, SemanticError) as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+
+async def _converse(settings: Settings, url: str, scripted: list[str], *, show_tools: bool) -> None:
+    """Drive turns against one open session until the script or the operator runs out."""
+    from promisepatch.orchestrator import Conversation, Orchestrator, connect
+
+    provider = build_semantic_provider(settings)
+    conversation = Conversation()
+    async with connect(
+        url,
+        token=settings.require_mcp_bearer_token(),
+        timeout_seconds=settings.orchestrator_timeout_seconds,
+    ) as surface:
+        orchestrator = Orchestrator(provider=provider, surface=surface)
+        for said in scripted or _typed_turns():
+            typer.secho(f"> {said}", fg=typer.colors.BLUE)
+            started = time.perf_counter()
+            result = await orchestrator.take_turn(conversation, said, correlation_id=str(uuid4()))
+            conversation = result.conversation
+            typer.echo(result.reply)
+            if show_tools:
+                typer.secho(
+                    f"[{int((time.perf_counter() - started) * 1000)} ms | "
+                    f"chose {result.selected.value if result.selected else '-'} | "
+                    f"called {', '.join(result.calls) or 'nothing'} | "
+                    f"phase {conversation.phase.value}]",
+                    fg=typer.colors.BRIGHT_BLACK,
+                )
+            typer.echo("")
+
+
+def _typed_turns() -> Iterator[str]:
+    """Turns read from the terminal, until a blank line or end of input."""
+    while True:
+        try:
+            said = typer.prompt("you", prompt_suffix="> ", default="", show_default=False)
+        except (EOFError, typer.Abort):  # pragma: no cover - interactive only
+            return
+        if not said.strip():
+            return
+        yield said
 
 
 @app.command(name="reset-demo-state")
