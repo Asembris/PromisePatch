@@ -293,19 +293,36 @@ class Intake:
         await self.drain_intake(opened.case_id)
         return opened.case_id
 
+    async def plan_id(self, case_id: UUID) -> str:
+        """The identity of the plan this case offers now, read the way a surface would read it.
+
+        Through :func:`analysis.read_case_status` on purpose: it is the value a worker would
+        have been shown, so a test that confirms with it is confirming the plan somebody read
+        rather than one it computed for itself out of the rows it is about to assert on.
+        """
+        status = await analysis.read_case_status(self.database, case_id=case_id)
+        return status.plan_id
+
     async def confirm(
         self,
         case_id: UUID,
         *,
         worker_id: str = BAKER,
         command_id: UUID | None = None,
+        plan_id: str | None = None,
     ) -> recovery.ConfirmationResult:
-        """A worker's yes, through the same reusable command the CLI and MCP tools will call."""
+        """A worker's yes, through the same reusable command the CLI and the MCP tool call.
+
+        ``plan_id`` defaults to the plan the case is currently offering, which is what a
+        worker confirming what they just read would quote. A test about staleness passes a
+        different one deliberately.
+        """
         return await recovery.confirm_plan(
             self.database,
             case_id=case_id,
             command_id=command_id or uuid4(),
             worker_id=worker_id,
+            plan_id=plan_id if plan_id is not None else await self.plan_id(case_id),
         )
 
     @asynccontextmanager

@@ -59,6 +59,7 @@ from promisepatch.db.models import (
     Case,
     CaseStep,
     Customer,
+    ExceptionClarification,
     InboundReply,
     Order,
     OrderLine,
@@ -73,6 +74,7 @@ from promisepatch.db.models import Promise as PromiseRow
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
+from promisepatch.domain import plan_identity
 from promisepatch.domain.cases import (
     CASE_RECONCILING,
     CASE_REVALIDATING,
@@ -1346,6 +1348,35 @@ class InterpretationStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class ClarificationOptionStatus:
+    """One answer the case will accept, as a person needs to hear it.
+
+    The code and the label only. The stored option also carries the commitment lines choosing
+    it would settle, and those are the *consequence* of an answer rather than the question --
+    they belong in the evidence drawer, not in a sentence a worker is read.
+    """
+
+    code: str
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
+class PendingClarification:
+    """The question this case is waiting on, if it is waiting on one.
+
+    Band 1 of the case workspace: an unresolved ambiguity appears as a question, not as a
+    result. Present only while the question is open -- an answered one is history, and history
+    that still reads as a question is how a surface asks the same thing twice.
+    """
+
+    clarification_id: UUID
+    ordinal: int
+    slot: str
+    question: str
+    options: tuple[ClarificationOptionStatus, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CaseStatus:
     """What one case currently concludes. A read, and only a read."""
 
@@ -1356,6 +1387,15 @@ class CaseStatus:
     category: str | None
     tracks: tuple[TrackStatus, ...]
     interpretation: InterpretationStatus | None = None
+    case_version: int = 1
+    plan_id: str = ""
+    """The derived identity of the plan these tracks currently are. See :mod:`plan_identity`.
+
+    Computed on every read rather than stored, and quoted back by a confirmation so a worker's
+    yes can only ever authorise the plan they were actually shown.
+    """
+
+    clarification: PendingClarification | None = None
 
 
 class CaseNotFoundError(RuntimeError):
@@ -1397,6 +1437,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
         ).all()
 
         interpretation = await _interpretation_status(connection, case_id, case.exception_id)
+        pending = await _pending_clarification(connection, case_id)
         tracks: list[TrackStatus] = []
         for track in rows:
             options = (
@@ -1487,6 +1528,62 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
         category=category,
         tracks=tuple(tracks),
         interpretation=interpretation,
+        case_version=case.version,
+        plan_id=plan_identity.plan_id(
+            case_id=str(case.id),
+            case_version=case.version,
+            entries=[plan_entry_of(track) for track in tracks],
+        ),
+        clarification=pending,
+    )
+
+
+def plan_entry_of(track: TrackStatus) -> plan_identity.PlanEntry:
+    """One track, reduced to the terms a plan's identity is made of.
+
+    Here rather than in :mod:`plan_identity` because it is a projection of *this* module's read
+    model, and because the confirming transaction builds the same entry from its own locked
+    rows -- two producers, one shape, so the two identities are comparable by construction.
+    """
+    chosen = next((option for option in track.options if option.chosen), None)
+    return plan_identity.PlanEntry(
+        track_id=str(track.track_id),
+        track_state=track.state,
+        classification=track.classification,
+        chosen_option_id=None if chosen is None else str(chosen.id),
+        to_version_id=None if chosen is None else chosen.to_version_id,
+        fingerprint=track.fingerprint,
+    )
+
+
+async def _pending_clarification(
+    connection: AsyncConnection, case_id: UUID
+) -> PendingClarification | None:
+    """The one unanswered question on this case, or nothing.
+
+    At most one can exist -- a partial unique index enforces it -- so this reads the open row
+    rather than the newest one. A case with an answered question and no open one is not
+    waiting on anybody.
+    """
+    row = (
+        await connection.execute(
+            select(ExceptionClarification).where(
+                ExceptionClarification.case_id == case_id,
+                ExceptionClarification.answered_at.is_(None),
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return PendingClarification(
+        clarification_id=row.id,
+        ordinal=row.ordinal,
+        slot=row.slot,
+        question=row.question,
+        options=tuple(
+            ClarificationOptionStatus(code=str(item["code"]), label=str(item["label"]))
+            for item in (row.options or [])
+        ),
     )
 
 

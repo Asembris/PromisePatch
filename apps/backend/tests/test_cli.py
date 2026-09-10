@@ -642,10 +642,13 @@ def test_confirm_plan_is_a_subcommand() -> None:
     assert "confirm-plan" in runner.invoke(app, ["--help"]).stdout
 
 
+PLAN = "a" * 64
+
+
 def test_confirming_a_plan_delegates_to_the_domain_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The CLI parses three arguments and prints. What a yes authorises is the domain's."""
+    """The CLI parses four arguments and prints. What a yes authorises is the domain's."""
     seen: dict[str, object] = {}
     given = UUID("11111111-2222-3333-4444-555555555555")
 
@@ -665,8 +668,12 @@ def test_confirming_a_plan_delegates_to_the_domain_service(
     monkeypatch.setattr(
         cli,
         "_confirm",
-        lambda settings, case_id, worker_id, command_id: fake(
-            None, case_id=case_id, worker_id=worker_id, command_id=command_id
+        lambda settings, case_id, worker_id, plan_id, command_id: fake(
+            None,
+            case_id=case_id,
+            worker_id=worker_id,
+            plan_id=plan_id,
+            command_id=command_id,
         ),
     )
 
@@ -678,6 +685,8 @@ def test_confirming_a_plan_delegates_to_the_domain_service(
             str(UUID(int=1)),
             "--worker",
             "maya",
+            "--plan",
+            PLAN,
             "--command-id",
             str(given),
         ],
@@ -686,9 +695,30 @@ def test_confirming_a_plan_delegates_to_the_domain_service(
     assert result.exit_code == 0, result.output
     assert seen["case_id"] == UUID(int=1)
     assert seen["worker_id"] == "maya"
+    assert seen["plan_id"] == PLAN
     assert seen["command_id"] == given
     assert cases.CASE_EXECUTING in result.output
     assert "applying:  1" in result.output
+
+
+def test_confirming_without_naming_a_plan_is_refused_by_the_command_itself(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An operator who has not read the plan has nothing to quote, and gets no further.
+
+    The same rule as the tool argument, one layer down: a confirmation that named only a case
+    would authorise whatever the case held when it arrived.
+    """
+
+    async def unreachable(*args: object, **kwargs: object) -> None:  # pragma: no cover
+        raise AssertionError("the domain must not be reached without a plan")
+
+    monkeypatch.setattr(cli, "_confirm", unreachable)
+
+    result = runner.invoke(app, ["confirm-plan", "--case", str(UUID(int=1)), "--worker", "maya"])
+
+    assert result.exit_code != 0
+    assert "--plan" in result.output
 
 
 def test_confirm_plan_reports_a_refusal_instead_of_a_traceback(
@@ -696,19 +726,45 @@ def test_confirm_plan_reports_a_refusal_instead_of_a_traceback(
 ) -> None:
     """A case that is not waiting for a yes is an operator error, not a crash."""
 
-    async def refuse(settings: object, case_id: UUID, worker_id: str, command_id: UUID) -> None:
+    async def refuse(
+        settings: object, case_id: UUID, worker_id: str, plan_id: str, command_id: UUID
+    ) -> None:
         raise recovery.PlanNotConfirmableError("case is ANALYZED, not PLANNED")
 
     monkeypatch.setattr(cli, "_confirm", refuse)
 
-    result = runner.invoke(app, ["confirm-plan", "--case", str(UUID(int=1)), "--worker", "maya"])
+    result = runner.invoke(
+        app, ["confirm-plan", "--case", str(UUID(int=1)), "--worker", "maya", "--plan", PLAN]
+    )
 
     assert result.exit_code == 1
     assert "not PLANNED" in result.output
 
 
+def test_confirm_plan_reports_a_superseded_plan_in_words_an_operator_can_act_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Staleness reaches the terminal as a sentence, not a traceback. Re-read and try again."""
+
+    async def refuse(
+        settings: object, case_id: UUID, worker_id: str, plan_id: str, command_id: UUID
+    ) -> None:
+        raise recovery.StalePlanError("case is offering a different plan than the one confirmed")
+
+    monkeypatch.setattr(cli, "_confirm", refuse)
+
+    result = runner.invoke(
+        app, ["confirm-plan", "--case", str(UUID(int=1)), "--worker", "maya", "--plan", PLAN]
+    )
+
+    assert result.exit_code == 1
+    assert "different plan" in result.output
+
+
 def test_confirm_plan_refuses_an_unparseable_identifier() -> None:
-    result = runner.invoke(app, ["confirm-plan", "--case", "nope", "--worker", "maya"])
+    result = runner.invoke(
+        app, ["confirm-plan", "--case", "nope", "--worker", "maya", "--plan", PLAN]
+    )
 
     assert result.exit_code == 1
     assert "not a UUID" in result.output

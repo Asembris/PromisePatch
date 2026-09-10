@@ -104,7 +104,7 @@ from promisepatch.db.models import (
 from promisepatch.db.models import Promise as PromiseRow
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
-from promisepatch.domain import crash, retry
+from promisepatch.domain import crash, plan_identity, retry
 from promisepatch.domain.analysis import fresh_snapshot, scope_from_watch
 from promisepatch.domain.cases import (
     CASE_EXECUTING,
@@ -297,6 +297,18 @@ class ConfirmationConflictError(RuntimeError):
     """
 
 
+class StalePlanError(RuntimeError):
+    """The plan being confirmed is not the plan this case is currently offering.
+
+    The worker read one thing and said yes to it; the rows now say something else. Between the
+    two, a track may have been re-planned against changed stock, a promise may have joined or
+    left the untouched band, or another case may have taken one over. Accepting the yes would
+    authorise recoveries nobody agreed to, so this fails closed and the surface re-reads the
+    case. Nothing about the plan is changed here -- a refused confirmation leaves the case
+    exactly where it was, still waiting.
+    """
+
+
 class RecoveryStateError(RuntimeError):
     """A recovery step describes a shape of the world that cannot be true."""
 
@@ -334,9 +346,16 @@ async def confirm_plan(
     case_id: UUID,
     command_id: UUID,
     worker_id: str,
+    plan_id: str,
     correlation_id: UUID | None = None,
 ) -> ConfirmationResult:
-    """Record a worker's yes, and enqueue only the work that yes actually authorises.
+    """Record a worker's yes to **one specific plan**, and enqueue only what that yes authorises.
+
+    ``plan_id`` is the identity of the plan the worker was shown -- see
+    :mod:`promisepatch.domain.plan_identity` -- and it is checked against the plan the case is
+    currently offering, under the same lock the confirmation is written with. A confirmation
+    that quotes a plan the case has moved past is refused rather than applied to whatever is
+    there now, because those are different sets of orders and only one of them was read out.
 
     One transaction, no network call and no outbound effect. What commits is: the case at
     ``EXECUTING``, every blocked track escalated with its production task held, one
@@ -345,7 +364,12 @@ async def confirm_plan(
     case ``PLANNED`` with nothing enqueued; one that dies after leaves work another worker
     picks up.
     """
-    fingerprint_of_request = request_hash(case=str(case_id), worker=worker_id, confirmed=True)
+    # The plan is part of the request, so two confirmations of *different* plans under one
+    # command id are a conflict rather than a retry -- the same rule intake applies to two
+    # different statements claiming one identity.
+    fingerprint_of_request = request_hash(
+        case=str(case_id), worker=worker_id, plan=plan_id, confirmed=True
+    )
 
     async with database.begin() as connection:
         existing = await _existing_confirmation(connection, command_id, fingerprint_of_request)
@@ -364,6 +388,7 @@ async def confirm_plan(
                 case_id=case_id,
                 command_id=command_id,
                 worker_id=worker_id,
+                plan_id=plan_id,
                 fingerprint_of_request=fingerprint_of_request,
                 correlation_id=correlation_id,
             )
@@ -399,6 +424,7 @@ async def _confirm(
     case_id: UUID,
     command_id: UUID,
     worker_id: str,
+    plan_id: str,
     fingerprint_of_request: str,
     correlation_id: UUID | None,
 ) -> ConfirmationResult:
@@ -424,6 +450,12 @@ async def _confirm(
             select(Track).where(Track.case_id == case_id).order_by(Track.id).with_for_update()
         )
     ).all()
+    # Under the case lock and the track locks, so what is compared is what will be acted on.
+    # Recomputed rather than read from a column: the identity is a statement about the rows as
+    # they are now, and a stored one would only be a statement about when it was written.
+    current = await current_plan_id(connection, case_id=case_id, case_version=case.version)
+    if current != plan_id:
+        raise StalePlanError(f"case {case_id} is offering a different plan than the one confirmed")
     plan = _partition(tracks)
     now = await database_now(connection)
 
@@ -1400,6 +1432,52 @@ async def chosen_option(connection: AsyncConnection, track: Any) -> Any:
             )
         )
     ).one_or_none()
+
+
+async def current_plan_id(connection: AsyncConnection, *, case_id: UUID, case_version: int) -> str:
+    """The identity of the plan this case is offering right now, from the rows themselves.
+
+    The other producer of the same value is
+    :func:`promisepatch.domain.analysis.plan_entry_of`, which builds it out of the read model a
+    surface was shown. Two producers is deliberate: the read is a query with joins and the
+    confirmation is a locked scan, and a shared query would make the comparison a comparison of
+    one read with itself. What they share is the shape, and a test drives both.
+    """
+    rows = (
+        await connection.execute(
+            select(
+                Track.id,
+                Track.state,
+                Track.classification,
+                Track.chosen_option_id,
+                Track.fingerprint,
+                RecoveryOption.to_version_id,
+            )
+            .outerjoin(
+                RecoveryOption,
+                (RecoveryOption.id == Track.chosen_option_id)
+                & (RecoveryOption.track_id == Track.id),
+            )
+            .where(Track.case_id == case_id)
+        )
+    ).all()
+    return plan_identity.plan_id(
+        case_id=str(case_id),
+        case_version=case_version,
+        entries=[
+            plan_identity.PlanEntry(
+                track_id=str(row.id),
+                track_state=row.state,
+                classification=row.classification,
+                chosen_option_id=(
+                    None if row.chosen_option_id is None else str(row.chosen_option_id)
+                ),
+                to_version_id=row.to_version_id,
+                fingerprint=row.fingerprint,
+            )
+            for row in rows
+        ],
+    )
 
 
 async def current_fingerprint(

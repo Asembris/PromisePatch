@@ -314,6 +314,35 @@ forbidden_modules = [
     "urllib",
 ]
 
+# A plan's identity is derived from rows somebody else read, and derived the same way by both
+# of its producers. It must therefore be a function of its arguments and nothing else: a module
+# that could reach a clock, a row or the environment could mint an identity that differed
+# between the read a worker was shown and the check their confirmation is measured against --
+# and the whole point of binding a yes to a plan is that those two are the same value.
+[[tool.importlinter.contracts]]
+name = "a plan identity is derived from its arguments alone"
+type = "forbidden"
+source_modules = ["promisepatch.domain.plan_identity"]
+forbidden_modules = [
+    "asyncio",
+    "datetime",
+    "fastapi",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.domain",
+    "promisepatch.main",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "time",
+    "urllib",
+    "uuid",
+]
+
 # The workflow's decisions are made by functions that cannot reach a database, a provider or a
 # request. Everything they need is an argument, which is what makes a step's behaviour testable
 # without infrastructure -- and what stops "just read the row here" from ever being the easy fix.

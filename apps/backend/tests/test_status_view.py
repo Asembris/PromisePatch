@@ -16,7 +16,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from promisepatch.domain.analysis import ApprovalStatus, CaseStatus, TrackStatus
+from promisepatch.domain.analysis import (
+    ApprovalStatus,
+    CaseStatus,
+    ClarificationOptionStatus,
+    PendingClarification,
+    TrackStatus,
+)
 from promisepatch.domain.status_view import (
     CASE_HEADLINES,
     Authority,
@@ -24,6 +30,8 @@ from promisepatch.domain.status_view import (
     PromiseState,
     project,
     render,
+    render_clarification_receipt,
+    render_confirmation,
 )
 
 NOW = datetime(2026, 3, 4, 7, 0, tzinfo=UTC)
@@ -82,7 +90,13 @@ def approval(
     )
 
 
-def case(state: str, *tracks: TrackStatus, attention: bool = False) -> CaseStatus:
+def case(
+    state: str,
+    *tracks: TrackStatus,
+    attention: bool = False,
+    plan: str = "a" * 64,
+    question: PendingClarification | None = None,
+) -> CaseStatus:
     return CaseStatus(
         case_id=UUID("11111111-1111-4111-8111-111111111111"),
         state=state,
@@ -90,6 +104,21 @@ def case(state: str, *tracks: TrackStatus, attention: bool = False) -> CaseStatu
         exception_id=uuid4(),
         category="DELIVERY_NOT_RECEIVED",
         tracks=tracks,
+        plan_id=plan,
+        clarification=question,
+    )
+
+
+def pending(question: str = "Whole delivery, or only the raspberries?") -> PendingClarification:
+    return PendingClarification(
+        clarification_id=UUID("33333333-3333-4333-8333-333333333333"),
+        ordinal=1,
+        slot="SCOPE",
+        question=question,
+        options=(
+            ClarificationOptionStatus(code="WHOLE_DELIVERY", label="the whole delivery"),
+            ClarificationOptionStatus(code="LINE-RASP", label="only the raspberries"),
+        ),
     )
 
 
@@ -208,6 +237,17 @@ def test_the_untouched_band_is_present_even_when_it_is_empty() -> None:
     assert "No promise in this case was left alone." in render(view)
 
 
+def test_a_case_that_has_assessed_nothing_makes_no_claim_about_untouched_promises() -> None:
+    """A case still asking a question has not left anything alone; it has not looked yet.
+
+    The band carries the product's central claim, and a claim made before there is anything to
+    claim is the wrong kind of confident. While the scope is still a question, the honest
+    thing to say about untouched promises is nothing.
+    """
+    spoken = render(project(case("CLARIFYING", question=pending())))
+    assert "left alone" not in spoken
+
+
 def test_a_promise_another_case_is_recovering_is_not_called_untouched() -> None:
     """``LINKED`` has been left to somebody else, which is not the same as left alone.
 
@@ -298,3 +338,98 @@ def test_the_rendering_is_the_same_every_time() -> None:
         track(state="UNAFFECTED", classification="UNAFFECTED", customer="Lena", order="HO-1002"),
     )
     assert render(project(subject)) == render(project(subject))
+
+
+# ------------------------------------------------------------------ the question, as a question
+
+
+def test_an_open_question_is_read_out_with_the_answers_it_will_accept() -> None:
+    """Band 1: an unresolved ambiguity appears as a question, never as a result.
+
+    A surface told only "waiting for your answer" has to reconstruct what was asked, and the
+    only material it has is the original sentence -- which is exactly the invention the
+    clarification protocol exists to avoid.
+    """
+    view = project(case("CLARIFYING", question=pending()))
+    assert view.question is not None
+    assert view.question.question == "Whole delivery, or only the raspberries?"
+    assert [option.code for option in view.question.options] == ["WHOLE_DELIVERY", "LINE-RASP"]
+    spoken = render(view)
+    assert "Whole delivery, or only the raspberries?" in spoken
+    assert "only the raspberries" in spoken
+
+
+def test_a_case_with_nothing_open_asks_nothing() -> None:
+    view = project(case("PLANNED", track(state="PENDING", classification="AUTO_RECOVERABLE")))
+    assert view.question is None
+    assert "?" not in render(view)
+
+
+# --------------------------------------------------------------- the plan, only while offered
+
+
+def test_a_planned_case_offers_the_identity_of_the_plan_it_is_showing() -> None:
+    view = project(case("PLANNED", track(state="PENDING", classification="AUTO_RECOVERABLE")))
+    assert view.plan_id == "a" * 64
+    assert view.awaiting_confirmation is True
+
+
+@pytest.mark.parametrize(
+    "state", ["RECEIVED", "INTERPRETING", "CLARIFYING", "ANALYZED", "EXECUTING", "RESOLVED"]
+)
+def test_a_case_that_is_not_offering_a_plan_offers_no_identity(state: str) -> None:
+    """Nothing to confirm, so nothing to quote.
+
+    A case already executing still *has* tracks and would still compute an identity, and
+    handing one over would invite a confirmation of something nobody is being asked about.
+    The domain would refuse it -- and the conversation would have been wrong out loud first.
+    """
+    view = project(case(state, track(state="PENDING", classification="AUTO_RECOVERABLE")))
+    assert view.plan_id is None
+    assert view.awaiting_confirmation is False
+
+
+# ----------------------------------------------------------- what a yes is allowed to sound like
+
+
+def test_confirming_reports_permission_and_refuses_to_report_completion() -> None:
+    """The counts are authorisations. Nothing in this sentence may sound like an outcome."""
+    spoken = render_confirmation(
+        applying=1, awaiting_approval=1, escalated=1, already_confirmed=False
+    )
+    assert "covered by a standing preference" in spoken
+    assert "still have to ask the customer" in spoken
+    assert "need the owner" in spoken
+    assert "Nothing has been changed yet" in spoken
+    for forbidden in ("changed the order", "recovered", "sent", "asked Tomas", "done"):
+        assert forbidden not in spoken
+
+
+def test_a_confirmation_with_nothing_to_carry_out_says_so() -> None:
+    spoken = render_confirmation(
+        applying=0, awaiting_approval=0, escalated=0, already_confirmed=False
+    )
+    assert "no order is being changed" in spoken
+
+
+def test_a_redelivered_confirmation_does_not_claim_a_second_one_happened() -> None:
+    spoken = render_confirmation(
+        applying=2, awaiting_approval=0, escalated=0, already_confirmed=True
+    )
+    assert "already confirmed" in spoken
+    assert "not done it twice" in spoken
+
+
+def test_one_order_is_said_in_the_singular() -> None:
+    spoken = render_confirmation(
+        applying=1, awaiting_approval=0, escalated=0, already_confirmed=False
+    )
+    assert "1 order covered by a standing preference" in spoken
+    assert "orders" not in spoken
+
+
+def test_an_answer_receipt_promises_nothing_at_all() -> None:
+    spoken = render_clarification_receipt()
+    assert "Nothing has changed yet" in spoken
+    for forbidden in ("planned", "recovered", "confirmed", "changed the"):
+        assert forbidden not in spoken

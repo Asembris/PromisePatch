@@ -241,6 +241,9 @@ def correct_physical_fact_command(
 def confirm_plan_command(
     case: str = typer.Option(..., "--case", help="The planned case to confirm."),
     worker: str = typer.Option(..., "--worker", help="The staff id confirming the plan."),
+    plan: str = typer.Option(
+        ..., "--plan", help="The plan identity `case-status` printed for this case."
+    ),
     command_id: str = typer.Option(
         "", "--command-id", help="Stable command identity; a retry must reuse it."
     ),
@@ -249,7 +252,11 @@ def confirm_plan_command(
 
     Thin, like the intake commands. Who may confirm, what a confirmation permits, and which
     tracks it does *not* permit all live in :mod:`promisepatch.domain.recovery`, where the MCP
-    tool and the voice orchestrator will find them unchanged.
+    tool and the voice orchestrator find them unchanged.
+
+    ``--plan`` is required for the same reason the tool argument is: an operator who has not
+    read the plan cannot quote its identity, and a confirmation that named only a case would
+    authorise whatever the case held at the moment it arrived.
 
     Nothing is sent from here and nothing is applied here. This makes the confirmation durable;
     the worker process is what executes against it, and until one runs the case sits exactly
@@ -258,7 +265,7 @@ def confirm_plan_command(
     settings = get_settings()
     try:
         outcome = asyncio.run(
-            _confirm(settings, _uuid(case, "--case"), worker, _command_id(command_id))
+            _confirm(settings, _uuid(case, "--case"), worker, plan, _command_id(command_id))
         )
     except (RuntimeError, ValueError) as error:
         typer.secho(str(error), fg=typer.colors.RED, err=True)
@@ -274,12 +281,16 @@ def confirm_plan_command(
 
 
 async def _confirm(
-    settings: Settings, case_id: UUID, worker_id: str, command_id: UUID
+    settings: Settings, case_id: UUID, worker_id: str, plan_id: str, command_id: UUID
 ) -> recovery.ConfirmationResult:
     database = RuntimeDatabase.from_settings(settings)
     try:
         return await recovery.confirm_plan(
-            database, case_id=case_id, command_id=command_id, worker_id=worker_id
+            database,
+            case_id=case_id,
+            command_id=command_id,
+            worker_id=worker_id,
+            plan_id=plan_id,
         )
     finally:
         await database.dispose()
@@ -385,6 +396,13 @@ def case_status_command(
     typer.echo(f"state:     {status.state}")
     typer.echo(f"exception: {status.exception_id or '-'} ({status.category or '-'})")
     typer.echo(f"attention: {'yes' if status.needs_owner_attention else 'no'}")
+    # The identity of the plan as it currently stands, so an operator confirming one quotes
+    # back what they just read rather than naming a case and hoping.
+    typer.echo(f"plan:      {status.plan_id}")
+    if status.clarification is not None:
+        typer.echo(f"question:  {status.clarification.question}")
+        for answer in status.clarification.options:
+            typer.echo(f"  [{answer.code}] {answer.label}")
     _echo_interpretation(status.interpretation)
     for track in status.tracks:
         typer.echo("")

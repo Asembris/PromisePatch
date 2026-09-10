@@ -312,12 +312,19 @@ async def test_the_owner_may_confirm_any_case(physical: Intake) -> None:
 
 
 async def test_a_redelivered_confirmation_is_the_same_confirmation(physical: Intake) -> None:
-    """One case, one set of steps, one confirmation -- decided by a row, not by timing."""
+    """One case, one set of steps, one confirmation -- decided by a row, not by timing.
+
+    Both deliveries carry the plan identity that was read once, because that is what a
+    redelivery is: the identical request arriving twice. A caller that re-read the plan in
+    between would be sending a *different* request under the same name, which is the conflict
+    two tests below.
+    """
     case_id = await planned_case(physical)
     command_id = uuid4()
+    plan_id = await physical.plan_id(case_id)
 
-    first = await physical.confirm(case_id, command_id=command_id)
-    second = await physical.confirm(case_id, command_id=command_id)
+    first = await physical.confirm(case_id, command_id=command_id, plan_id=plan_id)
+    second = await physical.confirm(case_id, command_id=command_id, plan_id=plan_id)
 
     assert first.created is True
     assert second.created is False
@@ -338,10 +345,11 @@ async def test_two_concurrent_deliveries_of_one_confirmation_produce_one_effect(
     """
     case_id = await planned_case(physical)
     command_id = uuid4()
+    plan_id = await physical.plan_id(case_id)
 
     outcomes = await asyncio.gather(
-        physical.confirm(case_id, command_id=command_id),
-        physical.confirm(case_id, command_id=command_id),
+        physical.confirm(case_id, command_id=command_id, plan_id=plan_id),
+        physical.confirm(case_id, command_id=command_id, plan_id=plan_id),
     )
 
     assert sorted(outcome.created for outcome in outcomes) == [False, True]

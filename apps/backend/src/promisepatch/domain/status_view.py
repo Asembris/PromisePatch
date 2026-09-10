@@ -164,6 +164,23 @@ class PromiseView:
 
 
 @dataclass(frozen=True, slots=True)
+class OptionView:
+    """One answer the open question will accept."""
+
+    code: str
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionView:
+    """The question this case is waiting on. Band 1, and never a result."""
+
+    clarification_id: str
+    question: str
+    options: tuple[OptionView, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CaseView:
     """One case, in the words the product is allowed to use, plus the evidence behind them."""
 
@@ -174,6 +191,19 @@ class CaseView:
     exception_category: str | None
     threatened: tuple[PromiseView, ...]
     untouched: tuple[PromiseView, ...]
+    question: QuestionView | None = None
+    plan_id: str | None = None
+    """The identity of the plan on offer, present **only** while one is actually on offer.
+
+    A case that is still understanding, already executing or long finished has no plan waiting
+    for a yes, and handing a caller an identity for one would invite a confirmation of
+    something nobody is being asked about. ``None`` is the honest answer everywhere else.
+    """
+
+    @property
+    def awaiting_confirmation(self) -> bool:
+        """Whether a worker's yes is the thing this case is waiting for. Never an act."""
+        return self.plan_id is not None
 
     @property
     def promises(self) -> tuple[PromiseView, ...]:
@@ -197,6 +227,23 @@ def project(status: CaseStatus) -> CaseView:
         exception_category=status.category,
         threatened=threatened,
         untouched=untouched,
+        question=_question(status),
+        # Bound to the one headline in which a plan is genuinely waiting for a worker. Reading
+        # the identity off any other state would let a confirmation be offered for a case that
+        # is not asking for one -- the domain would refuse it, and the conversation would have
+        # been wrong out loud first.
+        plan_id=status.plan_id if headline is CaseHeadline.PLANNED and status.plan_id else None,
+    )
+
+
+def _question(status: CaseStatus) -> QuestionView | None:
+    pending = status.clarification
+    if pending is None:
+        return None
+    return QuestionView(
+        clarification_id=str(pending.clarification_id),
+        question=pending.question,
+        options=tuple(OptionView(code=item.code, label=item.label) for item in pending.options),
     )
 
 
@@ -324,6 +371,13 @@ def render(view: CaseView) -> str:
     conversational layer receives this text and delivers it; it is not a summary of a summary.
     """
     lines = [view.sentence]
+    if view.question is not None:
+        # The open question is read out as a question. A surface that only said "waiting for
+        # your answer" would leave a worker to guess what was asked, and a model filling that
+        # gap from the original sentence is the invention this whole boundary exists to stop.
+        lines.append("")
+        lines.append(view.question.question)
+        lines.extend(f"  - {option.label}" for option in view.question.options)
     if view.threatened:
         lines.append("")
         for group in (Authority.STANDING_PREFERENCE, Authority.CUSTOMER, Authority.OWNER):
@@ -339,12 +393,17 @@ def render(view: CaseView) -> str:
         if rest:
             lines.append(f"{_AUTHORITY_BAND[Authority.UNDECIDED]}:")
             lines.extend(f"  - {_promise_line(item)}" for item in rest)
-    lines.append("")
-    lines.append(_untouched_line(view))
-    lines.extend(
-        f"  - {item.customer_name} ({item.order_external_id}): {_reason(item)}"
-        for item in view.untouched
-    )
+    if view.promises:
+        # Only once the case has actually looked at something. A case still asking a question
+        # has assessed no promise at all, and "no promise was left alone" would be a claim
+        # about work that has not happened -- this band carries the product's central claim,
+        # and a claim made before there is anything to claim is the wrong kind of confident.
+        lines.append("")
+        lines.append(_untouched_line(view))
+        lines.extend(
+            f"  - {item.customer_name} ({item.order_external_id}): {_reason(item)}"
+            for item in view.untouched
+        )
     return "\n".join(lines)
 
 
@@ -370,3 +429,59 @@ def _reason(item: PromiseView) -> str:
     if item.rule_id:
         return f"rule {item.rule_id}"
     return "no reason recorded"
+
+
+def render_clarification_receipt() -> str:
+    """What is said back the instant a worker's answer is stored, and nothing more.
+
+    Fixed text, because there is nothing yet to report: the answer is durable and the
+    interpreter has not run. Anything that named an outcome here would be describing work that
+    has not happened. The next truthful sentence about this case comes from ``render``.
+    """
+    return (
+        "Got it, and I have written that down exactly as you said it. "
+        "Nothing has changed yet - I am working out what it means for your promises."
+    )
+
+
+def render_confirmation(
+    *, applying: int, awaiting_approval: int, escalated: int, already_confirmed: bool
+) -> str:
+    """What a worker's yes has authorised, counted -- and explicitly not what it has done.
+
+    Every clause is a permission or a queued intention. "Covered by a standing preference" is
+    the contract's ``AUTHORIZED`` wording precisely because it is not ``RECOVERED``; the
+    customer band says the customer has still to be *asked*, which has not happened either.
+    The closing sentence exists so a listener who heard only the numbers is still told that
+    nothing is done.
+    """
+    if already_confirmed:
+        return (
+            "You had already confirmed this one - I have not done it twice. "
+            "Ask me for the status to hear where it has got to."
+        )
+    parts: list[str] = []
+    if applying:
+        parts.append(f"{_orders(applying)} covered by a standing preference")
+    if awaiting_approval:
+        parts.append(f"{_orders(awaiting_approval)} where I still have to ask the customer")
+    if escalated:
+        parts.append(f"{_orders(escalated)} that need the owner")
+    if not parts:
+        return (
+            "Confirmed. There was nothing left for me to carry out, so no order is being changed."
+        )
+    return (
+        f"Confirmed: {_joined(parts)}. Nothing has been changed yet - "
+        "ask me for the status to hear what actually happened."
+    )
+
+
+def _orders(count: int) -> str:
+    return "1 order" if count == 1 else f"{count} orders"
+
+
+def _joined(parts: list[str]) -> str:
+    if len(parts) == 1:
+        return parts[0]
+    return f"{', '.join(parts[:-1])} and {parts[-1]}"
