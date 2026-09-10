@@ -89,6 +89,21 @@ class Authority(StrEnum):
     UNDECIDED = "UNDECIDED"
 
 
+class ActionOwner(StrEnum):
+    """Whose move it is. Band 2 of the case workspace answers "what is mine?" with one of these.
+
+    ``NOBODY`` is a real answer rather than an absent one. A case that is still being worked
+    out asks nothing of anybody, and a blank band would read as a screen that had failed to
+    load rather than as the truthful "there is nothing for you here yet".
+    """
+
+    YOU = "YOU"
+    OWNER = "OWNER"
+    CUSTOMER = "CUSTOMER"
+    SYSTEM = "SYSTEM"
+    NOBODY = "NOBODY"
+
+
 CASE_HEADLINES: Final[dict[str, CaseHeadline]] = {
     "RECEIVED": CaseHeadline.UNDERSTANDING,
     "INTERPRETING": CaseHeadline.UNDERSTANDING,
@@ -142,6 +157,17 @@ _AUTHORITY_BAND: Final[dict[Authority, str]] = {
     Authority.NONE: "Left alone",
 }
 
+
+def headline_sentence(headline: CaseHeadline) -> str:
+    """The one sentence bound to a headline, for a caller that has a headline and no case.
+
+    The case list has exactly that: a durable state per row and no reason to load six tracks to
+    say what the state means. Reading the table through a function rather than exporting it
+    keeps one place that decides what a headline says out loud.
+    """
+    return _HEADLINE_SENTENCE[headline]
+
+
 # ------------------------------------------------------------------------------- the values
 
 
@@ -161,6 +187,35 @@ class PromiseView:
     track_state: str
     classification: str | None
     rule_id: str | None
+    owner: ActionOwner
+    """Whose move this one promise is. ``NOBODY`` where it is nobody's -- including untouched.
+
+    Named separately from :attr:`authority` because they answer different questions. Authority
+    says who *decides* the change; this says who has to do something next, and the two part
+    company the moment a decision has been taken and the work is somebody else's to carry out.
+    """
+
+    next_action: str
+    """The one thing that moves this promise, or a sentence saying nothing does.
+
+    Never blank. A blocked promise whose next action were empty would be a promise that had
+    quietly become nobody's, which is exactly the failure the escalation exists to prevent.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class NextAction:
+    """Band 2 of the case workspace: exactly one thing, and exactly one person it belongs to.
+
+    One rather than a list, because a screen that offers a worker three next actions has not
+    answered "what is mine?" -- it has restated the case. Where nothing is required of this
+    worker the owner is somebody else or nobody at all, and the sentence says so rather than
+    leaving the band empty.
+    """
+
+    owner: ActionOwner
+    owner_label: str
+    action: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +247,17 @@ class CaseView:
     threatened: tuple[PromiseView, ...]
     untouched: tuple[PromiseView, ...]
     question: QuestionView | None = None
+    next_action: NextAction = NextAction(
+        owner=ActionOwner.NOBODY,
+        owner_label="Nobody",
+        action="Nothing is needed from anybody yet.",
+    )
+    """Band 2, and the fail-closed default is the one that asks nothing of anybody.
+
+    A default that named a person would mean an unrecognised posture put work on somebody's
+    desk that nobody had decided to put there. Understating is the only safe direction here.
+    """
+
     plan_id: str | None = None
     """The identity of the plan on offer, present **only** while one is actually on offer.
 
@@ -219,6 +285,7 @@ def project(status: CaseStatus) -> CaseView:
     views = tuple(_promise(status.state, track) for track in status.tracks)
     untouched = tuple(view for view in views if view.state is PromiseState.UNTOUCHED)
     threatened = tuple(view for view in views if view.state is not PromiseState.UNTOUCHED)
+    question = _question(status)
     return CaseView(
         case_id=str(status.case_id),
         headline=headline,
@@ -227,7 +294,8 @@ def project(status: CaseStatus) -> CaseView:
         exception_category=status.category,
         threatened=threatened,
         untouched=untouched,
-        question=_question(status),
+        question=question,
+        next_action=_next_action(headline, threatened, question),
         # Bound to the one headline in which a plan is genuinely waiting for a worker. Reading
         # the identity off any other state would let a confirmation be offered for a case that
         # is not asking for one -- the domain would refuse it, and the conversation would have
@@ -262,6 +330,8 @@ def _promise(case_state: str, track: TrackStatus) -> PromiseView:
         track_state=track.state,
         classification=track.classification,
         rule_id=track.rule_id,
+        owner=_promise_owner(state),
+        next_action=_promise_next_action(state, track),
     )
 
 
@@ -344,6 +414,132 @@ _CONFIRMED_CASE_STATES: Final[frozenset[str]] = frozenset(
 
 _PLANNED_CASE_STATES: Final[frozenset[str]] = frozenset({"PLANNED"})
 """The one state in which "planned - waiting for you" is the whole truth."""
+
+
+_OWNER_LABEL: Final[dict[ActionOwner, str]] = {
+    ActionOwner.YOU: "You",
+    ActionOwner.OWNER: "The owner",
+    ActionOwner.CUSTOMER: "The customer",
+    ActionOwner.SYSTEM: "PromisePatch",
+    ActionOwner.NOBODY: "Nobody",
+}
+
+
+_PROMISE_OWNERS: Final[dict[PromiseState, ActionOwner]] = {
+    PromiseState.UNTOUCHED: ActionOwner.NOBODY,
+    PromiseState.LINKED: ActionOwner.NOBODY,
+    PromiseState.WITHDRAWN: ActionOwner.NOBODY,
+    PromiseState.RECOVERED: ActionOwner.NOBODY,
+    PromiseState.PLANNED: ActionOwner.YOU,
+    PromiseState.AWAITING_PLAN: ActionOwner.NOBODY,
+    PromiseState.AUTHORIZED: ActionOwner.SYSTEM,
+    PromiseState.APPLYING: ActionOwner.SYSTEM,
+    PromiseState.REQUESTED: ActionOwner.CUSTOMER,
+    PromiseState.CONSENTED: ActionOwner.SYSTEM,
+    PromiseState.DECLINED: ActionOwner.OWNER,
+    PromiseState.ESCALATED: ActionOwner.OWNER,
+    PromiseState.STALE: ActionOwner.OWNER,
+    PromiseState.EXPIRED: ActionOwner.OWNER,
+}
+"""Whose move each promise state is.
+
+Every state a case can leave a promise in appears once, so a new one is a mapping error rather
+than a promise that silently becomes nobody's. ``DECLINED``, ``STALE`` and ``EXPIRED`` are the
+owner's for the same reason ``ESCALATED`` is: no further automatic step exists for them, and a
+promise with no automatic step and no person is a promise that stops moving without saying so.
+"""
+
+_PROMISE_ACTIONS: Final[dict[PromiseState, str]] = {
+    PromiseState.UNTOUCHED: "Nothing. This promise is not reachable from what happened.",
+    PromiseState.LINKED: "Nothing here. Another case is already recovering this promise.",
+    PromiseState.WITHDRAWN: "Nothing. This promise was withdrawn from the case.",
+    PromiseState.RECOVERED: "Nothing. The order system carries the change.",
+    PromiseState.PLANNED: "Read the plan and confirm it, or leave it as it is.",
+    PromiseState.AWAITING_PLAN: "Nothing yet. This promise has not been decided.",
+    PromiseState.AUTHORIZED: "Nothing. Your standing preference covers it and it is queued.",
+    PromiseState.APPLYING: "Nothing. The order change has gone out and is not confirmed yet.",
+    PromiseState.REQUESTED: "Nothing. The customer has been asked and has not answered.",
+    PromiseState.CONSENTED: "Nothing. The customer agreed and the change is queued.",
+    PromiseState.DECLINED: "The owner decides what to offer instead. Nothing else will happen.",
+    PromiseState.ESCALATED: (
+        "The owner handles this one by hand. Nothing will change until they do."
+    ),
+    PromiseState.STALE: "The owner checks the re-planned outcome before anything else is done.",
+    PromiseState.EXPIRED: "The owner decides what to do now the deadline has passed.",
+}
+"""What moves each promise, said as a thing somebody does rather than as a status.
+
+Deliberately blunt about the states nothing automatic follows: "nothing will change until they
+do" is the sentence that stops a blocked promise reading as work in progress.
+"""
+
+
+def _promise_owner(state: PromiseState) -> ActionOwner:
+    return _PROMISE_OWNERS.get(state, ActionOwner.NOBODY)
+
+
+def _promise_next_action(state: PromiseState, track: TrackStatus) -> str:
+    """This promise's next action, with the customer's own deadline where there is one."""
+    action = _PROMISE_ACTIONS.get(state, "Nothing yet. This promise has not been decided.")
+    if state is PromiseState.REQUESTED and track.deadline_at is not None:
+        return f"{action[:-1]} by {track.deadline_at.isoformat()}."
+    return action
+
+
+def _next_action(
+    headline: CaseHeadline,
+    threatened: tuple[PromiseView, ...],
+    question: QuestionView | None,
+) -> NextAction:
+    """The one thing this case is waiting on, chosen in the order a case actually stalls in.
+
+    Ordered rather than scored. A case can be waiting on a question *and* holding an escalated
+    promise, and the answer to "what is mine?" has to be one thing -- so the earliest unmet
+    obligation wins, and the bands below still show the rest. An escalation outranks a customer
+    deadline because a customer's clock runs on its own and an owner's does not: nothing at all
+    happens to a blocked promise until a person picks it up.
+    """
+    if question is not None:
+        return _action(ActionOwner.YOU, "Answer the question above, in your own words.")
+    if headline is CaseHeadline.NEEDS_HUMAN:
+        return _action(ActionOwner.YOU, "Read what was reported and say what it means.")
+    if headline is CaseHeadline.PLANNED:
+        return _action(
+            ActionOwner.YOU, "Read the plan below and confirm it before anything is done."
+        )
+    owners = tuple(item for item in threatened if item.owner is ActionOwner.OWNER)
+    if owners:
+        count = len(owners)
+        verb = "needs" if count == 1 else "need"
+        return _action(
+            ActionOwner.OWNER,
+            f"{_promises(count)} below {verb} the owner by hand. "
+            "Nothing will change until somebody picks them up.",
+        )
+    waiting = tuple(item for item in threatened if item.owner is ActionOwner.CUSTOMER)
+    if waiting:
+        count = len(waiting)
+        customers = "1 customer" if count == 1 else f"{count} customers"
+        return _action(
+            ActionOwner.CUSTOMER,
+            f"Nothing is yours right now. Waiting on {customers} to answer.",
+        )
+    if headline is CaseHeadline.WORKING:
+        return _action(
+            ActionOwner.SYSTEM,
+            "Nothing is yours right now. The confirmed work is being carried out.",
+        )
+    if headline in {CaseHeadline.SETTLED, CaseHeadline.CANCELLED}:
+        return _action(ActionOwner.NOBODY, "Nothing. This case is finished.")
+    return _action(ActionOwner.NOBODY, "Nothing yet. Still working out what this affects.")
+
+
+def _action(owner: ActionOwner, action: str) -> NextAction:
+    return NextAction(owner=owner, owner_label=_OWNER_LABEL[owner], action=action)
+
+
+def _promises(count: int) -> str:
+    return "1 promise" if count == 1 else f"{count} promises"
 
 
 def _authority(state: PromiseState, track: TrackStatus) -> Authority:
