@@ -708,17 +708,24 @@ def test_confirming_without_naming_a_plan_is_refused_by_the_command_itself(
 
     The same rule as the tool argument, one layer down: a confirmation that named only a case
     would authorise whatever the case held when it arrived.
-    """
 
-    async def unreachable(*args: object, **kwargs: object) -> None:  # pragma: no cover
-        raise AssertionError("the domain must not be reached without a plan")
+    Asserted as the usage exit code and an untouched domain rather than by looking for
+    ``--plan`` in the output. The wording of a missing-option message and the width it is
+    wrapped and boxed at belong to Click and Rich, and neither is a promise this repository
+    makes -- a test reading them fails on a terminal of a different size rather than on a
+    change to what the command does.
+    """
+    reached: list[object] = []
+
+    async def unreachable(*args: object, **kwargs: object) -> None:
+        reached.append(args)
 
     monkeypatch.setattr(cli, "_confirm", unreachable)
 
     result = runner.invoke(app, ["confirm-plan", "--case", str(UUID(int=1)), "--worker", "maya"])
 
-    assert result.exit_code != 0
-    assert "--plan" in result.output
+    assert result.exit_code == 2, result.output
+    assert reached == []
 
 
 def test_confirm_plan_reports_a_refusal_instead_of_a_traceback(
