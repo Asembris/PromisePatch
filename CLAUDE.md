@@ -54,6 +54,23 @@ definition and the first case-workspace hierarchy. Labels precede the *remaining
 implementation, not the pre-existing engine, and that chronology is stated wherever the score
 will be. Both holdouts stay sealed; P4.8 stays closed. See `docs/effect-set-manifest.md`.
 
+**P5.1, the MCP transport spine, is done.** The real authenticated Streamable HTTP boundary
+exists: `mcp==2.2.0` pinned exactly, serving protocol revision **2025-11-25** through the
+`initialize` handshake, stateless, at `POST /mcp` in its own `mcp` process (`pp mcp`). Two of
+the five frozen intent tools are implemented -- `report` and `status` -- and the other three are
+absent rather than stubbed. The process reaches a case only by an authenticated HTTP call to the
+API's new `/internal/intents`, enforced by an import-linter contract that forbids it the domain,
+the database, the API package and SQLAlchemy. The attesting worker comes from the intent API's
+own `PP_SURFACE_WORKER_ID`; no request field anywhere in the chain carries an actor, and the
+clock is the server's. `report` stores the worker's sentence byte for byte; `status` is rendered
+deterministically by `promisepatch.domain.status_view` from the durable case and is delivered as
+given. Every tool call mints a correlation id that reaches the governed audit row. Proved
+offline with a real server and the official SDK client -- handshake, negotiation, discovery,
+successful and invalid calls, authentication, `Origin` 403 / `Host` 421, JSON-RPC errors and
+reconnect -- plus a PostgreSQL suite that drives the whole chain and asserts the rows. No live
+model call: nothing in this slice reaches a provider. See `docs/p5.1-mcp-transport-spine.md` and
+ADR-0009.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,

@@ -14,8 +14,9 @@ An active hackathon build. What exists today is the deterministic engine
 (`packages/promise-graph`), the backend with its audited PostgreSQL write boundary, the durable
 case engine, the Live Operations screen, the external order-system integration — a separate
 order system that owns order state, a signed event ingress, and governed recovery amendments
-pushed back at it — and the semantic boundary an Amazon Bedrock model answers through, now
-wired into exception intake. There is no deployment.
+pushed back at it — the semantic boundary an Amazon Bedrock model answers through, now wired
+into exception intake, and an authenticated **MCP Streamable HTTP endpoint** carrying the first
+two of the five intent tools. There is no deployment.
 
 ## The frozen effect-set manifest
 
@@ -113,8 +114,8 @@ thresholds, the two separate cost accountings and the holdout rules.
 ## Run the local stack
 
 The stack is a disposable PostgreSQL 16 in a Docker volume, the repository's own migrations,
-the Hollow Oak fixture, the API, the durable workflow worker, the frontend and the External
-Order System simulator. It needs no hosted database and no cloud account.
+the Hollow Oak fixture, the API, the durable workflow worker, the MCP endpoint, the frontend
+and the External Order System simulator. It needs no hosted database and no cloud account.
 
 ```bash
 uv run python scripts/bootstrap_local_env.py
@@ -143,6 +144,7 @@ docker compose down --volumes       # stop and discard the database
 | frontend | <http://localhost:55173> | `frontend:5173` |
 | api | <http://localhost:58000> | `api:8000` |
 | worker | no port; `docker compose logs worker` | -- |
+| mcp | <http://localhost:58001/mcp> | `mcp:8001` |
 | order-simulator | <http://localhost:58100> | `order-simulator:8100` |
 | postgres | `127.0.0.1:55432` | `postgres:5432` |
 
@@ -164,6 +166,15 @@ A few properties are worth knowing before you use it:
   operator command that replaces every domain row PromisePatch owns, and the sessions go with
   them. A browser watching the live feed will see the resulting domain event, refetch, be told
   its session is gone, and return to the sign-in screen. That is current, intended behaviour.
+- **The MCP endpoint is a separate process, and cannot reach the database.** It is the surface
+  a third-party MCP client is pointed at, and it reaches a case the way any other client would:
+  an authenticated HTTP call to the API's `/internal/intents`. An import-linter contract stops
+  the code in it from importing the domain or the database at all, so that boundary is checked
+  rather than intended. It speaks protocol revision **2025-11-25** over Streamable HTTP, refuses
+  an unauthenticated caller before the protocol layer, and rejects an unlisted `Origin`. Point a
+  client at it with the bearer token from `docker/env/mcp.env`;
+  [docs/p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) is the tool contract and
+  what was proved about it.
 - **The order system is a different system, and is meant to look like one.** It runs in its
   own process, over its own SQLite volume, on its own port, with its own UI. PromisePatch
   mirrors it and pushes governed amendments at it; neither reads the other's storage. It is a
@@ -220,6 +231,23 @@ uv run pytest apps/backend/tests/test_semantic_contracts.py \
   apps/backend/tests/test_semantic_grounding.py \
   apps/backend/tests/test_explanations.py \
   apps/backend/tests/test_bedrock_semantic.py
+```
+
+The MCP protocol suite needs no database, no credential and no model. It starts the real server
+on a loopback socket and drives it with the official SDK's client, so what it checks is the
+protocol -- initialization, negotiation, discovery, framing, the bearer challenge, the `Origin`
+and `Host` rejections, the JSON-RPC error codes and the absence of a session to resume:
+
+```bash
+uv run pytest apps/backend/tests/test_mcp_protocol.py apps/backend/tests/test_status_view.py
+```
+
+What a tool call *causes* needs the database. That suite drives the whole chain end to end --
+SDK client, Streamable HTTP, MCP server, the service-token hop, the intent API, the domain and
+PostgreSQL -- and then asserts the rows:
+
+```bash
+uv run python scripts/with_local_env.py -- uv run pytest apps/backend/tests/test_intent_api.py
 ```
 
 The semantic intake workflow needs the database but still no AWS account — every one of its
