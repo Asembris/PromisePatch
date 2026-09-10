@@ -254,6 +254,40 @@ layers = [
     "promisepatch.config",
 ]
 
+# What a case currently *is* has one implementation, in the engine and the workflow. This module
+# renames its conclusions into the words a person hears; it may not reach a row and quietly grow
+# a second one. A projection that could query would eventually disagree with the ladder it was
+# supposed to be describing, and nothing would say which of them was right about the case in
+# front of you.
+#
+# `allow_indirect_imports` because the projection's *input type* is declared beside the read
+# service that produces it, and that module does hold a query. So this contract says exactly
+# one thing, and says it honestly: `status_view` itself imports no database, no framework, no
+# clock and no environment, and therefore cannot execute any of them. It does not claim that
+# nothing on its import path can.
+[[tool.importlinter.contracts]]
+name = "the status projection describes and cannot decide"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = ["promisepatch.domain.status_view"]
+forbidden_modules = [
+    "asyncio",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.main",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "urllib",
+]
+
 # The workflow's decisions are made by functions that cannot reach a database, a provider or a
 # request. Everything they need is an argument, which is what makes a step's behaviour testable
 # without infrastructure -- and what stops "just read the row here" from ever being the easy fix.
