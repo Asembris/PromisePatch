@@ -24,6 +24,13 @@ dependencies = [
     "tzdata>=2024.2",
     "httpx2>=2.0,<3",
     "boto3>=1.35,<2",
+    # Pinned exactly, not floated. The hackathon's Alexa+ route is a claim about a *protocol
+    # revision* rather than about a package, and the two move independently: this release's
+    # `initialize` handshake settles on 2025-11-25, and a minor bump that moved the handshake
+    # default onto a later era would silently change what our server negotiates while every
+    # test still passed. `tests/test_mcp_protocol.py` asserts the revision itself, so the pin
+    # and the assertion fail together rather than drifting apart.
+    "mcp==2.2.0",
     "promise-graph",
     "order-contract",
 ]
