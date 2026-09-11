@@ -204,6 +204,21 @@ def test_the_mcp_container_is_given_no_database_url(template: dict[str, Any]) ->
     assert "PP_MCP_INTENT_API_BASE_URL" in mcp_block
 
 
+def test_the_deployed_api_is_pointed_at_a_real_model(template: dict[str, Any]) -> None:
+    """``llm_provider`` defaults to the fake one, and is deliberately not inferred from ``env``.
+
+    So a deployment that wants a model has to say so. Leaving it unsaid is not a broken
+    deployment -- everything comes up and every endpoint answers -- it is a deployment whose
+    one semantic call quietly never happens, which is the failure that looks most like success.
+    The instance role carries ``bedrock:InvokeModel`` precisely so this line can be true.
+    """
+    block = _env_file_block(template, "api.env", "mcp.env")
+    assert "PP_LLM_PROVIDER=bedrock" in block, (
+        "the deployed api would run the fake provider: the loop would work and call no model"
+    )
+    assert "PP_BEDROCK_MODEL_ID=" in block, "which model is not left to a default here"
+
+
 def test_the_order_simulator_holds_no_postgres_credential(template: dict[str, Any]) -> None:
     block = _env_file_block(template, "order-simulator.env", "stack.env")
     assert "DATABASE_URL" not in block

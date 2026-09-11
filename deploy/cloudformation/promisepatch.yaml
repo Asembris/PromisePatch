@@ -451,6 +451,12 @@ Resources:
               PP_ORDER_SYSTEM_BASE_URL=http://order-simulator:8100
               PP_CORS_ORIGINS=$${PUBLIC}
               PP_SURFACE_WORKER_ID=worker-lena
+              # Named explicitly, because the default is the fake provider and is deliberately
+              # not inferred from PP_ENV: a deployment that reaches a model does so because it
+              # said so, not because something noticed credentials and quietly upgraded itself.
+              # This is the one setting that makes the instance role's bedrock:InvokeModel do
+              # anything; without it the deployed loop runs, and never calls a model at all.
+              PP_LLM_PROVIDER=bedrock
               PP_BEDROCK_MODEL_ID=us.amazon.nova-2-lite-v1:0
               EOF
 
