@@ -23,10 +23,11 @@
 # `api`; the frontend receives neither, because everything a `VITE_`-prefixed variable holds is
 # compiled into a bundle any visitor can read. No connection string, credential or hostname is
 # interpolated from the repository's own `.env` either -- a developer whose `.env` points at a
-# hosted database must not be able to migrate it by typing `docker compose up`. The single
-# interpolated value is `PROMISEPATCH_POSTGRES_PUBLISHED_PORT`, which chooses which host port
-# this machine publishes the database on. A port number cannot name another database, so it
-# carries none of the risk the rule above exists to prevent.
+# hosted database must not be able to migrate it by typing `docker compose up`. The only
+# interpolated values are the four `PROMISEPATCH_*_PUBLISHED_PORT` variables, which choose
+# which host ports this machine publishes the database, the API, the MCP endpoint and the
+# order system on. A port number cannot name another database, a credential or another host,
+# so they carry none of the risk the rule above exists to prevent.
 #
 # Generate the environment files first:
 #
@@ -114,7 +115,16 @@ services:
       # common default and a stack that quietly attached to something else already listening
       # there would be a confusing way to find out. Inside the network the API is `api:8000`,
       # which is what the frontend proxies to and what the healthcheck asks.
-      - "127.0.0.1:58000:8000"
+      #
+      # Overridable for the reason given on the database too, and it is the same reason: a
+      # high port is not always an available one. Windows reserves moving blocks of the
+      # ephemeral range for Hyper-V and WinNAT, and a machine whose reservation has swallowed
+      # 58000, 58001 or 58100 cannot bind them at all -- compose then refuses to start the
+      # service rather than publishing it somewhere else. The defaults are what every machine
+      # that can bind them had before, so the addresses README and `docs/order-system.md`
+      # print stay true; a machine that cannot sets the variable. The container ports never
+      # move, so nothing inside the network is affected.
+      - "127.0.0.1:${PROMISEPATCH_API_PUBLISHED_PORT:-58000}:8000"
     depends_on:
       seed:
         condition: service_completed_successfully
@@ -174,7 +184,7 @@ services:
       # High host port for the reason given on every other one here. Inside the network it is
       # `mcp:8001/mcp`, which is what an in-stack client uses; a deployment on AgentCore
       # Runtime binds the port that contract expects instead.
-      - "127.0.0.1:58001:8001"
+      - "127.0.0.1:${PROMISEPATCH_MCP_PUBLISHED_PORT:-58001}:8001"
     depends_on:
       api:
         condition: service_healthy
@@ -224,7 +234,7 @@ services:
       # Its own high port, and deliberately far from the API's: on camera these are two
       # windows, and two systems that answered on adjacent ports would invite the reading that
       # they are one.
-      - "127.0.0.1:58100:8100"
+      - "127.0.0.1:${PROMISEPATCH_ORDER_SIMULATOR_PUBLISHED_PORT:-58100}:8100"
     volumes:
       # Its own volume. The SQLite file never goes anywhere near the PostgreSQL one -- the
       # whole claim of Proof A is that these two systems do not share storage.
