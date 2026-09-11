@@ -182,6 +182,36 @@ def test_every_interpolated_variable_is_one_the_host_writes(template: dict[str, 
         )
 
 
+def test_every_template_reference_in_the_bootstrap_script_resolves(
+    template: dict[str, Any],
+) -> None:
+    """A shell variable the template tries to resolve is a deploy that never starts.
+
+    ``Fn::Sub`` claims every ``${...}`` in the script unless it is escaped, and its escape is
+    ``${!NAME}`` -- *not* ``$${NAME}``, which is docker compose's and CodeBuild's. The two look
+    alike, the wrong one is silently a template reference, and CloudFormation rejects the whole
+    template with ``Unresolved resource dependencies`` before a single resource is created. It
+    is only reachable by deploying, so it is asserted here instead.
+    """
+    node: Any = template["Resources"]["Host"]["Properties"]["UserData"]
+    while isinstance(node, dict) and len(node) == 1:
+        node = next(iter(node.values()))
+    script, supplied = node
+
+    assert "$${" not in script, (
+        "`$${NAME}` is not a CloudFormation escape. Fn::Sub escapes with `${!NAME}`, and "
+        "`$${NAME}` is read as a reference to a resource called NAME."
+    )
+
+    resolvable = set(template["Parameters"]) | set(template["Resources"]) | set(supplied)
+    for reference in sorted(set(re.findall(r"\$\{([^!}][^}]*)\}", script))):
+        root = reference.split(".", 1)[0]
+        assert root.startswith("AWS::") or root in resolvable, (
+            f"the bootstrap script refers to ${{{reference}}}, which the template cannot "
+            "resolve. If it is meant to be a shell variable, escape it as ${!" + reference + "}."
+        )
+
+
 def test_the_composition_runs_the_same_processes_as_the_local_stack(
     compose: dict[str, Any],
 ) -> None:

@@ -399,18 +399,18 @@ Resources:
 
               COMPOSE_VERSION=v2.32.4
               curl -fsSL --proto '=https' --tlsv1.2 \
-                "https://github.com/docker/compose/releases/download/$${COMPOSE_VERSION}/docker-compose-linux-aarch64" \
+                "https://github.com/docker/compose/releases/download/${!COMPOSE_VERSION}/docker-compose-linux-aarch64" \
                 -o /usr/local/lib/docker/cli-plugins/docker-compose
               chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
 
               REGION=${AWS::Region}
               ACCOUNT=${AWS::AccountId}
               PREFIX=/promisepatch/${Environment}
-              REGISTRY=$${ACCOUNT}.dkr.ecr.$${REGION}.amazonaws.com
+              REGISTRY=${!ACCOUNT}.dkr.ecr.${!REGION}.amazonaws.com
               install -d -m 0750 /opt/promisepatch /opt/promisepatch/env
 
-              param () { aws ssm get-parameter --with-decryption --region "$${REGION}" \
-                           --name "$${PREFIX}/$${1}" --query Parameter.Value --output text; }
+              param () { aws ssm get-parameter --with-decryption --region "${!REGION}" \
+                           --name "${!PREFIX}/${!1}" --query Parameter.Value --output text; }
 
               # The composition and the TLS configuration are stored as parameters rather than
               # baked into this script, so a change to either is a parameter write and a restart
@@ -439,23 +439,23 @@ Resources:
               umask 0077
               cat > /opt/promisepatch/env/migrate.env <<EOF
               PP_ENV=aws
-              PP_AWS_REGION=$${REGION}
-              PP_MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:$${DB_MASTER_PASSWORD}@$${HOST}:$${PORT}/promisepatch
-              PP_DB_APP_PASSWORD=$${DB_PASSWORD}
+              PP_AWS_REGION=${!REGION}
+              PP_MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:${!DB_MASTER_PASSWORD}@${!HOST}:${!PORT}/promisepatch
+              PP_DB_APP_PASSWORD=${!DB_PASSWORD}
               PP_ALLOW_FIXTURE_RESET=true
-              PP_DEMO_WORKER_PASSWORD=$${WORKER_PASSWORD}
-              PP_DEMO_OWNER_PASSWORD=$${OWNER_PASSWORD}
+              PP_DEMO_WORKER_PASSWORD=${!WORKER_PASSWORD}
+              PP_DEMO_OWNER_PASSWORD=${!OWNER_PASSWORD}
               EOF
 
               cat > /opt/promisepatch/env/api.env <<EOF
               PP_ENV=aws
-              PP_AWS_REGION=$${REGION}
-              PP_DATABASE_URL=postgresql+asyncpg://promisepatch_app:$${DB_PASSWORD}@$${HOST}:$${PORT}/promisepatch
-              PP_SESSION_SECRET=$${SESSION_SECRET}
-              PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
-              PP_ORDER_SYSTEM_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
+              PP_AWS_REGION=${!REGION}
+              PP_DATABASE_URL=postgresql+asyncpg://promisepatch_app:${!DB_PASSWORD}@${!HOST}:${!PORT}/promisepatch
+              PP_SESSION_SECRET=${!SESSION_SECRET}
+              PP_INTERNAL_SERVICE_TOKEN=${!INTERNAL_TOKEN}
+              PP_ORDER_SYSTEM_WEBHOOK_SECRET=${!WEBHOOK_SECRET}
               PP_ORDER_SYSTEM_BASE_URL=http://order-simulator:8100
-              PP_CORS_ORIGINS=$${PUBLIC}
+              PP_CORS_ORIGINS=${!PUBLIC}
               # The worker every statement arriving over the MCP surface is attributed to.
               # It must name a row the seed actually creates: intake refuses an unknown
               # attester with SURFACE_WORKER_MISSING, so a name nothing seeded is not a
@@ -472,10 +472,10 @@ Resources:
 
               cat > /opt/promisepatch/env/mcp.env <<EOF
               PP_ENV=aws
-              PP_MCP_BEARER_TOKEN=$${MCP_BEARER_TOKEN}
+              PP_MCP_BEARER_TOKEN=${!MCP_BEARER_TOKEN}
               PP_MCP_INTENT_API_BASE_URL=http://api:8000
-              PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
-              PP_MCP_ALLOWED_ORIGINS=$${PUBLIC}
+              PP_INTERNAL_SERVICE_TOKEN=${!INTERNAL_TOKEN}
+              PP_MCP_ALLOWED_ORIGINS=${!PUBLIC}
               PP_MCP_ALLOWED_HOSTS=${TlsHostname}
               PP_SURFACE_WORKER_ID=maya
               EOF
@@ -486,22 +486,22 @@ Resources:
               cat > /opt/promisepatch/env/order-simulator.env <<EOF
               OS_LOG_LEVEL=info
               OS_DATABASE_PATH=/data/order-simulator.sqlite3
-              OS_WEBHOOK_URL=$${PUBLIC}/api/integrations/order-system/events
-              OS_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
+              OS_WEBHOOK_URL=${!PUBLIC}/api/integrations/order-system/events
+              OS_WEBHOOK_SECRET=${!WEBHOOK_SECRET}
               EOF
 
               cat > /opt/promisepatch/env/stack.env <<EOF
-              REGISTRY=$${REGISTRY}
+              REGISTRY=${!REGISTRY}
               IMAGE_TAG=${ImageTag}
               TLS_HOSTNAME=${TlsHostname}
               LOG_GROUP=/promisepatch/${Environment}
-              AWS_REGION=$${REGION}
-              ACME_CONTACT=$${ACME_CONTACT}
+              AWS_REGION=${!REGION}
+              ACME_CONTACT=${!ACME_CONTACT}
               EOF
               umask 0022
 
-              aws ecr get-login-password --region "$${REGION}" \
-                | docker login --username AWS --password-stdin "$${REGISTRY}"
+              aws ecr get-login-password --region "${!REGION}" \
+                | docker login --username AWS --password-stdin "${!REGISTRY}"
 
               cd /opt/promisepatch
               docker compose --env-file env/stack.env pull
