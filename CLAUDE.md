@@ -230,6 +230,29 @@ by making the template stop depending on a permission. IMDSv2 stays required, TL
 on everywhere, and the database is private. The evidence UI is still not deployed and Telegram is
 untouched. See `docs/p6.2-first-deployment.md`.
 
+**P7 is open, and its first slice, P7.1 -- the judge-facing UX contract -- is CLOSED.** The
+product's surfaces are locked before any visual work, because P7 is design-led and the deployed
+`/` is still one line of plain text and a `404`. Four surfaces, two of them primary and the
+second living inside the first: the **case workspace** at `/` and `/?case=<id>`, the
+**conversation panel inside it** rather than on its own route, the demoted **order book**, and
+**sign-in**. A five-beat judge journey with comprehension budgets -- arrival, the worker's own
+sentence, three authority groups, the counted untouched set, the evidence drawer -- reaches the
+one sentence the whole surface exists to produce inside a minute, with **no CLI, no README and
+no navigation**. All **fourteen** promise states and **nine** case headlines are bound to what a
+screen may and may never draw, including the three the P5 contract's eleven-row table does not
+enumerate; the canonical demo is the frozen manifest's **`S11`**, where Lena's own external edit
+removes her dependency *before* the incident, so her untouched row is contingent rather than
+arranged. The worker's sequence is locked against the orchestrator's own permitted-verb mapping,
+and two capabilities are recorded as genuinely absent rather than drawn as disabled controls:
+the **bounded withdrawal**, and **correcting a physical fact**, which exists in the domain but is
+reachable only from the CLI. The evidence section names, per judge question, the field that
+answers it -- and **three P7.3 backend additions** where no field exists: the causal chain
+itself, the incident-caused-effect count on untouched orders, and the MCP correlation id. The
+Alexa+ voice contract is specified and **implemented nowhere**; no voice turn has been recorded
+and no timing exists. Nine anti-patterns are forbidden outright. **No frontend was changed, no
+AWS resource was touched, nothing was deployed and no push was made.** See
+`docs/p7.1-judge-ux-contract.md` and `docs/p7.1-design-handoff.md`.
+
 **Full G5 is not closed and is not claimed to be.** Three items are carried forward as explicit
 G7 obligations, exactly as the cutoff directs and with no promised capability silently deleted:
 the **bounded withdrawal**, which is the fifth frozen tool and remains absent rather than
