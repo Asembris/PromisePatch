@@ -58,6 +58,17 @@ need () {
 
 account_id () { aws sts get-caller-identity --region "$REGION" --query Account --output text; }
 
+# The current Amazon Linux 2023 arm64 image, resolved here rather than by the template.
+# `AWS::SSM::Parameter::Value<...>` on the AWS-published AMI parameter is the tidier spelling and
+# is the one this template used to carry; it needs the CloudFormation *service role* to hold
+# `ssm:GetParameters` on `parameter/aws/service/*`, which the deployment role does not have and
+# is not being given -- that role is scoped to this project's own parameters. The submitting
+# identity already holds `ec2:DescribeImages`, so the same fact is read with the permission that
+# exists. Latest by creation date, never a pinned id: an AMI in git goes stale silently.
+host_ami_id () {
+  aws ec2 describe-images --region "$REGION" --owners amazon     --filters "Name=name,Values=al2023-ami-2023.*-kernel-6.1-arm64"                "Name=state,Values=available"                "Name=architecture,Values=arm64"     --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text
+}
+
 # The image tag is the commit, and only ever the commit. A dirty tree is refused rather than
 # tagged, because "which version is deployed" has to have one answer -- G8 verifies the
 # deployed version rather than an old image, and a tag that does not name a commit makes that
@@ -170,8 +181,11 @@ stage_stack () {
   say "stack"
   need PP_DEPLOY_VPC_ID; need PP_DEPLOY_HOST_SUBNET
   need PP_DEPLOY_DB_SUBNETS
-  local account tag
-  account="$(account_id)"; tag="$(image_tag)"
+  local account tag ami
+  account="$(account_id)"; tag="$(image_tag)"; ami="$(host_ami_id)"
+  [[ "$ami" == ami-* ]] || die "no Amazon Linux 2023 arm64 image was found in $REGION"
+  printf '  image %s
+' "$ami"
   # `--role-arn` is what keeps the human's standing privilege small: the resource-creating
   # permissions belong to a role only CloudFormation can assume, so every mutation arrives
   # through a template that was submitted and can be read back.
@@ -190,7 +204,8 @@ stage_stack () {
       "DatabaseSubnetIds=${PP_DEPLOY_DB_SUBNETS}" \
       "TlsHostname=${PP_DEPLOY_TLS_HOSTNAME:-}" \
       "AllowedIngressCidr=${PP_DEPLOY_INGRESS_CIDR:-0.0.0.0/0}" \
-      "ImageTag=${tag}"
+      "ImageTag=${tag}" \
+      "HostAmiId=${ami}"
   aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" \
     --query 'Stacks[0].Outputs' --output table
 }

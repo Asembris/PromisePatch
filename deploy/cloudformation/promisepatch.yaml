@@ -125,9 +125,15 @@ Parameters:
     AllowedPattern: "[A-Za-z0-9._-]{1,128}"
 
   HostAmiId:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
-    Description: Resolved from the AWS-published parameter, so no AMI id is pinned in git.
+    Type: AWS::EC2::Image::Id
+    Description: >-
+      The current Amazon Linux 2023 arm64 image, resolved at deploy time by deploy.sh and
+      passed in, so no AMI id is pinned in git. It is not read from the AWS-published SSM
+      parameter by the stack, though that parameter is the same fact: resolving it in the
+      template requires the CloudFormation service role to hold ssm:GetParameters on
+      `parameter/aws/service/*`, and the deployment role is scoped to this project's own
+      parameters. Resolving it with the ec2:DescribeImages the submitting identity already
+      holds keeps that scope rather than widening it to make a template read work.
 
 Conditions:
   # The address this stack allocates is the only one a DNS record could point at, so when no
@@ -450,7 +456,11 @@ Resources:
               PP_ORDER_SYSTEM_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
               PP_ORDER_SYSTEM_BASE_URL=http://order-simulator:8100
               PP_CORS_ORIGINS=$${PUBLIC}
-              PP_SURFACE_WORKER_ID=worker-lena
+              # The worker every statement arriving over the MCP surface is attributed to.
+              # It must name a row the seed actually creates: intake refuses an unknown
+              # attester with SURFACE_WORKER_MISSING, so a name nothing seeded is not a
+              # cosmetic mislabel -- it is every `report` failing on the first spoken turn.
+              PP_SURFACE_WORKER_ID=maya
               # Named explicitly, because the default is the fake provider and is deliberately
               # not inferred from PP_ENV: a deployment that reaches a model does so because it
               # said so, not because something noticed credentials and quietly upgraded itself.
@@ -467,7 +477,7 @@ Resources:
               PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
               PP_MCP_ALLOWED_ORIGINS=$${PUBLIC}
               PP_MCP_ALLOWED_HOSTS=${TlsHostname}
-              PP_SURFACE_WORKER_ID=worker-lena
+              PP_SURFACE_WORKER_ID=maya
               EOF
 
               # The simulator holds no PostgreSQL credential and shares no environment file. Its

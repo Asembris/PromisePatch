@@ -51,6 +51,8 @@ from scripts.aws_preflight import (
 )
 from scripts.deployment_smoke import PROTOCOL_REVISION
 
+from promisepatch.fixtures import demo
+
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
 DEPLOY = REPOSITORY_ROOT / "deploy"
 TEMPLATE_PATH = DEPLOY / "cloudformation" / "promisepatch.yaml"
@@ -202,6 +204,25 @@ def test_the_mcp_container_is_given_no_database_url(template: dict[str, Any]) ->
     assert "PP_DATABASE_URL" not in mcp_block
     assert "PP_MIGRATION_DATABASE_URL" not in mcp_block
     assert "PP_MCP_INTENT_API_BASE_URL" in mcp_block
+
+
+def test_the_attesting_worker_is_one_the_seed_actually_creates(
+    template: dict[str, Any],
+) -> None:
+    """The worker every statement over the MCP surface is attributed to must exist.
+
+    Intake refuses an unknown attester rather than inventing one, so a name the fixture does
+    not seed is not a cosmetic mislabel: it is ``SURFACE_WORKER_MISSING`` on the first spoken
+    turn of every conversation, in a deployment where everything else came up healthy.
+    """
+    seeded = {seed.username for seed in demo.STAFF}
+    assert seeded, "the fixture seeds no staff at all, which cannot be right"
+    named = set(re.findall(r"^\s*PP_SURFACE_WORKER_ID=(\S+)$", _user_data(template), re.M))
+    assert named, "the deployment attributes statements to nobody"
+    assert named <= seeded, (
+        f"the deployment attests as {sorted(named - seeded)}, which `pp reset-demo-state` "
+        f"never creates; it seeds {sorted(seeded)}"
+    )
 
 
 def test_the_deployed_api_is_pointed_at_a_real_model(template: dict[str, Any]) -> None:
