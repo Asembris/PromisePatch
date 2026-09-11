@@ -17,6 +17,7 @@
         "cloudformation:CreateChangeSet",
         "cloudformation:DescribeChangeSet",
         "cloudformation:ExecuteChangeSet",
+        "cloudformation:ContinueUpdateRollback",
         "cloudformation:DeleteChangeSet",
         "cloudformation:ListChangeSets",
         "cloudformation:ListStackResources"

@@ -198,6 +198,33 @@ restart proof is taken, no deployed conversation has run and no Telegram work wa
 not advanced beyond this preparation. The one precondition still outstanding for P6.2 is a DNS
 name for `TlsHostname`. See `docs/p6.1-deployment-preflight.md`.
 
+**P6.2, the first real deployment, is DEPLOYED AND SERVING, with one stated blocker.**
+PromisePatch runs at **`https://184.194.40.87.sslip.io`** on one `t4g.small` in `us-east-1b`
+against a private encrypted RDS PostgreSQL, behind Caddy holding a real Let's Encrypt
+certificate -- the deployment's own log records four Let's Encrypt validation servers fetching
+the HTTP-01 challenge, which is what makes the certificate claim checkable rather than asserted
+from a laptop whose antivirus intercepts TLS. `TlsHostname` no longer needs a domain: left
+empty, the stack derives `<elastic-ip>.sslip.io` from the address it allocates, so a first
+deploy needs no record pointed at an address that does not exist yet, and nothing about TLS is
+weakened either way. The seven deployment smoke checks pass **7/7**, four of them asserting
+refusals. The canonical conversation runs end to end over the public MCP transport from outside
+AWS to four real outcomes -- `EXT-A` recovered, `EXT-B` asked, `EXT-C`/`EXT-D` owner actions,
+`EXT-E`/`EXT-F` untouched with **0 incident-caused effects** -- and a case read out before and
+after `RebootInstances` comes back identical with no duplicated effect. **Ten defects were found
+that no amount of reading the definition could have found**, five by AWS rejecting the stack and
+five by running it, including a reboot that silently re-seeded the database and erased the very
+cases the deployment exists to prove outlive the host. Every one has an offline test that
+reproduces it; the suite went 47 to 57 and the whole `scripts/` suite is 335 passing.
+**What is not proved: no deployed Bedrock call has succeeded.** The deployed worker does reach
+for the model with `provider: "bedrock"` -- so the configuration is live -- and fails
+`NoCredentialsError` in 2 ms because `HttpPutResponseHopLimit: 1` leaves every container unable
+to reach IMDS. The fix is committed and needs two IAM actions this credential cannot grant:
+`ec2:ModifyInstanceMetadataOptions` on the deployment role and
+`cloudformation:ContinueUpdateRollback` on the developer role; the stack is
+`UPDATE_ROLLBACK_FAILED` until the second lands. Two other denials were routed around *without*
+asking for IAM, by making the template stop depending on a permission. The evidence UI is still
+not deployed and Telegram is untouched. See `docs/p6.2-first-deployment.md`.
+
 **Full G5 is not closed and is not claimed to be.** Three items are carried forward as explicit
 G7 obligations, exactly as the cutoff directs and with no promised capability silently deleted:
 the **bounded withdrawal**, which is the fifth frozen tool and remains absent rather than
