@@ -394,8 +394,18 @@ Resources:
       MetadataOptions:
         # IMDSv2 only. A token-less metadata read is how an application-layer request forgery
         # turns into the instance's credentials, and this host holds a Bedrock permission.
+        # This is the control that matters and it is unchanged: a plain SSRF cannot mint the
+        # token, because minting one requires a PUT.
         HttpTokens: required
-        HttpPutResponseHopLimit: 1
+        # Two, not one, and one was wrong. Everything on this host runs in a container, and the
+        # Docker bridge costs a hop -- so at a limit of 1 the metadata response expires before
+        # it reaches the process that asked, and *no container can obtain the instance role at
+        # all*. It failed exactly there: the deployed worker's first Bedrock call came back
+        # NoCredentialsError in 2 ms, having made no network request, while the host itself
+        # pulled images and read its secrets perfectly well -- because those run on the host.
+        # Two is what AWS documents for containerised workloads on EC2, and it is the smallest
+        # value that lets the runtime use the role this stack created for it.
+        HttpPutResponseHopLimit: 2
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
           Ebs:

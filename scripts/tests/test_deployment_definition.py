@@ -592,11 +592,28 @@ def test_the_bootstrap_does_not_claim_to_run_on_every_boot(template: dict[str, A
     assert "runs once" in script, "it should say what it actually does"
 
 
-def test_the_host_requires_imdsv2(template: dict[str, Any]) -> None:
-    """This host holds a Bedrock permission; a token-less metadata read is how that leaks."""
+def test_the_host_requires_imdsv2_and_containers_can_still_use_the_role(
+    template: dict[str, Any],
+) -> None:
+    """IMDSv2 is the control. The hop limit is not, and setting it to 1 broke the runtime.
+
+    ``HttpTokens: required`` is what stops a token-less metadata read turning an
+    application-layer request forgery into this host's credentials, and this host holds a
+    Bedrock permission. That stays.
+
+    The hop limit is a different thing, and this file previously asserted 1. Every process here
+    runs in a container, the Docker bridge costs a hop, and at a limit of 1 the metadata
+    response expires before it arrives -- so no container can obtain the instance role at all.
+    Observed: the deployed worker's first Bedrock call returned ``NoCredentialsError`` in 2 ms
+    without making a network request, while the host pulled images and read its secrets fine,
+    because those run on the host. 2 is what AWS documents for containers on EC2. Above 2 the
+    response can be relayed further than this host, so it is also a ceiling.
+    """
     options = template["Resources"]["Host"]["Properties"]["MetadataOptions"]
-    assert options["HttpTokens"] == "required"
-    assert options["HttpPutResponseHopLimit"] == 1
+    assert options["HttpTokens"] == "required", "IMDSv2 is the control and is not negotiable"
+    assert options["HttpPutResponseHopLimit"] == 2, (
+        "1 leaves every container unable to reach IMDS; more than 2 relays beyond this host"
+    )
 
 
 def test_the_host_has_no_inbound_ssh_and_no_key_pair(template: dict[str, Any]) -> None:
