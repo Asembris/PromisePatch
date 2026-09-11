@@ -574,19 +574,22 @@ def test_the_database_is_encrypted_and_backed_up(template: dict[str, Any]) -> No
     assert template["Resources"]["Database"]["DeletionPolicy"] == "Snapshot"
 
 
-def test_changing_the_bootstrap_actually_reaches_the_host(template: dict[str, Any]) -> None:
-    """A stack update that changes nothing on the machine is the worst kind of green.
+def test_the_bootstrap_does_not_claim_to_run_on_every_boot(template: dict[str, Any]) -> None:
+    """It runs once per instance, and saying otherwise sets up a wrong belief about releases.
 
-    ``UserData`` is not replace-on-change by default: CloudFormation updates the property,
-    reports ``UPDATE_COMPLETE``, leaves the instance id alone, and the host goes on running
-    whatever it booted with. Observed exactly once and exactly like that. The tag naming the
-    deployed release is written into the host's environment file from this script, so without
-    replacement a release deploys successfully and the host keeps serving the previous image.
+    cloud-init's ``scripts-user`` module is once-per-instance, so a reboot re-reads none of the
+    compose file, the TLS configuration, the secrets or the image tag. And ``UserData`` is not a
+    replacement trigger for ``AWS::EC2::Instance``: a stack update carrying a new ``ImageTag``
+    reports ``UPDATE_COMPLETE``, leaves the instance id unchanged, and the host goes on serving
+    the image it first booted with. Both were observed. The comment claiming per-boot
+    convergence was wrong, and a wrong comment here is how a release is believed deployed when
+    it is not.
     """
-    host = template["Resources"]["Host"]["Properties"]
-    assert host.get("UserDataReplaceOnChange") is True, (
-        "a change to the bootstrap script -- the image tag included -- would not reach the host"
+    script = _user_data(template)
+    assert "runs again on every boot" not in script, (
+        "the bootstrap claims to converge at every boot; cloud-init runs it once per instance"
     )
+    assert "runs once" in script, "it should say what it actually does"
 
 
 def test_the_host_requires_imdsv2(template: dict[str, Any]) -> None:

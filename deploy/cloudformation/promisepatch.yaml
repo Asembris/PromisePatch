@@ -391,16 +391,6 @@ Resources:
       SecurityGroupIds: [!GetAtt HostSecurityGroup.GroupId]
       # No KeyName. Access is Session Manager or nothing, which is why no inbound 22 exists.
       Monitoring: false
-      # Without this, changing UserData updates the *property* and leaves the running host
-      # alone -- CloudFormation reports UPDATE_COMPLETE, the instance id does not change, and
-      # nothing new reaches the machine. That was observed: a corrected composition and TLS
-      # configuration were uploaded, the stack updated cleanly, and the host went on running
-      # the old ones. It matters most for ImageTag, which is written into the host's
-      # environment file here: without replacement a release would deploy and the host would
-      # keep serving the previous image, which is exactly the question G8 has to answer.
-      # The host holds no state -- the case state is in RDS -- so replacing it is cheap and is
-      # what makes "which definition is deployed" answerable at all.
-      UserDataReplaceOnChange: true
       MetadataOptions:
         # IMDSv2 only. A token-less metadata read is how an application-layer request forgery
         # turns into the instance's credentials, and this host holds a Bedrock permission.
@@ -424,9 +414,18 @@ Resources:
               set -euo pipefail
               exec > >(tee /var/log/promisepatch-boot.log) 2>&1
 
-              # Everything below runs again on every boot, not only the first: the compose file,
-              # the environment files and the secrets are all re-read, so a restarted or replaced
-              # host converges on the same deployment rather than on whatever was left behind.
+              # **This runs once, on this instance's first boot, and not again.** cloud-init's
+              # scripts-user module is once-per-instance, so a reboot re-reads none of the
+              # compose file, the TLS configuration, the secrets or the image tag -- the systemd
+              # unit at the end is what brings the containers back, from the files on disk.
+              #
+              # An earlier version of this comment claimed the opposite, and the claim was wrong
+              # in a way that matters: changing UserData does not replace an AWS::EC2::Instance,
+              # so a stack update carrying a new ImageTag reports UPDATE_COMPLETE, leaves the
+              # instance id unchanged, and the host goes on serving the image it first booted
+              # with. Observed exactly that. Until this converges per boot, a definition change
+              # reaches the host only by replacing the instance, and "which version is deployed"
+              # is a question about the host rather than about the stack's parameters.
 
               dnf -y update
               dnf -y install docker amazon-cloudwatch-agent
