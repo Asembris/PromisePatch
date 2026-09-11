@@ -31,6 +31,9 @@
 #   PP_DEPLOY_REGION          default us-east-1
 #   PP_DEPLOY_INGRESS_CIDR    default 0.0.0.0/0
 #   PP_DEPLOY_ACME_CONTACT    an address a certificate problem should reach
+#   PP_DEPLOY_DB_BACKUP_DAYS  days of automated database backups, default 7. An account on the
+#                             AWS Free Tier plan cannot have 7 and RDS refuses the create; set
+#                             it to what the plan allows, and record that it was lowered.
 #
 # TLS verification is never weakened anywhere in this script or anywhere in this repository:
 # a test enumerates every spelling of "trust whatever certificate turns up" and fails on any of
@@ -204,6 +207,7 @@ stage_stack () {
       "DatabaseSubnetIds=${PP_DEPLOY_DB_SUBNETS}" \
       "TlsHostname=${PP_DEPLOY_TLS_HOSTNAME:-}" \
       "AllowedIngressCidr=${PP_DEPLOY_INGRESS_CIDR:-0.0.0.0/0}" \
+      "DatabaseBackupRetentionDays=${PP_DEPLOY_DB_BACKUP_DAYS:-7}" \
       "ImageTag=${tag}" \
       "HostAmiId=${ami}"
   aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" \

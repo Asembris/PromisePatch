@@ -508,7 +508,14 @@ def test_the_database_is_reachable_only_from_the_host_group(template: dict[str, 
 def test_the_database_is_encrypted_and_backed_up(template: dict[str, Any]) -> None:
     properties = template["Resources"]["Database"]["Properties"]
     assert properties["StorageEncrypted"] is True
-    assert properties["BackupRetentionPeriod"] >= 1
+    # Retention is a parameter because an account on the AWS Free Tier plan cannot have the
+    # intended week and RDS refuses the create. What must not become adjustable is *whether*
+    # there are backups at all: 0 switches automated backups off, and point-in-time recovery
+    # with them, so the floor is 1 and the default is still the week.
+    retention = template["Parameters"]["DatabaseBackupRetentionDays"]
+    assert properties["BackupRetentionPeriod"] == {"Ref": "DatabaseBackupRetentionDays"}
+    assert retention["MinValue"] >= 1, "0 would mean no automated backups at all"
+    assert retention["Default"] >= 1
     # The case state is the evidence a deployed loop happened. A mistyped `delete-stack` must
     # not be able to erase it without leaving a snapshot behind.
     assert template["Resources"]["Database"]["DeletionPolicy"] == "Snapshot"

@@ -46,7 +46,8 @@ Metadata:
       - Label: { default: Ingress and TLS }
         Parameters: [TlsHostname, AllowedIngressCidr]
       - Label: { default: Sizing }
-        Parameters: [InstanceType, DatabaseInstanceClass, DatabaseStorageGiB]
+        Parameters:
+          [InstanceType, DatabaseInstanceClass, DatabaseStorageGiB, DatabaseBackupRetentionDays]
       - Label: { default: Release }
         Parameters: [Environment, ImageTag]
 
@@ -115,6 +116,20 @@ Parameters:
     Default: 20
     MinValue: 20
     MaxValue: 100
+
+  DatabaseBackupRetentionDays:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 35
+    Description: >-
+      How many days of automated backups the database keeps. Never 0: that switches automated
+      backups off entirely, and point-in-time recovery with them. A week is the intent and is
+      the default. It is a parameter rather than a constant because an account on the AWS Free
+      Tier plan cannot have it -- RDS refuses the create outright with "the specified backup
+      retention period exceeds the maximum available to free tier customers" -- and a
+      deployment that has to lower it should have to say so where the value can be read, rather
+      than have the number quietly edited in the template.
 
   ImageTag:
     Type: String
@@ -242,7 +257,7 @@ Resources:
       # CloudFormation resolves the SecureString at create time and does not echo it.
       MasterUserPassword: !Sub "{{resolve:ssm-secure:/promisepatch/${Environment}/db-master-password}}"
       DBName: promisepatch
-      BackupRetentionPeriod: 7
+      BackupRetentionPeriod: !Ref DatabaseBackupRetentionDays
       CopyTagsToSnapshot: true
       AutoMinorVersionUpgrade: true
       DeletionProtection: false
