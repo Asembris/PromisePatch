@@ -391,6 +391,16 @@ Resources:
       SecurityGroupIds: [!GetAtt HostSecurityGroup.GroupId]
       # No KeyName. Access is Session Manager or nothing, which is why no inbound 22 exists.
       Monitoring: false
+      # Without this, changing UserData updates the *property* and leaves the running host
+      # alone -- CloudFormation reports UPDATE_COMPLETE, the instance id does not change, and
+      # nothing new reaches the machine. That was observed: a corrected composition and TLS
+      # configuration were uploaded, the stack updated cleanly, and the host went on running
+      # the old ones. It matters most for ImageTag, which is written into the host's
+      # environment file here: without replacement a release would deploy and the host would
+      # keep serving the previous image, which is exactly the question G8 has to answer.
+      # The host holds no state -- the case state is in RDS -- so replacing it is cheap and is
+      # what makes "which definition is deployed" answerable at all.
+      UserDataReplaceOnChange: true
       MetadataOptions:
         # IMDSv2 only. A token-less metadata read is how an application-layer request forgery
         # turns into the instance's credentials, and this host holds a Bedrock permission.

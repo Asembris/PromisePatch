@@ -574,6 +574,21 @@ def test_the_database_is_encrypted_and_backed_up(template: dict[str, Any]) -> No
     assert template["Resources"]["Database"]["DeletionPolicy"] == "Snapshot"
 
 
+def test_changing_the_bootstrap_actually_reaches_the_host(template: dict[str, Any]) -> None:
+    """A stack update that changes nothing on the machine is the worst kind of green.
+
+    ``UserData`` is not replace-on-change by default: CloudFormation updates the property,
+    reports ``UPDATE_COMPLETE``, leaves the instance id alone, and the host goes on running
+    whatever it booted with. Observed exactly once and exactly like that. The tag naming the
+    deployed release is written into the host's environment file from this script, so without
+    replacement a release deploys successfully and the host keeps serving the previous image.
+    """
+    host = template["Resources"]["Host"]["Properties"]
+    assert host.get("UserDataReplaceOnChange") is True, (
+        "a change to the bootstrap script -- the image tag included -- would not reach the host"
+    )
+
+
 def test_the_host_requires_imdsv2(template: dict[str, Any]) -> None:
     """This host holds a Bedrock permission; a token-less metadata read is how that leaks."""
     options = template["Resources"]["Host"]["Properties"]["MetadataOptions"]
