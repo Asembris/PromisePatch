@@ -223,6 +223,35 @@ def test_the_composition_runs_the_same_processes_as_the_local_stack(
     assert "caddy" in services, "something has to terminate TLS"
 
 
+def test_a_restart_cannot_reseed_the_database(
+    template: dict[str, Any], compose: dict[str, Any]
+) -> None:
+    """The state is durable, and the boot sequence must not erase it anyway.
+
+    ``pp reset-demo-state`` replaces every domain row PromisePatch owns -- cases included. The
+    systemd unit runs ``docker compose up -d`` at every boot, and a one-shot service that has
+    already exited is re-run by it, so leaving ``seed`` outside a profile means every host
+    restart wipes the very cases the deployment exists to prove outlive the host. It was
+    observed doing exactly that: a case reached over the deployed MCP surface was gone after
+    one reboot, with the database itself perfectly intact.
+
+    Three things keep it fixed: the service is profiled, nothing pulls it in as a dependency
+    (``depends_on`` implicitly enables a dependency's profile), and the bootstrap -- which runs
+    once per instance -- is the only thing that starts it.
+    """
+    seed = compose["services"]["seed"]
+    assert "seed" in seed.get("profiles", []), (
+        "`seed` is not profiled, so `docker compose up -d` re-runs it at every boot"
+    )
+    for name, service in compose["services"].items():
+        assert "seed" not in (service.get("depends_on") or {}), (
+            f"{name} depends on `seed`, which enables its profile again and undoes the fix"
+        )
+    script = _user_data(template)
+    assert "run --rm -T seed" in script, "nothing seeds a new instance at all"
+    assert "up -d" in script
+
+
 def test_the_mcp_container_is_given_no_database_url(template: dict[str, Any]) -> None:
     """The authority boundary is which environment file each container receives.
 
@@ -483,6 +512,30 @@ def test_no_log_group_attribute_is_read_to_build_the_stack(template: dict[str, A
         "AWS::Region, AWS::AccountId and the group name instead -- that needs no permission."
     )
     assert "logs:CreateLogStream" in rendered, "the runtime must still be able to ship output"
+
+
+def test_an_unlisted_host_is_refused_in_a_way_a_client_can_read() -> None:
+    """Caddy's "no site matched" default is an empty 200, and that is a false success.
+
+    A request whose ``Host`` names something this deployment does not serve matches no site
+    block, and Caddy answers it itself -- with ``200`` and an empty body, which a client cannot
+    distinguish from a successful call. The request never reaches the protocol either way, so
+    nothing is exposed by it; what is wrong is the status. A catch-all site says ``421`` instead.
+
+    This does not move the authority boundary. For every request Caddy *does* pass through, the
+    MCP server's own ``Host`` allowlist, ``Origin`` allowlist and bearer check are unchanged and
+    still in front of the protocol, which is where P5.1 put them.
+    """
+    caddyfile = CADDYFILE_PATH.read_text(encoding="utf-8")
+    assert ":443 {" in caddyfile, (
+        "no catch-all site: an unlisted Host would get Caddy's empty 200 instead of a refusal"
+    )
+    tail = caddyfile[caddyfile.index(":443 {") :]
+    assert "421" in tail, "the catch-all does not refuse"
+    assert "reverse_proxy" not in tail, (
+        "the catch-all proxies somewhere. It must answer and nothing else -- a site that "
+        "matched any hostname and forwarded would be a second, unnamed way into the backend."
+    )
 
 
 def test_the_host_reaches_only_443_and_its_own_database(template: dict[str, Any]) -> None:

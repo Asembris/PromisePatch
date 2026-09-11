@@ -531,6 +531,14 @@ Resources:
 
               cd /opt/promisepatch
               docker compose --env-file env/stack.env pull
+
+              # Load the fixture once, on this instance. `compose run` enables the service's
+              # own profile, which is the only thing that does -- `up -d` cannot reach it. That
+              # matters because seeding replaces every domain row PromisePatch owns, and the
+              # systemd unit below runs `up -d` at every boot: a restart that re-seeded would
+              # erase the cases whose survival is the point of deploying at all.
+              docker compose --env-file env/stack.env run --rm -T seed
+
               docker compose --env-file env/stack.env up -d --remove-orphans
 
               # A systemd unit, so an instance reboot brings the stack back without this script.

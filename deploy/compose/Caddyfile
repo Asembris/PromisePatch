@@ -74,3 +74,14 @@
 		format json
 	}
 }
+
+# Anything addressed to a name this deployment does not serve. Without this block Caddy has no
+# site for such a request and answers its "no site matched" default -- an empty 200, which a
+# client cannot tell from success. The request is refused either way and never reaches the
+# protocol; what this fixes is the deployment saying so. It does not move the authority
+# boundary: the MCP server's own Host allowlist, Origin allowlist and bearer check stay exactly
+# where P5.1 put them, in front of the protocol, for every request Caddy does pass through.
+# The named site above is more specific, so it continues to win for the real hostname.
+:443 {
+	respond "this deployment does not serve that name" 421
+}

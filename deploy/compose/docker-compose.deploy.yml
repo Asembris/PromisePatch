@@ -1,9 +1,9 @@
-# The deployed composition: stored as SSM /promisepatch/<env>/compose, written to
-# /opt/promisepatch/docker-compose.yml at every boot. It must fit a standard-tier parameter --
-# 4096 bytes -- so the reasoning lives in the CloudFormation template and in the P6 docs.
+# The deployed composition: SSM /promisepatch/<env>/compose, written to
+# /opt/promisepatch/docker-compose.yml at boot. It must fit a 4096-byte standard-tier
+# parameter, so the reasoning lives in the template and the P6 docs.
 #
-# Same images, commands and per-container environment files as the local stack. What changes:
-# the database is RDS, a TLS proxy is in front, output goes to CloudWatch Logs.
+# Same images, commands and per-container env files as the local stack. The database is RDS,
+# a TLS proxy is in front, output goes to CloudWatch Logs.
 
 name: promisepatch
 
@@ -19,10 +19,9 @@ networks:
     driver: bridge
     ipam:
       config:
-        # Fixed subnet so the TLS proxy has a fixed address. The simulator must resolve the
-        # public hostname to something, and it cannot be the Elastic IP: an instance has no
-        # route back to its own public address. Mapping it to the proxy keeps the handshake,
-        # the SNI and the verification real; the packet does not leave the host.
+        # Fixed subnet so the TLS proxy has a fixed address: the simulator must resolve the
+        # public hostname to something, and an instance has no route back to its own public
+        # address. Why that keeps the TLS hop real is in the template.
         - subnet: 172.29.0.0/24
 
 services:
@@ -34,9 +33,12 @@ services:
     logging: *logging
     restart: "no"
 
+  # Profiled, so `up -d` never reaches it: seeding replaces every domain row and the systemd
+  # unit runs `up -d` at every boot. Only the bootstrap's `compose run seed` starts it.
   seed:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
     command: ["pp", "reset-demo-state"]
+    profiles: ["seed"]
     env_file: [env/migrate.env]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -48,7 +50,7 @@ services:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
     env_file: [env/api.env]
     depends_on:
-      seed: { condition: service_completed_successfully }
+      migrate: { condition: service_completed_successfully }
     networks: [stack]
     logging: *logging
     healthcheck:
@@ -65,7 +67,7 @@ services:
     command: ["pp", "worker"]
     env_file: [env/api.env]
     depends_on:
-      seed: { condition: service_completed_successfully }
+      migrate: { condition: service_completed_successfully }
     networks: [stack]
     logging: *logging
     stop_grace_period: 20s
@@ -104,8 +106,7 @@ services:
     ports: ["80:80", "443:443", "443:443/udp"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Certificate and ACME account key on a named volume, so a restart does not re-order
-      # a certificate and walk into a rate limit.
+      # Certificate and ACME account key on a volume, so a restart does not re-order one.
       - caddy-data:/data
       - caddy-config:/config
     environment:
