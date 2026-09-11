@@ -157,8 +157,8 @@ half of it, and the expected labels are loaded from the manifest -- S02's frozen
 S11's frozen `ord-d` argument applied -- with its published identity asserted before anything
 else runs, rather than from anything the run observed.
 
-**P6 is open. Its first slice, the deployment preflight, is done, and the deployment itself is
-blocked on IAM.** The active identity is `PromisePatchDeveloperRole`, and a reproducible
+**P6 is open, and its first slice, the deployment preflight, is CLOSED with no IAM gap
+remaining.** The active identity is `PromisePatchDeveloperRole`, and a reproducible
 zero-mutation preflight (`scripts/aws_preflight.py`, read-only by construction: a probe naming
 an API outside a frozen list aborts the run) reported **2 of 9 required permissions** on its
 first run, when the role held nothing but `sts:GetCallerIdentity` and `bedrock:InvokeModel` on
@@ -166,11 +166,17 @@ exactly the `us.amazon.nova-2-lite-v1:0` inference profile. One of those seven d
 preflight's own fault -- the ECR probe listed the whole registry, which a role scoped to
 `repository/promisepatch/*` is correctly denied, so it manufactured a blocker that did not
 exist; it now names a repository and reads `RepositoryNotFoundException` as authorization
-proved. The account owner has since applied the delta and created both roles. **The preflight
-now reports 8 of 9, and one real blocker remains:** `logs:DescribeLogGroups` is evaluated
-account-wide and cannot be scoped to `/promisepatch/*`, so it needs its own statement with
+proved. The account owner has since applied the delta, created both roles, and applied the
+one corrected statement the 8-of-9 run identified: `logs:DescribeLogGroups` is evaluated
+account-wide and cannot be scoped to `/promisepatch/*`, so it has its own statement with
 `Resource: "*"` -- names only, no log content, with everything that can read a line still
-scoped. Everything else simulates `allowed` against its real resource ARN. The committed
+scoped. **The preflight now reports 9 of 9 required permissions allowed and exits 0.** Its ECR
+row proves the earlier correction against the live account in both directions at once: the named
+`promisepatch/backend` is authorized and returns `RepositoryNotFoundException` because it does
+not exist, while the registry-wide `repository/*` listing the old probe used is still correctly
+denied. Twelve mutating requirements remain `DECLARED` rather than tested -- verified by hand
+against their real resource ARNs -- because the script does not yet use the now-permitted
+`iam:SimulatePrincipalPolicy`, which is the first P6.2 step. The committed
 deployment-role trust policy is byte-identical to the live one: CloudFormation service
 principal, no condition, the confused-deputy control having moved to the narrow `iam:PassRole`
 in the developer delta. **Nothing was created in AWS by this work and IAM was not broadened by
@@ -186,9 +192,11 @@ about $33 a month standing, and about $0.0039 per conversation from the measured
 counts. **AgentCore is declined for this slice** and the roadmap's ordinary-compute fallback
 taken, because the role cannot reach AgentCore at all, adopting it would replace the
 authenticated Streamable HTTP boundary G5 closed, and it buys nothing this slice lacks. Nothing
-is deployed, no restart proof is taken, no deployed conversation has run and no Telegram work
-was started; G6 is not advanced beyond this preparation. See
-`docs/p6.1-deployment-preflight.md`.
+of this project is deployed -- 0 stacks, 0 databases, no image repository and no log group,
+though the account does carry an unrelated `careloop` project whose spend is not ours -- no
+restart proof is taken, no deployed conversation has run and no Telegram work was started; G6 is
+not advanced beyond this preparation. The one precondition still outstanding for P6.2 is a DNS
+name for `TlsHostname`. See `docs/p6.1-deployment-preflight.md`.
 
 **Full G5 is not closed and is not claimed to be.** Three items are carried forward as explicit
 G7 obligations, exactly as the cutoff directs and with no promised capability silently deleted:
