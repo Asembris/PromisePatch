@@ -200,7 +200,7 @@ Resources:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !GetAtt HostSecurityGroup.GroupId
-      Description: PostgreSQL to the stack's database.
+      Description: PostgreSQL to the database this stack creates.
       IpProtocol: tcp
       FromPort: 5432
       ToPort: 5432
@@ -264,6 +264,9 @@ Resources:
 
   InstanceRole:
     Type: AWS::IAM::Role
+    # The policy below names the log group by ARN rather than by !GetAtt, so this ordering is
+    # stated rather than inferred from a reference that is no longer there.
+    DependsOn: LogGroup
     Properties:
       RoleName: PromisePatchInstanceRole
       AssumeRolePolicyDocument:
@@ -318,9 +321,17 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                   - logs:DescribeLogStreams
+                # Constructed rather than `!GetAtt LogGroup.Arn`. Resolving that attribute
+                # makes CloudFormation call `logs:DescribeLogGroups` as the *deployment role*,
+                # and that action is evaluated account-wide: a grant scoped to
+                # `log-group:/promisepatch/*` never authorizes it, so the attribute read is
+                # denied and the role cannot be created at all. It is the same wrongly shaped
+                # grant P6.1 found and fixed on the developer role, in a second policy. The ARN
+                # is fully determined by the name this stack chose, so building it needs no
+                # permission and grants the runtime nothing wider.
                 Resource:
-                  - !GetAtt LogGroup.Arn
-                  - !Sub ${LogGroup.Arn}:log-stream:*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/promisepatch/${Environment}
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/promisepatch/${Environment}:log-stream:*
               # The orchestrator's one semantic job. A cross-region inference profile needs
               # both the profile ARN and the foundation-model ARNs in every region it may
               # route to -- scoping to the profile alone produces a denial at call time.

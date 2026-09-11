@@ -428,6 +428,63 @@ def test_the_derived_branch_is_a_name_and_not_a_way_around_a_certificate(
         )
 
 
+EC2_DESCRIPTION_CHARACTERS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789. _-:/()#,@[]+=&;{}!$*"
+)
+"""What EC2 accepts in a security-group description. Notably absent: the apostrophe."""
+
+
+def test_every_security_group_description_is_one_ec2_will_accept(
+    template: dict[str, Any],
+) -> None:
+    """One apostrophe fails the whole stack, after the database has begun being created.
+
+    EC2 validates rule and group descriptions against a fixed character set that does not
+    include ``'``. There is no warning and no truncation: the rule is rejected, the stack rolls
+    back, and everything created alongside it is deleted. Prose written for a reader is exactly
+    where an apostrophe comes from, so this is checked here rather than discovered at minute
+    nine of a deploy.
+    """
+    checked = 0
+    for name, resource in template["Resources"].items():
+        properties = resource.get("Properties", {})
+        descriptions = [properties.get("GroupDescription"), properties.get("Description")]
+        for key in ("SecurityGroupIngress", "SecurityGroupEgress"):
+            descriptions += [rule.get("Description") for rule in properties.get(key, [])]
+        if resource["Type"] not in {
+            "AWS::EC2::SecurityGroup",
+            "AWS::EC2::SecurityGroupIngress",
+            "AWS::EC2::SecurityGroupEgress",
+        }:
+            continue
+        for description in descriptions:
+            if not isinstance(description, str):
+                continue
+            checked += 1
+            rejected = sorted(set(description) - EC2_DESCRIPTION_CHARACTERS)
+            assert not rejected, f"{name} describes itself with {rejected}, which EC2 rejects"
+            assert len(description) < 256, f"{name}'s description is too long for EC2"
+    assert checked >= 6, "the security groups describe themselves less than they used to"
+
+
+def test_no_log_group_attribute_is_read_to_build_the_stack(template: dict[str, Any]) -> None:
+    """``!GetAtt LogGroup.Arn`` is a ``logs:DescribeLogGroups`` call, and it is denied.
+
+    ``DescribeLogGroups`` answers "which log groups exist" -- a question with no single resource
+    -- so IAM evaluates it against the account, and the deployment role's grant is scoped to
+    ``log-group:/promisepatch/*``. The attribute read is therefore refused and the resource that
+    wanted it cannot be created. This is the same wrongly shaped grant P6.1 found on the
+    developer role, in a second policy; the template stops depending on it instead, because the
+    ARN is fully determined by the name the stack already chose.
+    """
+    rendered = json.dumps(template["Resources"])
+    assert "LogGroup.Arn" not in rendered, (
+        "something reads the log group's ARN as an attribute. Build it with Fn::Sub from "
+        "AWS::Region, AWS::AccountId and the group name instead -- that needs no permission."
+    )
+    assert "logs:CreateLogStream" in rendered, "the runtime must still be able to ship output"
+
+
 def test_the_host_reaches_only_443_and_its_own_database(template: dict[str, Any]) -> None:
     resources = template["Resources"]
     egress = resources["HostSecurityGroup"]["Properties"]["SecurityGroupEgress"]
