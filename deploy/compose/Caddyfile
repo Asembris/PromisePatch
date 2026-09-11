@@ -10,8 +10,11 @@
 
 {
 	# An explicit, reachable contact so a certificate problem arrives as mail rather than as an
-	# outage. Set /promisepatch/<env>/acme-contact and the deploy script substitutes it.
-	email {$ACME_CONTACT:admin@localhost}
+	# outage: set /promisepatch/<env>/acme-contact and the host passes it through. The default
+	# is empty rather than a made-up address, because ACME registration validates the contact
+	# and an unresolvable domain fails the certificate order outright -- no contact is allowed,
+	# a contact nobody can receive mail at is not.
+	email "{$ACME_CONTACT:}"
 }
 
 {$TLS_HOSTNAME} {

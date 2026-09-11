@@ -254,14 +254,40 @@ def _user_data(template: dict[str, Any]) -> str:
     ``json.dumps`` of it instead is how a line-anchored pattern silently matches nothing.
     """
     node: Any = template["Resources"]["Host"]["Properties"]["UserData"]
-    # `Fn::Base64` is spelled long-form in the template and `!Sub` short-form, so the nesting is
-    # {"Fn::Base64": {"Sub": <script>}}. Unwrap whatever single-key layers are there rather than
-    # hard-coding one spelling of an intrinsic that has two.
+    # `Fn::Base64` is spelled long-form in the template and `Fn::Sub` may be either spelling, so
+    # unwrap whatever single-key layers are there rather than hard-coding one of them.
     while isinstance(node, dict) and len(node) == 1:
         node = next(iter(node.values()))
+    # `Fn::Sub` has two forms: a bare script, and `[script, {name: value}]` when the template
+    # supplies a substitution of its own. Both hold the same script in the same place.
+    if isinstance(node, list):
+        assert len(node) == 2, f"an Fn::Sub list form has two members, not {len(node)}"
+        node, supplied = node
+        assert isinstance(supplied, dict) and supplied, "the list form supplies nothing"
+        for name in supplied:
+            assert "${" + name + "}" in node, (
+                f"the template supplies ${{{name}}} to the bootstrap script, which never reads "
+                "it. A substitution nothing uses is a rename that half happened."
+            )
     assert isinstance(node, str), f"UserData did not unwrap to a script: {type(node).__name__}"
     assert node.startswith("#!/bin/bash"), "the bootstrap script is not where it was"
     return node
+
+
+def _user_data_substitutions(template: dict[str, Any]) -> dict[str, Any]:
+    """The substitutions the template supplies to the bootstrap script, by whichever spelling.
+
+    ``Fn::Base64`` and ``Fn::Sub`` each have a long and a short form, so the nesting depends on
+    how the template happens to be written. Unwrapping single-key layers reaches the ``Fn::Sub``
+    list form without hard-coding one of four spellings.
+    """
+    node: Any = template["Resources"]["Host"]["Properties"]["UserData"]
+    while isinstance(node, dict) and len(node) == 1:
+        node = next(iter(node.values()))
+    assert isinstance(node, list), "the bootstrap script is given no substitutions of its own"
+    supplied = node[1]
+    assert isinstance(supplied, dict)
+    return supplied
 
 
 def _env_file_block(template: dict[str, Any], start_marker: str, end_marker: str) -> str:
@@ -278,6 +304,61 @@ def test_nothing_in_the_deployment_disables_tls_verification(bypass: str) -> Non
         assert bypass not in text, (
             f"{path.relative_to(REPOSITORY_ROOT)} contains {bypass!r}. The deployment exists "
             "partly to prove real TLS; a bypass here would make the proof circular."
+        )
+
+
+def test_the_derived_hostname_is_the_stacks_own_address_and_nothing_else(
+    template: dict[str, Any],
+) -> None:
+    """An empty ``TlsHostname`` must resolve to this stack's address, not to a third party.
+
+    The parameter has an ordering problem the template cannot wish away: the address a DNS
+    record would point at is allocated *by this stack*, so on a first deploy there is nothing to
+    point a record at yet. The answer is to make the name out of the address -- sslip.io answers
+    ``a.b.c.d.sslip.io`` with ``a.b.c.d`` for every address, so the record exists before the host
+    asks for a certificate. What has to stay true is that the derived name is built from
+    ``ElasticIp`` and from no other input: a name built from anything else would be a name
+    somebody else controls, and the certificate would be issued to them.
+    """
+    derived = {"Sub": "${ElasticIp}.sslip.io"}
+    condition = template["Conditions"]["DeriveTlsHostname"]
+    assert condition == {"Equals": [{"Ref": "TlsHostname"}, ""]}, (
+        "the derivation must be reached only by leaving the parameter empty"
+    )
+
+    supplied = _user_data_substitutions(template)
+    assert supplied["TlsHostname"] == {
+        "If": ["DeriveTlsHostname", derived, {"Ref": "TlsHostname"}]
+    }, "the host would be told a different name than the outputs publish"
+
+    for name, output in template["Outputs"].items():
+        value = output["Value"]
+        if not isinstance(value, dict) or "If" not in value:
+            continue
+        branch_condition, when_derived, _ = value["If"]
+        assert branch_condition == "DeriveTlsHostname", f"{name} branches on something else"
+        assert "${ElasticIp}" in json.dumps(when_derived), (
+            f"{name}'s derived branch does not name this stack's own address"
+        )
+
+
+def test_the_derived_branch_is_a_name_and_not_a_way_around_a_certificate(
+    template: dict[str, Any],
+) -> None:
+    """Deriving the name must not become a way to skip TLS, which is the whole temptation here.
+
+    Both branches produce one hostname, both are served by the same Caddy block, and the
+    ``https://`` origin published to clients is the same shape either way. The thing that would
+    make this unsafe is an ``http://`` origin or an IP literal appearing on the derived side,
+    because neither can carry a publicly trusted certificate.
+    """
+    for name, output in template["Outputs"].items():
+        rendered = json.dumps(output["Value"])
+        if "sslip.io" not in rendered:
+            continue
+        assert "http://" not in rendered, f"{name} publishes a plaintext origin"
+        assert "${ElasticIp}.sslip.io" in rendered, (
+            f"{name} publishes the bare address rather than the name the certificate is for"
         )
 
 

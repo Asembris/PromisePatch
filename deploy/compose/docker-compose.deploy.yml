@@ -1,7 +1,6 @@
 # The deployed composition: stored as SSM /promisepatch/<env>/compose, written to
-# /opt/promisepatch/docker-compose.yml at every boot. Must stay under 4096 bytes to fit a
-# standard-tier parameter, so the reasoning lives in the CloudFormation template and in
-# docs/p6.1-deployment-preflight.md rather than here.
+# /opt/promisepatch/docker-compose.yml at every boot. It must fit a standard-tier parameter --
+# 4096 bytes -- so the reasoning lives in the CloudFormation template and in the P6 docs.
 #
 # Same images, commands and per-container environment files as the local stack. What changes:
 # the database is RDS, a TLS proxy is in front, output goes to CloudWatch Logs.
@@ -21,9 +20,9 @@ networks:
     ipam:
       config:
         # Fixed subnet so the TLS proxy has a fixed address. The simulator must resolve the
-        # real public hostname to something, and it cannot be the Elastic IP: an instance has
-        # no route back to its own public address. Mapping it to the proxy keeps the handshake,
-        # the SNI and the certificate verification real; the packet does not leave the host.
+        # public hostname to something, and it cannot be the Elastic IP: an instance has no
+        # route back to its own public address. Mapping it to the proxy keeps the handshake,
+        # the SNI and the verification real; the packet does not leave the host.
         - subnet: 172.29.0.0/24
 
 services:
@@ -111,6 +110,7 @@ services:
       - caddy-config:/config
     environment:
       TLS_HOSTNAME: ${TLS_HOSTNAME}
+      ACME_CONTACT: ${ACME_CONTACT}
     depends_on:
       api: { condition: service_healthy }
     networks:

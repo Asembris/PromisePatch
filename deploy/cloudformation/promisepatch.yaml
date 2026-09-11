@@ -77,12 +77,18 @@ Parameters:
 
   TlsHostname:
     Type: String
+    Default: ""
     Description: >-
-      The hostname the certificate is issued for and the name every client verifies. Point a
-      DNS A record at the stack's ElasticIp output before the host finishes booting. Leaving
-      this empty is not supported: a deployment without a verifiable name would mean turning
-      TLS verification off somewhere, which is the one thing this stack must not do.
-    AllowedPattern: "[a-z0-9.-]{4,253}"
+      The hostname the certificate is issued for and the name every client verifies. Supply a
+      name you control and point its A record at the stack's ElasticIp output. Leave it empty
+      and the stack derives `<elastic-ip>.sslip.io`, a public wildcard-DNS name that already
+      resolves to the address before the host boots, which is what removes the ordering problem
+      this parameter otherwise has: the address is allocated by this stack, so no record can be
+      created until after a first deploy. Either way the certificate is a real, publicly
+      trusted, automatically issued one for the exact name clients verify -- leaving TLS
+      verification off somewhere is the one thing this stack must not do, and neither branch
+      does it.
+    AllowedPattern: "|[a-z0-9.-]{4,253}"
 
   AllowedIngressCidr:
     Type: String
@@ -122,6 +128,13 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
     Description: Resolved from the AWS-published parameter, so no AMI id is pinned in git.
+
+Conditions:
+  # The address this stack allocates is the only one a DNS record could point at, so when no
+  # name is supplied the name is made from the address rather than waited for. `Ref` on an EIP
+  # is its public address, and sslip.io answers `a.b.c.d.sslip.io` with `a.b.c.d` for every
+  # address, so the record exists before the host asks for a certificate for it.
+  DeriveTlsHostname: !Equals [!Ref TlsHostname, ""]
 
 Resources:
   # --------------------------------------------------------------------------------- network
@@ -362,151 +375,174 @@ Resources:
         - { Key: Project, Value: promisepatch }
         - { Key: Name, Value: !Sub "promisepatch-${Environment}" }
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          set -euo pipefail
-          exec > >(tee /var/log/promisepatch-boot.log) 2>&1
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              #!/bin/bash
+              set -euo pipefail
+              exec > >(tee /var/log/promisepatch-boot.log) 2>&1
 
-          # Everything below runs again on every boot, not only the first: the compose file,
-          # the environment files and the secrets are all re-read, so a restarted or replaced
-          # host converges on the same deployment rather than on whatever was left behind.
+              # Everything below runs again on every boot, not only the first: the compose file,
+              # the environment files and the secrets are all re-read, so a restarted or replaced
+              # host converges on the same deployment rather than on whatever was left behind.
 
-          dnf -y update
-          dnf -y install docker amazon-cloudwatch-agent
-          mkdir -p /usr/local/lib/docker/cli-plugins
-          systemctl enable --now docker
+              dnf -y update
+              dnf -y install docker amazon-cloudwatch-agent
+              mkdir -p /usr/local/lib/docker/cli-plugins
+              systemctl enable --now docker
 
-          COMPOSE_VERSION=v2.32.4
-          curl -fsSL --proto '=https' --tlsv1.2 \
-            "https://github.com/docker/compose/releases/download/$${COMPOSE_VERSION}/docker-compose-linux-aarch64" \
-            -o /usr/local/lib/docker/cli-plugins/docker-compose
-          chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
+              COMPOSE_VERSION=v2.32.4
+              curl -fsSL --proto '=https' --tlsv1.2 \
+                "https://github.com/docker/compose/releases/download/$${COMPOSE_VERSION}/docker-compose-linux-aarch64" \
+                -o /usr/local/lib/docker/cli-plugins/docker-compose
+              chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
 
-          REGION=${AWS::Region}
-          ACCOUNT=${AWS::AccountId}
-          PREFIX=/promisepatch/${Environment}
-          REGISTRY=$${ACCOUNT}.dkr.ecr.$${REGION}.amazonaws.com
-          install -d -m 0750 /opt/promisepatch /opt/promisepatch/env
+              REGION=${AWS::Region}
+              ACCOUNT=${AWS::AccountId}
+              PREFIX=/promisepatch/${Environment}
+              REGISTRY=$${ACCOUNT}.dkr.ecr.$${REGION}.amazonaws.com
+              install -d -m 0750 /opt/promisepatch /opt/promisepatch/env
 
-          param () { aws ssm get-parameter --with-decryption --region "$${REGION}" \
-                       --name "$${PREFIX}/$${1}" --query Parameter.Value --output text; }
+              param () { aws ssm get-parameter --with-decryption --region "$${REGION}" \
+                           --name "$${PREFIX}/$${1}" --query Parameter.Value --output text; }
 
-          # The composition and the TLS configuration are stored as parameters rather than
-          # baked into this script, so a change to either is a parameter write and a restart
-          # instead of an instance replacement.
-          param compose   > /opt/promisepatch/docker-compose.yml
-          param caddyfile > /opt/promisepatch/Caddyfile
+              # The composition and the TLS configuration are stored as parameters rather than
+              # baked into this script, so a change to either is a parameter write and a restart
+              # instead of an instance replacement.
+              param compose   > /opt/promisepatch/docker-compose.yml
+              param caddyfile > /opt/promisepatch/Caddyfile
 
-          DB_PASSWORD=$(param db-app-password)
-          DB_MASTER_PASSWORD=$(param db-master-password)
-          MCP_BEARER_TOKEN=$(param mcp-bearer-token)
-          SESSION_SECRET=$(param session-secret)
-          WEBHOOK_SECRET=$(param order-webhook-secret)
-          INTERNAL_TOKEN=$(param internal-service-token)
-          WORKER_PASSWORD=$(param demo-worker-password)
-          OWNER_PASSWORD=$(param demo-owner-password)
+              DB_PASSWORD=$(param db-app-password)
+              DB_MASTER_PASSWORD=$(param db-master-password)
+              MCP_BEARER_TOKEN=$(param mcp-bearer-token)
+              SESSION_SECRET=$(param session-secret)
+              WEBHOOK_SECRET=$(param order-webhook-secret)
+              INTERNAL_TOKEN=$(param internal-service-token)
+              WORKER_PASSWORD=$(param demo-worker-password)
+              OWNER_PASSWORD=$(param demo-owner-password)
+              # Optional, and absent on a deployment nobody has given an address for. An empty
+              # contact is a valid ACME registration; a contact that cannot receive mail is not.
+              ACME_CONTACT=$(param acme-contact 2>/dev/null || true)
 
-          HOST=${Database.Endpoint.Address}
-          PORT=${Database.Endpoint.Port}
-          PUBLIC=https://${TlsHostname}
+              HOST=${Database.Endpoint.Address}
+              PORT=${Database.Endpoint.Port}
+              PUBLIC=https://${TlsHostname}
 
-          # One file per container, exactly as the local stack does it. The migration and seed
-          # credential never reaches api, worker or mcp; mcp receives no database URL at all.
-          umask 0077
-          cat > /opt/promisepatch/env/migrate.env <<EOF
-          PP_ENV=aws
-          PP_AWS_REGION=$${REGION}
-          PP_MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:$${DB_MASTER_PASSWORD}@$${HOST}:$${PORT}/promisepatch
-          PP_DB_APP_PASSWORD=$${DB_PASSWORD}
-          PP_ALLOW_FIXTURE_RESET=true
-          PP_DEMO_WORKER_PASSWORD=$${WORKER_PASSWORD}
-          PP_DEMO_OWNER_PASSWORD=$${OWNER_PASSWORD}
-          EOF
+              # One file per container, exactly as the local stack does it. The migration and seed
+              # credential never reaches api, worker or mcp; mcp receives no database URL at all.
+              umask 0077
+              cat > /opt/promisepatch/env/migrate.env <<EOF
+              PP_ENV=aws
+              PP_AWS_REGION=$${REGION}
+              PP_MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:$${DB_MASTER_PASSWORD}@$${HOST}:$${PORT}/promisepatch
+              PP_DB_APP_PASSWORD=$${DB_PASSWORD}
+              PP_ALLOW_FIXTURE_RESET=true
+              PP_DEMO_WORKER_PASSWORD=$${WORKER_PASSWORD}
+              PP_DEMO_OWNER_PASSWORD=$${OWNER_PASSWORD}
+              EOF
 
-          cat > /opt/promisepatch/env/api.env <<EOF
-          PP_ENV=aws
-          PP_AWS_REGION=$${REGION}
-          PP_DATABASE_URL=postgresql+asyncpg://promisepatch_app:$${DB_PASSWORD}@$${HOST}:$${PORT}/promisepatch
-          PP_SESSION_SECRET=$${SESSION_SECRET}
-          PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
-          PP_ORDER_SYSTEM_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
-          PP_ORDER_SYSTEM_BASE_URL=http://order-simulator:8100
-          PP_CORS_ORIGINS=$${PUBLIC}
-          PP_SURFACE_WORKER_ID=worker-lena
-          PP_BEDROCK_MODEL_ID=us.amazon.nova-2-lite-v1:0
-          EOF
+              cat > /opt/promisepatch/env/api.env <<EOF
+              PP_ENV=aws
+              PP_AWS_REGION=$${REGION}
+              PP_DATABASE_URL=postgresql+asyncpg://promisepatch_app:$${DB_PASSWORD}@$${HOST}:$${PORT}/promisepatch
+              PP_SESSION_SECRET=$${SESSION_SECRET}
+              PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
+              PP_ORDER_SYSTEM_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
+              PP_ORDER_SYSTEM_BASE_URL=http://order-simulator:8100
+              PP_CORS_ORIGINS=$${PUBLIC}
+              PP_SURFACE_WORKER_ID=worker-lena
+              PP_BEDROCK_MODEL_ID=us.amazon.nova-2-lite-v1:0
+              EOF
 
-          cat > /opt/promisepatch/env/mcp.env <<EOF
-          PP_ENV=aws
-          PP_MCP_BEARER_TOKEN=$${MCP_BEARER_TOKEN}
-          PP_MCP_INTENT_API_BASE_URL=http://api:8000
-          PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
-          PP_MCP_ALLOWED_ORIGINS=$${PUBLIC}
-          PP_MCP_ALLOWED_HOSTS=${TlsHostname}
-          PP_SURFACE_WORKER_ID=worker-lena
-          EOF
+              cat > /opt/promisepatch/env/mcp.env <<EOF
+              PP_ENV=aws
+              PP_MCP_BEARER_TOKEN=$${MCP_BEARER_TOKEN}
+              PP_MCP_INTENT_API_BASE_URL=http://api:8000
+              PP_INTERNAL_SERVICE_TOKEN=$${INTERNAL_TOKEN}
+              PP_MCP_ALLOWED_ORIGINS=$${PUBLIC}
+              PP_MCP_ALLOWED_HOSTS=${TlsHostname}
+              PP_SURFACE_WORKER_ID=worker-lena
+              EOF
 
-          # The simulator holds no PostgreSQL credential and shares no environment file. Its
-          # webhook target is the public HTTPS name, so the signature it computes is verified
-          # across a real TLS connection rather than over a container bridge.
-          cat > /opt/promisepatch/env/order-simulator.env <<EOF
-          OS_LOG_LEVEL=info
-          OS_DATABASE_PATH=/data/order-simulator.sqlite3
-          OS_WEBHOOK_URL=$${PUBLIC}/api/integrations/order-system/events
-          OS_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
-          EOF
+              # The simulator holds no PostgreSQL credential and shares no environment file. Its
+              # webhook target is the public HTTPS name, so the signature it computes is verified
+              # across a real TLS connection rather than over a container bridge.
+              cat > /opt/promisepatch/env/order-simulator.env <<EOF
+              OS_LOG_LEVEL=info
+              OS_DATABASE_PATH=/data/order-simulator.sqlite3
+              OS_WEBHOOK_URL=$${PUBLIC}/api/integrations/order-system/events
+              OS_WEBHOOK_SECRET=$${WEBHOOK_SECRET}
+              EOF
 
-          cat > /opt/promisepatch/env/stack.env <<EOF
-          REGISTRY=$${REGISTRY}
-          IMAGE_TAG=${ImageTag}
-          TLS_HOSTNAME=${TlsHostname}
-          LOG_GROUP=/promisepatch/${Environment}
-          AWS_REGION=$${REGION}
-          EOF
-          umask 0022
+              cat > /opt/promisepatch/env/stack.env <<EOF
+              REGISTRY=$${REGISTRY}
+              IMAGE_TAG=${ImageTag}
+              TLS_HOSTNAME=${TlsHostname}
+              LOG_GROUP=/promisepatch/${Environment}
+              AWS_REGION=$${REGION}
+              ACME_CONTACT=$${ACME_CONTACT}
+              EOF
+              umask 0022
 
-          aws ecr get-login-password --region "$${REGION}" \
-            | docker login --username AWS --password-stdin "$${REGISTRY}"
+              aws ecr get-login-password --region "$${REGION}" \
+                | docker login --username AWS --password-stdin "$${REGISTRY}"
 
-          cd /opt/promisepatch
-          docker compose --env-file env/stack.env pull
-          docker compose --env-file env/stack.env up -d --remove-orphans
+              cd /opt/promisepatch
+              docker compose --env-file env/stack.env pull
+              docker compose --env-file env/stack.env up -d --remove-orphans
 
-          # A systemd unit, so an instance reboot brings the stack back without this script.
-          cat > /etc/systemd/system/promisepatch.service <<'EOF'
-          [Unit]
-          Description=PromisePatch deployed stack
-          After=docker.service
-          Requires=docker.service
+              # A systemd unit, so an instance reboot brings the stack back without this script.
+              cat > /etc/systemd/system/promisepatch.service <<'EOF'
+              [Unit]
+              Description=PromisePatch deployed stack
+              After=docker.service
+              Requires=docker.service
 
-          [Service]
-          Type=oneshot
-          RemainAfterExit=yes
-          WorkingDirectory=/opt/promisepatch
-          ExecStart=/usr/bin/docker compose --env-file env/stack.env up -d
-          ExecStop=/usr/bin/docker compose --env-file env/stack.env down
+              [Service]
+              Type=oneshot
+              RemainAfterExit=yes
+              WorkingDirectory=/opt/promisepatch
+              ExecStart=/usr/bin/docker compose --env-file env/stack.env up -d
+              ExecStop=/usr/bin/docker compose --env-file env/stack.env down
 
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-          systemctl daemon-reload
-          systemctl enable promisepatch.service
+              [Install]
+              WantedBy=multi-user.target
+              EOF
+              systemctl daemon-reload
+              systemctl enable promisepatch.service
+            # The one substitution the template supplies rather than the parameter list:
+            # when no hostname was given, the script below is written with the name made
+            # from this stack's own Elastic IP. Every other ${...} in the script is still
+            # an ordinary parameter, resource attribute or pseudo-parameter.
+            - TlsHostname: !If
+                - DeriveTlsHostname
+                - !Sub "${ElasticIp}.sslip.io"
+                - !Ref TlsHostname
 
 Outputs:
   PublicAddress:
     Description: Point the TlsHostname DNS A record at this before the certificate is ordered.
     Value: !Ref ElasticIp
 
+  TlsHostname:
+    Description: >-
+      The name the certificate is issued for and every client verifies -- the supplied one, or
+      the one derived from ElasticIp. Read it from here rather than assuming which branch ran.
+    Value: !If [DeriveTlsHostname, !Sub "${ElasticIp}.sslip.io", !Ref TlsHostname]
+
   PublicUrl:
     Description: The verified HTTPS origin. The MCP endpoint is this plus /mcp.
-    Value: !Sub https://${TlsHostname}
+    Value: !If [DeriveTlsHostname, !Sub "https://${ElasticIp}.sslip.io", !Sub "https://${TlsHostname}"]
 
   McpEndpoint:
-    Value: !Sub https://${TlsHostname}/mcp
+    Value: !If [DeriveTlsHostname, !Sub "https://${ElasticIp}.sslip.io/mcp", !Sub "https://${TlsHostname}/mcp"]
 
   WebhookEndpoint:
     Description: Where the separate order system posts its signed events.
-    Value: !Sub https://${TlsHostname}/api/integrations/order-system/events
+    Value: !If
+      - DeriveTlsHostname
+      - !Sub "https://${ElasticIp}.sslip.io/api/integrations/order-system/events"
+      - !Sub "https://${TlsHostname}/api/integrations/order-system/events"
 
   DatabaseEndpoint:
     Description: Private. Not reachable from outside the host security group.

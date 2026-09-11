@@ -21,8 +21,12 @@
 #   PP_DEPLOY_VPC_ID          an existing VPC
 #   PP_DEPLOY_HOST_SUBNET     a subnet with a route to an internet gateway
 #   PP_DEPLOY_DB_SUBNETS      two or more subnet ids, comma separated, in different zones
-#   PP_DEPLOY_TLS_HOSTNAME    the name the certificate is issued for and clients verify
 # Optional:
+#   PP_DEPLOY_TLS_HOSTNAME    the name the certificate is issued for and clients verify.
+#                             Unset, the stack derives `<elastic-ip>.sslip.io` -- a real public
+#                             name that already resolves to the address the stack allocates, so
+#                             a first deploy needs no record pointed at an address that does not
+#                             exist yet. The certificate is publicly trusted either way.
 #   PP_DEPLOY_ENV             default prod
 #   PP_DEPLOY_REGION          default us-east-1
 #   PP_DEPLOY_INGRESS_CIDR    default 0.0.0.0/0
@@ -165,7 +169,7 @@ stage_config () {
 stage_stack () {
   say "stack"
   need PP_DEPLOY_VPC_ID; need PP_DEPLOY_HOST_SUBNET
-  need PP_DEPLOY_DB_SUBNETS; need PP_DEPLOY_TLS_HOSTNAME
+  need PP_DEPLOY_DB_SUBNETS
   local account tag
   account="$(account_id)"; tag="$(image_tag)"
   # `--role-arn` is what keeps the human's standing privilege small: the resource-creating
@@ -184,18 +188,25 @@ stage_stack () {
       "VpcId=${PP_DEPLOY_VPC_ID}" \
       "HostSubnetId=${PP_DEPLOY_HOST_SUBNET}" \
       "DatabaseSubnetIds=${PP_DEPLOY_DB_SUBNETS}" \
-      "TlsHostname=${PP_DEPLOY_TLS_HOSTNAME}" \
+      "TlsHostname=${PP_DEPLOY_TLS_HOSTNAME:-}" \
       "AllowedIngressCidr=${PP_DEPLOY_INGRESS_CIDR:-0.0.0.0/0}" \
       "ImageTag=${tag}"
   aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" \
     --query 'Stacks[0].Outputs' --output table
 }
 
+# The origin is read back from the stack rather than reconstructed here, because the name
+# may have been derived from an address the stack allocated -- asking the stack is the only
+# way to be sure the thing being smoke-checked is the thing that was deployed.
 stage_smoke () {
   say "smoke"
-  need PP_DEPLOY_TLS_HOSTNAME
-  ( cd "$REPO_ROOT" && uv run python scripts/deployment_smoke.py \
-      --base-url "https://${PP_DEPLOY_TLS_HOSTNAME}" )
+  local origin
+  origin="$(aws cloudformation describe-stacks --region "$REGION" \
+    --stack-name "$STACK_NAME" \
+    --query "Stacks[0].Outputs[?OutputKey=='PublicUrl'].OutputValue" --output text)"
+  [[ -n "$origin" && "$origin" != "None" ]] || die "the stack publishes no PublicUrl"
+  printf '  origin %s\n' "$origin"
+  ( cd "$REPO_ROOT" && uv run python scripts/deployment_smoke.py --base-url "$origin" )
 }
 
 case "$STAGE" in
