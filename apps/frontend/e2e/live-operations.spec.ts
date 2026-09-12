@@ -24,11 +24,24 @@ async function signIn(page: Page): Promise<void> {
   await page.getByLabel('Worker').fill(credentials.username)
   await page.getByLabel('Password').fill(credentials.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByTestId('case-list')).toBeVisible()
+}
+
+/**
+ * Ask for the order book.
+ *
+ * A signed-in worker lands on the cases now; the order book is the context underneath them.
+ * The reads are unchanged — the hooks run on mount either way — so what follows still proves
+ * the same path from the browser to PostgreSQL, one click further in.
+ */
+async function openOrderContext(page: Page): Promise<void> {
+  await page.getByTestId('order-context').click()
   await expect(page.getByRole('heading', { name: 'Customer promises' })).toBeVisible()
 }
 
 test('a signed-in worker sees the order book the database holds', async ({ page }) => {
   await signIn(page)
+  await openOrderContext(page)
 
   await expect(page.getByText(credentials.username, { exact: false }).first()).toBeVisible()
   await expect(page.getByTestId('promise-row')).toHaveCount(EXPECTED_PROMISES)
@@ -43,6 +56,7 @@ test('a signed-in worker sees the order book the database holds', async ({ page 
 
 test('a shortfall reaches the screen as a shortfall', async ({ page }) => {
   await signIn(page)
+  await openOrderContext(page)
 
   // Negative availability is the one number a well-meaning UI is most likely to quietly clamp
   // to zero, and clamping it would hide the exact condition this product exists to surface.
@@ -88,5 +102,5 @@ test('an operator reset reaches the browser and returns it to the sign-in screen
   resetDemoState()
 
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByTestId('promise-row')).toHaveCount(0)
+  await expect(page.getByTestId('case-row')).toHaveCount(0)
 })
