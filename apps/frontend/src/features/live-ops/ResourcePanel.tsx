@@ -15,7 +15,8 @@
  */
 import type { ReactNode } from 'react'
 import type { EquipmentView, IngredientView } from '../../api/types'
-import { Badge, QuantityValue, StateBadge, Value } from '../../components/primitives'
+import { Badge, StateBadge } from '../../components/badges'
+import { QuantityValue, Value } from '../../components/values'
 import { formatDateTime } from '../../components/time'
 
 const CELL = 'px-3 py-2 align-top'

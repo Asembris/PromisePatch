@@ -13,7 +13,8 @@
  */
 import type { ReactNode } from 'react'
 import type { OrderLineView, PromiseView } from '../../api/types'
-import { Badge, StateBadge, Value } from '../../components/primitives'
+import { Badge, StateBadge } from '../../components/badges'
+import { Value } from '../../components/values'
 import { formatDateTime, formatTime } from '../../components/time'
 
 const CELL = 'px-3 py-2 align-top'

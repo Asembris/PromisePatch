@@ -26,7 +26,9 @@ import type {
   PromiseWorkspaceView,
   TrackEvidenceView,
 } from '../../api/types'
-import { Badge, Notice, Panel, StateBadge, Value } from '../../components/primitives'
+import { Badge, StateBadge } from '../../components/badges'
+import { Message, Panel } from '../../components/surfaces'
+import { Value } from '../../components/values'
 import { formatDateTime } from '../../components/time'
 import type { BadgeTone } from '../../components/tones'
 
@@ -59,12 +61,12 @@ export function CaseWorkspace({
       </button>
 
       {workspace.isPending ? (
-        <Notice>Loading the case…</Notice>
+        <Message>Loading the case…</Message>
       ) : workspace.isError ? (
-        <Notice tone="bad">
+        <Message tone="bad">
           This case could not be loaded. Nothing about it has changed; the screen simply could
           not read it.
-        </Notice>
+        </Message>
       ) : (
         <Bands view={workspace.data} />
       )}
@@ -145,7 +147,7 @@ function WhatChanges({ bands }: { bands: AuthorityBandView[] }): ReactNode {
       subtitle={bands.length === 0 ? undefined : `${bands.length} groups`}
     >
       {bands.length === 0 ? (
-        <Notice>Nothing has been decided about any promise yet.</Notice>
+        <Message>Nothing has been decided about any promise yet.</Message>
       ) : (
         <div className="divide-y divide-edge" data-testid="band-what-changes">
           {bands.map((band) => (
@@ -205,7 +207,7 @@ function WhatWasLeftAlone({ view }: { view: CaseWorkspaceResponse }): ReactNode 
       subtitle={`${view.untouched_count} of ${view.untouched_count + view.threatened_count} promises`}
     >
       {view.untouched.length === 0 ? (
-        <Notice>No promise in this case was left alone.</Notice>
+        <Message>No promise in this case was left alone.</Message>
       ) : (
         <ul className="divide-y divide-edge" data-testid="band-untouched">
           {view.untouched.map((promise) => (

@@ -14,7 +14,8 @@
 import type { ReactNode } from 'react'
 import { useCases } from '../../api/queries'
 import type { CaseSummaryView } from '../../api/types'
-import { Badge, Notice, Panel } from '../../components/primitives'
+import { Badge } from '../../components/badges'
+import { Message, Panel } from '../../components/surfaces'
 import { formatDateTime } from '../../components/time'
 
 export function CaseList({ onOpen }: { onOpen: (caseId: string) => void }): ReactNode {
@@ -26,14 +27,14 @@ export function CaseList({ onOpen }: { onOpen: (caseId: string) => void }): Reac
       subtitle={cases.data ? `${cases.data.cases.length} on record` : undefined}
     >
       {cases.isPending ? (
-        <Notice>Loading cases…</Notice>
+        <Message>Loading cases…</Message>
       ) : cases.isError ? (
-        <Notice tone="bad">Cases could not be loaded. They will be retried on the next event.</Notice>
+        <Message tone="bad">Cases could not be loaded. They will be retried on the next event.</Message>
       ) : cases.data.cases.length === 0 ? (
-        <Notice>
+        <Message>
           No case has been opened. Report a physical exception through the conversational surface
           to open one.
-        </Notice>
+        </Message>
       ) : (
         <ul className="divide-y divide-edge" data-testid="case-list">
           {cases.data.cases.map((row) => (

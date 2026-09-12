@@ -12,7 +12,7 @@
 import type { ReactNode } from 'react'
 import { usePromises, useResources } from '../../api/queries'
 import type { StreamState } from '../../api/useEventStream'
-import { Notice, Panel } from '../../components/primitives'
+import { Message, Panel } from '../../components/surfaces'
 import { formatDateTime } from '../../components/time'
 import { CaseList } from '../case/CaseList'
 import { PromiseTable } from './PromiseTable'
@@ -50,14 +50,14 @@ export function LiveOperations({
         }
       >
         {promises.isPending ? (
-          <Notice>Loading the order book…</Notice>
+          <Message>Loading the order book…</Message>
         ) : promises.isError ? (
-          <Notice tone="bad">The order book could not be loaded. It will retry on the next event.</Notice>
+          <Message tone="bad">The order book could not be loaded. It will retry on the next event.</Message>
         ) : promises.data.promises.length === 0 ? (
-          <Notice>
+          <Message>
             No promises are loaded. Run <code className="font-mono">uv run pp reset-demo-state</code>{' '}
             to load the fixture.
-          </Notice>
+          </Message>
         ) : (
           <PromiseTable promises={promises.data.promises} />
         )}
@@ -73,11 +73,11 @@ export function LiveOperations({
           }
         >
           {resources.isPending ? (
-            <Notice>Loading resource availability…</Notice>
+            <Message>Loading resource availability…</Message>
           ) : resources.isError ? (
-            <Notice tone="bad">Resource availability could not be loaded.</Notice>
+            <Message tone="bad">Resource availability could not be loaded.</Message>
           ) : resources.data.ingredients.length === 0 ? (
-            <Notice>No ingredients are loaded.</Notice>
+            <Message>No ingredients are loaded.</Message>
           ) : (
             <IngredientTable ingredients={resources.data.ingredients} at={resources.data.at} />
           )}
@@ -85,11 +85,11 @@ export function LiveOperations({
 
         <Panel title="Equipment">
           {resources.isPending ? (
-            <Notice>Loading equipment…</Notice>
+            <Message>Loading equipment…</Message>
           ) : resources.isError ? (
-            <Notice tone="bad">Equipment state could not be loaded.</Notice>
+            <Message tone="bad">Equipment state could not be loaded.</Message>
           ) : resources.data.equipment.length === 0 ? (
-            <Notice>No equipment is loaded.</Notice>
+            <Message>No equipment is loaded.</Message>
           ) : (
             <EquipmentList equipment={resources.data.equipment} />
           )}
