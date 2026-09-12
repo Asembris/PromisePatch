@@ -331,6 +331,66 @@ async def test_a_case_nobody_has_asked_anything_has_no_history_to_show(
     assert view.question is None
 
 
+# ------------------------------------------------------- a stored token, and the words for it
+
+
+async def test_every_promise_carries_the_words_for_the_reason_it_was_decided_under(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """A band reads a sentence; a drawer quotes the token. Both travel, and neither replaces
+    the other, so a screen never has to hold a dictionary of its own for ``NOSUB_CONSTRAINT``.
+    """
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    for item in [promise for band in view.authority_bands for promise in band.promises]:
+        assert item.reason, "the engine's own token is still on the wire"
+        assert item.reason_phrase, f"{item.order_external_id} has no words for {item.reason}"
+        assert item.reason_phrase != item.reason
+        assert item.reason_phrase == item.reason_phrase.lower()[:1] + item.reason_phrase[1:]
+        assert "_" not in item.reason_phrase
+
+
+async def test_an_untouched_promise_says_in_words_why_nothing_reached_it(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    for item in view.untouched:
+        assert item.reason_phrase, f"{item.order_external_id} has no words for {item.reason}"
+        assert "_" not in item.reason_phrase
+
+
+async def test_the_case_says_what_happened_in_words_as_well_as_in_its_filed_category(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """``SUPPLY_NOT_RECEIVED`` is what it was filed as; the phrase is what a person is told."""
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    assert view.exception_category == "SUPPLY_NOT_RECEIVED"
+    assert view.exception_phrase == "a supplier delivery did not arrive"
+
+
+async def test_the_phrases_are_the_domain_s_and_are_not_composed_on_the_way_out(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """The view copies. The wording lives in one module, and this reads it from there."""
+    from promisepatch.domain.explanations import FactId, closed_phrase
+
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    assert view.exception_phrase == closed_phrase(FactId.CASE_EXCEPTION, view.exception_category)
+    for item in [promise for band in view.authority_bands for promise in band.promises]:
+        assert item.reason_phrase == closed_phrase(FactId.IMPACT_REASON, item.reason)
+
+
 # ----------------------------------------------------------- the settled case, in truthful words
 
 

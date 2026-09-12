@@ -270,7 +270,10 @@ export interface PromiseWorkspaceView {
   state: string
   phrase: string
   authority: string
+  /** The engine's own reason token. Evidence vocabulary, never a band 1-4 sentence. */
   reason: string
+  /** The same reason in the domain's published words, or `null` when it has none. */
+  reason_phrase: string | null
   deadline_at: string | null
   owner: string
   next_action: string
@@ -375,7 +378,10 @@ export interface CaseWorkspaceResponse {
   case_id: string
   headline: string
   sentence: string
+  /** What the engine filed the exception as. A token: the drawer quotes it, the bands do not. */
   exception_category: string | null
+  /** What that category says, in the domain's own words, or `null` when it has no phrase. */
+  exception_phrase: string | null
   reported_text: string | null
   reported_by: string | null
   reported_at: string | null

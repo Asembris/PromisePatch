@@ -57,6 +57,7 @@ function promise(
     phrase: 'planned - waiting for you',
     authority: 'STANDING_PREFERENCE',
     reason: 'PREAPPROVAL_COVERS',
+    reason_phrase: 'the order already pre-approves this substitution',
     deadline_at: null,
     owner: 'YOU',
     next_action: 'Read the plan and confirm it, or leave it as it is.',

@@ -14,6 +14,13 @@ counts, the phrases, the next action and the reasons all arrive decided.
 keys, rule ids and provider references live in :class:`EvidenceView` because the contract puts
 engineering vocabulary in the drawer. They are present in the payload rather than behind a
 second request so that opening the drawer proves nothing was fetched to fill it.
+
+A stored token travels with the sentence for it rather than instead of it. ``reason`` and
+``exception_category`` are what the engine filed; ``reason_phrase`` and ``exception_phrase`` are
+what a person is told, composed by :mod:`promisepatch.domain.explanations` and copied here. Both
+are on the wire because the drawer quotes the first and the bands read the second, and a screen
+that held its own table of words for ``NOSUB_CONSTRAINT`` would be a second vocabulary nobody
+tests against a durable case.
 """
 
 from __future__ import annotations
@@ -131,7 +138,10 @@ class PromiseWorkspaceView(BaseModel):
     state: str = Field(description="the truthful product state, never a durable track state")
     phrase: str = Field(description="how that state is said to a person, rendered by the domain")
     authority: str = Field(description="under whose authority this promise changes")
-    reason: str
+    reason: str = Field(description="the engine's own reason token, for the record that quotes it")
+    reason_phrase: str | None = Field(
+        description="the same reason in the domain's published words, or null when it has none"
+    )
     deadline_at: str | None
     owner: str = Field(description="whose move this promise is now")
     next_action: str = Field(description="what moves it, or a sentence saying nothing does")
@@ -292,6 +302,9 @@ class CaseWorkspaceResponse(BaseModel):
     headline: str
     sentence: str
     exception_category: str | None
+    exception_phrase: str | None = Field(
+        description="what the category says in words, or null when there is no phrase for it"
+    )
     reported_text: str | None = Field(
         description="the worker's own words, verbatim, or null when nothing has been reported"
     )
