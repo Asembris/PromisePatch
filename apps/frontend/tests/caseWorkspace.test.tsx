@@ -118,8 +118,15 @@ describe('the case workspace', () => {
     await screen.findByTestId('band-untouched')
     const rows = screen.getAllByTestId('untouched-row')
     expect(rows.map((row) => row.getAttribute('data-promise-id'))).toEqual(['pr-e', 'pr-f'])
-    // "2 of 5" is the backend's count and total, not a length this screen measured.
-    expect(screen.getByText('2 of 5 promises')).toBeInTheDocument()
+    // Both figures are backend integers shown as themselves. The screen publishes no total,
+    // because a total is arithmetic and arithmetic here would be a number with no field
+    // behind it, sitting beside numbers that have one.
+    const counts = within(screen.getByTestId('case-counts'))
+    expect(counts.getByText('2')).toBeInTheDocument()
+    expect(counts.getByText('left alone')).toBeInTheDocument()
+    expect(counts.getByText('3')).toBeInTheDocument()
+    expect(counts.getByText('orders affected')).toBeInTheDocument()
+    expect(screen.queryByText(/of 5/)).not.toBeInTheDocument()
     expect(within(rows[0]!).getByText(/NOT_REACHABLE/)).toBeInTheDocument()
     stream.close()
   })
@@ -147,9 +154,9 @@ describe('truthfulness', () => {
     const states: Record<string, string | null> = {}
     for (const row of rows) states[row.getAttribute('data-promise-id') ?? ''] = row.getAttribute('data-state')
     expect(states).toEqual({ 'pr-a': 'RECOVERED', 'pr-b': 'REQUESTED', 'pr-c': 'ESCALATED' })
-    expect(within(rows[0]!).getByText('— changed')).toBeInTheDocument()
-    expect(within(rows[1]!).getByText('— asked')).toBeInTheDocument()
-    expect(within(rows[2]!).getByText('— needs you')).toBeInTheDocument()
+    expect(within(rows[0]!).getByText('changed')).toBeInTheDocument()
+    expect(within(rows[1]!).getByText('asked')).toBeInTheDocument()
+    expect(within(rows[2]!).getByText('needs you')).toBeInTheDocument()
     stream.close()
   })
 
@@ -161,8 +168,8 @@ describe('truthfulness', () => {
       .getAllByTestId('promise-row')
       .find((row) => row.getAttribute('data-promise-id') === 'pr-a')
     expect(applying).toHaveAttribute('data-state', 'APPLYING')
-    expect(within(applying!).getByText('— changing the order now')).toBeInTheDocument()
-    expect(screen.queryByText('— changed')).not.toBeInTheDocument()
+    expect(within(applying!).getByText('changing the order now')).toBeInTheDocument()
+    expect(screen.queryByText('changed')).not.toBeInTheDocument()
     stream.close()
   })
 
@@ -271,7 +278,7 @@ describe('reload and reconnect', () => {
     await waitFor(() => {
       expect(backend.countOf(CASE_PATH)).toBe(2)
     })
-    expect(await screen.findByText('— changed')).toBeInTheDocument()
+    expect(await screen.findByText('changed')).toBeInTheDocument()
     stream.close()
   })
 

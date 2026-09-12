@@ -1,22 +1,31 @@
 /**
- * The first case workspace: four bands and one drawer, in the order the P5 contract fixes.
+ * The case workspace: five bands in the order the P5 product contract fixes.
  *
  * The rule this file is written against is that **it renders and it does not decide.** Every
  * sentence — the headline, each promise's phrase, each reason, the next action, the band
- * titles, the untouched count — arrives from the backend already composed, and none of them is
- * computed, reworded or defaulted here. A screen that wrote its own word for `RECOVERED`, or
- * that counted the untouched promises itself, would be a second implementation of the product's
- * truthful vocabulary living where nobody tests it against a durable case.
+ * titles — arrives from the backend already composed, and none of them is computed, reworded or
+ * defaulted here. A screen that wrote its own word for `RECOVERED` would be a second
+ * implementation of the product's truthful vocabulary living where nobody tests it against a
+ * durable case.
  *
- * Two consequences worth naming:
+ * Three consequences worth naming, because each one is a thing the screen deliberately does
+ * *not* do:
  *
  * - **There is no button that changes a case.** A worker moves a case by saying something,
  *   through the conversational surface, where the attestation and the audit row are written
  *   together. This screen is the evidence, not a second authority.
- * - **Status is legible without colour.** Every state is shown as text — the phrase a person
- *   reads, and the state name beside it — and the tone is decoration on top of that, never the
- *   only carrier. The untouched band is present even when it is long, because it carries the
- *   product's central claim.
+ * - **No count on it is arithmetic.** `threatened_count` and `untouched_count` are shown as the
+ *   two backend integers they are. Adding them together to publish a total would be the screen
+ *   composing a figure, and a figure composed here is indistinguishable from the real ones
+ *   beside it.
+ * - **Status is legible without colour.** Every promise carries its phrase *and* its state name
+ *   as text, and tone is decoration on top of that. The untouched set is present, uncollapsed
+ *   and in the same reading as the affected set, because it carries the product's central
+ *   claim.
+ *
+ * Bands 3 and 4 are one composition split by a boundary rule rather than two stacked boxes, so
+ * a judge can see where propagation stopped without scrolling between the two halves of the
+ * comparison.
  */
 import { useState, type ReactNode } from 'react'
 import { useCase } from '../../api/queries'
@@ -27,8 +36,14 @@ import type {
   TrackEvidenceView,
 } from '../../api/types'
 import { Badge, StateBadge } from '../../components/badges'
-import { Message, Panel } from '../../components/surfaces'
-import { Value } from '../../components/values'
+import {
+  BoundaryRule,
+  Card,
+  Message,
+  QuietCard,
+  SectionLabel,
+} from '../../components/surfaces'
+import { Count, Value } from '../../components/values'
 import { formatDateTime } from '../../components/time'
 import type { BadgeTone } from '../../components/tones'
 
@@ -51,36 +66,37 @@ export function CaseWorkspace({
   const workspace = useCase(caseId)
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 px-6 py-6">
+    <main className="mx-auto w-full max-w-5xl px-5 py-6 sm:px-6">
       <button
         type="button"
         onClick={onClose}
-        className="text-xs text-muted underline underline-offset-2"
+        className="text-meta text-muted transition-colors hover:text-ink"
       >
         ← All cases
       </button>
 
-      {workspace.isPending ? (
-        <Message>Loading the case…</Message>
-      ) : workspace.isError ? (
-        <Message tone="bad">
-          This case could not be loaded. Nothing about it has changed; the screen simply could
-          not read it.
-        </Message>
-      ) : (
-        <Bands view={workspace.data} />
-      )}
+      <div className="mt-5">
+        {workspace.isPending ? (
+          <Message>Opening the case…</Message>
+        ) : workspace.isError ? (
+          <Message tone="bad">
+            This case could not be loaded. Nothing about it has changed; the screen simply could
+            not read it.
+          </Message>
+        ) : (
+          <Bands view={workspace.data} />
+        )}
+      </div>
     </main>
   )
 }
 
 function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
-    <div className="space-y-6" data-testid="case-workspace" data-case-id={view.case_id}>
+    <div className="space-y-7" data-testid="case-workspace" data-case-id={view.case_id}>
       <WhatHappened view={view} />
       <WhatYouMustDo view={view} />
-      <WhatChanges bands={view.authority_bands} />
-      <WhatWasLeftAlone view={view} />
+      <Propagation view={view} />
       <EvidenceDrawer view={view} />
     </div>
   )
@@ -88,74 +104,156 @@ function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
 
 // -------------------------------------------------------------------------- band 1: the fact
 
+/**
+ * What a person said, in their words.
+ *
+ * The verbatim quote is the largest text on the screen after nothing at all, because a physical
+ * attestation is the only thing here that a human being is the source of. It is never tidied,
+ * sentence-cased or summarised — the panel that took it stored it byte for byte and this
+ * prints what was stored.
+ */
 function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
-    <Panel title="What happened" subtitle={view.headline}>
-      <div className="space-y-3 px-4 py-3" data-testid="band-what-happened">
-        {view.reported_text === null ? (
-          <p className="text-sm text-muted">Nothing has been reported on this case yet.</p>
-        ) : (
-          <blockquote className="border-l-2 border-edge pl-3 text-sm">
-            “{view.reported_text}”
-            <footer className="mt-1 text-xs text-muted">
-              reported by <Value>{view.reported_by}</Value>
-              {view.reported_at === null ? null : <> · {formatDateTime(view.reported_at)}</>}
-              {view.exception_category === null ? null : (
-                <> · <Badge>{view.exception_category}</Badge></>
-              )}
-            </footer>
-          </blockquote>
-        )}
-        <p className="text-sm">{view.sentence}</p>
-        {view.question === null ? null : (
-          <div className="rounded-quiet border border-ask/45 bg-ask/8 px-3 py-2" data-testid="case-question">
-            <p className="text-sm font-medium text-ink">{view.question.question}</p>
-            <ul className="mt-1 list-disc pl-5 text-sm text-muted">
-              {view.question.options.map((option) => (
-                <li key={option.code}>{option.label}</li>
-              ))}
-            </ul>
+    <section aria-label="What happened">
+      <div className="space-y-4" data-testid="band-what-happened">
+        <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
+          <div className="min-w-0 flex-1 space-y-2">
+            {view.reported_text === null ? (
+              <p className="text-sm text-muted">Nothing has been reported on this case yet.</p>
+            ) : (
+              <>
+                <p className="text-label text-muted uppercase">
+                  reported by <Value>{view.reported_by}</Value>
+                  {view.reported_at === null ? null : (
+                    <> · {formatDateTime(view.reported_at)}</>
+                  )}
+                  {view.exception_category === null ? null : (
+                    <> · {view.exception_category}</>
+                  )}
+                </p>
+                <blockquote className="text-quote font-medium text-ink">
+                  “{view.reported_text}”
+                </blockquote>
+              </>
+            )}
+            <p className="text-sm text-muted">{view.sentence}</p>
           </div>
-        )}
+
+          <dl className="flex shrink-0 gap-3" data-testid="case-counts">
+            <CountTile value={view.threatened_count} label="orders affected" />
+            <CountTile value={view.untouched_count} label="left alone" />
+          </dl>
+        </div>
+
+        {view.question === null ? null : <OpenQuestion view={view} />}
       </div>
-    </Panel>
+    </section>
+  )
+}
+
+/** One backend integer, with the word it counts. No total is composed from the two. */
+function CountTile({ value, label }: { value: number; label: string }): ReactNode {
+  return (
+    <div className="rounded-quiet border border-edge bg-panel px-3.5 py-2.5">
+      <Count value={value} label={label} />
+    </div>
+  )
+}
+
+/**
+ * The open question, which outranks everything below it.
+ *
+ * A case with a question open has concluded nothing, so this is the focus of the screen rather
+ * than a toast or a dismissible notice. The options are the delivery's own rows, captured when
+ * the question was asked.
+ */
+function OpenQuestion({ view }: { view: CaseWorkspaceResponse }): ReactNode {
+  const question = view.question
+  if (question === null) return null
+  return (
+    <Card
+      className="border-ask/45 bg-ask/8 px-5 py-4"
+      data-testid="case-question"
+      aria-label="Open question"
+    >
+      <p className="text-label text-ask uppercase">one question is open</p>
+      <p className="mt-2 text-quote font-medium text-ink">{question.question}</p>
+      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+        {question.options.map((option) => (
+          <li
+            key={option.code}
+            className="rounded-quiet border border-ask/35 bg-surface/40 px-3 py-2 text-sm"
+          >
+            {option.label}
+          </li>
+        ))}
+      </ul>
+    </Card>
   )
 }
 
 // ------------------------------------------------------------------- band 2: the next action
 
+/**
+ * Exactly one action, and exactly one owner.
+ *
+ * `NOBODY` is a real answer and reads as one. A blank band would look like a screen that had
+ * failed to load rather than like the truthful "there is nothing for you here yet".
+ */
 function WhatYouMustDo({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   const action = view.next_action
   return (
-    <Panel title="What you must do now">
-      <div className="flex items-start gap-3 px-4 py-3" data-testid="band-next-action">
-        <Badge tone={OWNER_TONE[action.owner] ?? 'neutral'}>{action.owner_label}</Badge>
-        <p className="text-sm" data-testid="next-action-sentence">
+    <section aria-label="What you must do now">
+      <Card
+        className="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4"
+        data-testid="band-next-action"
+      >
+        <div className="flex w-32 shrink-0 flex-col gap-1.5">
+          <SectionLabel>whose move</SectionLabel>
+          <Badge tone={OWNER_TONE[action.owner] ?? 'neutral'}>{action.owner_label}</Badge>
+        </div>
+        <p className="min-w-0 flex-1 text-action font-medium" data-testid="next-action-sentence">
           {action.action}
         </p>
-      </div>
-    </Panel>
+      </Card>
+    </section>
   )
 }
 
-// ------------------------------------------------------------- band 3: what changes, and whose
+// ----------------------------------------------------- bands 3 and 4: reached, and not reached
+
+/** The two halves of the comparison, in one composition, split by the boundary. */
+function Propagation({ view }: { view: CaseWorkspaceResponse }): ReactNode {
+  return (
+    <section className="space-y-5" aria-label="What changes, and what was left alone">
+      <WhatChanges bands={view.authority_bands} />
+      <WhatWasLeftAlone view={view} />
+    </section>
+  )
+}
 
 function WhatChanges({ bands }: { bands: AuthorityBandView[] }): ReactNode {
   return (
-    <Panel
-      title="What changes, under whose authority"
-      subtitle={bands.length === 0 ? undefined : `${bands.length} groups`}
-    >
+    <div className="space-y-4">
+      <SectionLabel>what changes, under whose authority</SectionLabel>
       {bands.length === 0 ? (
-        <Message>Nothing has been decided about any promise yet.</Message>
+        <QuietCard className="px-4 py-3 text-sm text-muted">
+          Nothing has been decided about any promise yet.
+        </QuietCard>
       ) : (
-        <div className="divide-y divide-edge" data-testid="band-what-changes">
+        <div className="space-y-5" data-testid="band-what-changes">
           {bands.map((band) => (
-            <section key={band.authority} data-testid="authority-band" data-authority={band.authority}>
-              <h3 className="bg-surface px-4 py-2 text-xs font-semibold tracking-wide uppercase">
+            <section
+              key={band.authority}
+              className="space-y-2.5"
+              data-testid="authority-band"
+              data-authority={band.authority}
+            >
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <AuthorityMarker authority={band.authority} />
                 {band.title}
               </h3>
-              <ul>
+              <ul className="space-y-2.5">
                 {band.promises.map((promise) => (
                   <PromiseRow key={promise.promise_id} promise={promise} />
                 ))}
@@ -164,70 +262,111 @@ function WhatChanges({ bands }: { bands: AuthorityBandView[] }): ReactNode {
           ))}
         </div>
       )}
-    </Panel>
+    </div>
+  )
+}
+
+/**
+ * Whose permission this group of changes needs.
+ *
+ * The marker is an authority colour and says nothing whatever about whether anything has
+ * happened: execution state lives on the promise's own state, in its own channel. A lane that
+ * signalled progress would let a judge read "the customer's group" as "the customer agreed".
+ */
+const AUTHORITY_MARKER: Record<string, string> = {
+  STANDING_PREFERENCE: 'bg-auto',
+  CUSTOMER: 'bg-ask',
+  OWNER: 'bg-owner',
+  UNDECIDED: 'border border-muted/60',
+  NONE: 'border border-muted/60',
+}
+
+function AuthorityMarker({ authority }: { authority: string }): ReactNode {
+  return (
+    <span
+      aria-hidden="true"
+      className={`size-2 shrink-0 rounded-full ${AUTHORITY_MARKER[authority] ?? 'border border-muted/60'}`}
+    />
   )
 }
 
 function PromiseRow({ promise }: { promise: PromiseWorkspaceView }): ReactNode {
   return (
-    <li
-      className="border-t border-edge px-4 py-3 first:border-t-0"
-      data-testid="promise-row"
-      data-promise-id={promise.promise_id}
-      data-state={promise.state}
-    >
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-sm font-medium">{promise.customer_name}</span>
-        <span className="font-mono text-xs text-muted">{promise.order_external_id}</span>
-        {/* The phrase is the reading; the state name is beside it so the row is legible with
-            no colour at all, which is what the contract requires of every status. */}
-        <span className="text-sm">— {promise.phrase}</span>
-        <StateBadge state={promise.state} />
-      </div>
-      <p className="mt-1 text-xs text-muted">
-        {promise.reason}
-        {promise.deadline_at === null ? null : <> · by {formatDateTime(promise.deadline_at)}</>}
-      </p>
-      <p className="mt-1 text-xs" data-testid="promise-next-action">
-        <span className="text-muted">Next: </span>
-        {promise.next_action}
-      </p>
+    <li>
+      <Card
+        className="px-4 py-3.5"
+        data-testid="promise-row"
+        data-promise-id={promise.promise_id}
+        data-state={promise.state}
+      >
+        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+          <span className="text-name font-semibold">{promise.customer_name}</span>
+          <span className="font-mono text-state text-muted">{promise.order_external_id}</span>
+          {/* The phrase is the reading and the state name is beside it, so the row is legible
+              with no colour at all — which is what the contract requires of every status. */}
+          <span className="ml-auto">
+            <StateBadge state={promise.state} />
+          </span>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className="text-phrase font-medium">{promise.phrase}</span>
+          <span className="text-reason" data-testid="promise-next-action">
+            <span className="text-label text-muted uppercase">next </span>
+            {promise.next_action}
+          </span>
+        </div>
+
+        <p className="mt-1.5 text-reason text-muted">
+          <span>{promise.reason}</span>
+          {promise.deadline_at === null ? null : <> · by {formatDateTime(promise.deadline_at)}</>}
+        </p>
+      </Card>
     </li>
   )
 }
 
-// ------------------------------------------------------------------ band 4: what was untouched
-
+/**
+ * What the exception did not reach.
+ *
+ * Quiet, never hidden, never collapsed, and never drawn as a success — "left alone" is not an
+ * achievement, it is the absence of an effect, and a tick here would claim the product had done
+ * something to an order it deliberately did not touch.
+ */
 function WhatWasLeftAlone({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
-    <Panel
-      title="What was left alone"
-      // The count comes from the backend. It is the product's published claim, and a screen
-      // that recomputed it from a list it might have filtered could publish a different one.
-      subtitle={`${view.untouched_count} of ${view.untouched_count + view.threatened_count} promises`}
-    >
+    <div className="space-y-3">
+      <BoundaryRule>nothing below this line was reached</BoundaryRule>
       {view.untouched.length === 0 ? (
-        <Message>No promise in this case was left alone.</Message>
+        <QuietCard className="px-4 py-3 text-sm text-muted">
+          No promise in this case was left alone.
+        </QuietCard>
       ) : (
-        <ul className="divide-y divide-edge" data-testid="band-untouched">
+        <ul className="space-y-2" data-testid="band-untouched">
           {view.untouched.map((promise) => (
-            <li
-              key={promise.promise_id}
-              className="px-4 py-2"
-              data-testid="untouched-row"
-              data-promise-id={promise.promise_id}
-            >
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="text-sm">{promise.customer_name}</span>
-                <span className="font-mono text-xs text-muted">{promise.order_external_id}</span>
-                <span className="text-sm text-muted">— {promise.phrase}</span>
-              </div>
-              <p className="text-xs text-muted">{promise.reason}</p>
+            <li key={promise.promise_id}>
+              <QuietCard
+                className="px-4 py-2.5"
+                data-testid="untouched-row"
+                data-promise-id={promise.promise_id}
+              >
+                <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                  <span className="text-sm font-medium">{promise.customer_name}</span>
+                  <span className="font-mono text-state text-muted">
+                    {promise.order_external_id}
+                  </span>
+                  <span className="text-phrase text-dim">{promise.phrase}</span>
+                  <span className="ml-auto">
+                    <StateBadge state={promise.state} />
+                  </span>
+                </div>
+                <p className="mt-1 text-reason text-muted">{promise.reason}</p>
+              </QuietCard>
             </li>
           ))}
         </ul>
       )}
-    </Panel>
+    </div>
   )
 }
 
@@ -238,23 +377,23 @@ function EvidenceDrawer({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   const evidence = view.evidence
 
   return (
-    <Panel title="Evidence">
-      <div className="px-4 py-3">
+    <section aria-label="Evidence">
+      <QuietCard className="px-4 py-3">
         <button
           type="button"
           onClick={() => {
             setOpen((current) => !current)
           }}
           aria-expanded={open}
-          className="text-xs underline underline-offset-2"
+          className="text-meta font-medium text-muted transition-colors hover:text-ink"
           data-testid="evidence-toggle"
         >
           {open ? 'Hide how I know' : 'How do I know?'}
         </button>
 
         {open ? (
-          <div className="mt-3 space-y-3 font-mono text-[11px]" data-testid="evidence-drawer">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3">
+          <div className="mt-4 space-y-3 font-mono text-state" data-testid="evidence-drawer">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
               <dt className="text-muted">case</dt>
               <dd>{evidence.case_id}</dd>
               <dt className="text-muted">state</dt>
@@ -293,8 +432,8 @@ function EvidenceDrawer({ view }: { view: CaseWorkspaceResponse }): ReactNode {
             </div>
           </div>
         ) : null}
-      </div>
-    </Panel>
+      </QuietCard>
+    </section>
   )
 }
 
@@ -314,7 +453,9 @@ function EvidenceRow({ track }: { track: TrackEvidenceView }): ReactNode {
         <Value>{track.rule_id}</Value>
         <div className="text-muted">{track.reason_detail}</div>
       </td>
-      <td className="py-1 pr-3">{track.fingerprint === null ? '—' : track.fingerprint.slice(0, 12)}</td>
+      <td className="py-1 pr-3">
+        {track.fingerprint === null ? '—' : track.fingerprint.slice(0, 12)}
+      </td>
       <td className="py-1 pr-3">
         {track.effects.length === 0 && track.approval === null ? (
           <span className="text-muted">none</span>
