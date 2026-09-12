@@ -62,16 +62,18 @@ export function CaseWorkspace({
   const workspace = useCase(caseId)
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-5 py-6 sm:px-6">
-      <button
-        type="button"
-        onClick={onClose}
-        className="text-meta text-muted transition-colors hover:text-ink"
-      >
-        ← All cases
-      </button>
+    <main className="mx-auto w-full max-w-[76rem] px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mb-3 flex items-center">
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-meta text-muted transition-colors hover:text-ink"
+        >
+          ← All cases
+        </button>
+      </div>
 
-      <div className="mt-5">
+      <div>
         {workspace.isPending ? (
           <Message>Opening the case…</Message>
         ) : workspace.isError ? (
@@ -89,7 +91,7 @@ export function CaseWorkspace({
 
 function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
-    <div className="space-y-7" data-testid="case-workspace" data-case-id={view.case_id}>
+    <div className="space-y-4" data-testid="case-workspace" data-case-id={view.case_id}>
       <WhatHappened view={view} />
       <WhatYouMustDo view={view} />
       <Propagation view={view} />
@@ -111,7 +113,7 @@ function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
 function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
     <section aria-label="What happened">
-      <div className="space-y-4" data-testid="band-what-happened">
+      <div className="space-y-3" data-testid="band-what-happened">
         <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
           <div className="min-w-0 flex-1 space-y-2">
             <CaseHeadlineBadge headline={view.headline} />
@@ -202,10 +204,10 @@ function WhatYouMustDo({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
     <section aria-label="What you must do now">
       <Card
-        className="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4"
+        className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-5"
         data-testid="band-next-action"
       >
-        <div className="flex w-32 shrink-0 flex-col gap-1.5">
+        <div className="flex shrink-0 flex-col items-start gap-1.5 sm:w-32">
           <SectionLabel>whose move</SectionLabel>
           <Badge tone={actionOwnerTone(action.owner)}>{action.owner_label}</Badge>
         </div>
@@ -222,7 +224,7 @@ function WhatYouMustDo({ view }: { view: CaseWorkspaceResponse }): ReactNode {
 /** The two halves of the comparison, in one composition, split by the boundary. */
 function Propagation({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
-    <section className="space-y-5" aria-label="What changes, and what was left alone">
+    <section className="space-y-4" aria-label="What changes, and what was left alone">
       <WhatChanges bands={view.authority_bands} />
       <WhatWasLeftAlone view={view} />
     </section>
@@ -231,18 +233,18 @@ function Propagation({ view }: { view: CaseWorkspaceResponse }): ReactNode {
 
 function WhatChanges({ bands }: { bands: AuthorityBandView[] }): ReactNode {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <SectionLabel>what changes, under whose authority</SectionLabel>
       {bands.length === 0 ? (
         <QuietCard className="px-4 py-3 text-sm text-muted">
           Nothing has been decided about any promise yet.
         </QuietCard>
       ) : (
-        <div className="space-y-5" data-testid="band-what-changes">
+        <div className="space-y-4" data-testid="band-what-changes">
           {bands.map((band) => (
             <section
               key={band.authority}
-              className="space-y-2.5"
+              className="space-y-1.5"
               data-testid="authority-band"
               data-authority={band.authority}
             >
@@ -250,7 +252,7 @@ function WhatChanges({ bands }: { bands: AuthorityBandView[] }): ReactNode {
                 <AuthorityMarker authority={band.authority} />
                 {band.title}
               </h3>
-              <ul className="space-y-2.5">
+              <ul className="space-y-1.5">
                 {band.promises.map((promise) => (
                   <PromiseRow key={promise.promise_id} promise={promise} />
                 ))}
@@ -279,30 +281,33 @@ function PromiseRow({ promise }: { promise: PromiseWorkspaceView }): ReactNode {
   return (
     <li>
       <Card
-        className="px-4 py-3.5"
+        className="px-4 py-2"
         data-testid="promise-row"
         data-promise-id={promise.promise_id}
         data-state={promise.state}
       >
-        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="text-name font-semibold">{promise.customer_name}</span>
           <span className="font-mono text-state text-muted">{promise.order_external_id}</span>
-        </div>
-
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
           {/* Phrase, state name and marker shape together: the row stays legible with no
               colour at all, which is what the contract requires of every status. */}
-          <PromiseStatePill state={promise.state} phrase={promise.phrase} />
-          <span className="text-reason" data-testid="promise-next-action">
+          <span className="ml-auto">
+            <PromiseStatePill state={promise.state} phrase={promise.phrase} />
+          </span>
+        </div>
+
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-reason">
+          <span className="text-muted">
+            <span>{promise.reason}</span>
+            {promise.deadline_at === null ? null : (
+              <> · by {formatDateTime(promise.deadline_at)}</>
+            )}
+          </span>
+          <span className="ml-auto" data-testid="promise-next-action">
             <span className="text-label text-muted uppercase">next </span>
             {promise.next_action}
           </span>
         </div>
-
-        <p className="mt-1.5 text-reason text-muted">
-          <span>{promise.reason}</span>
-          {promise.deadline_at === null ? null : <> · by {formatDateTime(promise.deadline_at)}</>}
-        </p>
       </Card>
     </li>
   )
@@ -324,11 +329,11 @@ function WhatWasLeftAlone({ view }: { view: CaseWorkspaceResponse }): ReactNode 
           No promise in this case was left alone.
         </QuietCard>
       ) : (
-        <ul className="space-y-2" data-testid="band-untouched">
+        <ul className="grid gap-2 lg:grid-cols-2" data-testid="band-untouched">
           {view.untouched.map((promise) => (
             <li key={promise.promise_id}>
               <QuietCard
-                className="px-4 py-2.5"
+                className="h-full px-4 py-2"
                 data-testid="untouched-row"
                 data-promise-id={promise.promise_id}
               >

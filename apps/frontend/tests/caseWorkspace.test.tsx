@@ -143,6 +143,35 @@ describe('the case workspace', () => {
   })
 })
 
+/**
+ * Band order is reading order is screen-reader order.
+ *
+ * The five bands are one fixed sequence at every viewport: the untouched band in particular is
+ * never dropped, reordered or collapsed to save space, because it is the band that carries the
+ * product's central claim. DOM order is what a screen reader and a phone both follow, so
+ * asserting on it asserts on both.
+ */
+describe('the band order', () => {
+  it('is fixed, and the untouched band is never the one that goes', async () => {
+    const { stream } = mountAtCase({ [CASE_PATH]: () => json(SETTLED_CASE) })
+    await screen.findByTestId('band-untouched')
+
+    const order = [
+      'band-what-happened',
+      'band-next-action',
+      'band-what-changes',
+      'band-untouched',
+      'evidence-toggle',
+    ].map((id) => screen.getByTestId(id))
+
+    for (let index = 0; index + 1 < order.length; index += 1) {
+      const position = order[index]!.compareDocumentPosition(order[index + 1]!)
+      expect(position & Node.DOCUMENT_POSITION_FOLLOWING, order[index]!.dataset.testid).toBeTruthy()
+    }
+    stream.close()
+  })
+})
+
 // --------------------------------------------------------------- what it must never overstate
 
 describe('truthfulness', () => {

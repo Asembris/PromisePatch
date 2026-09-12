@@ -32,8 +32,7 @@ export function CaseList({ onOpen }: { onOpen: (caseId: string) => void }): Reac
         <Message tone="bad">Cases could not be loaded. They will be retried on the next event.</Message>
       ) : cases.data.cases.length === 0 ? (
         <Message>
-          No case has been opened. Report a physical exception through the conversational surface
-          to open one.
+          No case has been opened. A case starts when somebody says what went wrong.
         </Message>
       ) : (
         <ul className="divide-y divide-edge" data-testid="case-list">

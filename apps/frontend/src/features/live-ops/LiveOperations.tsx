@@ -29,7 +29,7 @@ export function LiveOperations({
   const resources = useResources(true)
 
   return (
-    <main className="mx-auto max-w-[100rem] space-y-6 px-6 py-6">
+    <main className="mx-auto max-w-[100rem] space-y-5 px-4 py-5 sm:px-6 sm:py-6">
       <SummaryBar
         promiseCount={promises.data?.promises.length ?? null}
         ingredientCount={resources.data?.ingredients.length ?? null}
@@ -54,10 +54,7 @@ export function LiveOperations({
         ) : promises.isError ? (
           <Message tone="bad">The order book could not be loaded. It will retry on the next event.</Message>
         ) : promises.data.promises.length === 0 ? (
-          <Message>
-            No promises are loaded. Run <code className="font-mono">uv run pp reset-demo-state</code>{' '}
-            to load the fixture.
-          </Message>
+          <Message>The order book is empty. No accepted promise is on record.</Message>
         ) : (
           <PromiseTable promises={promises.data.promises} />
         )}
