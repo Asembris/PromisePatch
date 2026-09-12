@@ -21,7 +21,14 @@
  * 3. **Nothing is dropped.** A slot this build has never heard of does not silently disappear: it
  *    is carried out in `unplaced`, so a chain that grows a fifth kind of node renders short of
  *    the design rather than short of the truth.
- * 4. **`pathCount` is copied, never counted.** It is how many traversals the track stored, which
+ * 4. **A response with no chain on it shows no chain, and says nothing about why.** The field is
+ *    required by the contract and by this file's own types, so its absence means a backend older
+ *    than the one this build was written against — which really happened, against the local
+ *    stack, and took the whole workspace down with it. The answer is to render the promise
+ *    without a causal column and without a sentence: an older backend has told the screen
+ *    nothing about reachability, and inventing "nothing reached this" from silence would be the
+ *    screen making the product's central claim on no evidence at all.
+ * 5. **`pathCount` is copied, never counted.** It is how many traversals the track stored, which
  *    is not the length of the one being shown, and the two are different numbers for every
  *    multi-path track in the product.
  */
@@ -90,9 +97,20 @@ const EMPTY_COLUMNS: readonly CausalColumn[] = CAUSAL_SLOTS.map((slot) => ({
  * One promise's chain, arranged for the fixed columns.
  *
  * Total: every `CausalChainView` the backend can send has an answer here, including one whose
- * steps are empty, whose slots are unknown, or whose `present` contradicts its own array.
+ * steps are empty, whose slots are unknown, whose `present` contradicts its own array, and one
+ * that is not there at all.
  */
-export function groupCausalChain(chain: CausalChainView): GroupedCausalChain {
+export function groupCausalChain(chain: CausalChainView | undefined | null): GroupedCausalChain {
+  if (chain === undefined || chain === null) {
+    return {
+      present: false,
+      columns: EMPTY_COLUMNS,
+      occupied: [],
+      unplaced: [],
+      absenceReason: null,
+      pathCount: 0,
+    }
+  }
   if (!chain.present) {
     return {
       present: false,

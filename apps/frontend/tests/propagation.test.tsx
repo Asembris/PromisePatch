@@ -235,6 +235,40 @@ describe('a threatened promise with no readable path', () => {
   })
 })
 
+describe('a payload that carries no chain', () => {
+  it('renders the promise and no causal column, and makes no claim about reachability', () => {
+    const older: Record<string, unknown> = { ...promise('pr-a', 'EXT-A', 'Priya Nair') }
+    delete older.causal_chain
+    draw([
+      band('STANDING_PREFERENCE', 'Covered by a standing preference', [
+        older as unknown as PromiseWorkspaceView,
+      ]),
+    ])
+
+    const row = screen.getByTestId('promise-row')
+    expect(row).toHaveAttribute('data-chain', 'absent')
+    expect(within(row).getByText('Priya Nair')).toBeInTheDocument()
+    expect(within(row).getByTestId('promise-next-action')).toBeInTheDocument()
+    expect(within(row).queryAllByTestId('causal-edge')).toHaveLength(0)
+    expect(within(row).queryByTestId('causal-absence')).not.toBeInTheDocument()
+  })
+})
+
+describe('reading the row by keyboard', () => {
+  it('makes every promise row focusable, so the path emphasis is not hover-only', () => {
+    draw([
+      band('CUSTOMER', 'Needs the customer', [
+        promise('pr-b', 'EXT-B', 'Tomas Lindqvist', { authority: 'CUSTOMER' }),
+        promise('pr-c', 'EXT-C', 'Ines Ferreira', { authority: 'CUSTOMER' }),
+      ]),
+    ])
+
+    for (const row of screen.getAllByTestId('promise-row')) {
+      expect(row).toHaveAttribute('tabindex', '0')
+    }
+  })
+})
+
 describe('what the map may never carry', () => {
   it('renders no node reference anywhere on it', () => {
     draw([

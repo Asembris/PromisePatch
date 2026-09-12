@@ -201,7 +201,8 @@ function PromiseLaneRow({
   return (
     <li>
       <Card
-        className="px-4 py-2.5"
+        className="group px-4 py-2 transition-colors hover:border-edge-strong focus-visible:border-edge-strong"
+        tabIndex={0}
         data-testid="promise-row"
         data-promise-id={promise.promise_id}
         data-state={promise.state}
@@ -218,15 +219,15 @@ function PromiseLaneRow({
                 first={index === 0}
                 terminal={column.slot === 'PROMISE'}
                 promise={promise}
+                chain={chain}
               />
             ))}
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="space-y-1">
             <PromiseIdentity promise={promise} />
-            <span className="w-full">
-              <CausalAbsence reason={chain.absenceReason} />
-            </span>
+            <CausalAbsence reason={chain.absenceReason} />
+            <PromiseReading promise={promise} chain={chain} />
           </div>
         )}
 
@@ -237,8 +238,6 @@ function PromiseLaneRow({
             ))}
           </div>
         )}
-
-        <ChainFooter promise={promise} chain={chain} />
       </Card>
     </li>
   )
@@ -258,6 +257,7 @@ function ChainColumn({
   first,
   terminal,
   promise,
+  chain,
 }: {
   steps: readonly CausalStepView[]
   tone: ReturnType<typeof authorityTone>
@@ -265,13 +265,17 @@ function ChainColumn({
   first: boolean
   terminal: boolean
   promise: PromiseWorkspaceView
+  chain: GroupedCausalChain
 }): ReactNode {
   return (
     <>
       {first ? null : incoming ? <CausalEdge tone={tone} /> : <span />}
-      <div className="min-w-0 space-y-0" data-testid="chain-column" data-occupied={steps.length}>
+      <div className="min-w-0" data-testid="chain-column" data-occupied={steps.length}>
         {terminal ? (
-          <PromiseIdentity promise={promise} />
+          <div className="space-y-1">
+            <PromiseIdentity promise={promise} />
+            <PromiseReading promise={promise} chain={chain} />
+          </div>
         ) : (
           steps.map((step, index) => (
             <div key={step.node_ref}>
@@ -296,8 +300,15 @@ function PromiseIdentity({ promise }: { promise: PromiseWorkspaceView }): ReactN
   )
 }
 
-/** The reason, the customer's clock, this promise's next action, and how many paths it holds. */
-function ChainFooter({
+/**
+ * What the domain says about this promise, beside the promise itself.
+ *
+ * It sits in the terminal column rather than on a line of its own under the row, because that
+ * is where the path arrives: the reason, the customer's clock and the one next action are all
+ * statements about the node the chain ends on, and putting them there costs a laptop viewport
+ * one line per promise rather than two.
+ */
+function PromiseReading({
   promise,
   chain,
 }: {
@@ -305,14 +316,14 @@ function ChainFooter({
   chain: GroupedCausalChain
 }): ReactNode {
   return (
-    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-0.5 border-t border-edge/60 pt-1.5 text-reason">
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-reason">
       <span className="text-muted">
         <span>{promise.reason}</span>
         {promise.deadline_at === null ? null : <> · by {formatDateTime(promise.deadline_at)}</>}
       </span>
       {chain.pathCount > 1 ? <CausalPathCount value={chain.pathCount} /> : null}
-      <span className="ml-auto" data-testid="promise-next-action">
-        <span className="text-label text-muted uppercase">next </span>
+      <span className="w-full text-muted" data-testid="promise-next-action">
+        <span className="text-label uppercase">next </span>
         {promise.next_action}
       </span>
     </div>

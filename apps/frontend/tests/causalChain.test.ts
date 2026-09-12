@@ -122,6 +122,20 @@ describe('a promise nothing reached', () => {
   })
 })
 
+describe('a response that carries no chain at all', () => {
+  it('shows no chain and states no reason, rather than taking the screen down', () => {
+    // A backend older than this build sends a promise with no `causal_chain`. That really
+    // happened against the local stack, and the whole workspace went blank on it.
+    const grouped = groupCausalChain(undefined)
+
+    expect(grouped.present).toBe(false)
+    expect(grouped.occupied).toEqual([])
+    expect(grouped.pathCount).toBe(0)
+    // Silence is not the claim that nothing reached this promise. The screen says neither.
+    expect(grouped.absenceReason).toBeNull()
+  })
+})
+
 describe('the path count', () => {
   it('is the backend’s integer and not the number of steps shown', () => {
     const grouped = groupCausalChain(chain({ path_count: 3 }))
