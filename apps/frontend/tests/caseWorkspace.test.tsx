@@ -313,11 +313,15 @@ describe('the evidence drawer', () => {
   })
 
   it('shows identifiers and provider references, and needs no second request', async () => {
+    // The identifiers moved one layer deeper when the evidence became progressive: they are
+    // the technical record, not the first answer. The assertion is unchanged — only the number
+    // of clicks that reaches it, which is the point of the layering.
     const { stream, backend } = mountAtCase({ [CASE_PATH]: () => json(SETTLED_CASE) })
     const toggle = await screen.findByTestId('evidence-toggle')
     const before = backend.countOf(CASE_PATH)
 
     await userEvent.click(toggle)
+    await userEvent.click(screen.getByTestId('evidence-technical'))
 
     const drawer = screen.getByTestId('evidence-drawer')
     expect(within(drawer).getByText(CASE_ID)).toBeInTheDocument()
@@ -331,6 +335,7 @@ describe('the evidence drawer', () => {
   it('shows an untouched promise as having caused nothing', async () => {
     const { stream } = mountAtCase({ [CASE_PATH]: () => json(SETTLED_CASE) })
     await userEvent.click(await screen.findByTestId('evidence-toggle'))
+    await userEvent.click(screen.getByTestId('evidence-technical'))
 
     const row = screen
       .getAllByTestId('evidence-row')

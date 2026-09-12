@@ -27,12 +27,13 @@
  * a judge can see where propagation stopped without scrolling between the two halves of the
  * comparison.
  */
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useCase } from '../../api/queries'
-import type { CaseWorkspaceResponse, TrackEvidenceView } from '../../api/types'
+import type { CaseWorkspaceResponse } from '../../api/types'
 import { Badge, CaseHeadlineBadge } from '../../components/badges'
-import { Card, Message, QuietCard, SectionLabel } from '../../components/surfaces'
+import { Card, Message, SectionLabel } from '../../components/surfaces'
 import { Count, Value } from '../../components/values'
+import { EvidenceLayers } from './Evidence'
 import { formatDateTime } from '../../components/time'
 import { actionOwnerTone } from '../../components/vocabulary'
 import { PropagationMap } from './Propagation'
@@ -81,7 +82,7 @@ function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
       <WhatHappened view={view} />
       <WhatYouMustDo view={view} />
       <Propagation view={view} />
-      <EvidenceDrawer view={view} />
+      <EvidenceLayers view={view} />
     </div>
   )
 }
@@ -234,108 +235,6 @@ function Propagation({ view }: { view: CaseWorkspaceResponse }): ReactNode {
 
 // ----------------------------------------------------------------------- band 5: the evidence
 
-function EvidenceDrawer({ view }: { view: CaseWorkspaceResponse }): ReactNode {
-  const [open, setOpen] = useState(false)
-  const evidence = view.evidence
-
-  return (
-    <section aria-label="Evidence">
-      <QuietCard className="px-4 py-3">
-        <button
-          type="button"
-          onClick={() => {
-            setOpen((current) => !current)
-          }}
-          aria-expanded={open}
-          className="text-meta font-medium text-muted transition-colors hover:text-ink"
-          data-testid="evidence-toggle"
-        >
-          {open ? 'Hide how I know' : 'How do I know?'}
-        </button>
-
-        {open ? (
-          <div className="mt-4 space-y-3 font-mono text-state" data-testid="evidence-drawer">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-              <dt className="text-muted">case</dt>
-              <dd>{evidence.case_id}</dd>
-              <dt className="text-muted">state</dt>
-              <dd>
-                {evidence.case_state} · v{evidence.case_version}
-              </dd>
-              <dt className="text-muted">plan</dt>
-              <dd className="break-all">{evidence.plan_id}</dd>
-              {evidence.interpretation === null ? null : (
-                <>
-                  <dt className="text-muted">reading</dt>
-                  <dd>
-                    {evidence.interpretation.source} · {evidence.interpretation.outcome ?? '—'} ·
-                    attested by <Value>{evidence.interpretation.attestor}</Value>
-                  </dd>
-                </>
-              )}
-            </dl>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[48rem] text-left">
-                <thead className="text-muted">
-                  <tr>
-                    <th className="py-1 pr-3 font-normal">promise</th>
-                    <th className="py-1 pr-3 font-normal">track</th>
-                    <th className="py-1 pr-3 font-normal">rule</th>
-                    <th className="py-1 pr-3 font-normal">fingerprint</th>
-                    <th className="py-1 pr-3 font-normal">effects</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {evidence.tracks.map((track) => (
-                    <EvidenceRow key={track.track_id} track={track} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
-      </QuietCard>
-    </section>
-  )
-}
-
-function EvidenceRow({ track }: { track: TrackEvidenceView }): ReactNode {
-  return (
-    <tr
-      className="border-t border-edge align-top"
-      data-testid="evidence-row"
-      data-promise-id={track.promise_id}
-    >
-      <td className="py-1 pr-3">{track.promise_id}</td>
-      <td className="py-1 pr-3">
-        {track.track_state}
-        <div className="text-muted">{track.track_id.slice(0, 8)}</div>
-      </td>
-      <td className="py-1 pr-3">
-        <Value>{track.rule_id}</Value>
-        <div className="text-muted">{track.reason_detail}</div>
-      </td>
-      <td className="py-1 pr-3">
-        {track.fingerprint === null ? '—' : track.fingerprint.slice(0, 12)}
-      </td>
-      <td className="py-1 pr-3">
-        {track.effects.length === 0 && track.approval === null ? (
-          <span className="text-muted">none</span>
-        ) : (
-          <>
-            {track.effects.map((effect) => (
-              <div key={effect.idempotency_key} data-testid="evidence-effect">
-                {effect.kind} · {effect.state} · <Value>{effect.provider_ref}</Value>
-              </div>
-            ))}
-            {track.approval === null ? null : (
-              <div data-testid="evidence-approval">
-                ASK · {track.approval.state} · <Value>{track.approval.provider_ref}</Value>
-              </div>
-            )}
-          </>
-        )}
-      </td>
-    </tr>
-  )
-}
+// The four layers live in `Evidence.tsx`. They are a composition rather than a block of markup
+// here because "how do I know?" is the one question on this screen with several right answers
+// at several depths, and a reader chooses the depth.
