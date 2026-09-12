@@ -113,7 +113,7 @@ function PromiseRow({ promise }: { promise: PromiseView }): ReactNode {
           <ul className="space-y-1">
             {promise.constraints.map((constraint) => (
               <li key={constraint.id} className="text-xs">
-                <Badge tone="warn">{constraint.kind}</Badge>{' '}
+                <Badge tone="ask">{constraint.kind}</Badge>{' '}
                 <span className="font-mono">
                   <Value>{constraint.resource_id}</Value>
                 </span>
@@ -156,7 +156,7 @@ function LineSummary({ line }: { line: OrderLineView }): ReactNode {
       <div className="mt-0.5 flex flex-wrap items-center gap-1">
         {/* The pinned version is the point: a recovery re-points a line at another authored
             version and never derives one, so the version number and its author are shown. */}
-        <Badge tone="info">v{line.recipe_version.version_no}</Badge>
+        <Badge tone="auto">v{line.recipe_version.version_no}</Badge>
         <span className="text-[11px] text-muted">by {line.recipe_version.authored_by}</span>
       </div>
       {line.customization_note === '' ? null : (
@@ -193,7 +193,7 @@ function TaskSummary({ line }: { line: OrderLineView }): ReactNode {
       <div className="text-[11px]">
         <Value>{task.equipment_name}</Value>
       </div>
-      {task.held_by_case_id === null ? null : <Badge tone="warn">held by case</Badge>}
+      {task.held_by_case_id === null ? null : <Badge tone="ask">held by case</Badge>}
     </div>
   )
 }

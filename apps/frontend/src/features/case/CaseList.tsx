@@ -14,7 +14,7 @@
 import type { ReactNode } from 'react'
 import { useCases } from '../../api/queries'
 import type { CaseSummaryView } from '../../api/types'
-import { Badge } from '../../components/badges'
+import { CaseHeadlineBadge } from '../../components/badges'
 import { Message, Panel } from '../../components/surfaces'
 import { formatDateTime } from '../../components/time'
 
@@ -63,7 +63,7 @@ function CaseRow({
         className="w-full px-4 py-3 text-left hover:bg-surface"
       >
         <div className="flex flex-wrap items-baseline gap-2">
-          <Badge tone={row.needs_owner_attention ? 'bad' : 'neutral'}>{row.headline}</Badge>
+          <CaseHeadlineBadge headline={row.headline} />
           <span className="text-sm">
             {row.reported_text === null ? row.sentence : `“${row.reported_text}”`}
           </span>

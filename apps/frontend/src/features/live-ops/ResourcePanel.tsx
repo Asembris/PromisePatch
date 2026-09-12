@@ -77,12 +77,12 @@ export function IngredientTable({
                 )}
                 {ingredient.unknown ? (
                   <div className="mt-1">
-                    <Badge tone="bad">unknown supply</Badge>
+                    <Badge tone="owner">unknown supply</Badge>
                   </div>
                 ) : null}
                 {ingredient.overdue_commitment_line_ids.length === 0 ? null : (
                   <div className="mt-1">
-                    <Badge tone="warn">
+                    <Badge tone="ask">
                       {ingredient.overdue_commitment_line_ids.length} overdue commitment
                     </Badge>
                   </div>

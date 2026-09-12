@@ -35,7 +35,12 @@ import type {
   PromiseWorkspaceView,
   TrackEvidenceView,
 } from '../../api/types'
-import { Badge, StateBadge } from '../../components/badges'
+import {
+  Badge,
+  CaseHeadlineBadge,
+  PromiseStatePill,
+  StateMarker,
+} from '../../components/badges'
 import {
   BoundaryRule,
   Card,
@@ -45,16 +50,7 @@ import {
 } from '../../components/surfaces'
 import { Count, Value } from '../../components/values'
 import { formatDateTime } from '../../components/time'
-import type { BadgeTone } from '../../components/tones'
-
-/** Who a next action belongs to, as a tone. Presentation only: the label is always shown. */
-const OWNER_TONE: Record<string, BadgeTone> = {
-  YOU: 'warn',
-  OWNER: 'bad',
-  CUSTOMER: 'info',
-  SYSTEM: 'neutral',
-  NOBODY: 'neutral',
-}
+import { actionOwnerTone, authorityTone } from '../../components/vocabulary'
 
 export function CaseWorkspace({
   caseId,
@@ -118,6 +114,7 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
       <div className="space-y-4" data-testid="band-what-happened">
         <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
           <div className="min-w-0 flex-1 space-y-2">
+            <CaseHeadlineBadge headline={view.headline} />
             {view.reported_text === null ? (
               <p className="text-sm text-muted">Nothing has been reported on this case yet.</p>
             ) : (
@@ -210,7 +207,7 @@ function WhatYouMustDo({ view }: { view: CaseWorkspaceResponse }): ReactNode {
       >
         <div className="flex w-32 shrink-0 flex-col gap-1.5">
           <SectionLabel>whose move</SectionLabel>
-          <Badge tone={OWNER_TONE[action.owner] ?? 'neutral'}>{action.owner_label}</Badge>
+          <Badge tone={actionOwnerTone(action.owner)}>{action.owner_label}</Badge>
         </div>
         <p className="min-w-0 flex-1 text-action font-medium" data-testid="next-action-sentence">
           {action.action}
@@ -271,23 +268,11 @@ function WhatChanges({ bands }: { bands: AuthorityBandView[] }): ReactNode {
  *
  * The marker is an authority colour and says nothing whatever about whether anything has
  * happened: execution state lives on the promise's own state, in its own channel. A lane that
- * signalled progress would let a judge read "the customer's group" as "the customer agreed".
+ * signalled progress would let a judge read "the customer's group" as "the customer agreed",
+ * which is the one confusion the two-channel palette exists to make impossible.
  */
-const AUTHORITY_MARKER: Record<string, string> = {
-  STANDING_PREFERENCE: 'bg-auto',
-  CUSTOMER: 'bg-ask',
-  OWNER: 'bg-owner',
-  UNDECIDED: 'border border-muted/60',
-  NONE: 'border border-muted/60',
-}
-
 function AuthorityMarker({ authority }: { authority: string }): ReactNode {
-  return (
-    <span
-      aria-hidden="true"
-      className={`size-2 shrink-0 rounded-full ${AUTHORITY_MARKER[authority] ?? 'border border-muted/60'}`}
-    />
-  )
+  return <StateMarker marker="filled" tone={authorityTone(authority)} />
 }
 
 function PromiseRow({ promise }: { promise: PromiseWorkspaceView }): ReactNode {
@@ -302,15 +287,12 @@ function PromiseRow({ promise }: { promise: PromiseWorkspaceView }): ReactNode {
         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
           <span className="text-name font-semibold">{promise.customer_name}</span>
           <span className="font-mono text-state text-muted">{promise.order_external_id}</span>
-          {/* The phrase is the reading and the state name is beside it, so the row is legible
-              with no colour at all — which is what the contract requires of every status. */}
-          <span className="ml-auto">
-            <StateBadge state={promise.state} />
-          </span>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <span className="text-phrase font-medium">{promise.phrase}</span>
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+          {/* Phrase, state name and marker shape together: the row stays legible with no
+              colour at all, which is what the contract requires of every status. */}
+          <PromiseStatePill state={promise.state} phrase={promise.phrase} />
           <span className="text-reason" data-testid="promise-next-action">
             <span className="text-label text-muted uppercase">next </span>
             {promise.next_action}
@@ -355,9 +337,8 @@ function WhatWasLeftAlone({ view }: { view: CaseWorkspaceResponse }): ReactNode 
                   <span className="font-mono text-state text-muted">
                     {promise.order_external_id}
                   </span>
-                  <span className="text-phrase text-dim">{promise.phrase}</span>
                   <span className="ml-auto">
-                    <StateBadge state={promise.state} />
+                    <PromiseStatePill state={promise.state} phrase={promise.phrase} />
                   </span>
                 </div>
                 <p className="mt-1 text-reason text-muted">{promise.reason}</p>
