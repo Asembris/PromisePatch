@@ -18,7 +18,7 @@
  * the one the design already rejected.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { CASES } from './caseFixtures'
 import { MAYA, PROMISES, RESOURCES } from './fixtures'
 import { FakeStream, apiError, json, mockBackend, renderApp, streamResponse } from './harness'
@@ -45,6 +45,7 @@ describe('a read that fails and is given no help', () => {
       '/events': () => streamResponse(stream),
     })
     renderApp()
+    fireEvent.click(await screen.findByTestId('order-context'))
 
     // The heading is a panel title and renders whether or not the read worked, which is why its
     // presence is not evidence of anything. This is the state CI was stuck in.
@@ -72,6 +73,7 @@ describe('a read that fails and is given no help', () => {
         '/events': () => streamResponse(stream),
       })
       renderApp()
+      fireEvent.click(await screen.findByTestId('order-context'))
       await screen.findAllByTestId('promise-row')
 
       const afterFirstRead = backend.requests.filter((r) => r.url === '/api/promises').length

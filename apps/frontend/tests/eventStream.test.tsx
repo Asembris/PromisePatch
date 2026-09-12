@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { CASES } from './caseFixtures'
 import { MAYA, PROMISES, RESOURCES } from './fixtures'
 import {
@@ -33,6 +34,17 @@ function mount(): { stream: FakeStream; backend: Backend } {
   return { stream, backend }
 }
 
+/**
+ * Ask for the order book.
+ *
+ * The reads themselves are unconditional — the hooks run on mount whether or not the rows are
+ * drawn — so this changes what is visible and not what is fetched, which is exactly why the
+ * refetch assertions below are still measuring the thing they were written to measure.
+ */
+async function openOrderContext(): Promise<void> {
+  await userEvent.click(await screen.findByTestId('order-context'))
+}
+
 function status(): string | null {
   return screen.getByTestId('stream-status').getAttribute('data-status')
 }
@@ -50,6 +62,7 @@ describe('event stream', () => {
 
   it('refetches the authoritative reads when a domain event arrives', async () => {
     const { stream, backend } = mount()
+    await openOrderContext()
     await screen.findByText('Amara Fell')
     await stream.opened
     const before = {
@@ -68,6 +81,7 @@ describe('event stream', () => {
 
   it('shows the new authoritative state after an event, not the frame payload', async () => {
     const { stream, backend } = mount()
+    await openOrderContext()
     await screen.findByText('Amara Fell')
     await stream.opened
 
@@ -90,6 +104,7 @@ describe('event stream', () => {
 
   it('refetches on a resync frame and returns to live', async () => {
     const { stream, backend } = mount()
+    await openOrderContext()
     await screen.findByText('Amara Fell')
     await stream.opened
     const before = backend.countOf('/api/promises')
@@ -111,6 +126,7 @@ describe('event stream', () => {
 
   it('coalesces a burst of events instead of accumulating local state', async () => {
     const { stream, backend } = mount()
+    await openOrderContext()
     await screen.findByText('Amara Fell')
     await stream.opened
     const before = backend.countOf('/api/promises')
@@ -134,7 +150,9 @@ data: {"seq":${seq}}
     })
 
     // All five frames were seen...
-    expect(screen.getByText(/5 events this connection/)).toBeInTheDocument()
+    expect(screen.getByTestId('order-context-freshness')).toHaveTextContent(
+      '5 events have arrived on this connection',
+    )
     // ...and produced one screen, not five accumulated ones. Invalidation supersedes a read
     // that is still in flight rather than queueing behind it, which is both why nothing piles
     // up here and why the last read is guaranteed to have started after the last frame. The
@@ -190,6 +208,7 @@ data: {"seq":${seq}}
       },
     })
     renderApp()
+    await openOrderContext()
     await screen.findByText('Amara Fell')
     await first.opened
 

@@ -7,9 +7,10 @@
  * something this session remembers having opened.
  *
  * Each row shows the state and the worker's own opening sentence. It deliberately shows no
- * outcome and no count: a summary that said "3 recovered" would be a claim composed on a
- * screen, and the place claims like that are allowed to be made is the workspace, from the
- * backend's own words.
+ * outcome and no count — not even a count of itself, because the length of a list this screen
+ * has just rendered is a figure about the rendering rather than about the bakery. A summary that
+ * said "3 recovered" would be a claim composed on a screen, and the place claims like that are
+ * allowed to be made is the workspace, from the backend's own words.
  */
 import type { ReactNode } from 'react'
 import { useCases } from '../../api/queries'
@@ -22,10 +23,7 @@ export function CaseList({ onOpen }: { onOpen: (caseId: string) => void }): Reac
   const cases = useCases(true)
 
   return (
-    <Panel
-      title="Cases"
-      subtitle={cases.data ? `${cases.data.cases.length} on record` : undefined}
-    >
+    <Panel title="Cases" subtitle="Each one starts with somebody saying what went wrong.">
       {cases.isPending ? (
         <Message>Loading cases…</Message>
       ) : cases.isError ? (

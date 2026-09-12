@@ -114,6 +114,7 @@ describe('authentication', () => {
     })
     renderApp()
 
+    await userEvent.click(await screen.findByTestId('order-context'))
     expect(await screen.findByText('Amara Fell')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
@@ -138,6 +139,7 @@ describe('authentication', () => {
       '/events': () => streamResponse(stream),
     })
     renderApp()
+    await userEvent.click(await screen.findByTestId('order-context'))
     expect(await screen.findByText('Amara Fell')).toBeInTheDocument()
 
     // The session is revoked behind the app's back, then an event prompts a refetch.

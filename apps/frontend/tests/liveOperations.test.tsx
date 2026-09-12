@@ -5,9 +5,13 @@
  * unknown quantity as `0`, or clamps a shortfall to zero, or sorts the order book into an
  * order the backend did not choose, is not a display problem — it is the UI disagreeing with
  * the engine about what is true.
+ *
+ * The order book is secondary context now, so every one of these opens it first. Nothing about
+ * what it renders changed: only that a reader asks for it rather than landing on it.
  */
 import { describe, expect, it } from 'vitest'
 import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { CASES } from './caseFixtures'
 import { MAYA, PROMISES, RESOURCES } from './fixtures'
 import { FakeStream, apiError, json, mockBackend, renderApp, streamResponse } from './harness'
@@ -25,9 +29,64 @@ function mountSignedIn(): FakeStream {
   return stream
 }
 
+/** Ask for the secondary context. Everything below it is unchanged by the demotion. */
+async function openOrderContext(): Promise<void> {
+  await userEvent.click(await screen.findByTestId('order-context'))
+}
+
+describe('the landing surface', () => {
+  it('opens on the cases, with the order book asked for rather than shown', async () => {
+    const stream = mountSignedIn()
+
+    await screen.findByTestId('case-list')
+
+    expect(screen.getByTestId('order-context')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('promise-row')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ingredient-row')).not.toBeInTheDocument()
+    stream.close()
+  })
+
+  it('puts the cases above the order book in the reading order', async () => {
+    const stream = mountSignedIn()
+    const cases = await screen.findByTestId('case-list')
+
+    const position = cases.compareDocumentPosition(screen.getByTestId('order-context'))
+
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    stream.close()
+  })
+
+  it('carries no tile, chart, trend or activity feed', async () => {
+    const stream = mountSignedIn()
+    await openOrderContext()
+    await screen.findByTestId('case-list')
+
+    expect(document.querySelector('canvas')).toBeNull()
+    expect(document.querySelector('svg[data-chart]')).toBeNull()
+    // The five stat tiles this screen used to open on. A figure in a box is a metric whether
+    // or not it was meant as one, and none of these has a case behind it.
+    for (const label of ['Promises', 'Ingredients', 'Equipment', 'Read as of seq', 'Feed']) {
+      expect(screen.queryByText(label, { selector: 'dt' })).not.toBeInTheDocument()
+    }
+    stream.close()
+  })
+
+  it('says how current the reads are once they have been asked for, without a tile', async () => {
+    const stream = mountSignedIn()
+
+    await openOrderContext()
+
+    expect(await screen.findByTestId('order-context-freshness')).toHaveTextContent(
+      `Read up to sequence ${PROMISES.as_of}`,
+    )
+    stream.close()
+  })
+})
+
 describe('promises', () => {
   it('renders every row the API returned, in the API order', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Amara Fell')
 
     const rows = screen.getAllByTestId('promise-row')
@@ -45,6 +104,7 @@ describe('promises', () => {
 
   it('shows the pinned recipe version and its author', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Amara Fell')
 
     const rowA = screen.getAllByTestId('promise-row')[0]!
@@ -56,6 +116,7 @@ describe('promises', () => {
 
   it('shows production task state', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Caleb North')
 
     const rowC = screen.getAllByTestId('promise-row')[2]!
@@ -65,6 +126,7 @@ describe('promises', () => {
 
   it('shows an unscheduled task as unknown rather than as a zero or a blank', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Lena Okoye')
 
     const rowD = screen.getAllByTestId('promise-row')[3]!
@@ -76,6 +138,7 @@ describe('promises', () => {
 
   it('says "no open case" for a promise no case has touched, and never "UNAFFECTED"', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Amara Fell')
 
     const rows = screen.getAllByTestId('promise-row')
@@ -95,10 +158,11 @@ describe('promises', () => {
       '/api/auth/me': () => json(MAYA),
       '/api/promises': () => apiError(500, 'INTERNAL_ERROR', 'quote the correlation id'),
       '/api/resources': () => json(RESOURCES),
-    '/api/cases': () => json(CASES),
+      '/api/cases': () => json(CASES),
       '/events': () => streamResponse(stream),
     })
     renderApp()
+    await openOrderContext()
 
     expect(
       await screen.findByText(/The order book could not be loaded/, undefined, { timeout: 8000 }),
@@ -111,6 +175,7 @@ describe('promises', () => {
 describe('resources', () => {
   it('renders ingredients and equipment in separate sections', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Raspberries')
 
     const ingredients = screen.getAllByTestId('ingredient-row')
@@ -132,6 +197,7 @@ describe('resources', () => {
 
   it('keeps a negative availability visible and unclamped', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Raspberries')
 
     const raspberries = screen
@@ -143,6 +209,7 @@ describe('resources', () => {
 
   it('renders the backend decimal strings verbatim rather than reformatted numbers', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Raspberries')
 
     const raspberries = screen
@@ -155,6 +222,7 @@ describe('resources', () => {
 
   it('renders an unknown quantity as unknown and never as zero', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Raspberries')
 
     const vanilla = screen
@@ -169,6 +237,7 @@ describe('resources', () => {
 
   it('shows an outage with no recorded end as open-ended', async () => {
     const stream = mountSignedIn()
+    await openOrderContext()
     await screen.findByText('Raspberries')
 
     const deckOven = screen
