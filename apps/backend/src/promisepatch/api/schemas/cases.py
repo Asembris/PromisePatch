@@ -76,13 +76,20 @@ class PromiseWorkspaceView(BaseModel):
 
 
 class AuthorityBandView(BaseModel):
-    """Band 3, one group: threatened promises that change under the same authority."""
+    """Band 3, one group: threatened promises that change under the same authority.
+
+    ``count`` is stated beside the list for the same reason ``untouched_count`` is: the number
+    a screen shows under a group header is a claim about how many promises this authority
+    decides, and a surface that took the length of a list it had rendered would be reporting on
+    its own rendering rather than on the case.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     authority: str
     title: str
     promises: tuple[PromiseWorkspaceView, ...]
+    count: int
 
 
 class EffectEvidenceView(BaseModel):
@@ -201,6 +208,11 @@ class CaseWorkspaceResponse(BaseModel):
     ``untouched_count`` is carried explicitly even though the list is here, because it is the
     product's central published claim and a screen that recomputed it could recompute it
     differently -- filtered, paginated or deduplicated -- without anybody noticing.
+
+    ``promise_count`` is the same argument applied to the denominator. "0 incident-caused
+    operational effects on 3 of 6 orders" is two numbers, and the second one is the universe
+    this case considered. A screen that added the untouched count to the threatened one would
+    be composing the claim rather than reading it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -221,6 +233,7 @@ class CaseWorkspaceResponse(BaseModel):
     untouched: tuple[PromiseWorkspaceView, ...]
     untouched_count: int
     threatened_count: int
+    promise_count: int
     plan_id: str | None
     awaiting_confirmation: bool
     evidence: EvidenceView

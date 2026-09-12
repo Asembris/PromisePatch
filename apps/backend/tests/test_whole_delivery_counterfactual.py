@@ -455,7 +455,10 @@ async def test_the_authority_outcomes_are_the_ones_those_labels_mean(
 
     expected = partition_at(EXPECTED, "SETTLED")
     status = await analysis.read_case_status(physical.database, case_id=case_id)
-    view = {item.promise_id: item for item in status_view.project(status).promises}
+    projected = status_view.project(status)
+    view = {item.promise_id: item for item in projected.promises}
+
+    assert projected.promise_count == len(UNIVERSE), "the denominator is the manifest's universe"
 
     for order in expected["blocked"]:
         blocked = view[ORDERS[order]["promise"]]

@@ -204,6 +204,28 @@ async def test_the_bands_carry_the_three_authorities_in_the_contract_order(
     assert [item.promise_id for item in view.authority_bands[1].promises] == [ASK]
     assert [item.promise_id for item in view.authority_bands[2].promises] == list(BLOCKED)
     assert all(item.reason for band in view.authority_bands for item in band.promises)
+    assert [band.count for band in view.authority_bands] == [1, 1, 2]
+    assert all(band.count == len(band.promises) for band in view.authority_bands)
+
+
+async def test_a_case_that_has_concluded_nothing_states_no_universe_and_no_group(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """An empty authority group is never drawn, because the case has not partitioned anything.
+
+    A backend that emitted the three contract groups unconditionally would put "Needs the
+    customer: 0" on a screen beside an unanswered question, which is a partition presented as a
+    conclusion. The groups arrive because the projection placed a promise in one.
+    """
+    opened = await physical.report(CANONICAL_REPORT)
+    await physical.drain_intake(opened.case_id)
+
+    view = await workspace(browser, opened.case_id)
+
+    assert view.authority_bands == ()
+    assert view.promise_count == 0
+    assert view.threatened_count == 0
+    assert view.untouched_count == 0
 
 
 async def test_the_untouched_band_is_counted_by_the_backend(
@@ -215,6 +237,8 @@ async def test_the_untouched_band_is_counted_by_the_backend(
     view = await workspace(browser, case_id)
 
     assert view.untouched_count == 2
+    assert view.promise_count == 6, "the denominator of the claim arrives from the backend"
+    assert view.promise_count == view.untouched_count + view.threatened_count
     assert [item.promise_id for item in view.untouched] == list(UNTOUCHED)
     assert all(item.state == "UNTOUCHED" for item in view.untouched)
     assert all(item.phrase == "left alone" for item in view.untouched)

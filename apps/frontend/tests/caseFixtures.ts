@@ -124,6 +124,7 @@ export const PLANNED_CASE: CaseWorkspaceResponse = {
       authority: 'STANDING_PREFERENCE',
       title: 'Covered by a standing preference',
       promises: [workspacePromise('pr-a', 'EXT-A', 'Priya Nair')],
+      count: 1,
     },
     {
       authority: 'CUSTOMER',
@@ -136,6 +137,7 @@ export const PLANNED_CASE: CaseWorkspaceResponse = {
           rule_id: 'R-VISIBLE-ASK',
         }),
       ],
+      count: 1,
     },
     {
       authority: 'OWNER',
@@ -148,11 +150,13 @@ export const PLANNED_CASE: CaseWorkspaceResponse = {
           rule_id: 'R-NOSUB',
         }),
       ],
+      count: 1,
     },
   ],
   untouched: UNTOUCHED_PROMISES,
   untouched_count: 2,
   threatened_count: 3,
+  promise_count: 5,
   plan_id: 'ac1f2b3c4d5e6f70',
   awaiting_confirmation: true,
   evidence: PLANNED_EVIDENCE,
@@ -184,6 +188,7 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
           track_state: 'RECOVERED',
         }),
       ],
+      count: 1,
     },
     {
       authority: 'CUSTOMER',
@@ -203,6 +208,7 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
           rule_id: 'R-VISIBLE-ASK',
         }),
       ],
+      count: 1,
     },
     {
       authority: 'OWNER',
@@ -220,6 +226,7 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
           rule_id: 'R-NOSUB',
         }),
       ],
+      count: 1,
     },
   ],
   evidence: {
@@ -314,6 +321,7 @@ export const CLARIFYING_CASE: CaseWorkspaceResponse = {
   untouched: [],
   untouched_count: 0,
   threatened_count: 0,
+  promise_count: 0,
   plan_id: null,
   awaiting_confirmation: false,
 }

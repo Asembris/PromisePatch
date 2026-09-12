@@ -275,6 +275,18 @@ class CaseView:
     def promises(self) -> tuple[PromiseView, ...]:
         return self.threatened + self.untouched
 
+    @property
+    def promise_count(self) -> int:
+        """Every promise this case considered, threatened and untouched together.
+
+        The denominator of the product's published claim -- "0 incident-caused operational
+        effects on 3 of 6 orders" -- and therefore a number the backend states rather than one
+        a screen adds up. A surface that summed two lists it had been handed could sum a
+        filtered, paginated or deduplicated copy of either and report a different universe than
+        the one the case actually considered.
+        """
+        return len(self.threatened) + len(self.untouched)
+
 
 # ---------------------------------------------------------------------------- the projection
 

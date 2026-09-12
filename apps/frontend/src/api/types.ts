@@ -250,6 +250,8 @@ export interface AuthorityBandView {
   authority: string
   title: string
   promises: PromiseWorkspaceView[]
+  /** How many promises this authority decides, counted by the backend, never by this list. */
+  count: number
 }
 
 export interface EffectEvidenceView {
@@ -349,6 +351,8 @@ export interface CaseWorkspaceResponse {
   untouched: PromiseWorkspaceView[]
   untouched_count: number
   threatened_count: number
+  /** Every promise the case considered. The denominator; never `untouched + threatened` here. */
+  promise_count: number
   plan_id: string | null
   awaiting_confirmation: boolean
   evidence: EvidenceView

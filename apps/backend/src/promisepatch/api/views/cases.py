@@ -164,6 +164,7 @@ def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorksp
         untouched=tuple(_promise(item) for item in view.untouched),
         untouched_count=len(view.untouched),
         threatened_count=len(view.threatened),
+        promise_count=view.promise_count,
         plan_id=view.plan_id,
         awaiting_confirmation=view.awaiting_confirmation,
         evidence=_evidence(status),
@@ -171,7 +172,16 @@ def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorksp
 
 
 def _bands(view: status_view.CaseView) -> tuple[AuthorityBandView, ...]:
-    """Band 3, grouped by authority. A group with nothing in it is not shown at all."""
+    """Band 3, grouped by authority. A group with nothing in it is not shown at all.
+
+    **A group exists because the projection placed a promise in it**, and for no other reason.
+    An always-present set of headers would mean drawing "Needs the customer: 0" on a case at
+    ``CLARIFYING``, which has concluded nothing and must show no partition at all; and it would
+    mean drawing the two fail-closed groups -- "Not decided yet" and "Left alone" -- as standing
+    categories, when they exist so that a promise the projection could not place has somewhere
+    to land rather than falling off the screen. The count below is stated for each group that
+    does exist so that a screen never takes the length of a list it has already filtered.
+    """
     bands = []
     for authority in BAND_ORDER:
         promises = tuple(item for item in view.threatened if item.authority is authority)
@@ -182,6 +192,7 @@ def _bands(view: status_view.CaseView) -> tuple[AuthorityBandView, ...]:
                 authority=authority.value,
                 title=_BAND_TITLE[authority],
                 promises=tuple(_promise(item) for item in promises),
+                count=len(promises),
             )
         )
     return tuple(bands)

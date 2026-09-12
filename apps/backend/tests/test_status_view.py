@@ -231,6 +231,26 @@ def test_an_unaffected_track_is_untouched_and_counted() -> None:
     assert "1 promise was left alone:" in render(view)
 
 
+def test_the_case_states_its_own_universe_rather_than_leaving_it_to_be_added_up() -> None:
+    """The denominator of "0 of 6" is counted by the projection, over every promise it placed."""
+    view = project(
+        case(
+            "PLANNED",
+            track(state="PENDING", classification="AUTO_RECOVERABLE", customer="Priya"),
+            track(state="PENDING", classification="BLOCKED", customer="Okafor"),
+            track(state="UNAFFECTED", classification="UNAFFECTED", customer="Lena"),
+        )
+    )
+
+    assert view.promise_count == 3
+    assert view.promise_count == len(view.threatened) + len(view.untouched)
+
+
+def test_a_case_that_has_looked_at_nothing_counts_no_promises() -> None:
+    """Fail closed on the denominator too: an unassessed case claims no universe at all."""
+    assert project(case("CLARIFYING", question=pending())).promise_count == 0
+
+
 def test_the_untouched_band_is_present_even_when_it_is_empty() -> None:
     """The claim is made either way. A missing line reads as an omission, not as a zero."""
     view = project(case("PLANNED", track(state="PENDING", classification="BLOCKED")))
