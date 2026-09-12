@@ -389,6 +389,37 @@ forbidden_modules = [
     "urllib",
 ]
 
+# The path from an exception to a promise was walked once, by the engine, and written down. This
+# module reads those rows back and names them; it may not reach a row of its own and quietly
+# recompute a traversal, because a chain shown to a judge has to be the chain that happened.
+#
+# `allow_indirect_imports` for the same reason the status projection has it: the durable path
+# rows are declared beside the read service that loads them, and that module does hold a query.
+# The claim here is the honest one -- `causal` itself imports no database, no framework, no
+# clock and no environment, and therefore cannot execute any of them.
+[[tool.importlinter.contracts]]
+name = "the causal projection reads the traversal and cannot walk one"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = ["promisepatch.domain.causal"]
+forbidden_modules = [
+    "asyncio",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.main",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "urllib",
+]
+
 # A plan's identity is derived from rows somebody else read, and derived the same way by both
 # of its producers. It must therefore be a function of its arguments and nothing else: a module
 # that could reach a clock, a row or the environment could mint an identity that differed

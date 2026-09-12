@@ -59,6 +59,7 @@ from promisepatch.db.models import (
     Case,
     CaseReport,
     CaseStep,
+    CommitmentLine,
     Customer,
     ExceptionClarification,
     InboundReply,
@@ -66,7 +67,12 @@ from promisepatch.db.models import (
     OrderLine,
     OutboxMessage,
     PhysicalException,
+    Recipe,
+    RecipeVersion,
     RecoveryOption,
+    Resource,
+    Supplier,
+    SupplierCommitment,
     Track,
     TrackPath,
     TrackWatch,
@@ -1271,6 +1277,55 @@ class RevalidationStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class PathNodeStatus:
+    """One node on a traversed path, with the edge that led into it. A stored row, read back."""
+
+    node_ref: str
+    edge_kind: str | None
+    role: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TrackPathStatus:
+    """One traversed dependency path, in the order the engine walked it.
+
+    ``track_paths`` has held this since P2; until now the read service counted the rows and
+    threw the traversal away. Nothing here recomputes a path: the nodes, the role, the engine's
+    own arithmetic and the rule that cited them are all columns.
+    """
+
+    ordinal: int
+    nodes: tuple[PathNodeStatus, ...]
+    role: str | None
+    quantification: Mapping[str, Any] | None
+    rule_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class NodeFact:
+    """The durable name of one node a path ran through, and nothing that is a sentence.
+
+    Facts, deliberately, rather than rendered labels: the wording of a causal step belongs to
+    :mod:`promisepatch.domain.causal`, which is pure and testable, and a read service that
+    phrased things would put the product's vocabulary in a module holding a database cursor.
+
+    A node with no row here is not an error. It renders under the generic noun for its edge
+    kind, which understates rather than leaking an identifier onto a screen that forbids them.
+    """
+
+    kind: str
+    """``COMMITMENT_LINE``, ``RESOURCE``, ``EQUIPMENT``, ``RECIPE_VERSION`` or ``ORDER_LINE``."""
+
+    name: str
+    unit: str | None = None
+    supplier: str | None = None
+    quantity: Decimal | None = None
+    received_state: str | None = None
+    received_quantity: Decimal | None = None
+    version_no: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class TrackStatus:
     """One promise's posture in one case."""
 
@@ -1306,6 +1361,13 @@ class TrackStatus:
     options: tuple[OptionStatus, ...]
     effects: tuple[EffectStatus, ...] = ()
     approval: ApprovalStatus | None = None
+    path_rows: tuple[TrackPathStatus, ...] = ()
+    """The traversals themselves, in stored order. ``paths`` above is their count.
+
+    Both, because they answer different questions and one of them must stay cheap: an evidence
+    drawer wants "how many paths reach this promise", and a causal view wants the one that
+    decided it. Neither is derived from the other on the way out.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -1427,6 +1489,14 @@ class CaseStatus:
     """
 
     clarification: PendingClarification | None = None
+    node_facts: Mapping[str, NodeFact] = field(default_factory=dict)
+    """The durable name of every node this case's stored paths run through, keyed by node ref.
+
+    Loaded once for the whole case rather than per track, because the six promises of one
+    incident share a delivery, a resource and usually a recipe version, and reading the same
+    three rows six times would make a causal view cost six times what it is worth.
+    """
+
     clarifications: tuple[AnsweredClarification, ...] = ()
     """Every question this case has asked, in the order it asked them.
 
@@ -1487,9 +1557,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                     .order_by(RecoveryOption.id)
                 )
             ).all()
-            paths = await connection.scalar(
-                select(func.count()).select_from(TrackPath).where(TrackPath.track_id == track.id)
-            )
+            path_rows = await _paths_of(connection, track.id)
             watched = await connection.scalar(
                 select(func.count()).select_from(TrackWatch).where(TrackWatch.track_id == track.id)
             )
@@ -1525,8 +1593,9 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                     fingerprint=track.fingerprint,
                     deadline_at=track.deadline_at,
                     linked_track_id=track.linked_track_id,
-                    paths=int(paths or 0),
+                    paths=len(path_rows),
                     watched_entities=int(watched or 0),
+                    path_rows=path_rows,
                     revalidation=revalidated,
                     options=tuple(
                         OptionStatus(
@@ -1559,6 +1628,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                     approval=approval,
                 )
             )
+        facts = await _node_facts(connection, tracks)
 
     return CaseStatus(
         case_id=case.id,
@@ -1575,6 +1645,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
             entries=[plan_entry_of(track) for track in tracks],
         ),
         clarification=pending,
+        node_facts=facts,
         clarifications=asked,
     )
 
@@ -1626,6 +1697,119 @@ async def _pending_clarification(
             for item in (row.options or [])
         ),
     )
+
+
+async def _paths_of(connection: AsyncConnection, track_id: UUID) -> tuple[TrackPathStatus, ...]:
+    """Every path stored for one track, in the order the engine wrote them.
+
+    ``ordinal`` is the engine's own numbering of the traversals it found, and it is the order
+    the rows come back in. A caller choosing between several paths orders by it; nothing here
+    reorders, merges or prefers one, because a chain a person reads as one traversal has to be
+    one traversal that actually happened.
+    """
+    rows = (
+        await connection.execute(
+            select(TrackPath).where(TrackPath.track_id == track_id).order_by(TrackPath.ordinal)
+        )
+    ).all()
+    return tuple(
+        TrackPathStatus(
+            ordinal=row.ordinal,
+            nodes=tuple(_path_node(node) for node in (row.nodes or []) if isinstance(node, dict)),
+            role=row.role,
+            quantification=row.quantification,
+            rule_id=row.rule_id,
+        )
+        for row in rows
+    )
+
+
+def _path_node(node: Mapping[str, Any]) -> PathNodeStatus:
+    """One stored node, read defensively: a row written by an older build reads as a blank ref."""
+    return PathNodeStatus(
+        node_ref=str(node.get("node_ref") or ""),
+        edge_kind=_optional(node.get("edge_kind")),
+        role=_optional(node.get("role")),
+    )
+
+
+async def _node_facts(
+    connection: AsyncConnection, tracks: Sequence[TrackStatus]
+) -> dict[str, NodeFact]:
+    """The durable name of every node this case's paths ran through, in four reads.
+
+    Names only. Whether a node is worth showing, what column it belongs in and how it is worded
+    are all decisions :mod:`promisepatch.domain.causal` takes on the value this returns, and it
+    takes them without a connection.
+    """
+    refs = {
+        node.node_ref
+        for track in tracks
+        for path in track.path_rows
+        for node in path.nodes
+        if node.node_ref
+    }
+    if not refs:
+        return {}
+
+    facts: dict[str, NodeFact] = {}
+    for resource in (
+        await connection.execute(
+            select(Resource.id, Resource.kind, Resource.name, Resource.unit).where(
+                Resource.id.in_(refs)
+            )
+        )
+    ).all():
+        facts[resource.id] = NodeFact(
+            kind="EQUIPMENT" if resource.kind == "EQUIPMENT" else "RESOURCE",
+            name=resource.name,
+            unit=resource.unit,
+        )
+    for version in (
+        await connection.execute(
+            select(RecipeVersion.id, RecipeVersion.version_no, Recipe.name)
+            .join(Recipe, Recipe.id == RecipeVersion.recipe_id)
+            .where(RecipeVersion.id.in_(refs))
+        )
+    ).all():
+        facts[version.id] = NodeFact(
+            kind="RECIPE_VERSION", name=version.name, version_no=version.version_no
+        )
+    for line in (
+        await connection.execute(
+            select(OrderLine.id, Order.external_id)
+            .join(Order, Order.id == OrderLine.order_id)
+            .where(OrderLine.id.in_(refs))
+        )
+    ).all():
+        facts[line.id] = NodeFact(kind="ORDER_LINE", name=line.external_id)
+    for expected in (
+        await connection.execute(
+            select(
+                CommitmentLine.id,
+                CommitmentLine.quantity,
+                CommitmentLine.received_state,
+                CommitmentLine.received_qty,
+                Resource.name.label("resource_name"),
+                Resource.unit,
+                Supplier.name.label("supplier_name"),
+            )
+            .join(Resource, Resource.id == CommitmentLine.resource_id)
+            .join(SupplierCommitment, SupplierCommitment.id == CommitmentLine.commitment_id)
+            .join(Supplier, Supplier.id == SupplierCommitment.supplier_id)
+            .where(CommitmentLine.id.in_(refs))
+        )
+    ).all():
+        facts[expected.id] = NodeFact(
+            kind="COMMITMENT_LINE",
+            name=expected.resource_name,
+            unit=expected.unit,
+            supplier=expected.supplier_name,
+            quantity=expected.quantity,
+            received_state=expected.received_state,
+            received_quantity=expected.received_qty,
+        )
+    return facts
 
 
 async def _clarification_history(
