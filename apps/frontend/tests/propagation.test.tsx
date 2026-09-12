@@ -83,7 +83,7 @@ function draw(bands: AuthorityBandView[]): void {
   render(
     <PropagationMap
       bands={bands}
-      exceptionCategory="DELIVERY_SHORTFALL"
+      exceptionPhrase="a supplier delivery did not arrive"
       reportedText="today’s raspberry delivery didn’t arrive"
     />,
   )
@@ -97,7 +97,7 @@ describe('the incident, as the source', () => {
 
     const source = screen.getByTestId('incident-source')
     expect(within(source).getByText(/raspberry delivery/)).toBeInTheDocument()
-    expect(within(source).getByText('DELIVERY_SHORTFALL')).toBeInTheDocument()
+    expect(within(source).getByText('a supplier delivery did not arrive')).toBeInTheDocument()
     expect(screen.getAllByTestId('incident-source')).toHaveLength(1)
   })
 })

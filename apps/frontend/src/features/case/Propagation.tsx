@@ -61,17 +61,17 @@ const CHAIN_GRID =
 /** The incident, and the promises it reached, under the authority each one answers to. */
 export function PropagationMap({
   bands,
-  exceptionCategory,
+  exceptionPhrase,
   reportedText,
 }: {
   bands: readonly AuthorityBandView[]
-  exceptionCategory: string | null
+  exceptionPhrase: string | null
   reportedText: string | null
 }): ReactNode {
   return (
     <div className="space-y-3">
       <SectionLabel>what changes, under whose authority</SectionLabel>
-      <IncidentSource category={exceptionCategory} reportedText={reportedText} />
+      <IncidentSource phrase={exceptionPhrase} reportedText={reportedText} />
       {bands.length === 0 ? (
         <QuietCard className="px-4 py-3 text-sm text-muted">
           Nothing has been decided about any promise yet.
@@ -92,23 +92,22 @@ export function PropagationMap({
  * Where the paths start.
  *
  * One incident is the whole premise, so it is drawn once, above the lanes, and the lanes hang
- * beneath it. It carries what the worker said and what the domain filed it as — and no count of
- * its own, because the numbers on this case are published once, in band 1.
+ * beneath it. It carries what the worker said and the domain's own words for what it filed —
+ * not the category token, which is evidence and lives with the other identifiers — and no count
+ * of its own, because the numbers on this case are published once, in band 1.
  */
 function IncidentSource({
-  category,
+  phrase,
   reportedText,
 }: {
-  category: string | null
+  phrase: string | null
   reportedText: string | null
 }): ReactNode {
   return (
     <div className="space-y-0" data-testid="incident-source">
       <Card className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5">
         <span className="text-label text-muted uppercase">the incident</span>
-        {category === null ? null : (
-          <span className="font-mono text-state text-owner">{category}</span>
-        )}
+        {phrase === null ? null : <span className="text-reason text-owner">{phrase}</span>}
         {reportedText === null ? null : (
           <span className="min-w-0 text-reason text-muted">“{reportedText}”</span>
         )}
@@ -317,8 +316,11 @@ function PromiseReading({
 }): ReactNode {
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-reason">
+      {/* The domain's sentence for the reason, never the token behind it. A token with no
+          published phrase shows nothing here and is still in the technical record, because a
+          band that printed `NOSUB_CONSTRAINT` would be asking a baker to read an enum. */}
       <span className="text-muted">
-        <span>{promise.reason}</span>
+        {promise.reason_phrase === null ? null : <span>{promise.reason_phrase}</span>}
         {promise.deadline_at === null ? null : <> · by {formatDateTime(promise.deadline_at)}</>}
       </span>
       {chain.pathCount > 1 ? <CausalPathCount value={chain.pathCount} /> : null}

@@ -10,6 +10,18 @@
  * `classification` and the case pointers are `null` for a promise no case has touched. That is
  * rendered as "no open case" — not as `UNAFFECTED`, which is a decision the engine makes about
  * a specific exception and which nothing here is entitled to assert.
+ *
+ * **This table prints engine vocabulary on purpose, and it is the only surface that may.** An
+ * order state, a task state, a classification and a constraint kind are shown as the tokens the
+ * backend stores, because this is the order book — the operational record a person checks a
+ * case's reasoning against — and not one of the bands a case is read in. The bands carry the
+ * domain's sentences and are swept for these tokens by `tests/vocabularySweep.test.tsx`.
+ *
+ * One of them would read better as words and cannot yet: **`constraint.kind`**. The domain
+ * publishes a phrase for every `ConstraintKind` in `promisepatch.domain.explanations`, but
+ * `/api/promises` projects no phrase beside the kind, and composing one here would put the
+ * product's constraint vocabulary in a TypeScript table. The projection is the fix; until it
+ * exists, the token is shown as the token.
  */
 import type { ReactNode } from 'react'
 import type { OrderLineView, PromiseView } from '../../api/types'

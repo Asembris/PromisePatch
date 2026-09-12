@@ -126,7 +126,11 @@ describe('the case workspace', () => {
     expect(counts.getByText('left alone')).toBeInTheDocument()
     expect(counts.getByText('3')).toBeInTheDocument()
     expect(counts.getByText('orders affected')).toBeInTheDocument()
-    expect(within(rows[0]!).getByText(/NOT_REACHABLE/)).toBeInTheDocument()
+    // The domain's sentence for the reason, not the token behind it: a band a baker reads
+    // may not print an enum, and the token itself is in the technical record.
+    expect(
+      within(rows[0]!).getByText('the exception reaches nothing it depends on'),
+    ).toBeInTheDocument()
     stream.close()
   })
 
@@ -225,7 +229,9 @@ describe('truthfulness', () => {
     const blocked = screen
       .getAllByTestId('promise-row')
       .find((row) => row.getAttribute('data-promise-id') === 'pr-c')!
-    expect(within(blocked).getByText('NOSUB_CONSTRAINT')).toBeInTheDocument()
+    expect(
+      within(blocked).getByText('the order carries a no-substitution constraint'),
+    ).toBeInTheDocument()
     expect(within(blocked).getByTestId('promise-next-action')).toHaveTextContent(
       'The owner handles this one by hand',
     )

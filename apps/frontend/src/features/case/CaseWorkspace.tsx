@@ -114,8 +114,11 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
                   {view.reported_at === null ? null : (
                     <> · {formatDateTime(view.reported_at)}</>
                   )}
-                  {view.exception_category === null ? null : (
-                    <> · {view.exception_category}</>
+                  {/* The phrase, never the category. `SUPPLY_NOT_RECEIVED` is what the
+                      engine filed this as, and it belongs in the technical record beside the
+                      other tokens — band 1 says what happened in words. */}
+                  {view.exception_phrase === null ? null : (
+                    <> · {view.exception_phrase}</>
                   )}
                 </p>
                 <blockquote className="text-quote font-medium text-ink">
@@ -223,7 +226,7 @@ function Propagation({ view }: { view: CaseWorkspaceResponse }): ReactNode {
     <section className="space-y-4" aria-label="What changes, and what was left alone">
       <PropagationMap
         bands={view.authority_bands}
-        exceptionCategory={view.exception_category}
+        exceptionPhrase={view.exception_phrase}
         reportedText={view.reported_text}
       />
       <UntouchedProof

@@ -59,18 +59,32 @@ import { formatDateTime } from '../../components/time'
 interface Subject {
   track: TrackEvidenceView
   promise: PromiseWorkspaceView | undefined
+  /**
+   * The backend's own title for the group this promise was placed in.
+   *
+   * Taken from the band rather than derived from `promise.authority`, because "Needs the
+   * customer" is a sentence the domain composed and `CUSTOMER` is a token. Lower-casing the
+   * token to make it read as English would be this screen writing the product's authority
+   * vocabulary, in the one place nobody tests it against a durable case.
+   */
+  authorityTitle: string | undefined
 }
 
 function subjects(view: CaseWorkspaceResponse): Subject[] {
   const byPromise = new Map<string, PromiseWorkspaceView>()
+  const titles = new Map<string, string>()
   for (const band of view.authority_bands) {
-    for (const promise of band.promises) byPromise.set(promise.promise_id, promise)
+    for (const promise of band.promises) {
+      byPromise.set(promise.promise_id, promise)
+      titles.set(promise.promise_id, band.title)
+    }
   }
   for (const promise of view.untouched) byPromise.set(promise.promise_id, promise)
   // The backend's own order, over the backend's own list of tracks. Nothing is sorted here.
   return view.evidence.tracks.map((track) => ({
     track,
     promise: byPromise.get(track.promise_id),
+    authorityTitle: titles.get(track.promise_id),
   }))
 }
 
@@ -138,7 +152,7 @@ function PlainWords({
               )}
               <span className="text-muted">
                 {promise?.reason_phrase === null || promise?.reason_phrase === undefined
-                  ? 'The recovery rules record no further reason.'
+                  ? 'The reason this was decided under is in the technical record below.'
                   : `Because ${promise.reason_phrase}.`}
               </span>
             </li>
@@ -240,7 +254,7 @@ function WhatWasChecked({
             <Value>{reading.attestor}</Value>.
           </p>
         )}
-        {rows.map(({ track, promise }) => (
+        {rows.map(({ track, promise, authorityTitle }) => (
           <div
             key={track.track_id}
             className="space-y-1 text-reason"
@@ -251,11 +265,9 @@ function WhatWasChecked({
               <span className="text-sm font-medium">
                 {promise === undefined ? track.order_external_id : promise.customer_name}
               </span>
-              {promise === undefined ? null : (
-                <span className="text-muted">
-                  changes under the authority of {promise.authority.toLowerCase().replace('_', ' ')}
-                </span>
-              )}
+              <span className="text-muted">
+                {authorityTitle ?? 'Nothing about this promise needs anybody’s permission.'}
+              </span>
             </p>
             <ApprovalLine approval={track.approval} />
             <RevalidationChecks revalidation={track.revalidation} />

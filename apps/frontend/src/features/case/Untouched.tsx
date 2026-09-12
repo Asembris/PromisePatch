@@ -104,7 +104,9 @@ function UntouchedRow({ promise }: { promise: PromiseWorkspaceView }): ReactNode
         </span>
       </div>
 
-      <p className="mt-1 text-reason text-muted">{promise.reason}</p>
+      {promise.reason_phrase === null ? null : (
+        <p className="mt-1 text-reason text-muted">{promise.reason_phrase}</p>
+      )}
       <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <CausalAbsence reason={chain.absenceReason} />
         {chain.pathCount > 1 ? <CausalPathCount value={chain.pathCount} /> : null}
