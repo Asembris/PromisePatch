@@ -35,7 +35,7 @@ describe('authentication', () => {
     renderApp()
 
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
-    expect(screen.queryByText('Live Operations')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
   })
 
   it('never prefills a password', async () => {
@@ -61,7 +61,7 @@ describe('authentication', () => {
     await userEvent.type(screen.getByLabelText('Password'), 'a-demo-password')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
-    expect(await screen.findByText('Live Operations')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeInTheDocument()
     expect(await screen.findByText('Maya')).toBeInTheDocument()
     expect(screen.getByText(/baker/)).toBeInTheDocument()
 
@@ -98,7 +98,7 @@ describe('authentication', () => {
     })
     renderApp()
 
-    expect(await screen.findByText('Live Operations')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeInTheDocument()
     expect(backend.countOf('/api/auth/login')).toBe(0)
     stream.close()
   })

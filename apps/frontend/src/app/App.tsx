@@ -20,6 +20,7 @@ import { useEventStream } from '../api/useEventStream'
 import { LoginScreen } from '../features/auth/LoginScreen'
 import { CaseWorkspace } from '../features/case/CaseWorkspace'
 import { LiveOperations } from '../features/live-ops/LiveOperations'
+import { PromisePatchLockup } from '../components/Brand'
 import { Header } from './Header'
 import { useCaseRoute } from './useCaseRoute'
 
@@ -31,21 +32,22 @@ export function App(): ReactNode {
 
   if (me.isPending) {
     return (
-      <main className="flex min-h-full items-center justify-center px-6">
-        <p className="text-sm text-muted" role="status">
-          Checking your session…
-        </p>
-      </main>
+      <Boot role="status">
+        <PromisePatchLockup height={30} />
+        <p className="text-sm text-muted">Opening your session…</p>
+      </Boot>
     )
   }
 
   if (me.isError) {
     return (
-      <main className="mx-auto flex min-h-full max-w-sm flex-col justify-center gap-3 px-6 text-center">
-        <p className="text-sm text-muted" role="alert">
-          The API could not be reached. Check that the backend is running, then reload.
+      <Boot role="alert">
+        <PromisePatchLockup height={30} />
+        <p className="text-sm text-muted">
+          PromisePatch cannot be reached from this device right now. Nothing about your cases
+          has changed; this screen simply cannot read them. Try again in a moment.
         </p>
-      </main>
+      </Boot>
     )
   }
 
@@ -65,5 +67,22 @@ export function App(): ReactNode {
         />
       )}
     </div>
+  )
+}
+
+/**
+ * The two screens that exist before there is a session to show.
+ *
+ * Both carry the mark, because the alternative is a bare sentence on a dark page that reads as
+ * a crash. Neither instructs anybody to run a command: a shell that told a baker to start a
+ * backend would be the product speaking as its own build system.
+ */
+function Boot({ role, children }: { role: 'status' | 'alert'; children: ReactNode }): ReactNode {
+  return (
+    <main className="mx-auto flex min-h-full max-w-sm flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="flex flex-col items-center gap-4 text-ink" role={role}>
+        {children}
+      </div>
+    </main>
   )
 }

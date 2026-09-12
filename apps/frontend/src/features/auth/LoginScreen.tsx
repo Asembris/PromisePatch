@@ -12,6 +12,10 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useLogin } from '../../api/queries'
 import { ApiError } from '../../api/client'
+import { PromisePatchLockup } from '../../components/Brand'
+
+const FIELD =
+  'w-full rounded-control border border-edge bg-panel px-3 py-2.5 text-sm text-ink placeholder:text-muted/60'
 
 function messageFor(error: Error): string {
   if (error instanceof ApiError) return error.message
@@ -30,11 +34,16 @@ export function LoginScreen(): ReactNode {
 
   return (
     <main className="mx-auto flex min-h-full max-w-sm flex-col justify-center px-6 py-16">
-      <h1 className="text-xl font-semibold tracking-tight">PromisePatch</h1>
-      <p className="mt-1 text-sm text-muted">Sign in to Live Operations.</p>
+      <h1 className="text-ink">
+        <PromisePatchLockup height={34} />
+      </h1>
+      <p className="mt-3 text-sm text-muted">
+        Sign in to open the case you are working on. Your name is the one every report is
+        recorded against.
+      </p>
 
       <form className="mt-8 space-y-4" onSubmit={onSubmit}>
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <label className="block text-sm font-medium" htmlFor="username">
             Worker
           </label>
@@ -48,12 +57,12 @@ export function LoginScreen(): ReactNode {
             required
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            className="w-full rounded-control border border-edge bg-panel px-3 py-2 text-sm"
+            className={FIELD}
           />
-          <p className="text-xs text-muted">Seeded demo logins: maya (baker), jo (owner).</p>
+          <p className="text-meta text-muted">Seeded demo logins: maya (baker), jo (owner).</p>
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <label className="block text-sm font-medium" htmlFor="password">
             Password
           </label>
@@ -65,12 +74,15 @@ export function LoginScreen(): ReactNode {
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-control border border-edge bg-panel px-3 py-2 text-sm"
+            className={FIELD}
           />
         </div>
 
         {signIn.isError ? (
-          <p role="alert" className="rounded-control border border-owner/40 bg-owner/10 px-3 py-2 text-sm text-owner">
+          <p
+            role="alert"
+            className="rounded-control border border-owner/40 bg-owner/10 px-3 py-2 text-sm text-owner"
+          >
             {messageFor(signIn.error)}
           </p>
         ) : null}
@@ -78,7 +90,7 @@ export function LoginScreen(): ReactNode {
         <button
           type="submit"
           disabled={signIn.isPending}
-          className="w-full rounded-control bg-brand px-3 py-2 text-sm font-semibold text-brand-ink disabled:opacity-60"
+          className="w-full rounded-control bg-brand px-3 py-2.5 text-sm font-semibold text-brand-ink transition-opacity hover:opacity-90 disabled:opacity-60"
         >
           {signIn.isPending ? 'Signing in…' : 'Sign in'}
         </button>
