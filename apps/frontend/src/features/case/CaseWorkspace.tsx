@@ -33,6 +33,7 @@ import type { CaseWorkspaceResponse } from '../../api/types'
 import { Badge, CaseHeadlineBadge } from '../../components/badges'
 import { Card, Message, SectionLabel } from '../../components/surfaces'
 import { Count, Value } from '../../components/values'
+import { ClarificationHistory } from './Clarifications'
 import { EvidenceLayers } from './Evidence'
 import { formatDateTime } from '../../components/time'
 import { actionOwnerTone } from '../../components/vocabulary'
@@ -130,6 +131,8 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
             <CountTile value={view.untouched_count} label="left alone" />
           </dl>
         </div>
+
+        <ClarificationHistory clarifications={view.clarifications} />
 
         {view.question === null ? null : <OpenQuestion view={view} />}
       </div>
