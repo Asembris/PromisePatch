@@ -41,6 +41,44 @@ function workspacePromise(
     track_state: 'PENDING',
     classification: 'AUTO_RECOVERABLE',
     rule_id: 'R-PREAPPROVED',
+    causal_chain: {
+      present: true,
+      steps: [
+        {
+          slot: 'SHORTFALL',
+          label: 'Valley Produce: Raspberries',
+          detail: '4 kg expected, none received',
+          node_ref: 'cl-valley-raspberry',
+        },
+        {
+          slot: 'RESOURCE',
+          label: 'Raspberries',
+          detail: 'needed 4 kg, 1.2 kg available, 2.8 kg short',
+          node_ref: 'res-raspberry',
+        },
+        {
+          slot: 'VERSION',
+          label: 'Raspberry Charlotte v2',
+          detail: 'used as the filling',
+          node_ref: 'rv-charlotte-2',
+        },
+        {
+          slot: 'VERSION',
+          label: `the line on ${externalId}`,
+          detail: null,
+          node_ref: `ol-${promiseId}`,
+        },
+        {
+          slot: 'PROMISE',
+          label: `${customer} - ${externalId}`,
+          detail: null,
+          node_ref: promiseId,
+        },
+      ],
+      absence_reason: null,
+      path_count: 1,
+      deciding_rule: 'R-PREAPPROVED',
+    },
     ...overrides,
   }
 }
@@ -56,6 +94,14 @@ function untouched(promiseId: string, externalId: string, customer: string): Pro
     track_state: 'UNAFFECTED',
     classification: 'UNAFFECTED',
     rule_id: 'R-UNREACH',
+    causal_chain: {
+      present: false,
+      steps: [],
+      absence_reason:
+        'Nothing in this case reaches this promise - the exception reaches nothing it depends on.',
+      path_count: 0,
+      deciding_rule: null,
+    },
   })
 }
 

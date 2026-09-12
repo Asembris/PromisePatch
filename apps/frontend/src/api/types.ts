@@ -244,6 +244,25 @@ export interface NextActionView {
   action: string
 }
 
+export interface CausalStepView {
+  /** `SHORTFALL`, `RESOURCE`, `VERSION` or `PROMISE` — the fixed column this step belongs in. */
+  slot: string
+  label: string
+  detail: string | null
+  /** Drawer vocabulary. Never rendered in bands 1-4. */
+  node_ref: string
+}
+
+export interface CausalChainView {
+  present: boolean
+  /** Rendered in the order it arrives: never sorted, filtered or reversed. */
+  steps: CausalStepView[]
+  absence_reason: string | null
+  /** How many traversals the track has, which is not the length of `steps`. */
+  path_count: number
+  deciding_rule: string | null
+}
+
 export interface PromiseWorkspaceView {
   promise_id: string
   customer_name: string
@@ -259,6 +278,7 @@ export interface PromiseWorkspaceView {
   track_state: string
   classification: string | null
   rule_id: string | null
+  causal_chain: CausalChainView
 }
 
 export interface AuthorityBandView {

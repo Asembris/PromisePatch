@@ -19,6 +19,7 @@ contract fixes in the backend.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Final
@@ -33,6 +34,8 @@ from promisepatch.api.schemas.cases import (
     CaseListResponse,
     CaseSummaryView,
     CaseWorkspaceResponse,
+    CausalChainView,
+    CausalStepView,
     ClarificationHistoryView,
     EffectEvidenceView,
     EvidenceView,
@@ -46,7 +49,7 @@ from promisepatch.api.schemas.cases import (
     TrackEvidenceView,
 )
 from promisepatch.db.models import Case, CaseReport
-from promisepatch.domain import analysis, status_view
+from promisepatch.domain import analysis, causal, status_view
 
 BAND_ORDER: Final[tuple[status_view.Authority, ...]] = (
     status_view.Authority.STANDING_PREFERENCE,
@@ -146,6 +149,10 @@ def _headline(state: str) -> status_view.CaseHeadline:
 def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorkspaceResponse:
     """One case status, projected once and then arranged into the contract's five bands."""
     view = status_view.project(status)
+    chains = {
+        str(track.track_id): causal.chain_for(track, facts=status.node_facts)
+        for track in status.tracks
+    }
     return CaseWorkspaceResponse(
         case_id=status.case_id,
         headline=view.headline.value,
@@ -162,8 +169,8 @@ def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorksp
             owner_label=view.next_action.owner_label,
             action=view.next_action.action,
         ),
-        authority_bands=_bands(view),
-        untouched=tuple(_promise(item) for item in view.untouched),
+        authority_bands=_bands(view, chains),
+        untouched=tuple(_promise(item, chains) for item in view.untouched),
         untouched_count=len(view.untouched),
         threatened_count=len(view.threatened),
         promise_count=view.promise_count,
@@ -173,7 +180,9 @@ def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorksp
     )
 
 
-def _bands(view: status_view.CaseView) -> tuple[AuthorityBandView, ...]:
+def _bands(
+    view: status_view.CaseView, chains: Mapping[str, causal.CausalChain]
+) -> tuple[AuthorityBandView, ...]:
     """Band 3, grouped by authority. A group with nothing in it is not shown at all.
 
     **A group exists because the projection placed a promise in it**, and for no other reason.
@@ -193,7 +202,7 @@ def _bands(view: status_view.CaseView) -> tuple[AuthorityBandView, ...]:
             AuthorityBandView(
                 authority=authority.value,
                 title=_BAND_TITLE[authority],
-                promises=tuple(_promise(item) for item in promises),
+                promises=tuple(_promise(item, chains) for item in promises),
                 count=len(promises),
             )
         )
@@ -232,7 +241,9 @@ def _clarification(record: analysis.AnsweredClarification) -> ClarificationHisto
     )
 
 
-def _promise(item: status_view.PromiseView) -> PromiseWorkspaceView:
+def _promise(
+    item: status_view.PromiseView, chains: Mapping[str, causal.CausalChain]
+) -> PromiseWorkspaceView:
     return PromiseWorkspaceView(
         promise_id=item.promise_id,
         customer_name=item.customer_name,
@@ -248,6 +259,26 @@ def _promise(item: status_view.PromiseView) -> PromiseWorkspaceView:
         track_state=item.track_state,
         classification=item.classification,
         rule_id=item.rule_id,
+        causal_chain=_chain(chains[item.track_id]),
+    )
+
+
+def _chain(chain: causal.CausalChain) -> CausalChainView:
+    """The traversal, copied. The slots, labels and sentences are all the domain's own."""
+    return CausalChainView(
+        present=chain.present,
+        steps=tuple(
+            CausalStepView(
+                slot=step.slot.value,
+                label=step.label,
+                detail=step.detail,
+                node_ref=step.node_ref,
+            )
+            for step in chain.steps
+        ),
+        absence_reason=chain.absence_reason,
+        path_count=chain.path_count,
+        deciding_rule=chain.deciding_rule,
     )
 
 

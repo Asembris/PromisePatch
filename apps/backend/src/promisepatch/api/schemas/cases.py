@@ -78,6 +78,48 @@ class NextActionView(BaseModel):
     action: str
 
 
+class CausalStepView(BaseModel):
+    """One node of the traversal that reached a promise, named by the domain.
+
+    ``slot`` is the fixed column this step belongs in -- what did not arrive, what it fell short
+    of, the version the order pins, the promise -- so every chain occupies the same geometry and
+    a reader compares rows rather than relearning a layout. A column may carry more than one
+    step, and the array is rendered in the order it arrives: never sorted, filtered or reversed.
+
+    ``node_ref`` is drawer vocabulary and is never drawn in bands 1-4.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    slot: str = Field(description="SHORTFALL, RESOURCE, VERSION or PROMISE")
+    label: str
+    detail: str | None
+    node_ref: str
+
+
+class CausalChainView(BaseModel):
+    """How the exception reached one promise, or the reason nothing did.
+
+    Carried on **every** promise, threatened and untouched alike, because an untouched promise's
+    empty chain is the selectivity claim and a field that were simply absent would read as a
+    screen that had not finished loading.
+
+    ``path_count`` is how many traversals the track actually has, which is not the length of
+    ``steps``: where several exist this carries the one whose stored rule decided the track, and
+    says how many others there were. **A merged or synthesised path is never returned.**
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    present: bool
+    steps: tuple[CausalStepView, ...]
+    absence_reason: str | None = Field(
+        description="why there is no chain to show, whenever present is false"
+    )
+    path_count: int
+    deciding_rule: str | None
+
+
 class PromiseWorkspaceView(BaseModel):
     """One customer promise, as this case has left it, in the words the product may use."""
 
@@ -97,6 +139,7 @@ class PromiseWorkspaceView(BaseModel):
     track_state: str
     classification: str | None
     rule_id: str | None
+    causal_chain: CausalChainView
 
 
 class AuthorityBandView(BaseModel):

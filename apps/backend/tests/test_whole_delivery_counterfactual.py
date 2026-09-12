@@ -60,7 +60,7 @@ from sqlalchemy import select
 from promise_graph.model import Classification
 from promisepatch.config import Settings
 from promisepatch.db.models import OutboxMessage, Reservation
-from promisepatch.domain import analysis, recovery, status_view
+from promisepatch.domain import analysis, causal, recovery, status_view
 from promisepatch.domain.approvals import EFFECT_MESSAGE_SEND
 from promisepatch.domain.model import EFFECT_CASE_ID, EFFECT_ORDER_AMEND, EFFECT_TRACK_ID
 from promisepatch.main import create_app
@@ -472,6 +472,17 @@ async def test_the_authority_outcomes_are_the_ones_those_labels_mean(
         assert untouched.state is status_view.PromiseState.UNTOUCHED
         assert untouched.authority is status_view.Authority.NONE
         assert untouched.owner is status_view.ActionOwner.NOBODY
+
+    tracks = {track.promise_id: track for track in status.tracks}
+    for order in expected["blocked"]:
+        reached = causal.chain_for(tracks[ORDERS[order]["promise"]], facts=status.node_facts)
+        assert reached.present is True, f"{order} is blocked and has no path to show"
+        assert reached.steps[-1].slot is causal.CausalSlot.PROMISE
+    for order in expected["untouched"]:
+        traversal = causal.chain_for(tracks[ORDERS[order]["promise"]], facts=status.node_facts)
+        assert traversal.present is False, f"{order} is untouched and must carry no path"
+        assert traversal.steps == ()
+        assert traversal.absence_reason, "and the empty column says why it is empty"
 
     assert status.needs_owner_attention is True
     said = await spoken(chain, case_id)

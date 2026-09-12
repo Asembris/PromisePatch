@@ -424,6 +424,100 @@ async def test_the_evidence_drawer_carries_identifiers_rather_than_sentences(
         assert untouched.track_state == "UNAFFECTED"
 
 
+# ------------------------------------------------------------------ the path, promise by promise
+
+
+async def test_every_threatened_promise_carries_the_path_that_reached_it(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """The judge's question -- what is the path from the delivery to the cake -- answered.
+
+    Structural rather than word for word: the shape is what the screen depends on. The chain
+    starts at what did not arrive, ends at the promise, names the deciding rule the track was
+    classified under, and counts the traversals the track actually has.
+    """
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    for band in view.authority_bands:
+        for item in band.promises:
+            chain = item.causal_chain
+            assert chain.present is True, f"{item.promise_id} has no path"
+            assert chain.absence_reason is None
+            assert chain.path_count >= 1
+            assert chain.deciding_rule == item.rule_id
+            assert chain.steps[0].slot == "SHORTFALL"
+            assert chain.steps[-1].slot == "PROMISE"
+            assert chain.steps[-1].label == f"{item.customer_name} - {item.order_external_id}"
+
+
+async def test_the_first_step_of_every_chain_is_the_delivery_that_did_not_arrive(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """One incident, so every threatened promise starts from the same durable delivery line."""
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    entries = {
+        item.causal_chain.steps[0].label for band in view.authority_bands for item in band.promises
+    }
+    assert entries == {"Valley Produce: raspberries"}
+    assert all(
+        item.causal_chain.steps[0].detail for band in view.authority_bands for item in band.promises
+    )
+
+
+async def test_no_step_of_any_chain_puts_an_identifier_in_front_of_a_person(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """Bands 1-4 carry no engineering vocabulary, and a label is band 3 text."""
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    for band in view.authority_bands:
+        for item in band.promises:
+            for step in item.causal_chain.steps:
+                assert step.node_ref, "the drawer still gets the reference"
+                assert step.node_ref not in step.label
+                assert str(item.track_id) not in step.label
+
+
+async def test_two_promises_in_one_authority_group_each_carry_their_own_path(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """A lane is a grouping of rows. The causal column is a property of a row, never of a lane."""
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    owners = next(band for band in view.authority_bands if band.authority == "OWNER")
+    assert owners.count == 2
+    chains = [item.causal_chain for item in owners.promises]
+    assert all(chain.present for chain in chains)
+    assert len({chain.steps[-1].label for chain in chains}) == 2, "no shared trunk, no merge"
+    assert len({chain.steps[-1].node_ref for chain in chains}) == 2
+
+
+async def test_an_untouched_promise_carries_no_path_and_says_why_not(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """Band 4's empty causal column is the selectivity claim, so it arrives with a sentence."""
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    for item in view.untouched:
+        chain = item.causal_chain
+        assert chain.present is False
+        assert chain.steps == ()
+        assert chain.deciding_rule is None
+        assert chain.absence_reason
+        assert "reach" in chain.absence_reason
+
+
 # ------------------------------------------------------------------- reload, reconnect, restart
 
 
