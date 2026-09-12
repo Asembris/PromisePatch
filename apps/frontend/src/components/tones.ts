@@ -8,11 +8,11 @@
 export type BadgeTone = 'neutral' | 'good' | 'warn' | 'bad' | 'info'
 
 export const TONE_CLASSES: Record<BadgeTone, string> = {
-  neutral: 'bg-slate-100 text-slate-700 ring-slate-200',
-  good: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
-  warn: 'bg-amber-50 text-amber-900 ring-amber-200',
-  bad: 'bg-red-50 text-red-800 ring-red-200',
-  info: 'bg-sky-50 text-sky-800 ring-sky-200',
+  neutral: 'bg-panel text-muted ring-edge',
+  good: 'bg-done/12 text-done ring-done/30',
+  warn: 'bg-ask/12 text-ask ring-ask/35',
+  bad: 'bg-owner/12 text-owner ring-owner/35',
+  info: 'bg-auto/12 text-auto ring-auto/35',
 }
 
 export function toneForState(state: string): BadgeTone {

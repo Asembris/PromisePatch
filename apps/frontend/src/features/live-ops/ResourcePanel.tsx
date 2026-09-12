@@ -156,7 +156,7 @@ export function EquipmentList({ equipment }: { equipment: readonly EquipmentView
                   <li key={outage.id}>
                     out from {formatDateTime(outage.starts_at)}{' '}
                     {outage.ends_at === null ? (
-                      <span className="font-medium text-red-700">— no end recorded</span>
+                      <span className="font-medium text-owner">— no end recorded</span>
                     ) : (
                       <>until {formatDateTime(outage.ends_at)}</>
                     )}

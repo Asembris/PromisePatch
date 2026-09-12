@@ -10,16 +10,16 @@ import type { ReactNode } from 'react'
 import type { StreamState, StreamStatus as Status } from '../../api/useEventStream'
 
 const LABELS: Record<Status, { label: string; dot: string; title: string }> = {
-  idle: { label: 'idle', dot: 'bg-slate-300', title: 'no feed open' },
-  connecting: { label: 'connecting', dot: 'bg-amber-400', title: 'opening the event stream' },
-  live: { label: 'live', dot: 'bg-emerald-500', title: 'event stream open' },
+  idle: { label: 'idle', dot: 'bg-muted/40', title: 'no feed open' },
+  connecting: { label: 'connecting', dot: 'bg-ask', title: 'opening the event stream' },
+  live: { label: 'live', dot: 'bg-auto', title: 'event stream open' },
   resyncing: {
     label: 'resyncing',
-    dot: 'bg-sky-500',
+    dot: 'bg-brand',
     title: 'the feed was not continuous; refetching authoritative state',
   },
-  reconnecting: { label: 'reconnecting', dot: 'bg-amber-500', title: 'the feed dropped; retrying' },
-  offline: { label: 'offline', dot: 'bg-red-500', title: 'the feed is not open' },
+  reconnecting: { label: 'reconnecting', dot: 'bg-ask', title: 'the feed dropped; retrying' },
+  offline: { label: 'offline', dot: 'bg-owner', title: 'the feed is not open' },
 }
 
 export function StreamStatusIndicator({ state }: { state: StreamState }): ReactNode {

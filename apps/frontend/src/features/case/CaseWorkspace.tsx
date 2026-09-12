@@ -106,9 +106,9 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
         )}
         <p className="text-sm">{view.sentence}</p>
         {view.question === null ? null : (
-          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2" data-testid="case-question">
-            <p className="text-sm font-medium text-amber-900">{view.question.question}</p>
-            <ul className="mt-1 list-disc pl-5 text-sm text-amber-900">
+          <div className="rounded-quiet border border-ask/45 bg-ask/8 px-3 py-2" data-testid="case-question">
+            <p className="text-sm font-medium text-ink">{view.question.question}</p>
+            <ul className="mt-1 list-disc pl-5 text-sm text-muted">
               {view.question.options.map((option) => (
                 <li key={option.code}>{option.label}</li>
               ))}

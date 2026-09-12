@@ -48,7 +48,7 @@ export function LoginScreen(): ReactNode {
             required
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            className="w-full rounded border border-edge bg-panel px-3 py-2 text-sm"
+            className="w-full rounded-control border border-edge bg-panel px-3 py-2 text-sm"
           />
           <p className="text-xs text-muted">Seeded demo logins: maya (baker), jo (owner).</p>
         </div>
@@ -65,12 +65,12 @@ export function LoginScreen(): ReactNode {
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded border border-edge bg-panel px-3 py-2 text-sm"
+            className="w-full rounded-control border border-edge bg-panel px-3 py-2 text-sm"
           />
         </div>
 
         {signIn.isError ? (
-          <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p role="alert" className="rounded-control border border-owner/40 bg-owner/10 px-3 py-2 text-sm text-owner">
             {messageFor(signIn.error)}
           </p>
         ) : null}
@@ -78,7 +78,7 @@ export function LoginScreen(): ReactNode {
         <button
           type="submit"
           disabled={signIn.isPending}
-          className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          className="w-full rounded-control bg-brand px-3 py-2 text-sm font-semibold text-brand-ink disabled:opacity-60"
         >
           {signIn.isPending ? 'Signing in…' : 'Sign in'}
         </button>

@@ -1,13 +1,89 @@
 @import 'tailwindcss';
 
+/**
+ * The PromisePatch visual system.
+ *
+ * Every value here is a token and nothing here is a decision about meaning. The palette is
+ * split into three channels on purpose, because the product's central distinction is carried
+ * by which channel a colour comes from:
+ *
+ * - **Ground and text** — the surfaces a case sits on, and the type on them.
+ * - **Authority** (`auto` / `ask` / `owner`) — *whose* permission a change needs. A lane's
+ *   colour says who decides, never whether anything happened.
+ * - **Execution** (`done`) — that the external order system's own state agreed. It is the one
+ *   token that may read as finished, and it is deliberately the page's only near-white fill so
+ *   it cannot be reached by accident.
+ *
+ * `brand` is interaction and worker confirmation. It is **never** a state tone: customer
+ * consent and worker confirmation must not be able to share a colour, so the colour a worker
+ * presses is not in the state palette at all.
+ *
+ * Derived from the P7.2 visual pass, which derives it in turn from `brand/README.md` — Patch
+ * Indigo Light `#8390F2` is `brand`, Reverse `#F7F8FC` is `done` and the text top end.
+ */
 @theme {
-  --color-surface: oklch(99% 0.002 250);
-  --color-panel: oklch(100% 0 0);
-  --color-edge: oklch(91% 0.005 250);
-  --color-ink: oklch(24% 0.012 250);
-  --color-muted: oklch(52% 0.012 250);
+  /* ------------------------------------------------------------------ ground and surfaces */
+  --color-surface: oklch(15.2% 0.016 262);
+  --color-lift: oklch(21.5% 0.016 258);
+  --color-panel: oklch(19.6% 0.016 262);
+  --color-card: oklch(20.7% 0.017 264);
+  --color-card-hover: oklch(23.5% 0.019 264);
+  --color-quiet: oklch(20% 0.014 262);
+  --color-edge: oklch(29% 0.018 262);
+  --color-edge-strong: oklch(33% 0.019 262);
+
+  /* ---------------------------------------------------------------------------------- text */
+  --color-ink: oklch(96% 0.004 275);
+  --color-muted: oklch(81% 0.014 262);
+  /* The floor for meaningful text. Quiet means lower emphasis, never lower legibility. */
+  --color-dim: oklch(79% 0.015 262);
+
+  /* ------------------------------------------------------------ interaction and authority */
+  --color-brand: oklch(68.6% 0.132 283);
+  --color-brand-ink: oklch(22% 0.04 283);
+  --color-done: oklch(97.7% 0.004 275);
+  --color-auto: oklch(74% 0.11 212);
+  --color-ask: oklch(84% 0.11 78);
+  --color-owner: oklch(74% 0.13 32);
+
+  /* ----------------------------------------------------------------------------- typography */
+  --font-sans:
+    'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
   --font-mono:
-    ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+    'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas,
+    monospace;
+
+  /* The named roles from the visual pass. Nothing on a screen picks a size freehand. */
+  --text-quote: clamp(19px, 1.7vw, 23px);
+  --text-quote--line-height: 1.18;
+  --text-quote--letter-spacing: -0.024em;
+  --text-quote-lg: clamp(21px, 2.2vw, 28px);
+  --text-quote-lg--line-height: 1.16;
+  --text-quote-lg--letter-spacing: -0.028em;
+  --text-action: 17.5px;
+  --text-action--line-height: 1.35;
+  --text-owner: 15.5px;
+  --text-name: 16px;
+  --text-name--letter-spacing: -0.018em;
+  --text-phrase: 13px;
+  --text-reason: 12.5px;
+  --text-reason--line-height: 1.45;
+  --text-meta: 12px;
+  --text-label: 11.5px;
+  --text-label--line-height: 1.4;
+  --text-label--letter-spacing: 0.055em;
+  --text-state: 11px;
+
+  /* --------------------------------------------------------------- radii and elevation */
+  --radius-sheet: 14px;
+  --radius-card: 12px;
+  --radius-quiet: 10px;
+  --radius-control: 8px;
+
+  --shadow-card: 0 10px 28px oklch(10% 0.01 262 / 0.35);
+  --shadow-lift: 0 18px 44px oklch(10% 0.01 262 / 0.55);
+  --shadow-sheet: 0 40px 100px oklch(10% 0.01 262 / 0.7);
 }
 
 html,
@@ -16,13 +92,47 @@ body,
   height: 100%;
 }
 
-body {
-  background-color: var(--color-surface);
-  color: var(--color-ink);
+html {
+  /* So the browser's own chrome — scrollbars, form controls, the caret — matches the page
+     rather than being the one light rectangle on a dark screen. */
+  color-scheme: dark;
 }
 
-/* A visible focus ring everywhere, rather than per-component. Keyboard use is a baseline. */
+body {
+  background-color: var(--color-surface);
+  background-image: radial-gradient(120% 80% at 12% -10%, var(--color-lift), var(--color-surface) 55%);
+  background-attachment: fixed;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* Figures line up in a column without anything having to be monospaced to do it. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: color-mix(in oklch, var(--color-brand) 42%, transparent);
+}
+
+/* A visible focus ring everywhere, rather than per-component. Keyboard use is a baseline, and
+   the whole judge journey has to be completable without a mouse. */
 :focus-visible {
-  outline: 2px solid oklch(55% 0.16 255);
-  outline-offset: 2px;
+  outline: 2px solid var(--color-brand);
+  outline-offset: 3px;
+}
+
+/**
+ * Motion never gates a read, so removing all of it can never remove information.
+ *
+ * This is the whole of the reduced-motion contract: with it honoured the screen is identical
+ * in content and identical in layout, and only the transitions between two states are gone.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

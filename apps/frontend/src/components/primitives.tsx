@@ -36,7 +36,7 @@ export function QuantityValue({ value }: { value: string | null }): ReactNode {
   if (value === null) return <Unknown />
   const negative = value.trimStart().startsWith('-')
   return (
-    <span className={`font-mono tabular-nums ${negative ? 'font-semibold text-red-700' : ''}`}>
+    <span className={`font-mono tabular-nums ${negative ? 'font-semibold text-owner' : ''}`}>
       {value}
     </span>
   )
@@ -92,6 +92,6 @@ export function Notice({
   children: ReactNode
 }): ReactNode {
   const style =
-    tone === 'bad' ? 'border-red-200 bg-red-50 text-red-800' : 'border-edge bg-surface text-muted'
+    tone === 'bad' ? 'border-owner/40 bg-owner/10 text-owner' : 'border-edge bg-surface/60 text-muted'
   return <p className={`m-4 rounded border px-3 py-2 text-sm ${style}`}>{children}</p>
 }
