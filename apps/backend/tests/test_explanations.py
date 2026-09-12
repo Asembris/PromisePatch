@@ -881,3 +881,29 @@ def test_the_prompt_defines_the_plan_counts_and_demands_required_facts_be_spoken
     assert "must be said in the passage, not only cited" in instruction
     for surface in ex.ExplanationSurface:
         assert surface.value not in instruction
+
+
+# ------------------------------------------------------------- the published lookup for a token
+
+
+def test_a_stored_token_is_read_back_as_the_phrase_this_module_already_publishes() -> None:
+    """The lookup is the table. A second wording anywhere else would be a second vocabulary."""
+    assert (
+        ex.closed_phrase(ex.FactId.IMPACT_REASON, "NOSUB_CONSTRAINT")
+        == (ex.CLOSED_VOCABULARIES[ex.FactId.IMPACT_REASON]["NOSUB_CONSTRAINT"])
+    )
+    assert (
+        ex.closed_phrase(ex.FactId.CASE_EXCEPTION, "SUPPLY_NOT_RECEIVED")
+        == (ex.CLOSED_VOCABULARIES[ex.FactId.CASE_EXCEPTION]["SUPPLY_NOT_RECEIVED"])
+    )
+
+
+def test_every_member_of_every_closed_vocabulary_can_be_looked_up() -> None:
+    for fact_id, vocabulary in ex.CLOSED_VOCABULARIES.items():
+        for value, phrase in vocabulary.items():
+            assert ex.closed_phrase(fact_id, value) == phrase
+
+
+def test_a_token_this_build_has_no_phrase_for_gets_none_rather_than_a_guess() -> None:
+    assert ex.closed_phrase(ex.FactId.IMPACT_REASON, "SOMETHING_NEW") is None
+    assert ex.closed_phrase(ex.FactId.IMPACT_REASON, None) is None

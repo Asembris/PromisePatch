@@ -24,6 +24,7 @@ from promisepatch.domain.analysis import (
     PendingClarification,
     TrackStatus,
 )
+from promisepatch.domain.explanations import FactId, closed_phrase
 from promisepatch.domain.status_view import (
     CASE_HEADLINES,
     Authority,
@@ -121,6 +122,90 @@ def pending(question: str = "Whole delivery, or only the raspberries?") -> Pendi
             ClarificationOptionStatus(code="LINE-RASP", label="only the raspberries"),
         ),
     )
+
+
+# ------------------------------------------------------------- a token, and the words for it
+
+
+def test_a_stored_reason_token_travels_beside_the_sentence_for_it() -> None:
+    """Both, because the drawer quotes the token and the bands read the sentence."""
+    view = project(case("PLANNED", track(state="PENDING", reason="NOSUB_CONSTRAINT")))
+
+    promise = view.threatened[0]
+    assert promise.reason == "NOSUB_CONSTRAINT"
+    assert promise.reason_phrase == "the order carries a no-substitution constraint"
+
+
+def test_the_reason_sentence_is_the_explanation_layer_s_own_wording() -> None:
+    """Read from the one table that owns it, so a surface cannot hold a second dictionary."""
+    view = project(case("PLANNED", track(state="PENDING", reason="PREAPPROVAL_COVERS")))
+
+    assert view.threatened[0].reason_phrase == closed_phrase(
+        FactId.IMPACT_REASON, "PREAPPROVAL_COVERS"
+    )
+
+
+def test_a_reason_token_with_no_published_phrase_is_left_without_one() -> None:
+    """Understating: a caller falls back to the token rather than to a sentence somebody made up."""
+    view = project(case("PLANNED", track(state="PENDING", reason="SOMETHING_NEW")))
+
+    assert view.threatened[0].reason == "SOMETHING_NEW"
+    assert view.threatened[0].reason_phrase is None
+
+
+def test_a_promise_with_no_recorded_reason_has_neither_token_nor_sentence() -> None:
+    view = project(case("PLANNED", track(state="PENDING", reason=None)))
+
+    assert view.threatened[0].reason == ""
+    assert view.threatened[0].reason_phrase is None
+
+
+def test_the_exception_category_travels_beside_the_sentence_for_it() -> None:
+    status = case("PLANNED", track(state="PENDING"))
+    named = CaseStatus(
+        case_id=status.case_id,
+        state=status.state,
+        needs_owner_attention=status.needs_owner_attention,
+        exception_id=status.exception_id,
+        category="SUPPLY_NOT_RECEIVED",
+        tracks=status.tracks,
+        plan_id=status.plan_id,
+        clarification=status.clarification,
+    )
+
+    view = project(named)
+
+    assert view.exception_category == "SUPPLY_NOT_RECEIVED"
+    assert view.exception_phrase == "a supplier delivery did not arrive"
+
+
+def test_a_case_with_no_category_claims_no_sentence_about_one() -> None:
+    status = case("UNDERSTANDING")
+    uncategorised = CaseStatus(
+        case_id=status.case_id,
+        state=status.state,
+        needs_owner_attention=status.needs_owner_attention,
+        exception_id=status.exception_id,
+        category=None,
+        tracks=(),
+        plan_id=status.plan_id,
+        clarification=None,
+    )
+
+    view = project(uncategorised)
+
+    assert view.exception_category is None
+    assert view.exception_phrase is None
+
+
+def test_naming_the_tokens_did_not_change_a_word_of_the_spoken_status() -> None:
+    """The MCP ``status`` tool reads this rendering out. It gains nothing from the new fields."""
+    view = project(case("PLANNED", track(state="PENDING", reason="NOSUB_CONSTRAINT")))
+
+    spoken = render(view)
+
+    assert "NOSUB_CONSTRAINT" in spoken
+    assert "the order carries a no-substitution constraint" not in spoken
 
 
 # ------------------------------------------------------------------- planned is not completed

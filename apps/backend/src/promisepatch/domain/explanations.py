@@ -324,17 +324,37 @@ CLOSED_VOCABULARIES: Final[Mapping[FactId, Mapping[str, str]]] = {
 """The facts whose value comes from a closed set, and what each member of that set renders as.
 
 A projection of the phrase tables above -- derived from them rather than restated, so the two
-cannot disagree -- keyed by the engine enum member's own value. Nothing reads it at runtime and
-nothing here decides anything. It exists so that "this is a value the engine can actually
-produce, and it is the one that goes with *that* rule" is a question somebody outside this
-module can ask: a reviewer, or a fixture that has to be checked against production rather than
-against itself. Copying the phrases into the checker instead would put the wording in a second
-place and let the copy rot.
+cannot disagree -- keyed by the engine enum member's own value. Nothing here decides anything.
+It exists so that "this is a value the engine can actually produce, and it is the one that goes
+with *that* rule" is a question somebody outside this module can ask: a reviewer, or a fixture
+that has to be checked against production rather than against itself. Copying the phrases into
+the checker instead would put the wording in a second place and let the copy rot.
+
+It is also what :func:`closed_phrase` reads, so a surface that has a stored token and needs the
+sentence for it gets this wording rather than one of its own.
 
 Absent on purpose are the facts whose value is a rendered quantity, an instant, or a label the
 order system supplied. Those are not drawn from a set, and pretending they were would be a
 vocabulary that quietly excluded a legitimate value.
 """
+
+
+def closed_phrase(fact_id: FactId, value: str | None) -> str | None:
+    """The sentence this module already publishes for one member of a closed vocabulary.
+
+    The one way a surface outside the explanation layer is allowed to turn a stored token --
+    ``NOSUB_CONSTRAINT``, ``SUPPLY_NOT_RECEIVED`` -- into words a person reads. It is a lookup
+    and nothing else: the wording lives in the phrase tables above, so a screen cannot hold a
+    second dictionary that reinterprets what the engine concluded.
+
+    ``None`` for an absent token and for one this build has no phrase for, because a caller
+    that is handed nothing shows the token it already has rather than a sentence somebody
+    guessed.
+    """
+    if value is None:
+        return None
+    return CLOSED_VOCABULARIES[fact_id].get(value)
+
 
 CONSTRAINT_PREFIXES: Final[frozenset[str]] = frozenset(_CONSTRAINT_PHRASES.values())
 """What a cited constraint's value begins with, before the provenance clause is appended.

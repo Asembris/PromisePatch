@@ -31,6 +31,7 @@ from enum import StrEnum
 from typing import Final
 
 from promisepatch.domain.analysis import CaseStatus, TrackStatus
+from promisepatch.domain.explanations import FactId, closed_phrase
 
 # --------------------------------------------------------------------------- the vocabulary
 
@@ -182,6 +183,18 @@ class PromiseView:
     phrase: str
     authority: Authority
     reason: str
+    """The engine's own reason token, carried unchanged for the record that quotes it."""
+
+    reason_phrase: str | None
+    """The same reason, in the sentence the explanation layer already publishes for it.
+
+    ``reason`` is a stored token -- ``PREAPPROVAL_COVERS``, ``NOSUB_CONSTRAINT`` -- and a token
+    is evidence, not language. This is the words for it, looked up in the one table that owns
+    the wording, so a surface showing a person why a promise was decided this way reads the
+    domain's phrase rather than holding a dictionary of its own. ``None`` where this build has
+    no phrase for the token, so a caller falls back to the token instead of to a guess.
+    """
+
     deadline_at: str | None
     track_id: str
     track_state: str
@@ -244,6 +257,14 @@ class CaseView:
     sentence: str
     needs_owner_attention: bool
     exception_category: str | None
+    exception_phrase: str | None
+    """What the category says, in words. ``None`` when there is no category or no phrase for it.
+
+    Same argument as :attr:`PromiseView.reason_phrase`: ``SUPPLY_NOT_RECEIVED`` is what the
+    engine filed the exception as, and "a supplier delivery did not arrive" is what a person is
+    told. Both travel, because the drawer quotes the first and the bands read the second.
+    """
+
     threatened: tuple[PromiseView, ...]
     untouched: tuple[PromiseView, ...]
     question: QuestionView | None = None
@@ -313,6 +334,7 @@ def project(status: CaseStatus) -> CaseView:
         sentence=_HEADLINE_SENTENCE[headline],
         needs_owner_attention=status.needs_owner_attention,
         exception_category=status.category,
+        exception_phrase=closed_phrase(FactId.CASE_EXCEPTION, status.category),
         threatened=threatened,
         untouched=untouched,
         question=question,
@@ -349,6 +371,7 @@ def _promise(case_state: str, track: TrackStatus) -> PromiseView:
         phrase=_PROMISE_PHRASE[state],
         authority=_authority(state, track),
         reason=track.reason_detail or "",
+        reason_phrase=closed_phrase(FactId.IMPACT_REASON, track.reason_detail),
         deadline_at=None if track.deadline_at is None else track.deadline_at.isoformat(),
         track_id=str(track.track_id),
         track_state=track.state,

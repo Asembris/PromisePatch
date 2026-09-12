@@ -35,7 +35,7 @@ from enum import StrEnum
 from typing import Any, Final
 
 from promisepatch.domain.analysis import NodeFact, TrackPathStatus, TrackStatus
-from promisepatch.domain.explanations import CLOSED_VOCABULARIES, FactId
+from promisepatch.domain.explanations import FactId, closed_phrase
 
 TRACK_UNAFFECTED: Final = "UNAFFECTED"
 """The one durable track state that means the exception never reached this promise."""
@@ -322,9 +322,7 @@ def _untouched_reason(track: TrackStatus, count: int) -> str:
 
 
 def _reason_phrase(reason_detail: str | None) -> str | None:
-    if reason_detail is None:
-        return None
-    return CLOSED_VOCABULARIES[FactId.IMPACT_REASON].get(reason_detail)
+    return closed_phrase(FactId.IMPACT_REASON, reason_detail)
 
 
 def _text(value: Any) -> str | None:
