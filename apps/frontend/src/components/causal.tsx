@@ -75,15 +75,17 @@ export function CausalEdge({
     )
   }
 
+  // Below the map's width the same element turns: the line stands up and the head turns with
+  // it, so a stacked chain still points from one node to the next rather than off the row.
   return (
     <span
       aria-hidden="true"
       data-testid="causal-edge"
       data-orientation="horizontal"
-      className={`flex min-w-3 flex-1 items-center ${colour}`}
+      className={`flex min-w-3 flex-col items-center justify-center xl:flex-1 xl:flex-row ${colour}`}
     >
-      <span className="h-[1.5px] flex-1 rounded-full bg-current opacity-70" />
-      <svg viewBox="0 0 6 8" className="h-2 w-1.5 shrink-0" fill="currentColor">
+      <span className="h-3 w-[1.5px] rounded-full bg-current opacity-70 xl:h-[1.5px] xl:w-auto xl:flex-1" />
+      <svg viewBox="0 0 6 8" className="h-2 w-1.5 shrink-0 rotate-90 xl:rotate-0" fill="currentColor">
         <path d="M0 0 L6 4 L0 8 Z" />
       </svg>
     </span>
