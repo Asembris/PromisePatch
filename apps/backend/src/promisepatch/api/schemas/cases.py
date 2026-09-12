@@ -280,6 +280,10 @@ class CaseWorkspaceResponse(BaseModel):
     operational effects on 3 of 6 orders" is two numbers, and the second one is the universe
     this case considered. A screen that added the untouched count to the threatened one would
     be composing the claim rather than reading it.
+
+    ``untouched_effect_count`` is the first of those numbers, and it is counted from the effect
+    rows of the untouched tracks rather than published as a constant. The proof of the claim is
+    that the same field could come back non-zero.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -304,6 +308,9 @@ class CaseWorkspaceResponse(BaseModel):
     untouched_count: int
     threatened_count: int
     promise_count: int
+    untouched_effect_count: int = Field(
+        description="outbound effects this case caused on the promises it left alone"
+    )
     plan_id: str | None
     awaiting_confirmation: bool
     evidence: EvidenceView

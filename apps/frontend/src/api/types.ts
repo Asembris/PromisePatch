@@ -390,6 +390,8 @@ export interface CaseWorkspaceResponse {
   threatened_count: number
   /** Every promise the case considered. The denominator; never `untouched + threatened` here. */
   promise_count: number
+  /** Outbound effects this case caused on the promises it left alone. Counted, not asserted. */
+  untouched_effect_count: number
   plan_id: string | null
   awaiting_confirmation: boolean
   evidence: EvidenceView

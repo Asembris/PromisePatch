@@ -258,6 +258,15 @@ class CaseView:
     desk that nobody had decided to put there. Understating is the only safe direction here.
     """
 
+    untouched_effect_count: int = 0
+    """Outbound effects this case caused on the promises it left alone. The published zero.
+
+    Counted from the effect rows of the tracks this projection placed in the untouched set, so
+    it is a statement about *these* promises rather than a constant somebody typed. If the
+    workflow ever raised an effect on an unreachable promise, this number would say so on the
+    screen that claims it never does -- which is the only way such a claim is worth making.
+    """
+
     plan_id: str | None = None
     """The identity of the plan on offer, present **only** while one is actually on offer.
 
@@ -294,9 +303,9 @@ class CaseView:
 def project(status: CaseStatus) -> CaseView:
     """Turn one engine-level case status into the product's own vocabulary. Pure."""
     headline = CASE_HEADLINES.get(status.state, CaseHeadline.UNDERSTANDING)
-    views = tuple(_promise(status.state, track) for track in status.tracks)
-    untouched = tuple(view for view in views if view.state is PromiseState.UNTOUCHED)
-    threatened = tuple(view for view in views if view.state is not PromiseState.UNTOUCHED)
+    placed = tuple((track, _promise(status.state, track)) for track in status.tracks)
+    untouched = tuple(view for _, view in placed if view.state is PromiseState.UNTOUCHED)
+    threatened = tuple(view for _, view in placed if view.state is not PromiseState.UNTOUCHED)
     question = _question(status)
     return CaseView(
         case_id=str(status.case_id),
@@ -308,6 +317,9 @@ def project(status: CaseStatus) -> CaseView:
         untouched=untouched,
         question=question,
         next_action=_next_action(headline, threatened, question),
+        untouched_effect_count=sum(
+            len(track.effects) for track, view in placed if view.state is PromiseState.UNTOUCHED
+        ),
         # Bound to the one headline in which a plan is genuinely waiting for a worker. Reading
         # the identity off any other state would let a confirmation be offered for a case that
         # is not asking for one -- the domain would refuse it, and the conversation would have

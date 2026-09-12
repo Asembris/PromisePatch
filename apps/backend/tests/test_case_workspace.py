@@ -244,6 +244,7 @@ async def test_the_untouched_band_is_counted_by_the_backend(
     assert all(item.phrase == "left alone" for item in view.untouched)
     assert all(item.owner == "NOBODY" for item in view.untouched)
     assert all(item.reason for item in view.untouched), "every untouched promise says why"
+    assert view.untouched_effect_count == 0, "the published claim, counted by the backend"
 
 
 async def test_an_open_question_appears_as_a_question_and_never_as_a_result(
@@ -348,6 +349,7 @@ async def test_the_workspace_shows_the_four_real_outcomes_after_the_work_ran(
     assert [promise(view, item).state for item in BLOCKED] == ["ESCALATED", "ESCALATED"]
     assert [promise(view, item).state for item in UNTOUCHED] == ["UNTOUCHED", "UNTOUCHED"]
     assert view.untouched_count == 2
+    assert view.untouched_effect_count == 0, "after the work ran, and not only before it"
 
 
 async def test_a_blocked_promise_names_an_owner_a_reason_and_a_next_action(
@@ -417,6 +419,10 @@ async def test_the_evidence_drawer_carries_identifiers_rather_than_sentences(
     assert asked.approval.provider_ref, "why the product is allowed to say 'asked'"
     assert asked.rule_id and asked.fingerprint
 
+    assert view.untouched_effect_count == sum(
+        len(next(row for row in view.evidence.tracks if row.promise_id == promise_id).effects)
+        for promise_id in UNTOUCHED
+    ), "the count is the drawer's own rows, not a constant beside them"
     for promise_id in UNTOUCHED:
         untouched = next(row for row in view.evidence.tracks if row.promise_id == promise_id)
         assert untouched.effects == (), "an untouched promise caused nothing"

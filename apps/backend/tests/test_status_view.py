@@ -20,6 +20,7 @@ from promisepatch.domain.analysis import (
     ApprovalStatus,
     CaseStatus,
     ClarificationOptionStatus,
+    EffectStatus,
     PendingClarification,
     TrackStatus,
 )
@@ -229,6 +230,54 @@ def test_an_unaffected_track_is_untouched_and_counted() -> None:
     assert [item.customer_name for item in view.untouched] == ["Lena"]
     assert view.untouched[0].authority is Authority.NONE
     assert "1 promise was left alone:" in render(view)
+
+
+def test_a_case_that_left_promises_alone_counts_no_effects_on_them() -> None:
+    """The product's central published number, and it is counted rather than asserted."""
+    view = project(
+        case(
+            "PLANNED",
+            track(state="PENDING", classification="BLOCKED", customer="Okafor"),
+            track(state="UNAFFECTED", classification="UNAFFECTED", customer="Lena"),
+            track(state="UNAFFECTED", classification="UNAFFECTED", customer="Ahmed"),
+        )
+    )
+
+    assert len(view.untouched) == 2
+    assert view.untouched_effect_count == 0
+
+
+def test_an_effect_on_an_untouched_promise_would_be_counted_and_not_hidden() -> None:
+    """The zero is only worth publishing if the same field could come back non-zero.
+
+    A workflow that raised an outbound effect against a promise nothing reached would be
+    breaking the selectivity guarantee, and the screen that claims the guarantee has to be the
+    place it shows. So the count is over the effect rows of the untouched tracks, and a
+    constant would pass every other test in this file.
+    """
+    reached = track(state="UNAFFECTED", classification="UNAFFECTED", customer="Lena")
+    leaked = TrackStatus(
+        **{
+            **{field: getattr(reached, field) for field in reached.__slots__},
+            "effects": (
+                EffectStatus(
+                    kind="ORDER_AMEND",
+                    state="DELIVERED",
+                    idempotency_key="pp:amend:leak",
+                    provider_ref="amd-1",
+                    attempts=1,
+                    result=None,
+                    delivered_at=None,
+                    last_error=None,
+                ),
+            ),
+        }
+    )
+
+    view = project(case("PLANNED", leaked))
+
+    assert len(view.untouched) == 1
+    assert view.untouched_effect_count == 1
 
 
 def test_the_case_states_its_own_universe_rather_than_leaving_it_to_be_added_up() -> None:

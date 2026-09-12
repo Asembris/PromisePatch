@@ -631,6 +631,16 @@ async def test_every_untouched_order_carries_zero_incident_caused_effects(
 
     assert untouched == {LENA, "ord-e", "ord-f"}
     assert [key for key in counted if key[0] in untouched] == []
+
+    # The same zero, as the case itself reports it: three orders left alone out of six, and no
+    # operational effect on any of them. The census above counts the world; this counts the
+    # case, and a screen carrying the claim reads the second one.
+    projected = status_view.project(
+        await analysis.read_case_status(physical.database, case_id=case_id)
+    )
+    assert len(projected.untouched) == len(untouched)
+    assert projected.promise_count == len(UNIVERSE)
+    assert projected.untouched_effect_count == 0
     for order in sorted(untouched):
         entry = ORDERS[order]
         external = entry["external_id"]

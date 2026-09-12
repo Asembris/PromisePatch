@@ -221,6 +221,7 @@ export const PLANNED_CASE: CaseWorkspaceResponse = {
   untouched_count: 2,
   threatened_count: 3,
   promise_count: 5,
+  untouched_effect_count: 0,
   plan_id: 'ac1f2b3c4d5e6f70',
   awaiting_confirmation: true,
   evidence: PLANNED_EVIDENCE,
@@ -396,6 +397,7 @@ export const CLARIFYING_CASE: CaseWorkspaceResponse = {
   untouched_count: 0,
   threatened_count: 0,
   promise_count: 0,
+  untouched_effect_count: 0,
   plan_id: null,
   awaiting_confirmation: false,
 }

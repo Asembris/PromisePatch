@@ -174,6 +174,7 @@ def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorksp
         untouched_count=len(view.untouched),
         threatened_count=len(view.threatened),
         promise_count=view.promise_count,
+        untouched_effect_count=view.untouched_effect_count,
         plan_id=view.plan_id,
         awaiting_confirmation=view.awaiting_confirmation,
         evidence=_evidence(status),
