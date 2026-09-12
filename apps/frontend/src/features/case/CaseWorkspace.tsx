@@ -29,28 +29,14 @@
  */
 import { useState, type ReactNode } from 'react'
 import { useCase } from '../../api/queries'
-import type {
-  AuthorityBandView,
-  CaseWorkspaceResponse,
-  PromiseWorkspaceView,
-  TrackEvidenceView,
-} from '../../api/types'
-import {
-  Badge,
-  CaseHeadlineBadge,
-  PromiseStatePill,
-  StateMarker,
-} from '../../components/badges'
-import {
-  BoundaryRule,
-  Card,
-  Message,
-  QuietCard,
-  SectionLabel,
-} from '../../components/surfaces'
+import type { CaseWorkspaceResponse, TrackEvidenceView } from '../../api/types'
+import { Badge, CaseHeadlineBadge } from '../../components/badges'
+import { Card, Message, QuietCard, SectionLabel } from '../../components/surfaces'
 import { Count, Value } from '../../components/values'
 import { formatDateTime } from '../../components/time'
-import { actionOwnerTone, authorityTone } from '../../components/vocabulary'
+import { actionOwnerTone } from '../../components/vocabulary'
+import { PropagationMap } from './Propagation'
+import { UntouchedProof } from './Untouched'
 
 export function CaseWorkspace({
   caseId,
@@ -221,138 +207,28 @@ function WhatYouMustDo({ view }: { view: CaseWorkspaceResponse }): ReactNode {
 
 // ----------------------------------------------------- bands 3 and 4: reached, and not reached
 
-/** The two halves of the comparison, in one composition, split by the boundary. */
+/**
+ * The two halves of the comparison, in one composition, split by the boundary.
+ *
+ * Band 3 is the incident and every path out of it; band 4 is everything those paths did not
+ * reach. They are one section rather than two because the comparison is the claim: a judge who
+ * has to scroll from one to the other is being asked to hold the first half in their head.
+ */
 function Propagation({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
     <section className="space-y-4" aria-label="What changes, and what was left alone">
-      <WhatChanges bands={view.authority_bands} />
-      <WhatWasLeftAlone view={view} />
+      <PropagationMap
+        bands={view.authority_bands}
+        exceptionCategory={view.exception_category}
+        reportedText={view.reported_text}
+      />
+      <UntouchedProof
+        promises={view.untouched}
+        untouchedCount={view.untouched_count}
+        untouchedEffectCount={view.untouched_effect_count}
+        promiseCount={view.promise_count}
+      />
     </section>
-  )
-}
-
-function WhatChanges({ bands }: { bands: AuthorityBandView[] }): ReactNode {
-  return (
-    <div className="space-y-3">
-      <SectionLabel>what changes, under whose authority</SectionLabel>
-      {bands.length === 0 ? (
-        <QuietCard className="px-4 py-3 text-sm text-muted">
-          Nothing has been decided about any promise yet.
-        </QuietCard>
-      ) : (
-        <div className="space-y-4" data-testid="band-what-changes">
-          {bands.map((band) => (
-            <section
-              key={band.authority}
-              className="space-y-1.5"
-              data-testid="authority-band"
-              data-authority={band.authority}
-            >
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <AuthorityMarker authority={band.authority} />
-                {band.title}
-              </h3>
-              <ul className="space-y-1.5">
-                {band.promises.map((promise) => (
-                  <PromiseRow key={promise.promise_id} promise={promise} />
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
- * Whose permission this group of changes needs.
- *
- * The marker is an authority colour and says nothing whatever about whether anything has
- * happened: execution state lives on the promise's own state, in its own channel. A lane that
- * signalled progress would let a judge read "the customer's group" as "the customer agreed",
- * which is the one confusion the two-channel palette exists to make impossible.
- */
-function AuthorityMarker({ authority }: { authority: string }): ReactNode {
-  return <StateMarker marker="filled" tone={authorityTone(authority)} />
-}
-
-function PromiseRow({ promise }: { promise: PromiseWorkspaceView }): ReactNode {
-  return (
-    <li>
-      <Card
-        className="px-4 py-2"
-        data-testid="promise-row"
-        data-promise-id={promise.promise_id}
-        data-state={promise.state}
-      >
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="text-name font-semibold">{promise.customer_name}</span>
-          <span className="font-mono text-state text-muted">{promise.order_external_id}</span>
-          {/* Phrase, state name and marker shape together: the row stays legible with no
-              colour at all, which is what the contract requires of every status. */}
-          <span className="ml-auto">
-            <PromiseStatePill state={promise.state} phrase={promise.phrase} />
-          </span>
-        </div>
-
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-reason">
-          <span className="text-muted">
-            <span>{promise.reason}</span>
-            {promise.deadline_at === null ? null : (
-              <> · by {formatDateTime(promise.deadline_at)}</>
-            )}
-          </span>
-          <span className="ml-auto" data-testid="promise-next-action">
-            <span className="text-label text-muted uppercase">next </span>
-            {promise.next_action}
-          </span>
-        </div>
-      </Card>
-    </li>
-  )
-}
-
-/**
- * What the exception did not reach.
- *
- * Quiet, never hidden, never collapsed, and never drawn as a success — "left alone" is not an
- * achievement, it is the absence of an effect, and a tick here would claim the product had done
- * something to an order it deliberately did not touch.
- */
-function WhatWasLeftAlone({ view }: { view: CaseWorkspaceResponse }): ReactNode {
-  return (
-    <div className="space-y-3">
-      <BoundaryRule>nothing below this line was reached</BoundaryRule>
-      {view.untouched.length === 0 ? (
-        <QuietCard className="px-4 py-3 text-sm text-muted">
-          No promise in this case was left alone.
-        </QuietCard>
-      ) : (
-        <ul className="grid gap-2 lg:grid-cols-2" data-testid="band-untouched">
-          {view.untouched.map((promise) => (
-            <li key={promise.promise_id}>
-              <QuietCard
-                className="h-full px-4 py-2"
-                data-testid="untouched-row"
-                data-promise-id={promise.promise_id}
-              >
-                <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                  <span className="text-sm font-medium">{promise.customer_name}</span>
-                  <span className="font-mono text-state text-muted">
-                    {promise.order_external_id}
-                  </span>
-                  <span className="ml-auto">
-                    <PromiseStatePill state={promise.state} phrase={promise.phrase} />
-                  </span>
-                </div>
-                <p className="mt-1 text-reason text-muted">{promise.reason}</p>
-              </QuietCard>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   )
 }
 

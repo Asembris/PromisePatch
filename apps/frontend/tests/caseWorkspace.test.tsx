@@ -126,8 +126,24 @@ describe('the case workspace', () => {
     expect(counts.getByText('left alone')).toBeInTheDocument()
     expect(counts.getByText('3')).toBeInTheDocument()
     expect(counts.getByText('orders affected')).toBeInTheDocument()
-    expect(screen.queryByText(/of 5/)).not.toBeInTheDocument()
     expect(within(rows[0]!).getByText(/NOT_REACHABLE/)).toBeInTheDocument()
+    stream.close()
+  })
+
+  it('takes the case’s own universe from the backend’s field, not from the counts beside it', async () => {
+    // The denominator used to be forbidden outright, because until the backend published one
+    // the only way to show it was to add the two counts together. It publishes one now, so the
+    // assertion becomes the stronger of the two available: the figure on the screen follows
+    // `promise_count`, and a case whose universe is deliberately not `untouched + threatened`
+    // renders the universe.
+    const { stream } = mountAtCase({
+      [CASE_PATH]: () => json({ ...PLANNED_CASE, promise_count: 9 }),
+    })
+
+    const proof = await screen.findByTestId('untouched-proof')
+    expect(proof).toHaveAttribute('data-universe', '9')
+    expect(within(proof).getByText(/of 9 this case considered/)).toBeInTheDocument()
+    expect(screen.queryByText(/of 5 this case considered/)).not.toBeInTheDocument()
     stream.close()
   })
 
@@ -225,6 +241,48 @@ describe('truthfulness', () => {
       // The state name is present as a readable string, so the row survives being greyscale.
       expect(row.textContent).toContain(row.getAttribute('data-state'))
     }
+    stream.close()
+  })
+
+  it('draws every threatened promise its own path out of the one incident', async () => {
+    const { stream } = mountAtCase()
+
+    const map = await screen.findByTestId('band-what-changes')
+    const rows = within(map).getAllByTestId('promise-row')
+    expect(rows).toHaveLength(3)
+    for (const row of rows) {
+      // Each row carries the whole traversal it was handed: the source is drawn once per row
+      // rather than once per case, because three promises reached is three paths.
+      expect(within(row).getByText('Valley Produce: Raspberries')).toBeInTheDocument()
+      expect(within(row).getAllByTestId('chain-column')).toHaveLength(4)
+    }
+    // The fixture's chain visits the version column twice, and both nodes are drawn there.
+    const columns = within(rows[0]!).getAllByTestId('chain-column')
+    expect(columns[2]!).toHaveAttribute('data-occupied', '2')
+    expect(screen.getByTestId('incident-source')).toBeInTheDocument()
+    stream.close()
+  })
+
+  it('carries no node reference into the bands a worker reads', async () => {
+    const { stream } = mountAtCase()
+
+    await screen.findByTestId('band-what-changes')
+    const text = document.body.textContent ?? ''
+    for (const reference of ['cl-valley-raspberry', 'res-raspberry', 'rv-charlotte-2', 'ol-pr-a']) {
+      expect(text).not.toContain(reference)
+    }
+    expect(text).not.toContain('R-PREAPPROVED')
+    stream.close()
+  })
+
+  it('puts no completion treatment anywhere on a planned case', async () => {
+    const { stream } = mountAtCase()
+
+    await screen.findByTestId('band-what-changes')
+    for (const status of screen.getAllByTestId('promise-status')) {
+      expect(status).toHaveAttribute('data-finished', 'false')
+    }
+    expect(screen.queryByText('changed')).not.toBeInTheDocument()
     stream.close()
   })
 
