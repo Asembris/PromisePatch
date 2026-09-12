@@ -44,6 +44,30 @@ class QuestionView(BaseModel):
     options: tuple[QuestionOptionView, ...]
 
 
+class ClarificationHistoryView(BaseModel):
+    """One question this case asked, beside whatever answered it.
+
+    Band 1 keeps the question and its answer together after the answer arrives, and this is the
+    durable pair it reads. ``question`` is the only open one's twin: a screen that rebuilt an
+    answered question from the answer, or from the case's category, would be showing a sentence
+    nobody asked.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    clarification_id: UUID
+    ordinal: int
+    slot: str
+    question: str
+    options: tuple[QuestionOptionView, ...]
+    asked_at: datetime
+    answered: bool
+    answer_text: str | None = Field(description="the worker's own answer, verbatim, or null")
+    answered_by: str | None
+    answered_at: datetime | None
+    resolved_option_code: str | None
+
+
 class NextActionView(BaseModel):
     """Band 2. Exactly one action, and exactly one person it belongs to."""
 
@@ -228,6 +252,9 @@ class CaseWorkspaceResponse(BaseModel):
     reported_at: datetime | None
     needs_owner_attention: bool
     question: QuestionView | None
+    clarifications: tuple[ClarificationHistoryView, ...] = Field(
+        description="every question this case asked, oldest first, the open one included"
+    )
     next_action: NextActionView
     authority_bands: tuple[AuthorityBandView, ...]
     untouched: tuple[PromiseWorkspaceView, ...]

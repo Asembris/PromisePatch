@@ -57,6 +57,7 @@ from promisepatch.db.models import (
     ApprovalDecision,
     ApprovalRequest,
     Case,
+    CaseReport,
     CaseStep,
     Customer,
     ExceptionClarification,
@@ -1377,6 +1378,36 @@ class PendingClarification:
 
 
 @dataclass(frozen=True, slots=True)
+class AnsweredClarification:
+    """One question this case asked, and the answer that closed it, if one has.
+
+    The durable record rather than the open one. :class:`PendingClarification` answers "what is
+    this case waiting on"; this answers "what has it already asked, and what was it told" -- and
+    the two are different questions the moment a worker answers, because the question then stops
+    being a prompt and becomes the provenance of everything that followed from it.
+
+    Every field is a column. The answer is the worker's own text byte for byte, the option code
+    is the one the domain resolved it to, and neither is re-derived here: a surface that
+    reconstructed the question from the answer would be inventing the history it claims to show.
+    """
+
+    clarification_id: UUID
+    ordinal: int
+    slot: str
+    question: str
+    options: tuple[ClarificationOptionStatus, ...]
+    asked_at: datetime
+    answered: bool
+    answer_text: str | None
+    answered_by: str | None
+    """The worker whose statement closed the question, read off the answering report row."""
+
+    answered_at: datetime | None
+    resolved_option_code: str | None
+    """The option the domain resolved the answer to, or nothing where free text resolved none."""
+
+
+@dataclass(frozen=True, slots=True)
 class CaseStatus:
     """What one case currently concludes. A read, and only a read."""
 
@@ -1396,6 +1427,14 @@ class CaseStatus:
     """
 
     clarification: PendingClarification | None = None
+    clarifications: tuple[AnsweredClarification, ...] = ()
+    """Every question this case has asked, in the order it asked them.
+
+    Includes the open one, if there is one, so a reader never has to stitch two fields together
+    to see the whole conversation. ``clarification`` above is the same row seen from the other
+    side -- what is still outstanding -- and it stays because "is this case waiting on somebody"
+    must not require walking a history and testing a flag.
+    """
 
 
 class CaseNotFoundError(RuntimeError):
@@ -1438,6 +1477,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
 
         interpretation = await _interpretation_status(connection, case_id, case.exception_id)
         pending = await _pending_clarification(connection, case_id)
+        asked = await _clarification_history(connection, case_id)
         tracks: list[TrackStatus] = []
         for track in rows:
             options = (
@@ -1535,6 +1575,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
             entries=[plan_entry_of(track) for track in tracks],
         ),
         clarification=pending,
+        clarifications=asked,
     )
 
 
@@ -1584,6 +1625,45 @@ async def _pending_clarification(
             ClarificationOptionStatus(code=str(item["code"]), label=str(item["label"]))
             for item in (row.options or [])
         ),
+    )
+
+
+async def _clarification_history(
+    connection: AsyncConnection, case_id: UUID
+) -> tuple[AnsweredClarification, ...]:
+    """Every question this case has asked, in ordinal order, with whatever closed each one.
+
+    An outer join, because the newest question is usually still open and an inner one would
+    drop it. The answering worker comes from the report row the answer was stored as, which is
+    the only place that fact exists: the clarification row records *that* it was answered, and
+    the statement records who made it.
+    """
+    rows = (
+        await connection.execute(
+            select(ExceptionClarification, CaseReport.reported_by.label("answered_by"))
+            .outerjoin(CaseReport, CaseReport.id == ExceptionClarification.answer_report_id)
+            .where(ExceptionClarification.case_id == case_id)
+            .order_by(ExceptionClarification.ordinal)
+        )
+    ).all()
+    return tuple(
+        AnsweredClarification(
+            clarification_id=row.id,
+            ordinal=row.ordinal,
+            slot=row.slot,
+            question=row.question,
+            options=tuple(
+                ClarificationOptionStatus(code=str(item["code"]), label=str(item["label"]))
+                for item in (row.options or [])
+            ),
+            asked_at=row.asked_at,
+            answered=row.answered_at is not None,
+            answer_text=row.answer_text,
+            answered_by=row.answered_by,
+            answered_at=row.answered_at,
+            resolved_option_code=row.resolved_option_code,
+        )
+        for row in rows
     )
 
 

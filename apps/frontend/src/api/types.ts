@@ -223,6 +223,21 @@ export interface CaseQuestionView {
   options: QuestionOptionView[]
 }
 
+export interface ClarificationHistoryView {
+  clarification_id: string
+  ordinal: number
+  slot: string
+  question: string
+  options: QuestionOptionView[]
+  asked_at: string
+  answered: boolean
+  /** The worker's own answer, verbatim, or `null` while the question is still open. */
+  answer_text: string | null
+  answered_by: string | null
+  answered_at: string | null
+  resolved_option_code: string | null
+}
+
 export interface NextActionView {
   owner: string
   owner_label: string
@@ -346,6 +361,8 @@ export interface CaseWorkspaceResponse {
   reported_at: string | null
   needs_owner_attention: boolean
   question: CaseQuestionView | null
+  /** Every question this case asked, oldest first, the open one included. */
+  clarifications: ClarificationHistoryView[]
   next_action: NextActionView
   authority_bands: AuthorityBandView[]
   untouched: PromiseWorkspaceView[]

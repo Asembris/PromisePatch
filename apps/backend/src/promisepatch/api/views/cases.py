@@ -33,6 +33,7 @@ from promisepatch.api.schemas.cases import (
     CaseListResponse,
     CaseSummaryView,
     CaseWorkspaceResponse,
+    ClarificationHistoryView,
     EffectEvidenceView,
     EvidenceView,
     InterpretationEvidenceView,
@@ -155,6 +156,7 @@ def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorksp
         reported_at=None if opening is None else opening.observed_at,
         needs_owner_attention=view.needs_owner_attention,
         question=_question(view),
+        clarifications=tuple(_clarification(item) for item in status.clarifications),
         next_action=NextActionView(
             owner=view.next_action.owner.value,
             owner_label=view.next_action.owner_label,
@@ -208,6 +210,25 @@ def _question(view: status_view.CaseView) -> QuestionView | None:
             QuestionOptionView(code=option.code, label=option.label)
             for option in view.question.options
         ),
+    )
+
+
+def _clarification(record: analysis.AnsweredClarification) -> ClarificationHistoryView:
+    """Band 1's history, copied. Nothing is worded here: both texts are somebody's own."""
+    return ClarificationHistoryView(
+        clarification_id=record.clarification_id,
+        ordinal=record.ordinal,
+        slot=record.slot,
+        question=record.question,
+        options=tuple(
+            QuestionOptionView(code=option.code, label=option.label) for option in record.options
+        ),
+        asked_at=record.asked_at,
+        answered=record.answered,
+        answer_text=record.answer_text,
+        answered_by=record.answered_by,
+        answered_at=record.answered_at,
+        resolved_option_code=record.resolved_option_code,
     )
 
 

@@ -267,6 +267,69 @@ async def test_an_open_question_appears_as_a_question_and_never_as_a_result(
     assert view.awaiting_confirmation is False
 
 
+# --------------------------------------------------------------- the questions, and their answers
+
+
+async def test_an_open_question_is_in_the_history_with_nothing_answering_it_yet(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """The history exists from the moment the question does, and claims no answer."""
+    opened = await physical.report(CANONICAL_REPORT)
+    await physical.drain_intake(opened.case_id)
+
+    view = await workspace(browser, opened.case_id)
+
+    assert len(view.clarifications) == 1
+    asked = view.clarifications[0]
+    assert view.question is not None
+    assert asked.clarification_id == view.question.clarification_id
+    assert asked.question == view.question.question
+    assert asked.ordinal == 1
+    assert asked.answered is False
+    assert asked.answer_text is None
+    assert asked.answered_by is None
+    assert asked.answered_at is None
+    assert asked.resolved_option_code is None
+
+
+async def test_an_answered_question_keeps_its_own_words_beside_the_answer(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """Band 1 after the answer: the question, the worker's own sentence, and who said it.
+
+    The question is gone from ``question`` because nothing is waiting on it any more, and that
+    is exactly why the history has to carry it: a screen with only the open question and the
+    case's category would have to invent the sentence that was actually asked.
+    """
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    assert view.question is None, "nothing is open once it has been answered"
+    assert len(view.clarifications) == 1
+    answered = view.clarifications[0]
+    assert answered.answered is True
+    assert answered.answer_text == RASPBERRY_ONLY, "the worker's own words, byte for byte"
+    assert answered.answered_by == "maya"
+    assert answered.answered_at is not None
+    assert answered.asked_at <= answered.answered_at
+    assert answered.question, "the question it answered is still here"
+    assert len(answered.options) >= 2
+
+
+async def test_a_case_nobody_has_asked_anything_has_no_history_to_show(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """No history is invented for a case that was understood first time. Empty, not absent."""
+    opened = await physical.report("the deck oven is down")
+    await physical.drain_intake(opened.case_id)
+
+    view = await workspace(browser, opened.case_id)
+
+    assert view.clarifications == ()
+    assert view.question is None
+
+
 # ----------------------------------------------------------- the settled case, in truthful words
 
 

@@ -114,6 +114,24 @@ export const PLANNED_CASE: CaseWorkspaceResponse = {
   reported_at: '2026-03-04T07:05:00+00:00',
   needs_owner_attention: false,
   question: null,
+  clarifications: [
+    {
+      clarification_id: '7c8d9e0f-1a2b-4c3d-8e4f-5a6b7c8d9e0f',
+      ordinal: 1,
+      slot: 'SCOPE',
+      question: 'Which of them did not arrive?',
+      options: [
+        { code: 'A', label: 'Only the raspberries' },
+        { code: 'B', label: 'The whole delivery' },
+      ],
+      asked_at: '2026-03-04T07:05:30+00:00',
+      answered: true,
+      answer_text: 'just the raspberries, the strawberries came',
+      answered_by: 'maya',
+      answered_at: '2026-03-04T07:05:50+00:00',
+      resolved_option_code: 'A',
+    },
+  ],
   next_action: {
     owner: 'YOU',
     owner_label: 'You',
@@ -312,6 +330,16 @@ export const CLARIFYING_CASE: CaseWorkspaceResponse = {
       { code: 'B', label: 'The whole delivery' },
     ],
   },
+  clarifications: [
+    {
+      ...PLANNED_CASE.clarifications[0]!,
+      answered: false,
+      answer_text: null,
+      answered_by: null,
+      answered_at: null,
+      resolved_option_code: null,
+    },
+  ],
   next_action: {
     owner: 'YOU',
     owner_label: 'You',
