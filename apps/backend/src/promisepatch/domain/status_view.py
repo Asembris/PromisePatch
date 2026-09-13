@@ -667,6 +667,20 @@ def _untouched_line(view: CaseView) -> str:
 
 
 def _reason(item: PromiseView) -> str:
+    """Why this promise was decided this way, in words rather than in the engine's token.
+
+    ``reason_detail`` is a stored enum -- ``NOSUB_CONSTRAINT``, ``SUPPLY_NOT_RECEIVED`` -- and
+    reading one aloud asks a baker to know the engine's vocabulary in order to understand their
+    own kitchen. The words for it already exist, in the one table that owns the wording, and
+    :attr:`PromiseView.reason_phrase` is that lookup already done.
+
+    The token remains on the value and remains in the evidence that quotes it; what changes here
+    is only what is *spoken*. The fallbacks stay tokens on purpose: a build with no phrase for a
+    stored reason says the token rather than inventing a sentence for it, because a wrong reason
+    read out confidently is worse than an unfamiliar one read out plainly.
+    """
+    if item.reason_phrase:
+        return item.reason_phrase
     if item.reason:
         return item.reason
     if item.rule_id:

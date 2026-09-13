@@ -198,14 +198,45 @@ def test_a_case_with_no_category_claims_no_sentence_about_one() -> None:
     assert view.exception_phrase is None
 
 
-def test_naming_the_tokens_did_not_change_a_word_of_the_spoken_status() -> None:
-    """The MCP ``status`` tool reads this rendering out. It gains nothing from the new fields."""
+def test_the_spoken_status_says_the_reason_rather_than_the_engine_s_token() -> None:
+    """What is read aloud is language. ``NOSUB_CONSTRAINT`` is evidence, and stays evidence.
+
+    This is a deliberate change to what the status tool speaks. It previously read the stored
+    token out, which asked a baker to know the engine's enum in order to understand their own
+    kitchen. The token has not moved: it is still on the projection and still in the drawer that
+    quotes it -- only the sentence changed.
+    """
     view = project(case("PLANNED", track(state="PENDING", reason="NOSUB_CONSTRAINT")))
 
     spoken = render(view)
 
-    assert "NOSUB_CONSTRAINT" in spoken
-    assert "the order carries a no-substitution constraint" not in spoken
+    assert "the order carries a no-substitution constraint" in spoken
+    assert "NOSUB_CONSTRAINT" not in spoken
+
+
+def test_an_untouched_promise_is_explained_in_words_too() -> None:
+    """The untouched band carries the product's central claim and is read out with the rest."""
+    view = project(
+        case(
+            "PLANNED",
+            track(state="PENDING", reason="NOSUB_CONSTRAINT"),
+            track(state="UNAFFECTED", reason="NOT_REACHABLE"),
+        )
+    )
+
+    spoken = render(view)
+
+    phrase = closed_phrase(FactId.IMPACT_REASON, "NOT_REACHABLE")
+    assert phrase is not None
+    assert "NOT_REACHABLE" not in spoken
+    assert phrase in spoken
+
+
+def test_a_reason_with_no_published_phrase_is_still_spoken_as_its_token() -> None:
+    """The fallback is the token, never a sentence this module made up for an unknown reason."""
+    view = project(case("PLANNED", track(state="PENDING", reason="SOMETHING_NEW")))
+
+    assert "SOMETHING_NEW" in render(view)
 
 
 # ------------------------------------------------------------------- planned is not completed
