@@ -19,12 +19,21 @@ const EXPECTED_PROMISES = 6
 
 test.describe.configure({ mode: 'serial' })
 
+/**
+ * Sign in, and wait for something that is on the landing surface in every state.
+ *
+ * The panel heading, not the list of cases. `pp reset-demo-state` seeds the order book and
+ * opens no case at all -- a case exists only once somebody reports an exception -- so the
+ * `case-list` element is absent on a freshly seeded stack and the panel shows its empty
+ * message instead. Waiting on the list made signing in depend on a case nothing in this suite
+ * creates, which passed against a developer's stack and could never pass against CI's.
+ */
 async function signIn(page: Page): Promise<void> {
   await page.goto('/')
   await page.getByLabel('Worker').fill(credentials.username)
   await page.getByLabel('Password').fill(credentials.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByTestId('case-list')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Cases' })).toBeVisible()
 }
 
 /**
@@ -102,5 +111,9 @@ test('an operator reset reaches the browser and returns it to the sign-in screen
   resetDemoState()
 
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByTestId('case-row')).toHaveCount(0)
+  // The signed-in worker's identity is gone from the header, which is the protected read this
+  // page still had. Counting order rows would prove nothing now that they are behind a
+  // disclosure nobody opened, and counting cases would prove nothing either: the seeded
+  // fixture has none before the reset or after it.
+  await expect(page.getByTestId('worker-identity')).toHaveCount(0)
 })
