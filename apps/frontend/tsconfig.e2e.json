@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // `DOM` is here and deliberately not in `tsconfig.node.json`. A Playwright spec is two
+    // programs in one file: the test body runs in Node, and every `page.evaluate` callback is
+    // compiled and shipped into the browser, where `document` is exactly the right global.
+    // Giving the Node project DOM as well would have made a config file that reached for
+    // `window` typecheck quietly, which is the mistake this split exists to keep catching.
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo"
+  },
+  "include": ["e2e"]
+}
