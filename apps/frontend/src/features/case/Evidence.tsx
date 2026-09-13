@@ -194,18 +194,18 @@ function CausalPaths({ rows }: { rows: readonly Subject[] }): ReactNode {
     <Disclosure summary="the path from what happened to each promise" testId="evidence-path">
       <LayerBody>
         <ul className="space-y-2">
-        {rows.map(({ track, promise }) => (
-          <li
-            key={track.track_id}
-            className="text-reason"
-            data-testid="evidence-path-row"
-            data-promise-id={track.promise_id}
-          >
-            <span className="text-sm font-medium">
-              {promise === undefined ? track.order_external_id : promise.customer_name}
-            </span>
-            <ChainInWords chain={promise?.causal_chain} />
-          </li>
+          {rows.map(({ track, promise }) => (
+            <li
+              key={track.track_id}
+              className="text-reason"
+              data-testid="evidence-path-row"
+              data-promise-id={track.promise_id}
+            >
+              <span className="text-sm font-medium">
+                {promise === undefined ? track.order_external_id : promise.customer_name}
+              </span>
+              <ChainInWords chain={promise?.causal_chain} />
+            </li>
           ))}
         </ul>
       </LayerBody>
@@ -267,30 +267,30 @@ function WhatWasChecked({
     <Disclosure summary="what was checked, and under whose authority" testId="evidence-authority">
       <LayerBody>
         <div className="space-y-3">
-        {reading === null ? null : (
-          <p className="text-reason text-muted" data-testid="evidence-reading">
-            The report was read by {reading.source.toLowerCase()} and the facts are attested by{' '}
-            <Value>{reading.attestor}</Value>.
-          </p>
-        )}
-        {rows.map(({ track, promise, authorityTitle }) => (
-          <div
-            key={track.track_id}
-            className="space-y-1 text-reason"
-            data-testid="evidence-authority-row"
-            data-promise-id={track.promise_id}
-          >
-            <p className="flex flex-wrap items-baseline gap-x-2.5">
-              <span className="text-sm font-medium">
-                {promise === undefined ? track.order_external_id : promise.customer_name}
-              </span>
-              <span className="text-muted">
-                {authorityTitle ?? 'Nothing about this promise needs anybody’s permission.'}
-              </span>
+          {reading === null ? null : (
+            <p className="text-reason text-muted" data-testid="evidence-reading">
+              The report was read by {reading.source.toLowerCase()} and the facts are attested by{' '}
+              <Value>{reading.attestor}</Value>.
             </p>
-            <ApprovalLine approval={track.approval} />
-            <RevalidationChecks revalidation={track.revalidation} />
-          </div>
+          )}
+          {rows.map(({ track, promise, authorityTitle }) => (
+            <div
+              key={track.track_id}
+              className="space-y-1 text-reason"
+              data-testid="evidence-authority-row"
+              data-promise-id={track.promise_id}
+            >
+              <p className="flex flex-wrap items-baseline gap-x-2.5">
+                <span className="text-sm font-medium">
+                  {promise === undefined ? track.order_external_id : promise.customer_name}
+                </span>
+                <span className="text-muted">
+                  {authorityTitle ?? 'Nothing about this promise needs anybody’s permission.'}
+                </span>
+              </p>
+              <ApprovalLine approval={track.approval} />
+              <RevalidationChecks revalidation={track.revalidation} />
+            </div>
           ))}
         </div>
       </LayerBody>
@@ -369,48 +369,48 @@ function TechnicalRecord({
     <Disclosure summary="the technical record" testId="evidence-technical">
       <LayerBody>
         <div className="space-y-3 font-mono text-state" data-testid="evidence-technical-panel">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-          <dt className="text-muted">case</dt>
-          <dd className="break-all">{evidence.case_id}</dd>
-          <dt className="text-muted">state</dt>
-          <dd>
-            {evidence.case_state} · v{evidence.case_version}
-          </dd>
-          <dt className="text-muted">plan</dt>
-          <dd className="break-all">{evidence.plan_id}</dd>
-          <dt className="text-muted">exception</dt>
-          <dd className="break-all">
-            <Value>{evidence.exception_id}</Value>
-          </dd>
-          {evidence.interpretation === null ? null : (
-            <>
-              <dt className="text-muted">reading</dt>
-              <dd>
-                {evidence.interpretation.source} · {evidence.interpretation.outcome ?? '—'} ·{' '}
-                <Value>{evidence.interpretation.model_id}</Value>
-              </dd>
-            </>
-          )}
-        </dl>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+            <dt className="text-muted">case</dt>
+            <dd className="break-all">{evidence.case_id}</dd>
+            <dt className="text-muted">state</dt>
+            <dd>
+              {evidence.case_state} · v{evidence.case_version}
+            </dd>
+            <dt className="text-muted">plan</dt>
+            <dd className="break-all">{evidence.plan_id}</dd>
+            <dt className="text-muted">exception</dt>
+            <dd className="break-all">
+              <Value>{evidence.exception_id}</Value>
+            </dd>
+            {evidence.interpretation === null ? null : (
+              <>
+                <dt className="text-muted">reading</dt>
+                <dd>
+                  {evidence.interpretation.source} · {evidence.interpretation.outcome ?? '—'} ·{' '}
+                  <Value>{evidence.interpretation.model_id}</Value>
+                </dd>
+              </>
+            )}
+          </dl>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[48rem] text-left">
-            <thead className="text-muted">
-              <tr>
-                <th className="py-1 pr-3 font-normal">promise</th>
-                <th className="py-1 pr-3 font-normal">track</th>
-                <th className="py-1 pr-3 font-normal">rule</th>
-                <th className="py-1 pr-3 font-normal">order</th>
-                <th className="py-1 pr-3 font-normal">fingerprint</th>
-                <th className="py-1 pr-3 font-normal">effects</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ track, promise }) => (
-                <TechnicalRow key={track.track_id} track={track} promise={promise} />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[48rem] text-left">
+              <thead className="text-muted">
+                <tr>
+                  <th className="py-1 pr-3 font-normal">promise</th>
+                  <th className="py-1 pr-3 font-normal">track</th>
+                  <th className="py-1 pr-3 font-normal">rule</th>
+                  <th className="py-1 pr-3 font-normal">order</th>
+                  <th className="py-1 pr-3 font-normal">fingerprint</th>
+                  <th className="py-1 pr-3 font-normal">effects</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ track, promise }) => (
+                  <TechnicalRow key={track.track_id} track={track} promise={promise} />
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </LayerBody>
