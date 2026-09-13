@@ -674,6 +674,20 @@ def _reason(item: PromiseView) -> str:
     return "no reason recorded"
 
 
+def render_report_receipt() -> str:
+    """What is said back the instant a worker's report is stored, and nothing more.
+
+    Fixed text, because at this moment there is genuinely nothing to report: the words are
+    durable and the interpreter has not run. Naming an outcome, a promise or an order here would
+    be describing work nobody has done, and the case may still turn out to be about something
+    else entirely. The next truthful sentence about it comes from :func:`render`.
+    """
+    return (
+        "I have written that down exactly as you said it. "
+        "Nothing has changed yet - I am working out what it means for your promises."
+    )
+
+
 def render_clarification_receipt() -> str:
     """What is said back the instant a worker's answer is stored, and nothing more.
 

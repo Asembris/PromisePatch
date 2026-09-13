@@ -187,7 +187,11 @@ async def report(
     except intake.UnknownWorkerError as error:
         logger.error("intents.surface_worker_unknown", worker=worker_id)
         raise SURFACE_WORKER_MISSING from error
-    except intake.IntakeConflictError as error:
+    except (intake.NotPermittedError, intake.IntakeConflictError) as error:
+        # `NotPermittedError` reaches here from `require_attestor`: a deployment whose configured
+        # surface worker is not somebody who may attest a physical fact. It is refused rather
+        # than translated into a server fault, because the configuration is wrong about a person
+        # rather than absent.
         raise _refused(error) from error
 
     logger.info(
