@@ -21,6 +21,10 @@ happen" is read here, because a caller that could set it could backdate a physic
 tool that was offered is not a tool that is allowed; this router adds a credential and subtracts
 nothing.
 
+**A refusal reads the same here as it does anywhere else.** The mapping from a domain exception to
+a status and a code is :mod:`promisepatch.api.refusals`, shared with the browser conversation
+routes, because a stale plan is a fact about the case rather than about which transport asked.
+
 **It interprets nothing.** ``report`` and ``clarify`` store the words and enqueue the durable
 work. The interpreter runs in the worker, under a lease, in a transaction that can be rolled
 back -- which is the only place a decision that settles a delivery belongs.
@@ -51,6 +55,7 @@ from starlette.requests import Request
 
 from promisepatch.api.dependencies import DatabaseDep, SettingsDep
 from promisepatch.api.errors import ApiError
+from promisepatch.api.refusals import refusal_for
 from promisepatch.api.schemas.intents import (
     CaseStatusResponse,
     ClarificationAccepted,
@@ -90,11 +95,6 @@ UNCONFIGURED = ApiError(
 """No credential and no attestor, no intents. Defaulting either one would mean every copy of
 this repository shared a secret, or that an intake could arrive with nobody on the record."""
 
-NO_SUCH_CASE = ApiError(status_code=404, code="CASE_NOT_FOUND", message="no case by that id")
-"""A case id that names nothing. Case ids are UUIDs and the caller is an authenticated internal
-service, so this is not an enumeration surface -- and a conversation that could not tell "no
-such case" from "not yours" would have to guess which it was."""
-
 SURFACE_WORKER_MISSING = ApiError(
     status_code=503,
     code="SURFACE_WORKER_UNKNOWN",
@@ -117,6 +117,20 @@ def _authenticate(settings: SettingsDep, presented: str | None) -> str:
         logger.warning("intents.rejected", reason="service_token")
         raise REJECTED
     return settings.require_surface_worker_id()
+
+
+def _refused(error: Exception) -> ApiError:
+    """Translate a domain refusal, or re-raise what was never one.
+
+    The mapping is :mod:`promisepatch.api.refusals`, shared with the browser conversation routes
+    so the two transports cannot answer the same refusal differently. An exception with no entry
+    there leaves this function by being raised again, because flattening an unknown failure into
+    the nearest ``409`` would tell a caller a case is in a state nothing established.
+    """
+    refusal = refusal_for(error)
+    if refusal is None:
+        raise error
+    return refusal
 
 
 def _correlation_id(request: Request) -> UUID | None:
@@ -174,11 +188,7 @@ async def report(
         logger.error("intents.surface_worker_unknown", worker=worker_id)
         raise SURFACE_WORKER_MISSING from error
     except intake.IntakeConflictError as error:
-        raise ApiError(
-            status_code=409,
-            code="COMMAND_CONFLICT",
-            message="this command id was already used for a different statement",
-        ) from error
+        raise _refused(error) from error
 
     logger.info(
         "intents.report.accepted",
@@ -229,29 +239,13 @@ async def clarify(
     except intake.UnknownWorkerError as error:
         logger.error("intents.surface_worker_unknown", worker=worker_id)
         raise SURFACE_WORKER_MISSING from error
-    except cases.CaseMissingError as error:
-        raise NO_SUCH_CASE from error
-    except intake.NotPermittedError as error:
-        raise ApiError(
-            status_code=403,
-            code="CASE_NOT_PERMITTED",
-            message="this surface may not speak on that case",
-        ) from error
-    except intake.NotAwaitingClarificationError as error:
-        # Not something the caller can fix by rephrasing: the case is not asking anything. A
-        # surface that recorded an answer anyway would be putting words on a case that never
-        # questioned them, which is the invented-evidence failure this boundary exists to stop.
-        raise ApiError(
-            status_code=409,
-            code="NOT_AWAITING_CLARIFICATION",
-            message="that case is not waiting for an answer",
-        ) from error
-    except intake.IntakeConflictError as error:
-        raise ApiError(
-            status_code=409,
-            code="COMMAND_CONFLICT",
-            message="this command id was already used for a different answer",
-        ) from error
+    except (
+        cases.CaseMissingError,
+        intake.NotPermittedError,
+        intake.NotAwaitingClarificationError,
+        intake.IntakeConflictError,
+    ) as error:
+        raise _refused(error) from error
 
     logger.info(
         "intents.clarify.accepted",
@@ -302,32 +296,14 @@ async def confirm(
     except intake.UnknownWorkerError as error:
         logger.error("intents.surface_worker_unknown", worker=worker_id)
         raise SURFACE_WORKER_MISSING from error
-    except cases.CaseMissingError as error:
-        raise NO_SUCH_CASE from error
-    except intake.NotPermittedError as error:
-        raise ApiError(
-            status_code=403,
-            code="CASE_NOT_PERMITTED",
-            message="this surface may not confirm that case",
-        ) from error
-    except recovery.StalePlanError as error:
-        raise ApiError(
-            status_code=409,
-            code="PLAN_SUPERSEDED",
-            message="that plan is not the one this case is offering",
-        ) from error
-    except recovery.PlanNotConfirmableError as error:
-        raise ApiError(
-            status_code=409,
-            code="PLAN_NOT_CONFIRMABLE",
-            message="that case is not waiting for a confirmation",
-        ) from error
-    except recovery.ConfirmationConflictError as error:
-        raise ApiError(
-            status_code=409,
-            code="COMMAND_CONFLICT",
-            message="this command id was already used for a different confirmation",
-        ) from error
+    except (
+        cases.CaseMissingError,
+        intake.NotPermittedError,
+        recovery.StalePlanError,
+        recovery.PlanNotConfirmableError,
+        recovery.ConfirmationConflictError,
+    ) as error:
+        raise _refused(error) from error
 
     logger.info(
         "intents.confirm.accepted",
@@ -383,14 +359,8 @@ async def status(
                 raise analysis.CaseNotFoundError(f"case {intent.case_id} does not exist")
             await intake.require_permitted(connection, case_id=intent.case_id, worker_id=worker_id)
         current = await analysis.read_case_status(database, case_id=intent.case_id)
-    except intake.NotPermittedError as error:
-        raise ApiError(
-            status_code=403,
-            code="CASE_NOT_PERMITTED",
-            message="this surface may not read that case",
-        ) from error
-    except analysis.CaseNotFoundError as error:
-        raise NO_SUCH_CASE from error
+    except (intake.NotPermittedError, analysis.CaseNotFoundError) as error:
+        raise _refused(error) from error
 
     view = status_view.project(current)
     return CaseStatusResponse(
