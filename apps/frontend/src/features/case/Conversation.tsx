@@ -9,8 +9,8 @@
  *
  * - **It composes no sentence about a case.** Everything a person reads here is `speech` — the
  *   whole status as `promisepatch.domain.status_view` renders it, or the receipt the backend
- *   returned for the turn just accepted — printed verbatim. A panel that re-worded "planned" is
- *   one word away from "done".
+ *   returned for the turn just accepted — printed verbatim, and read aloud verbatim where a
+ *   browser can. A panel that re-worded "planned" is one word away from "done".
  * - **It decides nothing about authority.** Which controls exist comes from `may_speak` and
  *   `permitted_verbs`, both backend fields. There is no role read here, no state compared, and
  *   no table of what a phase allows. The domain checks every call again regardless, so what
@@ -26,12 +26,22 @@
  * A refused turn is shown as what it is, with the backend's own message, and the case is re-read
  * either way — a refusal is information about the case, and the most common one means the case
  * moved while somebody was reading it.
+ *
+ * **The voice posture is drawn here, and it is about the turn rather than about the case.** Five
+ * of the contract's nine voice states belong to capture and live in `TurnComposer`; the four
+ * that remain — processing, clarifying, confirming, waiting — are postures of a case, and each
+ * one is read off a backend field rather than worked out. The *sentence* under each of them is
+ * always the backend's; what this panel chooses is only which of its own already-composed
+ * strings to show a worker next.
  */
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ApiError } from '../../api/client'
 import { useClarifyTurn, useConfirmTurn } from '../../api/queries'
 import type { CaseWorkspaceResponse, TurnAccepted } from '../../api/types'
 import { Card, SectionLabel } from '../../components/surfaces'
+import { TurnComposer } from '../voice/TurnComposer'
+import { speakAloud, speechPlaybackAvailable, stopSpeaking } from '../voice/speech'
+import { CASE_VOICE_LABEL, caseVoiceState, type CaseVoiceState } from './voiceState'
 
 /**
  * One accepted exchange: what a person said, and what the backend said back.
@@ -69,6 +79,7 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
     view.may_speak && view.permitted_verbs.includes('confirm') && view.plan_id !== null
   const pending = clarify.isPending || confirm.isPending
   const failure = clarify.error ?? confirm.error
+  const voiceState = caseVoiceState(view, { pending, refused: failure !== null })
 
   function record(spoken: string, accepted: TurnAccepted): void {
     setExchanges((previous) => [
@@ -77,11 +88,13 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
     ])
   }
 
-  function onAnswer(text: string): void {
-    clarify.mutate(
-      { commandId: commandId(), caseId: view.case_id, text },
-      { onSuccess: (accepted) => record(text, accepted) },
-    )
+  async function onAnswer(text: string): Promise<void> {
+    const accepted = await clarify.mutateAsync({
+      commandId: commandId(),
+      caseId: view.case_id,
+      text,
+    })
+    record(text, accepted)
   }
 
   function onConfirm(): void {
@@ -94,15 +107,24 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
 
   return (
     <section aria-label="Talk to this case">
-      <Card className="space-y-3 px-4 py-3.5 sm:px-5" data-testid="conversation-panel">
-        <SectionLabel>talk to this case</SectionLabel>
+      <Card
+        className="space-y-3 px-4 py-3.5 sm:px-5"
+        data-testid="conversation-panel"
+        data-voice-state={voiceState}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SectionLabel>talk to this case</SectionLabel>
+          <VoiceStateChip state={voiceState} />
+        </div>
 
         {/* The whole case, spoken, exactly as the backend renders it. Never trimmed, never
             summarised, and re-read from the authoritative case on every render — so this line
             is current rather than a memory of what was true when the panel opened. */}
-        <p className="text-sm text-ink" data-testid="conversation-speech">
+        <p className="text-sm whitespace-pre-line text-ink" data-testid="conversation-speech">
           {view.speech}
         </p>
+
+        <ReadAloud text={view.speech} />
 
         {exchanges.length === 0 ? null : (
           <ol className="space-y-2.5" data-testid="conversation-transcript">
@@ -110,7 +132,7 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
               <li key={exchange.id} className="space-y-1">
                 <p className="text-meta text-muted uppercase">you said</p>
                 <blockquote className="text-sm font-medium text-ink">
-                  “{exchange.spoken}”
+                  &ldquo;{exchange.spoken}&rdquo;
                 </blockquote>
                 <p className="text-sm text-muted" data-testid="conversation-reply">
                   {exchange.speech}
@@ -132,62 +154,75 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
 
         {view.may_speak ? null : (
           <p className="text-sm text-muted" data-testid="conversation-read-only">
-            You are looking at this case. Changing it is the bakery’s to do.
+            You are looking at this case. Changing it is the bakery&rsquo;s to do.
           </p>
         )}
 
-        {mayAnswer ? <Answer onSend={onAnswer} pending={pending} /> : null}
+        {mayAnswer ? (
+          <TurnComposer
+            idPrefix="answer"
+            label="answer in your own words"
+            sendLabel="Send"
+            pendingLabel="Sending…"
+            pending={pending}
+            onSend={onAnswer}
+          />
+        ) : null}
         {mayConfirm ? <Confirm onConfirm={onConfirm} pending={pending} /> : null}
       </Card>
     </section>
   )
 }
 
-/**
- * The one open question, answered in a person's own words.
- *
- * The text is sent byte for byte: it is stored as evidence and resolved by the worker process
- * against the options the question was asked with, so nothing here tidies, trims or interprets
- * it. The field is cleared only after the backend has accepted the turn.
- */
-function Answer({
-  onSend,
-  pending,
-}: {
-  onSend: (text: string) => void
-  pending: boolean
-}): ReactNode {
-  const [text, setText] = useState('')
+function VoiceStateChip({ state }: { state: CaseVoiceState }): ReactNode {
+  return (
+    <p
+      className="flex items-center gap-2 text-label text-muted uppercase"
+      data-testid="conversation-voice-state"
+      role="status"
+    >
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 rounded-full ${
+          state === 'unavailable' ? 'bg-owner' : state === 'waiting' ? 'bg-muted' : 'bg-brand'
+        } ${state === 'processing' ? 'motion-safe:animate-pulse' : ''}`}
+      />
+      {CASE_VOICE_LABEL[state]}
+    </p>
+  )
+}
 
-  function onSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    if (!text.trim() || pending) return
-    onSend(text)
-    setText('')
-  }
+/**
+ * The backend's sentence, out loud, unchanged.
+ *
+ * Offered only where the browser has a voice of its own, because there is nothing to fall back
+ * to and a dead control is worse than an absent one. It reads `speech` and can read nothing
+ * else: there is no field here for a summary, and a spoken paraphrase of a plan is exactly the
+ * failure the whole rendering rule exists to prevent.
+ */
+function ReadAloud({ text }: { text: string }): ReactNode {
+  const [available] = useState(() => speechPlaybackAvailable())
+  const [speaking, setSpeaking] = useState(false)
+  if (!available) return null
 
   return (
-    <form className="space-y-2" onSubmit={onSubmit}>
-      <label className="block text-meta text-muted uppercase" htmlFor="conversation-answer">
-        answer in your own words
-      </label>
-      <textarea
-        id="conversation-answer"
-        name="answer"
-        rows={2}
-        value={text}
-        disabled={pending}
-        onChange={(event) => setText(event.target.value)}
-        className="w-full rounded-control border border-edge bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/60 disabled:opacity-60"
-      />
-      <button
-        type="submit"
-        disabled={pending || text.trim().length === 0}
-        className="rounded-control bg-brand px-3 py-2 text-sm font-semibold text-brand-ink transition-opacity hover:opacity-90 disabled:opacity-60"
-      >
-        {pending ? 'Sending…' : 'Send'}
-      </button>
-    </form>
+    <button
+      type="button"
+      data-testid="conversation-read-aloud"
+      aria-pressed={speaking}
+      onClick={() => {
+        if (speaking) {
+          stopSpeaking()
+          setSpeaking(false)
+          return
+        }
+        speakAloud(text)
+        setSpeaking(true)
+      }}
+      className="min-h-11 rounded-control border border-edge-strong bg-panel px-3 py-2 text-meta font-medium text-muted transition-colors hover:text-ink"
+    >
+      {speaking ? 'Stop reading' : 'Read this aloud'}
+    </button>
   )
 }
 
@@ -213,7 +248,7 @@ function Confirm({
         onClick={onConfirm}
         disabled={pending}
         data-testid="conversation-confirm"
-        className="rounded-control bg-brand px-3 py-2 text-sm font-semibold text-brand-ink transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="min-h-11 rounded-control bg-brand px-4 py-2.5 text-sm font-semibold text-brand-ink transition-opacity hover:opacity-90 disabled:opacity-60"
       >
         {pending ? 'Sending…' : 'Yes, go ahead'}
       </button>
