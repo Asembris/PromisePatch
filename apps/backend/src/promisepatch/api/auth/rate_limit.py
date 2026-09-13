@@ -18,13 +18,22 @@ from typing import Final
 LOGIN_ATTEMPT_LIMIT: Final = 10
 LOGIN_WINDOW: Final = timedelta(minutes=1)
 
-DEMO_SESSION_LIMIT: Final = 5
+DEMO_SESSION_LIMIT: Final = 20
 DEMO_SESSION_WINDOW: Final = timedelta(minutes=1)
 """How often one client may be issued a scoped observer session.
 
-Lower than the sign-in budget, because there is nothing here to get right on the second
-try: a client that needs five sessions a minute is not somebody being shown the product.
-It is counted separately from sign-in so that neither can exhaust the other's allowance.
+Higher than the sign-in budget, which looks backwards until you notice they are counting
+different things. A sign-in attempt is somebody guessing a password, and ten a minute is
+generous for that. A demo session is somebody being shown the product, the endpoint takes no
+credentials, and what it issues can read a case and change nothing -- so there is no secret
+here to be guessed at and no authority to be accumulated.
+
+The key is a client address, and several people watching the same demo are behind one of those:
+a room, a conference network, a browser suite opening a context per test. A limit tuned for
+password guessing would refuse the second half of the room. Twenty a minute still bounds
+scripted churn, which is the only thing this is for.
+
+Counted separately from sign-in so that neither can exhaust the other's allowance.
 """
 
 
