@@ -6,8 +6,9 @@
 # connection and nothing else, while the migration and seed containers receive the
 # administrative one. That separation lives in the compose file, where it can be read.
 #
-# Two stages: the first resolves and builds the locked dependency set, the second carries the
-# resulting virtual environment and nothing that built it.
+# Three stages: the first resolves and builds the locked dependency set, the second builds the
+# browser bundle, and the third carries the resulting virtual environment, the bundle, and
+# nothing that built either.
 
 # ------------------------------------------------------------------------------- build stage
 
@@ -64,6 +65,45 @@ COPY apps/backend apps/backend
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --package promisepatch
 
+# ---------------------------------------------------------------------------- frontend stage
+
+# The browser bundle, built here so that one image tag moves the whole surface and the UI is up
+# exactly when the API is up. ADR-0012 records why the deployed host serves the bundle itself
+# rather than a seventh container, a third image or an S3 origin.
+#
+# `--platform=$BUILDPLATFORM` builds this stage natively even when the image is being built for
+# another architecture. The output is JavaScript, CSS and an HTML file, none of which is
+# architecture-specific, so emulating a whole Node toolchain to produce identical bytes would
+# cost minutes and buy nothing.
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS frontend
+
+# `NODE_ENV` is deliberately not set to `production`: `npm ci` would then skip the
+# devDependencies, and vite, tailwind and typescript -- everything that performs the build
+# -- are all in that group. Playwright's browsers are a test dependency and never a build
+# one, so they are not downloaded into a stage whose only output is a directory of assets.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+WORKDIR /ui
+
+# The manifests first, for the same reason the Python dependencies go in their own layer: they
+# change rarely and the source changes constantly. `npm ci` rather than `npm install` -- it
+# installs the committed lockfile exactly and fails if the manifest and the lockfile disagree.
+#
+# The mounted certificate is the same optional additional root CA the build stage takes, for
+# the same machine: mounted rather than copied, so it is neither a layer nor a difference
+# between this build and the one CI runs.
+COPY apps/frontend/package.json apps/frontend/package-lock.json ./
+RUN --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.crt \
+    if [ -s /tmp/extra-ca.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.crt; fi; \
+    npm ci
+
+COPY apps/frontend/ ./
+
+# `npm run build` is `tsc --build && vite build`: the same command the gate runs, so a type
+# error fails the image build rather than shipping a bundle nobody typechecked. The output is
+# `dist/`, and `dist/` is the only thing that leaves this stage.
+RUN npm run build
+
 # ----------------------------------------------------------------------------- runtime stage
 
 FROM python:3.12-slim-bookworm AS runtime
@@ -85,6 +125,13 @@ COPY --from=build --chown=promisepatch:promisepatch /app/.venv /app/.venv
 # no credential to use.
 COPY --chown=promisepatch:promisepatch apps/backend/alembic.ini apps/backend/alembic.ini
 COPY --chown=promisepatch:promisepatch apps/backend/alembic apps/backend/alembic
+
+# The browser bundle, and nothing that built it: no `node_modules`, no Node runtime, no source.
+# `PP_STATIC_ROOT` is what the API reads to decide whether it serves a page at all -- unset, as
+# it is everywhere outside this image, it serves the API and nothing else, which is what the
+# local Vite dev server and every test expect.
+COPY --from=frontend --chown=promisepatch:promisepatch /ui/dist /app/frontend
+ENV PP_STATIC_ROOT=/app/frontend
 
 USER promisepatch
 

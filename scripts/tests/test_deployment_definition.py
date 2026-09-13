@@ -58,6 +58,7 @@ DEPLOY = REPOSITORY_ROOT / "deploy"
 TEMPLATE_PATH = DEPLOY / "cloudformation" / "promisepatch.yaml"
 COMPOSE_PATH = DEPLOY / "compose" / "docker-compose.deploy.yml"
 CADDYFILE_PATH = DEPLOY / "compose" / "Caddyfile"
+BACKEND_DOCKERFILE_PATH = REPOSITORY_ROOT / "docker" / "Dockerfile.backend"
 POLICY_PATHS = tuple(sorted((DEPLOY / "policies").glob("*.json")))
 
 # A standard-tier SSM parameter. Advanced tier would hold 8192 bytes and cost money per
@@ -388,6 +389,79 @@ def _user_data_substitutions(template: dict[str, Any]) -> dict[str, Any]:
 def _env_file_block(template: dict[str, Any], start_marker: str, end_marker: str) -> str:
     script = _user_data(template)
     return script[script.index(start_marker) : script.index(end_marker)]
+
+
+# ------------------------------------------------------------------ the image the host runs
+
+
+def _backend_dockerfile() -> str:
+    return BACKEND_DOCKERFILE_PATH.read_text(encoding="utf-8")
+
+
+def _bundle_copies() -> list[str]:
+    return [
+        line
+        for line in _backend_dockerfile().splitlines()
+        if line.startswith("COPY --from=frontend")
+    ]
+
+
+def test_the_backend_image_carries_the_browser_bundle() -> None:
+    """One image tag moves the whole surface, so the bundle is built where the API is built.
+
+    ADR-0012: the deployed host serves the single-page application from the backend image rather
+    than from a seventh container, a third ECR repository or an S3 origin. If the build stage is
+    ever dropped, the API keeps starting perfectly well and simply stops having a page to serve
+    -- a failure nothing but loading the deployed site would find.
+    """
+    dockerfile = _backend_dockerfile()
+    assert "AS frontend" in dockerfile, "the image no longer has a stage that builds the bundle"
+    assert "npm ci" in dockerfile, "npm ci is what makes the bundle the committed lockfile's"
+    assert "npm run build" in dockerfile, "nothing in the image builds the bundle"
+
+
+def test_the_bundle_stage_is_built_for_the_machine_doing_the_building() -> None:
+    """The host is Graviton, and emulating a Node toolchain to emit identical assets is cost.
+
+    JavaScript, CSS and HTML are not architecture-specific. Without
+    ``--platform=$BUILDPLATFORM`` an ``arm64`` build on an ``amd64`` machine runs the whole Node
+    toolchain under emulation to produce byte-identical output.
+    """
+    assert "FROM --platform=$BUILDPLATFORM" in _backend_dockerfile(), (
+        "the bundle stage would be emulated when the image is built for another architecture"
+    )
+
+
+def test_only_the_built_assets_leave_the_bundle_stage() -> None:
+    """A Node runtime, a lockfile's worth of packages and the source are all build-time only."""
+    copies = _bundle_copies()
+    assert copies, "the runtime stage copies nothing from the bundle stage"
+    for line in copies:
+        assert "/dist" in line, f"{line!r} takes more than the built assets out of the stage"
+        assert "node_modules" not in line
+
+
+def test_the_runtime_is_pointed_at_the_directory_the_bundle_was_copied_to() -> None:
+    """Two literals that must agree, in a place where disagreeing is silent.
+
+    ``PP_STATIC_ROOT`` unset means the API serves no page at all, which is exactly what every
+    test and the local Vite stack want -- and exactly what a deployed judge entry must not be.
+    A typo in either literal produces that silence rather than an error.
+    """
+    copies = _bundle_copies()
+    assert len(copies) == 1, f"{len(copies)} copies out of the bundle stage; expected one"
+    destination = copies[0].split()[-1]
+    configured = [
+        line.split("=", 1)[1].strip()
+        for line in _backend_dockerfile().splitlines()
+        if line.startswith("ENV PP_STATIC_ROOT=")
+    ]
+    assert configured, (
+        "the image copies the bundle in and never tells the API where it is, so it serves none"
+    )
+    assert configured == [destination], (
+        f"the bundle is copied to {destination} and the API is pointed at {configured}"
+    )
 
 
 # ------------------------------------------------------------------------------- TLS and egress
