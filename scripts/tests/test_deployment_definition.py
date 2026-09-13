@@ -27,6 +27,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -833,6 +836,53 @@ def test_the_bootstrap_does_not_claim_to_run_on_every_boot(template: dict[str, A
         "converge.sh seeds, and it runs at every boot -- which is the defect it was written "
         "after: a reboot that re-seeds erases the cases the deployment exists to preserve"
     )
+
+
+def _converge_script(template: dict[str, Any]) -> str:
+    """The script the systemd unit runs at every boot, as it will be written to disk."""
+    script = _user_data(template)
+    opening = "<<'CONVERGE'" + "\n"
+    assert opening in script, "the bootstrap writes no converge script"
+    closing = "\nCONVERGE\n"
+    body = script[script.index(opening) + len(opening) : script.index(closing)]
+    return body + "\n"
+
+
+def test_the_converge_script_is_shell_a_shell_would_accept(template: dict[str, Any]) -> None:
+    """A heredoc inside a heredoc inside a template, and the first boot is where it is read.
+
+    Nothing before the instance exists parses this: CloudFormation checks the template, not
+    the shell it carries, so a misplaced terminator or an unbalanced quote becomes a host that
+    comes up with no stack on it and a log file only that host can read. This deployment has
+    already spent five defects on things of exactly this shape.
+    """
+    executable = shutil.which("bash")
+    if executable is None:
+        pytest.skip("no bash on this machine to parse with")
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "converge.sh"
+        path.write_text(_converge_script(template), encoding="utf-8", newline="\n")
+        parsed = subprocess.run(
+            [executable, "-n", str(path)], capture_output=True, text=True, check=False
+        )
+    assert parsed.returncode == 0, "the converge script is not valid shell: " + parsed.stderr
+
+
+def test_the_converge_script_reads_only_names_something_sets(
+    template: dict[str, Any],
+) -> None:
+    """``set -u`` plus a name nothing writes is a boot that ends before it pulls anything."""
+    converge = _converge_script(template)
+    assert "set -euo pipefail" in converge, "a failing step would be stepped over"
+    host_env = _env_file_block(template, "host.env <<EOF", "cat > /opt/promisepatch/converge.sh")
+    written = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", host_env, re.M))
+    assigned = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", converge, re.M))
+    read = set(re.findall(r'"\$([A-Z][A-Z0-9_]*)"', converge))
+    assert read, "the script reads no variable at all, which cannot be right"
+    for name in sorted(read):
+        assert name in written | assigned, (
+            f"converge.sh reads {name}, which neither host.env nor the script itself sets"
+        )
 
 
 def test_the_host_requires_imdsv2_and_containers_can_still_use_the_role(
