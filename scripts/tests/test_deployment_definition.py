@@ -59,6 +59,16 @@ TEMPLATE_PATH = DEPLOY / "cloudformation" / "promisepatch.yaml"
 COMPOSE_PATH = DEPLOY / "compose" / "docker-compose.deploy.yml"
 CADDYFILE_PATH = DEPLOY / "compose" / "Caddyfile"
 BACKEND_DOCKERFILE_PATH = REPOSITORY_ROOT / "docker" / "Dockerfile.backend"
+
+HOST = "AppHost"
+"""The instance's logical name.
+
+It was renamed once, from ``Host``, to replace the first instance deliberately: that host
+wrote its composition, its TLS configuration and its image tag to disk at its single boot
+and could not re-read any of them, so no stack update could reach it and a new logical name
+was the only mechanism that always produces a new one. Named here rather than repeated,
+because the next rename should be one edit and not twelve.
+"""
 POLICY_PATHS = tuple(sorted((DEPLOY / "policies").glob("*.json")))
 
 # A standard-tier SSM parameter. Advanced tier would hold 8192 bytes and cost money per
@@ -194,7 +204,7 @@ def test_every_template_reference_in_the_bootstrap_script_resolves(
     template with ``Unresolved resource dependencies`` before a single resource is created. It
     is only reachable by deploying, so it is asserted here instead.
     """
-    node: Any = template["Resources"]["Host"]["Properties"]["UserData"]
+    node: Any = template["Resources"][HOST]["Properties"]["UserData"]
     while isinstance(node, dict) and len(node) == 1:
         node = next(iter(node.values()))
     script, supplied = node
@@ -251,6 +261,9 @@ def test_a_restart_cannot_reseed_the_database(
     script = _user_data(template)
     assert "run --rm -T seed" in script, "nothing seeds a new instance at all"
     assert "up -d" in script
+    # The seed runs once, in the provisioning script, and is not reachable from the script the
+    # systemd unit runs at every boot.
+    assert script.index("CONVERGE") < script.index("run --rm -T seed")
 
 
 def test_the_mcp_container_is_given_no_database_url(template: dict[str, Any]) -> None:
@@ -333,7 +346,7 @@ def test_every_variable_the_host_writes_is_one_something_actually_reads(
     )
     assert declared_pp and declared_os, "neither example file declares anything, which is wrong"
 
-    user_data = json.dumps(template["Resources"]["Host"]["Properties"]["UserData"])
+    user_data = json.dumps(template["Resources"][HOST]["Properties"]["UserData"])
     for name in sorted(set(re.findall(r"\\n\s*((?:PP|OS)_[A-Z0-9_]+)=", user_data))):
         declared = declared_pp if name.startswith("PP_") else declared_os
         assert name in declared, (
@@ -349,7 +362,7 @@ def _user_data(template: dict[str, Any]) -> str:
     mappings. Reading the scalar out gives the real script with real newlines; searching a
     ``json.dumps`` of it instead is how a line-anchored pattern silently matches nothing.
     """
-    node: Any = template["Resources"]["Host"]["Properties"]["UserData"]
+    node: Any = template["Resources"][HOST]["Properties"]["UserData"]
     # `Fn::Base64` is spelled long-form in the template and `Fn::Sub` may be either spelling, so
     # unwrap whatever single-key layers are there rather than hard-coding one of them.
     while isinstance(node, dict) and len(node) == 1:
@@ -377,7 +390,7 @@ def _user_data_substitutions(template: dict[str, Any]) -> dict[str, Any]:
     how the template happens to be written. Unwrapping single-key layers reaches the ``Fn::Sub``
     list form without hard-coding one of four spellings.
     """
-    node: Any = template["Resources"]["Host"]["Properties"]["UserData"]
+    node: Any = template["Resources"][HOST]["Properties"]["UserData"]
     while isinstance(node, dict) and len(node) == 1:
         node = next(iter(node.values()))
     assert isinstance(node, list), "the bootstrap script is given no substitutions of its own"
@@ -407,6 +420,27 @@ def test_the_image_is_built_knowing_which_commit_it_is() -> None:
     assert "PP_IMAGE_TAG=${tag}" in build, (
         "the build never passes the tag it pushes, so the image would name a different commit "
         "or none at all"
+    )
+
+
+def test_a_release_reboots_the_host_and_then_checks_what_it_serves() -> None:
+    """Deploying and having deployed are different claims, and only the second one matters.
+
+    The host converges at boot, so a release is a parameter write and a reboot. Neither of
+    those reports what the host ended up running, and the first release that assumed they did
+    left the deployment serving an older image behind a stack that said ``UPDATE_COMPLETE``. So
+    the stage rebooting the host is also the stage that reads ``/healthz`` back until it names
+    the commit that was pushed, and fails if it never does.
+    """
+    build = (DEPLOY / "deploy.sh").read_text(encoding="utf-8")
+    assert "stage_rollout ()" in build, "there is no stage that puts a new image on the host"
+    rollout = build[build.index("stage_rollout ()") : build.index("stage_smoke ()")]
+    assert "ec2 reboot-instances" in rollout, "nothing makes the host re-read anything"
+    assert "/healthz" in rollout, "the rollout never checks what the host ended up serving"
+    assert 'die "the host serves' in rollout, "a host that never converged would pass silently"
+    sequence = build[build.index("  all)") :]
+    assert sequence.index("stage_rollout") < sequence.index("stage_smoke"), (
+        "the full deploy smoke-checks the deployment before it has rolled the new image out"
     )
 
 
@@ -745,6 +779,19 @@ def test_the_bootstrap_does_not_claim_to_run_on_every_boot(template: dict[str, A
         "the bootstrap claims to converge at every boot; cloud-init runs it once per instance"
     )
     assert "runs once" in script, "it should say what it actually does"
+    # And the convergence it cannot do itself has to be somewhere. The systemd unit runs at
+    # every boot, so that is where a release reaches the host: the unit runs `converge.sh`,
+    # which re-reads the composition, the TLS configuration and the image tag from SSM.
+    assert "ExecStart=/opt/promisepatch/converge.sh" in script, (
+        "the unit brings the stack up from whatever is on disk, so a release never reaches it"
+    )
+    for parameter in ("param compose", "param caddyfile", "param image-tag"):
+        assert parameter in script, f"converge.sh never re-reads {parameter!r} from SSM"
+    converge = script[script.index("CONVERGE") : script.index("chmod 0750")]
+    assert "seed" not in converge, (
+        "converge.sh seeds, and it runs at every boot -- which is the defect it was written "
+        "after: a reboot that re-seeds erases the cases the deployment exists to preserve"
+    )
 
 
 def test_the_host_requires_imdsv2_and_containers_can_still_use_the_role(
@@ -764,7 +811,7 @@ def test_the_host_requires_imdsv2_and_containers_can_still_use_the_role(
     because those run on the host. 2 is what AWS documents for containers on EC2. Above 2 the
     response can be relayed further than this host, so it is also a ceiling.
     """
-    options = template["Resources"]["Host"]["Properties"]["MetadataOptions"]
+    options = template["Resources"][HOST]["Properties"]["MetadataOptions"]
     assert options["HttpTokens"] == "required", "IMDSv2 is the control and is not negotiable"
     assert options["HttpPutResponseHopLimit"] == 2, (
         "1 leaves every container unable to reach IMDS; more than 2 relays beyond this host"
@@ -772,7 +819,7 @@ def test_the_host_requires_imdsv2_and_containers_can_still_use_the_role(
 
 
 def test_the_host_has_no_inbound_ssh_and_no_key_pair(template: dict[str, Any]) -> None:
-    host = template["Resources"]["Host"]["Properties"]
+    host = template["Resources"][HOST]["Properties"]
     assert "KeyName" not in host, "access is Session Manager, so there is no key to leak"
     ingress = template["Resources"]["HostSecurityGroup"]["Properties"]["SecurityGroupIngress"]
     assert sorted(rule["ToPort"] for rule in ingress) == [80, 443]

@@ -134,9 +134,12 @@ Parameters:
   ImageTag:
     Type: String
     Description: >-
-      The image tag the host pulls, and the one thing that says which release is deployed.
-      Use the release commit SHA, never `latest`: G8 requires verifying the deployed version
-      rather than an old image, and a moving tag makes that unanswerable.
+      The release this deploy intends to run: the commit SHA, never `latest`, because G8
+      requires verifying the deployed version rather than an old image and a moving tag makes
+      that unanswerable. The host does not read it -- it converges on the `image-tag`
+      parameter in SSM, which the same `deploy.sh` run writes from the same commit -- so this
+      records the intent and `DeclaredImageTag` publishes it for the smoke check to compare
+      with what the deployed process says it is.
     AllowedPattern: "[A-Za-z0-9._-]{1,128}"
 
   HostAmiId:
@@ -379,9 +382,15 @@ Resources:
     Type: AWS::EC2::EIPAssociation
     Properties:
       AllocationId: !GetAtt ElasticIp.AllocationId
-      InstanceId: !Ref Host
+      InstanceId: !Ref AppHost
 
-  Host:
+  # Renamed from `Host` to replace the instance deliberately rather than hope a stack
+  # update would. The first host wrote its composition, its TLS configuration and its
+  # image tag to disk at its one and only boot and had no way to re-read any of them, so
+  # no stack update could reach it; a new logical name is the one mechanism that always
+  # produces a new instance. This one converges from SSM at every boot, so it is the last
+  # host that needs replacing to change what is deployed.
+  AppHost:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref HostAmiId
@@ -424,18 +433,19 @@ Resources:
               set -euo pipefail
               exec > >(tee /var/log/promisepatch-boot.log) 2>&1
 
-              # **This runs once, on this instance's first boot, and not again.** cloud-init's
-              # scripts-user module is once-per-instance, so a reboot re-reads none of the
-              # compose file, the TLS configuration, the secrets or the image tag -- the systemd
-              # unit at the end is what brings the containers back, from the files on disk.
+              # **This provisioning script runs once, on this instance's first boot, and not
+              # again.** cloud-init's scripts-user module is once-per-instance, and `UserData` is
+              # not a replacement trigger for `AWS::EC2::Instance`: a stack update carrying a new
+              # `ImageTag` reports `UPDATE_COMPLETE`, leaves the instance id unchanged, and the host
+              # goes on serving the image it first booted with. Both were observed, and the second is
+              # how a release comes to be believed deployed when it is not.
               #
-              # An earlier version of this comment claimed the opposite, and the claim was wrong
-              # in a way that matters: changing UserData does not replace an AWS::EC2::Instance,
-              # so a stack update carrying a new ImageTag reports UPDATE_COMPLETE, leaves the
-              # instance id unchanged, and the host goes on serving the image it first booted
-              # with. Observed exactly that. Until this converges per boot, a definition change
-              # reaches the host only by replacing the instance, and "which version is deployed"
-              # is a question about the host rather than about the stack's parameters.
+              # So nothing a release changes is written by this script. The composition, the TLS
+              # configuration and the image tag are read from SSM by `converge.sh` below, which the
+              # systemd unit runs at **every** boot. A release is therefore a parameter write and a
+              # reboot -- `deploy.sh rollout` -- and what the host serves is what the deploy named
+              # rather than what this instance happened to boot with. `/healthz` reports the commit
+              # the running image was built from, so the two can be compared from outside.
 
               dnf -y update
               dnf -y install docker amazon-cloudwatch-agent
@@ -456,12 +466,6 @@ Resources:
 
               param () { aws ssm get-parameter --with-decryption --region "${!REGION}" \
                            --name "${!PREFIX}/${!1}" --query Parameter.Value --output text; }
-
-              # The composition and the TLS configuration are stored as parameters rather than
-              # baked into this script, so a change to either is a parameter write and a restart
-              # instead of an instance replacement.
-              param compose   > /opt/promisepatch/docker-compose.yml
-              param caddyfile > /opt/promisepatch/Caddyfile
 
               DB_PASSWORD=$(param db-app-password)
               DB_MASTER_PASSWORD=$(param db-master-password)
@@ -535,32 +539,68 @@ Resources:
               OS_WEBHOOK_SECRET=${!WEBHOOK_SECRET}
               EOF
 
-              cat > /opt/promisepatch/env/stack.env <<EOF
+              # What this host is, as against what this release is. Where it runs, which registry it
+              # pulls from, which name its certificate is for: properties of the instance, fixed for
+              # its life, so `converge.sh` reads them from here rather than asking SSM for something
+              # that cannot have changed between two boots of the same machine.
+              cat > /opt/promisepatch/env/host.env <<EOF
+              REGION=${!REGION}
+              PREFIX=${!PREFIX}
               REGISTRY=${!REGISTRY}
-              IMAGE_TAG=${ImageTag}
               TLS_HOSTNAME=${TlsHostname}
               LOG_GROUP=/promisepatch/${Environment}
-              AWS_REGION=${!REGION}
-              ACME_CONTACT=${!ACME_CONTACT}
               EOF
               umask 0022
 
-              aws ecr get-login-password --region "${!REGION}" \
-                | docker login --username AWS --password-stdin "${!REGISTRY}"
-
+              # Everything a release changes, in one script that runs at every boot.
+              #
+              # This is the answer to the defect described at the top of this script. The seed is
+              # deliberately not in it: seeding replaces every domain row PromisePatch owns, and this
+              # runs at every boot, so a reboot that seeded would erase the cases whose survival is the
+              # point of deploying at all.
+              cat > /opt/promisepatch/converge.sh <<'CONVERGE'
+              #!/bin/bash
+              # Bring this host to the version the deployment currently names. Run at every boot by the
+              # systemd unit, and by hand after a parameter write.
+              set -euo pipefail
               cd /opt/promisepatch
-              docker compose --env-file env/stack.env pull
+              set -a
+              . env/host.env
+              set +a
 
-              # Load the fixture once, on this instance. `compose run` enables the service's
-              # own profile, which is the only thing that does -- `up -d` cannot reach it. That
-              # matters because seeding replaces every domain row PromisePatch owns, and the
-              # systemd unit below runs `up -d` at every boot: a restart that re-seeded would
-              # erase the cases whose survival is the point of deploying at all.
+              param () { aws ssm get-parameter --with-decryption --region "$REGION" --name "$PREFIX/$1" --query Parameter.Value --output text; }
+
+              param compose   > docker-compose.yml
+              param caddyfile > Caddyfile
+              IMAGE_TAG="$(param image-tag)"
+              ACME_CONTACT="$(param acme-contact 2>/dev/null || true)"
+
+              umask 0077
+              cat > env/stack.env <<ENV
+              REGISTRY=$REGISTRY
+              IMAGE_TAG=$IMAGE_TAG
+              TLS_HOSTNAME=$TLS_HOSTNAME
+              LOG_GROUP=$LOG_GROUP
+              AWS_REGION=$REGION
+              ACME_CONTACT=$ACME_CONTACT
+              ENV
+              umask 0022
+
+              aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+              docker compose --env-file env/stack.env pull
+              docker compose --env-file env/stack.env up -d --remove-orphans
+              CONVERGE
+              chmod 0750 /opt/promisepatch/converge.sh
+
+              /opt/promisepatch/converge.sh
+
+              # Load the fixture once, on this instance. `compose run` enables the service's own
+              # profile, which is the only thing that does -- `up -d` cannot reach it, and neither can
+              # `converge.sh`.
               docker compose --env-file env/stack.env run --rm -T seed
 
-              docker compose --env-file env/stack.env up -d --remove-orphans
-
-              # A systemd unit, so an instance reboot brings the stack back without this script.
+              # A systemd unit, so a reboot brings the stack back at the version the deployment names
+              # rather than the version this instance first booted with.
               cat > /etc/systemd/system/promisepatch.service <<'EOF'
               [Unit]
               Description=PromisePatch deployed stack
@@ -570,8 +610,10 @@ Resources:
               [Service]
               Type=oneshot
               RemainAfterExit=yes
+              # A boot that finds a new image tag pulls it before it can start anything.
+              TimeoutStartSec=900
               WorkingDirectory=/opt/promisepatch
-              ExecStart=/usr/bin/docker compose --env-file env/stack.env up -d
+              ExecStart=/opt/promisepatch/converge.sh
               ExecStop=/usr/bin/docker compose --env-file env/stack.env down
 
               [Install]
@@ -619,7 +661,15 @@ Outputs:
 
   HostInstanceId:
     Description: For `aws ssm start-session --target <this>`, and for the restart proof.
-    Value: !Ref Host
+    Value: !Ref AppHost
+
+  DeclaredImageTag:
+    Description: >-
+      The commit this deploy intended to run. The host converges on the image tag in SSM,
+      which the same deploy wrote, and reports at /healthz the commit its image was built
+      from -- so this and that are two independently readable answers to the same question,
+      and the deployment smoke check fails when they differ.
+    Value: !Ref ImageTag
 
   LogGroupName:
     Value: !Ref LogGroup

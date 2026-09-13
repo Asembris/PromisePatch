@@ -8,8 +8,9 @@
 #   ./deploy/deploy.sh secrets     # create the SSM parameters, never overwrite one
 #   ./deploy/deploy.sh registry    # create the two ECR repositories, idempotently
 #   ./deploy/deploy.sh images      # build for arm64 and push, tagged with the commit SHA
-#   ./deploy/deploy.sh config      # upload the compose file and the Caddyfile
+#   ./deploy/deploy.sh config      # upload the compose file, the Caddyfile and the tag
 #   ./deploy/deploy.sh stack       # create or update the CloudFormation stack
+#   ./deploy/deploy.sh rollout     # reboot the host onto the image this commit pushed
 #   ./deploy/deploy.sh smoke       # prove the deployed endpoints from outside
 #   ./deploy/deploy.sh all         # the above, in that order
 #
@@ -60,6 +61,13 @@ need () {
 }
 
 account_id () { aws sts get-caller-identity --region "$REGION" --query Account --output text; }
+
+# One output of the deployed stack. Read back rather than reconstructed: the public name may
+# have been derived from an address the stack allocated, and the instance id is whatever the
+# last update left behind.
+stack_output () {
+  aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
+}
 
 # The current Amazon Linux 2023 arm64 image, resolved here rather than by the template.
 # `AWS::SSM::Parameter::Value<...>` on the AWS-published AMI parameter is the tidier spelling and
@@ -182,7 +190,11 @@ stage_config () {
     --value "$(cat "$compose")" --overwrite >/dev/null
   aws ssm put-parameter --region "$REGION" --name "${PREFIX}/caddyfile" --type String \
     --value "$(cat "$caddyfile")" --overwrite >/dev/null
-  printf '  uploaded %s/{compose,caddyfile}\n' "$PREFIX"
+  # The image tag is configuration too, and it is the one the host actually converges
+  # on: the stack parameter records what this deploy intended, and this is what the next
+  # boot reads. Written by the same run that pushed the image, from the same commit.
+  aws ssm put-parameter --region "$REGION" --name "${PREFIX}/image-tag" --type String --value "$(image_tag)" --overwrite >/dev/null
+  printf '  uploaded %s/{compose,caddyfile,image-tag}\n' "$PREFIX"
 }
 
 stage_stack () {
@@ -219,6 +231,33 @@ stage_stack () {
     --query 'Stacks[0].Outputs' --output table
 }
 
+# A release, once the image is pushed and the parameters are written: reboot the host, which
+# runs `converge.sh`, which re-reads the composition, the TLS configuration and the image tag
+# and pulls what it finds. Then read the deployed `/healthz` until it names the commit that
+# was pushed -- because "the stack updated" and "the host is serving that build" are
+# different claims, and the first was true while the second was false for a whole release.
+stage_rollout () {
+  say "rollout"
+  local tag instance origin served deadline
+  tag="$(image_tag)"
+  instance="$(stack_output HostInstanceId)"
+  origin="$(stack_output PublicUrl)"
+  [[ -n "$instance" && "$instance" != "None" ]] || die "the stack publishes no HostInstanceId"
+  printf '  rebooting %s onto %s\n' "$instance" "$tag"
+  aws ec2 reboot-instances --region "$REGION" --instance-ids "$instance"
+  deadline=$((SECONDS + 900))
+  while (( SECONDS < deadline )); do
+    sleep 15
+    served="$(curl -fsS --max-time 10 "${origin}/healthz" 2>/dev/null | python -c 'import json,sys; print(json.load(sys.stdin).get("image") or "")' 2>/dev/null || true)"
+    if [[ "$served" == "$tag" ]]; then
+      printf '  serving %s\n' "$tag"
+      return
+    fi
+    printf '  waiting, serving %s\n' "${served:-nothing yet}"
+  done
+  die "the host serves ${served:-nothing} after fifteen minutes; this deploy named $tag"
+}
+
 # The origin is read back from the stack rather than reconstructed here, because the name
 # may have been derived from an address the stack allocated -- asking the stack is the only
 # way to be sure the thing being smoke-checked is the thing that was deployed.
@@ -240,6 +279,7 @@ case "$STAGE" in
   images)    stage_preflight; stage_images ;;
   config)    stage_preflight; stage_config ;;
   stack)     stage_preflight; stage_stack ;;
+  rollout)   stage_preflight; stage_rollout ;;
   smoke)     stage_smoke ;;
   all)
     stage_preflight
@@ -248,7 +288,8 @@ case "$STAGE" in
     stage_images
     stage_config
     stage_stack
+    stage_rollout
     stage_smoke
     ;;
-  *) die "usage: $0 {preflight|secrets|registry|images|config|stack|smoke|all}" ;;
+  *) die "usage: $0 {preflight|secrets|registry|images|config|stack|rollout|smoke|all}" ;;
 esac
