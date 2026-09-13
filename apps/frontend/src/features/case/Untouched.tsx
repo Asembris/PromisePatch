@@ -59,7 +59,11 @@ export function UntouchedProof({
             of {promiseCount} this case considered
           </span>
         </span>
-        <Count value={untouchedEffectCount} label="incident-caused effects on them" />
+        <Count
+          value={untouchedEffectCount}
+          label="incident-caused effects on them"
+          one="incident-caused effect on them"
+        />
       </div>
 
       {promises.length === 0 ? (

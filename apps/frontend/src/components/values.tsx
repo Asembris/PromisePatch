@@ -46,12 +46,28 @@ export function QuantityValue({ value }: { value: string | null }): ReactNode {
  * It takes the figure as a number and has no arithmetic in it — no total, no remainder, no
  * percentage. Every count on the screen is the backend's, so that a screen cannot publish a
  * different one from a list it happened to filter.
+ *
+ * `one` is the wording for a count of exactly one. Choosing between two given words is not
+ * deriving a value: the figure is still the backend's and is rendered unchanged. It is here
+ * because "1 orders affected" is the first thing a reader sees on a single-order case, and a
+ * surface that cannot count to one is not one they will trust about six.
  */
-export function Count({ value, label }: { value: number; label: string }): ReactNode {
+export function Count({
+  value,
+  label,
+  one,
+}: {
+  value: number
+  label: string
+  /** Explicitly `undefined`-able so a forwarding caller can pass its own optional straight on. */
+  one?: string | undefined
+}): ReactNode {
   return (
     <span className="inline-flex items-baseline gap-1.5" data-testid="count">
       <span className="text-lg leading-none font-semibold tabular-nums">{value}</span>
-      <span className="text-label text-muted uppercase">{label}</span>
+      <span className="text-label text-muted uppercase">
+        {value === 1 && one !== undefined ? one : label}
+      </span>
     </span>
   )
 }

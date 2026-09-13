@@ -147,7 +147,7 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
           </div>
 
           <dl className="flex shrink-0 gap-3" data-testid="case-counts">
-            <CountTile value={view.threatened_count} label="orders affected" />
+            <CountTile value={view.threatened_count} label="orders affected" one="order affected" />
             <CountTile value={view.untouched_count} label="left alone" />
           </dl>
         </div>
@@ -161,10 +161,18 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
 }
 
 /** One backend integer, with the word it counts. No total is composed from the two. */
-function CountTile({ value, label }: { value: number; label: string }): ReactNode {
+function CountTile({
+  value,
+  label,
+  one,
+}: {
+  value: number
+  label: string
+  one?: string
+}): ReactNode {
   return (
     <div className="rounded-quiet border border-edge bg-panel px-3.5 py-2.5">
-      <Count value={value} label={label} />
+      <Count value={value} label={label} one={one} />
     </div>
   )
 }
