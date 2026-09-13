@@ -64,14 +64,14 @@ COMPOSE_PATH = DEPLOY / "compose" / "docker-compose.deploy.yml"
 CADDYFILE_PATH = DEPLOY / "compose" / "Caddyfile"
 BACKEND_DOCKERFILE_PATH = REPOSITORY_ROOT / "docker" / "Dockerfile.backend"
 
-HOST = "AppHost"
+HOST = "Host"
 """The instance's logical name.
 
-It was renamed once, from ``Host``, to replace the first instance deliberately: that host
-wrote its composition, its TLS configuration and its image tag to disk at its single boot
-and could not re-read any of them, so no stack update could reach it and a new logical name
-was the only mechanism that always produces a new one. Named here rather than repeated,
-because the next rename should be one edit and not twelve.
+Renaming it is how the instance is deliberately replaced: a change to ``UserData`` and a
+change to ``AdditionalInfo`` are both reported by a change set as ``Conditionally`` and both
+were observed resolving to an in-place modification, while a new logical name is always an
+Add and a Remove. It has moved twice and should not move again, now that the host converges
+from SSM at every boot. Named here rather than repeated, so the next one is one edit.
 """
 POLICY_PATHS = tuple(sorted((DEPLOY / "policies").glob("*.json")))
 
@@ -846,6 +846,49 @@ def _converge_script(template: dict[str, Any]) -> str:
     closing = "\nCONVERGE\n"
     body = script[script.index(opening) + len(opening) : script.index(closing)]
     return body + "\n"
+
+
+def test_the_bootstrap_runs_compose_where_the_composition_is(template: dict[str, Any]) -> None:
+    """Compose reads the composition from the working directory, and the bootstrap starts in /.
+
+    Observed, on a real host: the seed ran before anything had changed directory, compose found
+    no composition, the line failed, and ``set -e`` took the rest of the bootstrap with it --
+    including the systemd unit that had not been installed yet. The database was left unseeded,
+    which is a deployment with no observer and therefore no way in for a judge.
+    """
+    script = _user_data(template)
+    outer = (
+        script[: script.index("<<'CONVERGE'")]
+        + script[script.index("CONVERGE" + chr(10) + "chmod") :]
+    )
+    lines = outer.splitlines()
+    entered = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("cd /opt/promisepatch"):
+            entered = True
+        if stripped.startswith("docker compose"):
+            assert entered, (
+                f"{stripped!r} runs before anything enters /opt/promisepatch, so compose has no "
+                "composition to read"
+            )
+
+
+def test_the_restart_unit_is_installed_before_anything_that_can_fail(
+    template: dict[str, Any],
+) -> None:
+    """The unit is how the host comes back, so it is installed before the host does anything else.
+
+    A bootstrap that brought the stack up and then died would otherwise leave a host that serves
+    until its next boot and never again -- which is exactly what one failing seed produced.
+    """
+    script = _user_data(template)
+    # Named precisely: `systemctl enable --now docker` appears earlier in this script, and a
+    # looser search would find that instead and pass whatever the order actually was.
+    assert script.index("systemctl enable --now promisepatch") < script.index("run --rm -T seed"), (
+        "the seed runs before the unit is installed, so a failing seed leaves a host that "
+        "cannot restart"
+    )
 
 
 def test_the_converge_script_is_shell_a_shell_would_accept(template: dict[str, Any]) -> None:

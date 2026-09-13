@@ -382,15 +382,20 @@ Resources:
     Type: AWS::EC2::EIPAssociation
     Properties:
       AllocationId: !GetAtt ElasticIp.AllocationId
-      InstanceId: !Ref AppHost
+      InstanceId: !Ref Host
 
-  # Renamed from `Host` to replace the instance deliberately rather than hope a stack
-  # update would. The first host wrote its composition, its TLS configuration and its
-  # image tag to disk at its one and only boot and had no way to re-read any of them, so
-  # no stack update could reach it; a new logical name is the one mechanism that always
-  # produces a new instance. This one converges from SSM at every boot, so it is the last
-  # host that needs replacing to change what is deployed.
-  AppHost:
+  # Renaming this resource is how the instance is deliberately replaced.
+  #
+  # Nothing else about an `AWS::EC2::Instance` can be made to require recreation on demand:
+  # a change to `UserData`, and a change to `AdditionalInfo`, are both reported by a change
+  # set as `Conditionally`, and both were observed resolving to an in-place modification
+  # that leaves the instance id alone and the files on its disk untouched. A new logical
+  # name is reported as an Add and a Remove, which is a new instance every time.
+  #
+  # It has been renamed twice: once to install the per-boot convergence below, and once to
+  # fix the bootstrap that installed it. Now that a host converges from SSM at every boot,
+  # a release is a parameter write and a reboot, and the name should not have to move again.
+  Host:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref HostAmiId
@@ -599,15 +604,11 @@ Resources:
               CONVERGE
               chmod 0750 /opt/promisepatch/converge.sh
 
-              /opt/promisepatch/converge.sh
-
-              # Load the fixture once, on this instance. `compose run` enables the service's own
-              # profile, which is the only thing that does -- `up -d` cannot reach it, and neither can
-              # `converge.sh`.
-              docker compose --env-file env/stack.env run --rm -T seed
-
-              # A systemd unit, so a reboot brings the stack back at the version the deployment names
-              # rather than the version this instance first booted with.
+              # The unit first, and before anything else that can fail. It is how this host comes back,
+              # and a bootstrap that brought the stack up and then died before installing it would leave
+              # a host that serves until its next boot and never again. That happened: the seed below ran
+              # outside the project directory, compose found no composition, the script stopped there, and
+              # the instance was left with no unit and an unseeded database.
               cat > /etc/systemd/system/promisepatch.service <<'EOF'
               [Unit]
               Description=PromisePatch deployed stack
@@ -627,7 +628,16 @@ Resources:
               WantedBy=multi-user.target
               EOF
               systemctl daemon-reload
-              systemctl enable promisepatch.service
+              # `--now`, so this boot brings the stack up exactly the way every later boot does: through
+              # the unit, running converge.sh. One path, exercised from the first minute.
+              systemctl enable --now promisepatch.service
+
+              # Load the fixture once, on this instance. `compose run` enables the service's own profile,
+              # which is the only thing that does -- `up -d` cannot reach it, and neither can
+              # `converge.sh`. The `cd` is not decoration: compose reads the composition from the working
+              # directory, and without it this line fails and takes the rest of the bootstrap with it.
+              cd /opt/promisepatch
+              docker compose --env-file env/stack.env run --rm -T seed
             # The one substitution the template supplies rather than the parameter list:
             # when no hostname was given, the script below is written with the name made
             # from this stack's own Elastic IP. Every other ${...} in the script is still
@@ -668,7 +678,7 @@ Outputs:
 
   HostInstanceId:
     Description: For `aws ssm start-session --target <this>`, and for the restart proof.
-    Value: !Ref AppHost
+    Value: !Ref Host
 
   DeclaredImageTag:
     Description: >-
