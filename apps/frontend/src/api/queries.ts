@@ -24,6 +24,8 @@ import {
 } from '@tanstack/react-query'
 import {
   ApiError,
+  clarifyTurn,
+  confirmTurn,
   fetchCase,
   fetchCases,
   fetchMe,
@@ -31,12 +33,14 @@ import {
   fetchResources,
   login,
   logout,
+  openDemoSession,
 } from './client'
 import type {
   CaseListResponse,
   CaseWorkspaceResponse,
   PromisesResponse,
   ResourcesResponse,
+  TurnAccepted,
   WorkerResponse,
 } from './types'
 
@@ -169,6 +173,23 @@ export function useLogin(): UseMutationResult<WorkerResponse, Error, Credentials
   })
 }
 
+/**
+ * One action, and somebody is looking at a real case.
+ *
+ * Nothing is sent and nothing comes back but the principal the server chose. The response is the
+ * same shape `me` returns, so it seeds the cache directly rather than causing a second round trip
+ * to ask who is now signed in.
+ */
+export function useDemoSession(): UseMutationResult<WorkerResponse, Error, void> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: openDemoSession,
+    onSuccess: (worker) => {
+      client.setQueryData(meKey, worker)
+    },
+  })
+}
+
 export function useLogout(): UseMutationResult<void, Error, void> {
   const client = useQueryClient()
   return useMutation({
@@ -208,4 +229,56 @@ export async function refreshOperationalState(client: QueryClient): Promise<void
     // thing on the screen a stale frame would misrepresent as current.
     client.invalidateQueries({ queryKey: ['case'] }),
   ])
+}
+
+// ------------------------------------------------------------------- saying something to a case
+
+/**
+ * The two turns a case can be given from its own workspace.
+ *
+ * Both follow the same rule and it is the important one: **nothing changes on screen until the
+ * backend says it did.** There is no optimistic update, no pre-applied state and no local copy of
+ * the case — the mutation settles, the case query is invalidated, and the next render draws
+ * whatever the authoritative read then returns. A panel that moved a promise forward while the
+ * request was in flight would be showing an outcome nobody had committed.
+ *
+ * `onSettled` rather than `onSuccess`, for the same reason `useLogout` uses it: a refusal is also
+ * information about the case. A stale `plan_id` in particular means the case moved, and the
+ * honest response to that is to re-read it and show the plan that is really on offer.
+ */
+export interface ClarifyTurnInput {
+  commandId: string
+  caseId: string
+  text: string
+}
+
+export function useClarifyTurn(): UseMutationResult<TurnAccepted, Error, ClarifyTurnInput> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ commandId, caseId, text }: ClarifyTurnInput) =>
+      clarifyTurn({ command_id: commandId, case_id: caseId, text }),
+    onSettled: (_result, _error, variables) => {
+      void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
+      void client.invalidateQueries({ queryKey: casesKey })
+    },
+  })
+}
+
+export interface ConfirmTurnInput {
+  commandId: string
+  caseId: string
+  /** The plan identity the case response presented, quoted back. The screen never composes one. */
+  planId: string
+}
+
+export function useConfirmTurn(): UseMutationResult<TurnAccepted, Error, ConfirmTurnInput> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ commandId, caseId, planId }: ConfirmTurnInput) =>
+      confirmTurn({ command_id: commandId, case_id: caseId, plan_id: planId }),
+    onSettled: (_result, _error, variables) => {
+      void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
+      void client.invalidateQueries({ queryKey: casesKey })
+    },
+  })
 }

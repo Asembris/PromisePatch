@@ -22,6 +22,7 @@ import type {
   ErrorResponse,
   PromisesResponse,
   ResourcesResponse,
+  TurnAccepted,
   WorkerResponse,
 } from './types'
 
@@ -157,6 +158,11 @@ export async function fetchCases(signal?: AbortSignal): Promise<CaseListResponse
   return requestJson<CaseListResponse>('/api/cases', signal ? { signal } : {})
 }
 
+/** A session for somebody being shown the product. No credentials go out, and none come back. */
+export async function openDemoSession(): Promise<WorkerResponse> {
+  return requestJson<WorkerResponse>('/api/auth/demo-session', { method: 'POST' })
+}
+
 /** One case workspace. The path carries the case id, which is what makes a reload return to it. */
 export async function fetchCase(
   caseId: string,
@@ -166,4 +172,45 @@ export async function fetchCase(
     `/api/cases/${encodeURIComponent(caseId)}`,
     signal ? { signal } : {},
   )
+}
+
+// ------------------------------------------------------------------- saying something to a case
+
+/**
+ * The three things a person can say, and the one field none of them carries.
+ *
+ * There is no actor. Who is speaking is the session cookie's answer, decided by the server from
+ * the row it wrote, and the request models reject an actor field rather than ignoring it — so a
+ * caller labouring under that misunderstanding finds out immediately. `command_id` is minted
+ * here so a retry of one turn is that turn arriving twice rather than a second statement.
+ */
+export async function reportTurn(body: {
+  command_id: string
+  text: string
+}): Promise<TurnAccepted> {
+  return requestJson<TurnAccepted>('/api/conversation/report', { method: 'POST', body })
+}
+
+export async function clarifyTurn(body: {
+  command_id: string
+  case_id: string
+  text: string
+}): Promise<TurnAccepted> {
+  return requestJson<TurnAccepted>('/api/conversation/clarify', { method: 'POST', body })
+}
+
+/**
+ * A yes to **one** plan.
+ *
+ * `plan_id` is the identity the case response presented, quoted back unchanged. The screen
+ * cannot describe a plan, only name the one it was given, and the domain compares it under the
+ * lock it writes with — so a yes that quotes a plan the case has moved past is refused rather
+ * than applied to whatever is there now.
+ */
+export async function confirmTurn(body: {
+  command_id: string
+  case_id: string
+  plan_id: string
+}): Promise<TurnAccepted> {
+  return requestJson<TurnAccepted>('/api/conversation/confirm', { method: 'POST', body })
 }

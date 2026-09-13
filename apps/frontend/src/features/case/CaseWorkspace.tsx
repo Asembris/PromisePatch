@@ -34,6 +34,7 @@ import { Badge, CaseHeadlineBadge } from '../../components/badges'
 import { Card, Message, SectionLabel } from '../../components/surfaces'
 import { Count, Value } from '../../components/values'
 import { ClarificationHistory } from './Clarifications'
+import { Conversation } from './Conversation'
 import { EvidenceLayers } from './Evidence'
 import { formatDateTime } from '../../components/time'
 import { actionOwnerTone } from '../../components/vocabulary'
@@ -82,6 +83,10 @@ function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
     <div className="space-y-4" data-testid="case-workspace" data-case-id={view.case_id}>
       <WhatHappened view={view} />
       <WhatYouMustDo view={view} />
+      {/* Inside the workspace, under the action it belongs to, with the bands still on screen.
+          A conversation on a route of its own would be a second surface describing the same
+          case, and the two would eventually disagree about which was current. */}
+      <Conversation view={view} />
       <Propagation view={view} />
       <EvidenceLayers view={view} />
     </div>

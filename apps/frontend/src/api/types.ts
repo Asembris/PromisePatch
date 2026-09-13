@@ -409,6 +409,26 @@ export interface CaseWorkspaceResponse {
   evidence: EvidenceView
 }
 
+/**
+ * What the backend did with one thing a person said to a case.
+ *
+ * A permission, never an outcome: nothing has been sent, no order has been amended and no
+ * customer has been asked when one of these arrives. `speech` is composed by the domain and is
+ * rendered to a person **unchanged** — a screen that re-worded it would be one word away from
+ * saying a plan was carried out.
+ */
+export interface TurnAccepted {
+  case_id: string
+  statement_id: string
+  state: string
+  /** False for a redelivery of a request already accepted, which is a success. */
+  created: boolean
+  /** The worker the *server* recorded. Nothing in the request could have changed it. */
+  attested_by: string
+  /** Rendered by the domain. Displayed verbatim. */
+  speech: string
+}
+
 export interface CaseSummaryView {
   case_id: string
   state: string
