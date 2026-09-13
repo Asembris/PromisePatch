@@ -43,6 +43,7 @@ from promisepatch.db.models import (
     Supplier,
     SupplierCommitment,
     Track,
+    Worker,
 )
 from promisepatch.db.uow import Actor, UnitOfWork
 
@@ -735,6 +736,35 @@ async def test_no_column_is_stored_as_a_float(conn: AsyncConnection) -> None:
         )
     ).all()
     assert floats == []
+
+
+async def test_a_worker_may_be_an_observer(conn: AsyncConnection) -> None:
+    """The third principal the domain knows. It may be stored; what it may *do* is not here."""
+    await add(
+        conn,
+        Worker,
+        id=unique("wrk"),
+        username=unique("obs"),
+        display_name="Observer",
+        role="observer",
+        password_hash="!",
+        created_at=NOW,
+    )
+
+
+async def test_a_worker_may_not_be_a_role_nobody_declared(conn: AsyncConnection) -> None:
+    """Widening the vocabulary by one did not open it: the check still closes the set."""
+    with pytest.raises(IntegrityError, match="ck_workers_role"):
+        await add(
+            conn,
+            Worker,
+            id=unique("wrk"),
+            username=unique("adm"),
+            display_name="Administrator",
+            role="admin",
+            password_hash="!",
+            created_at=NOW,
+        )
 
 
 async def test_a_bad_statement_still_reports_through_the_driver(conn: AsyncConnection) -> None:

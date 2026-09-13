@@ -25,6 +25,7 @@ FIXTURE_NAME: Final = "hollow-oak"
 
 BAKER_ROLE: Final = "baker"
 OWNER_ROLE: Final = "owner"
+OBSERVER_ROLE: Final = "observer"
 
 STAFF: Final[tuple[StaffSeed, ...]] = (
     StaffSeed(
@@ -44,7 +45,38 @@ STAFF: Final[tuple[StaffSeed, ...]] = (
 
 Their ids are the same strings the fixture already attributes attestations and authorship to,
 which is what makes an audit row naming an actor resolve to a row in ``workers``.
+
+Only these two have a password. The observer below is deliberately not one of them.
 """
+
+OBSERVER_ID: Final = "judge"
+"""The principal a scoped demo session names. It is shown cases and may change nothing."""
+
+OBSERVER: Final = StaffSeed(
+    worker_id=OBSERVER_ID,
+    username=OBSERVER_ID,
+    display_name="Observer",
+    role=OBSERVER_ROLE,
+)
+"""A worker row that exists so a read has somebody to be attributed to, and nothing else.
+
+Not part of :data:`STAFF`, because staff is the set of people this deployment issues passwords
+for and this one has none. It is seeded with :data:`UNUSABLE_PASSWORD_HASH`, so the sign-in
+endpoint cannot admit it however carefully somebody guesses; the only way to hold this identity
+is a session the server chose to issue.
+"""
+
+UNUSABLE_PASSWORD_HASH: Final = "!"
+"""A stored value that is not an Argon2 hash, and therefore verifies against nothing.
+
+``promisepatch.api.auth.passwords.verify`` answers ``False`` for a stored hash the library
+cannot parse, which makes "no password at all" expressible in a ``NOT NULL`` column without
+inventing a password nobody holds. A random hash would also be unusable in practice; this one is
+unusable by construction, and says so to anybody reading the row.
+"""
+
+SEEDED_WORKERS: Final[tuple[StaffSeed, ...]] = (*STAFF, OBSERVER)
+"""Every ``workers`` row a reset installs: the two logins, and the observer that is not one."""
 
 
 def build_snapshot(anchor: datetime) -> GraphSnapshot:

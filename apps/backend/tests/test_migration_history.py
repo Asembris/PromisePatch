@@ -13,7 +13,9 @@ from pathlib import Path
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
+from promisepatch.db.boundary import AUDIT_MARKER
 from promisepatch.db.revision import HEAD_REVISION
+from promisepatch.db.types import WORKER_ROLES
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -37,3 +39,28 @@ def test_the_baseline_migrations_are_still_in_the_history() -> None:
     """The audited boundary is not something a later migration may quietly replace."""
     revisions = {script.revision for script in script_directory().walk_revisions()}
     assert {"0001_baseline", "0002_audit_and_runtime_boundary"} <= revisions
+
+
+# ------------------------------------------------------ what 0008 restates rather than imports
+
+
+OBSERVER_MIGRATION = BACKEND / "alembic" / "versions" / "0008_observer_worker_role.py"
+
+
+def test_the_observer_migration_states_the_audit_marker_the_runtime_sets() -> None:
+    """The migration writes a literal; the application derives one. They must be the same name.
+
+    A downgrade removes a principal, and ``workers`` is a governed table, so the delete has to
+    carry an audit event exactly as every other governed write does. The setting that binds the
+    two is named literally in the migration because a migration cannot import a constant that
+    may be renamed under it, and this is the only thing holding the two ends together.
+    """
+    source = OBSERVER_MIGRATION.read_text(encoding="utf-8")
+    assert f'AUDIT_MARKER = "{AUDIT_MARKER}"' in source
+
+
+def test_the_observer_migration_admits_exactly_the_roles_the_runtime_declares() -> None:
+    """The vocabulary the database will accept, against the vocabulary the models declare."""
+    source = OBSERVER_MIGRATION.read_text(encoding="utf-8")
+    rendered = ", ".join(f'"{role}"' for role in WORKER_ROLES)
+    assert f"AFTER = ({rendered})" in source

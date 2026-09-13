@@ -13,10 +13,12 @@ from promisepatch.db.types import WORKER_ROLES, Timestamp, enum_check
 
 
 class Worker(Base):
-    """A member of bakery staff. Two rows exist: the baker and the owner.
+    """A principal the domain knows: the baker, the owner, and the observer that is neither.
 
     Every governed write is attributed to one of these ids, which is what makes the audit
-    ledger answer "who authorised this" rather than "something did this".
+    ledger answer "who authorised this" rather than "something did this". The observer is here
+    so that a read has somebody to be attributed to; it holds no password that verifies and the
+    domain admits it to no write.
     """
 
     __tablename__ = "workers"

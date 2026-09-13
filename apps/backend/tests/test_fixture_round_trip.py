@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import Classification, ReasonDetail, Record, RuleId
 from promise_graph.snapshot import GraphSnapshot
+from promisepatch.api.auth import passwords
 from promisepatch.db import build_engine
 from promisepatch.db.base import SCHEMA, Base
 from promisepatch.db.models import (
@@ -502,7 +503,7 @@ async def test_the_demo_logins_are_seeded_with_verifiable_hashes(
         workers = (await connection.execute(select(Worker))).mappings().all()
 
     by_id = {row["id"]: row for row in workers}
-    assert set(by_id) == {seed.worker_id for seed in demo.STAFF}
+    assert set(by_id) == {seed.worker_id for seed in demo.SEEDED_WORKERS}
 
     hasher = PasswordHasher()
     for seed in demo.STAFF:
@@ -512,6 +513,24 @@ async def test_the_demo_logins_are_seeded_with_verifiable_hashes(
         assert hasher.verify(row["password_hash"], DEMO_PASSWORDS[seed.role])
         with pytest.raises(VerifyMismatchError):
             hasher.verify(row["password_hash"], "not the configured password")
+
+
+async def test_the_seeded_observer_has_no_password_that_could_work(
+    graph_engine: AsyncEngine,
+) -> None:
+    """It is a principal, not a login: the stored hash is not a hash Argon2 can even parse."""
+    await reset_at(graph_engine, ANCHORS[0])
+    async with graph_engine.connect() as connection:
+        row = (
+            (await connection.execute(select(Worker).where(Worker.id == demo.OBSERVER.worker_id)))
+            .mappings()
+            .one()
+        )
+
+    assert row["role"] == demo.OBSERVER_ROLE
+    assert row["password_hash"] == demo.UNUSABLE_PASSWORD_HASH
+    for attempt in ("", demo.UNUSABLE_PASSWORD_HASH, *DEMO_PASSWORDS.values()):
+        assert not passwords.verify(row["password_hash"], attempt)
 
 
 # ------------------------------------------------------------------ 10. history survives

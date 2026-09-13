@@ -114,7 +114,16 @@ TERMINAL_TRACK_STATES: tuple[str, ...] = (
 
 ACTOR_KINDS: tuple[str, ...] = ("WORKER", "OWNER", "CUSTOMER", "SYSTEM", "LLM")
 AUTHORITIES: tuple[str, ...] = ("POLICY", "CONSTRAINT", "HUMAN_APPROVAL", "NONE")
-WORKER_ROLES: tuple[str, ...] = ("baker", "owner")
+WORKER_ROLES: tuple[str, ...] = ("baker", "owner", "observer")
+"""What a member of staff may be, and therefore what the domain may admit them to.
+
+``observer`` is a principal that can be shown a case and can change nothing. It is a *role*
+rather than a scope on a session because the refusal then belongs to the domain: every write
+gates on :func:`promisepatch.domain.intake.require_permitted`, which admits the worker who
+opened a case or an owner and knows nothing about observers, so a write route added later with
+no observer check still refuses one. A session-level scope would put the refusal in whichever
+transport remembered to look for it.
+"""
 CHANNEL_KINDS: tuple[str, ...] = ("telegram", "whatsapp", "console")
 STEP_STATES: tuple[str, ...] = ("PENDING", "IN_FLIGHT", "RETRYING", "DONE", "FAILED", "SKIPPED")
 INBOX_STATES: tuple[str, ...] = ("RECEIVED", "PROCESSED", "FAILED", "IGNORED")

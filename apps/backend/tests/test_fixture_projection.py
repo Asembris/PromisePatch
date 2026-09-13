@@ -24,6 +24,7 @@ from promise_graph import model as engine_model
 from promise_graph.examples import hollow_oak
 from promise_graph.model import Record
 from promise_graph.snapshot import GraphSnapshot
+from promisepatch.api.auth import passwords
 from promisepatch.db.base import SCHEMA, metadata
 from promisepatch.db.boundary import (
     TRUNCATE_PROTECTED_TABLES,
@@ -394,3 +395,17 @@ def test_the_staff_seeds_are_the_fixtures_own_people() -> None:
     """Their ids are what the fixture already attributes attestation and authorship to."""
     assert {seed.worker_id for seed in demo.STAFF} == {hollow_oak.BAKER, hollow_oak.AUTHOR}
     assert {seed.role for seed in demo.STAFF} == {demo.BAKER_ROLE, demo.OWNER_ROLE}
+
+
+def test_the_observer_is_seeded_but_is_not_one_of_the_logins() -> None:
+    """A password is issued to staff, and the observer is deliberately outside that set."""
+    assert demo.OBSERVER not in demo.STAFF
+    assert demo.OBSERVER.role == demo.OBSERVER_ROLE
+    assert (*demo.STAFF, demo.OBSERVER) == demo.SEEDED_WORKERS
+
+
+def test_the_observers_stored_hash_verifies_against_nothing() -> None:
+    """It is not an Argon2 hash at all, so no password can be the one it was made from."""
+    assert not passwords.verify(demo.UNUSABLE_PASSWORD_HASH, "")
+    assert not passwords.verify(demo.UNUSABLE_PASSWORD_HASH, demo.UNUSABLE_PASSWORD_HASH)
+    assert not passwords.verify(demo.UNUSABLE_PASSWORD_HASH, "judge")

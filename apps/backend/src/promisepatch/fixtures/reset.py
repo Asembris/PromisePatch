@@ -120,7 +120,11 @@ async def reset_demo_state(
 
     snapshot = demo.build_snapshot(anchor)
     hasher = PasswordHasher()
+    # Only the two staff logins get a password hashed. The observer is seeded with a value
+    # Argon2 cannot parse, so `POST /api/auth/login` can never admit it: the identity exists to
+    # be named by a session the server issued, and there is nothing to guess.
     hashes = {seed.worker_id: hasher.hash(passwords[seed.role]) for seed in demo.STAFF}
+    hashes[demo.OBSERVER.worker_id] = demo.UNUSABLE_PASSWORD_HASH
 
     # Every fixture-derived instant is measured from the anchor, including the two columns the
     # engine has no counterpart for. Using the wall clock for them would make the digest of an
@@ -128,7 +132,7 @@ async def reset_demo_state(
     # would make idempotency unprovable.
     tables = (
         *project(snapshot, mirrored_at=anchor),
-        project_staff(demo.STAFF, password_hashes=hashes, created_at=anchor),
+        project_staff(demo.SEEDED_WORKERS, password_hashes=hashes, created_at=anchor),
     )
     fixture_digest = digest(fixture_name=demo.FIXTURE_NAME, anchor=anchor, tables=tables)
 
