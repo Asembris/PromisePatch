@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -94,6 +95,18 @@ class Settings(BaseSettings):
 
     demo_owner_password: SecretStr | None = None
     """Password seeded for the demo owner login by ``pp reset-demo-state``."""
+
+    static_root: Path | None = None
+    """Where the built browser bundle is, when this process is the one serving it.
+
+    Unset everywhere but the deployed image, which builds the bundle and points this at it.
+    Unset, the API serves the API and nothing else -- which is what every test expects and what
+    local development needs, because there the Vite dev server serves the page and proxies the
+    API so the browser regards both as one origin.
+
+    Set to a directory holding no ``index.html`` the application refuses to start, rather than
+    starting into a working API behind a blank page.
+    """
 
     demo_session_enabled: bool = False
     """Whether this deployment serves ``POST /api/auth/demo-session`` at all.

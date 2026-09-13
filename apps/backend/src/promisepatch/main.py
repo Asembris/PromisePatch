@@ -28,6 +28,7 @@ from promisepatch.api.routers import (
     promises_router,
     resources_router,
 )
+from promisepatch.api.spa import mount_spa
 from promisepatch.api.stream import EventBroadcaster
 from promisepatch.config import Environment, Settings, get_settings
 from promisepatch.db import RuntimeDatabase
@@ -124,6 +125,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(events_router)
     app.include_router(integrations_router)
     app.include_router(intents_router)
+    # Last, and it has to be last: the bundle's fallback matches any path, so every route has
+    # to exist before it does. It is a no-op unless this process was given a bundle to serve.
+    mount_spa(app, resolved.static_root)
     return app
 
 
