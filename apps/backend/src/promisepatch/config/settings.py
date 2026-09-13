@@ -95,6 +95,18 @@ class Settings(BaseSettings):
     demo_owner_password: SecretStr | None = None
     """Password seeded for the demo owner login by ``pp reset-demo-state``."""
 
+    demo_session_enabled: bool = False
+    """Whether this deployment serves ``POST /api/auth/demo-session`` at all.
+
+    Off, so a scoped observer session is a deliberate choice somebody made for one deployment
+    rather than a standing unauthenticated session endpoint in every copy of this repository.
+    Turning it on issues nothing by itself: the session it mints names the seeded observer, which
+    the domain admits to reads and to no write at all.
+
+    It is also the kill switch. Setting it back to false removes the endpoint on the next
+    process start with no code change, and ``revoked_at`` ends any session already issued.
+    """
+
     allow_fixture_reset: bool = False
     """Whether this deployment permits a fixture reset at all.
 

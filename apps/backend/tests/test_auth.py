@@ -7,23 +7,30 @@ can be forged, and whether a mutation can be triggered from another site.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from conftest import run_off_loop
 from fastapi import HTTPException
 from httpx2 import Response as HttpResponse
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select
 from starlette.responses import Response
 from starlette.testclient import TestClient
 
 from promisepatch.api.auth import cookies, passwords, sessions
-from promisepatch.api.auth.rate_limit import FixedWindowLimiter
+from promisepatch.api.auth.rate_limit import DEMO_SESSION_LIMIT, FixedWindowLimiter
 from promisepatch.api.dependencies import role_guard
 from promisepatch.api.routers import auth as auth_router
 from promisepatch.config import Environment, Settings
 from promisepatch.db import RuntimeDatabase
 from promisepatch.db.models import Session
+from promisepatch.db.models import Worker as WorkerRow
+from promisepatch.db.types import WORKER_ROLES
+from promisepatch.db.uow import Actor, UnitOfWork
+from promisepatch.fixtures import demo as demo_fixtures
+from promisepatch.main import create_app
 
 BAKER = "maya"
 OWNER = "jo"
@@ -425,3 +432,230 @@ def test_the_login_endpoint_refuses_a_flood(api: TestClient) -> None:
 
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "TOO_MANY_ATTEMPTS"
+
+
+# ------------------------------------------------------------------ the scoped demo session
+
+
+OBSERVER = "judge"
+"""The seeded observer. Named here so a rename of the fixture fails a test rather than a demo."""
+
+
+def demo_app(settings: Settings, *, enabled: bool = True) -> TestClient:
+    """The real application, with the demo endpoint turned on or off by configuration alone."""
+    auth_router._limiter.reset()
+    auth_router._demo_limiter.reset()
+    return TestClient(create_app(settings.model_copy(update={"demo_session_enabled": enabled})))
+
+
+@pytest.fixture
+def demo(runtime_settings: Settings, demo_state: object) -> Iterator[TestClient]:
+    with demo_app(runtime_settings) as client:
+        yield client
+
+
+def test_the_role_a_demo_session_names_is_one_the_database_admits() -> None:
+    """The endpoint names a role; the schema decides which roles exist. They must agree."""
+    assert auth_router.OBSERVER_ROLE in WORKER_ROLES
+
+
+def test_the_demo_endpoint_is_absent_unless_a_deployment_turns_it_on(
+    runtime_settings: Settings, demo_state: object
+) -> None:
+    """Off by default, and off means gone: no session, no cookie, no distinguishable refusal."""
+    with demo_app(runtime_settings, enabled=False) as client:
+        response = client.post("/api/auth/demo-session")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"
+    assert cookies.SESSION_COOKIE not in response.cookies
+
+
+def test_a_demo_session_is_issued_to_the_seeded_observer(demo: TestClient) -> None:
+    """No credentials in, an observer out. Nothing about the caller chose which one."""
+    response = demo.post("/api/auth/demo-session")
+
+    assert response.status_code == 200
+    assert response.json()["worker"] == {
+        "id": OBSERVER,
+        "username": OBSERVER,
+        "display_name": "Observer",
+        "role": "observer",
+    }
+    assert demo.get("/api/auth/me").json()["worker"]["role"] == "observer"
+
+
+def test_a_body_naming_a_worker_changes_nothing(demo: TestClient) -> None:
+    """There is no request model at all, so there is no field a caller could aim at one."""
+    response = demo.post(
+        "/api/auth/demo-session",
+        json={"worker_id": BAKER, "username": OWNER, "role": "owner", "actor": OWNER},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["worker"]["id"] == OBSERVER
+
+
+def test_the_observer_cannot_be_reached_by_signing_in(demo: TestClient) -> None:
+    """Its stored hash is not a hash, so no password is the password. Same answer as any other."""
+    attempts = ("judge", "observer", "password", demo_fixtures.UNUSABLE_PASSWORD_HASH)
+    for attempt in attempts:
+        response = login(demo, OBSERVER, attempt)
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "INVALID_CREDENTIALS"
+
+
+def test_a_demo_session_from_an_unlisted_origin_is_refused(demo: TestClient) -> None:
+    """The same ``Origin`` allowlist login is checked against, checked here for the same reason."""
+    response = demo.post(
+        "/api/auth/demo-session", headers={"Origin": "https://not-this-deployment.example"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "ORIGIN_NOT_ALLOWED"
+    assert cookies.SESSION_COOKIE not in response.cookies
+
+
+def test_a_client_asking_for_too_many_demo_sessions_is_refused(demo: TestClient) -> None:
+    """Bounded per client, by a limiter of its own rather than by sign-in's budget."""
+    for _ in range(DEMO_SESSION_LIMIT):
+        assert demo.post("/api/auth/demo-session").status_code == 200
+
+    refused = demo.post("/api/auth/demo-session")
+
+    assert refused.status_code == 429
+    assert refused.json()["error"]["code"] == "TOO_MANY_ATTEMPTS"
+
+
+def test_the_demo_limiter_does_not_spend_the_sign_in_budget(demo: TestClient) -> None:
+    """Two limiters, so exhausting one leaves the other exactly where it was."""
+    for _ in range(DEMO_SESSION_LIMIT + 1):
+        demo.post("/api/auth/demo-session")
+
+    assert login(demo, BAKER, password_for("baker")).status_code == 200
+
+
+def test_a_demo_session_expires_in_an_hour_rather_than_a_shift(demo: TestClient) -> None:
+    """The bound is on the row the server wrote, not on a cookie a browser was asked to keep."""
+    assert demo.post("/api/auth/demo-session").status_code == 200
+    session_id = cookies.unsign(
+        demo.cookies[cookies.SESSION_COOKIE], Settings().require_session_secret()
+    )
+
+    async def stored() -> tuple[datetime, datetime]:
+        database = RuntimeDatabase.from_settings(Settings())
+        try:
+            async with database.connect() as connection:
+                row = (
+                    await connection.execute(
+                        select(Session.created_at, Session.expires_at).where(
+                            Session.id == session_id
+                        )
+                    )
+                ).one()
+            return row.created_at, row.expires_at
+        finally:
+            await database.dispose()
+
+    created_at, expires_at = run_off_loop(stored)
+
+    assert expires_at - created_at == sessions.OBSERVER_SESSION_TTL
+    assert timedelta(minutes=60) == sessions.OBSERVER_SESSION_TTL
+    assert sessions.OBSERVER_SESSION_TTL < sessions.SESSION_TTL
+
+
+async def test_a_demo_session_past_its_hour_is_rejected(database: RuntimeDatabase) -> None:
+    """Expiry is compared where it is enforced, so a clock the client holds cannot revive one."""
+    now = datetime.now(UTC)
+    async with database.begin() as connection:
+        issued = await sessions.create(
+            connection, worker_id=OBSERVER, now=now, ttl=sessions.OBSERVER_SESSION_TTL
+        )
+        an_hour_later = now + sessions.OBSERVER_SESSION_TTL + timedelta(seconds=1)
+
+        assert await sessions.resolve(connection, session_id=issued.session_id, now=now)
+        assert (
+            await sessions.resolve(connection, session_id=issued.session_id, now=an_hour_later)
+            is None
+        )
+
+
+def test_a_revoked_demo_session_stops_working_on_the_next_request(demo: TestClient) -> None:
+    """It is an ordinary session row, so the ordinary kill switch ends it."""
+    assert demo.post("/api/auth/demo-session").status_code == 200
+    assert demo.get("/api/auth/me").status_code == 200
+    session_id = cookies.unsign(
+        demo.cookies[cookies.SESSION_COOKIE], Settings().require_session_secret()
+    )
+    assert session_id is not None
+
+    async def kill() -> None:
+        database = RuntimeDatabase.from_settings(Settings())
+        try:
+            async with database.begin() as connection:
+                await sessions.revoke(connection, session_id=session_id, now=datetime.now(UTC))
+        finally:
+            await database.dispose()
+
+    run_off_loop(kill)
+
+    assert demo.get("/api/auth/me").status_code == 401
+
+
+def test_turning_the_flag_off_ends_the_endpoint_without_a_code_change(
+    runtime_settings: Settings, demo_state: object
+) -> None:
+    """The documented kill switch: one setting, and the door is not there on the next start."""
+    with demo_app(runtime_settings, enabled=True) as on:
+        assert on.post("/api/auth/demo-session").status_code == 200
+
+    with demo_app(runtime_settings, enabled=False) as off:
+        assert off.post("/api/auth/demo-session").status_code == 404
+
+
+def test_a_deployment_with_no_observer_seeded_issues_nothing(
+    runtime_settings: Settings, demo_state: object
+) -> None:
+    """Fails closed rather than inventing a principal nobody seeded."""
+    with demo_app(runtime_settings) as client:
+        removed = run_off_loop(lambda: _set_observer_present(False))
+        try:
+            response = client.post("/api/auth/demo-session")
+        finally:
+            if removed:
+                run_off_loop(lambda: _set_observer_present(True))
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DEMO_SESSION_UNAVAILABLE"
+    assert cookies.SESSION_COOKIE not in response.cookies
+
+
+async def _set_observer_present(present: bool) -> bool:
+    """Add or remove the seeded observer, under the audit the write boundary requires."""
+    database = RuntimeDatabase.from_settings(Settings())
+    try:
+        async with database.begin() as connection:
+            existing = await connection.scalar(select(WorkerRow.id).where(WorkerRow.id == OBSERVER))
+            if bool(existing) == present:
+                return False
+            unit_of_work = UnitOfWork(connection)
+            async with unit_of_work.governed(
+                event_type="AUTH_TEST_SETUP",
+                actor=Actor(kind="SYSTEM", id="auth-tests"),
+                authority="NONE",
+            ) as write:
+                await write.execute(
+                    insert(WorkerRow).values(
+                        id=OBSERVER,
+                        username=OBSERVER,
+                        display_name="Observer",
+                        role="observer",
+                        password_hash=demo_fixtures.UNUSABLE_PASSWORD_HASH,
+                        created_at=datetime.now(UTC),
+                    )
+                    if present
+                    else delete(WorkerRow).where(WorkerRow.id == OBSERVER)
+                )
+        return True
+    finally:
+        await database.dispose()

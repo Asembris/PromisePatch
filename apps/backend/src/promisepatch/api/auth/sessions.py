@@ -35,6 +35,16 @@ unattended browser is not a standing key. A constant rather than a setting: noth
 to vary it, and an unused environment variable is a promise the code does not keep.
 """
 
+OBSERVER_SESSION_TTL: Final = timedelta(minutes=60)
+"""How long a scoped observer session lasts.
+
+An hour rather than the shift-length :data:`SESSION_TTL`, because the two are issued for
+different reasons. A login is somebody starting work; an observer session is somebody being
+shown the product, and a link that stays live for half a day is a standing anonymous session
+nobody meant to leave open. It is also revocable like any other session, so this is the ceiling
+rather than the only control.
+"""
+
 CSRF_TOKEN_BYTES: Final = 32
 
 
@@ -66,6 +76,31 @@ class IssuedSession:
     expires_at: datetime
 
 
+async def find_sole_worker_with_role(
+    connection: AsyncConnection, role: str
+) -> dict[str, str] | None:
+    """The one worker holding ``role``, or ``None`` when there is not exactly one.
+
+    Exactly one, or nothing. A deployment with two rows for a role has conflicting state about
+    which principal a session should name, and this system's rule for conflicting state is that
+    it fails closed rather than picking. Nothing here is a credential check: this answers "who
+    does this deployment mean", and the caller decides whether it may issue anything at all.
+    """
+    table = Worker.__table__
+    rows = (
+        (
+            await connection.execute(
+                select(table.c.id, table.c.username, table.c.display_name, table.c.role)
+                .where(table.c.role == role)
+                .limit(2)
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return dict(rows[0]) if len(rows) == 1 else None
+
+
 async def find_worker(connection: AsyncConnection, username: str) -> dict[str, str] | None:
     """The stored worker for a username, including the hash the password is checked against."""
     table = Worker.__table__
@@ -78,11 +113,23 @@ async def find_worker(connection: AsyncConnection, username: str) -> dict[str, s
     return None if row is None else dict(row)
 
 
-async def create(connection: AsyncConnection, *, worker_id: str, now: datetime) -> IssuedSession:
-    """Open a session for a worker, with its expiry and CSRF token decided server-side."""
+async def create(
+    connection: AsyncConnection,
+    *,
+    worker_id: str,
+    now: datetime,
+    ttl: timedelta = SESSION_TTL,
+) -> IssuedSession:
+    """Open a session for a worker, with its expiry and CSRF token decided server-side.
+
+    ``ttl`` is a server-side argument with a server-side default, chosen by the route that
+    issues the session. No caller outside this process can influence it, which is the property
+    that matters: a shorter-lived session is a decision this deployment makes about a principal,
+    not something a client asks for.
+    """
     session_id = uuid4()
     csrf_token = secrets.token_urlsafe(CSRF_TOKEN_BYTES)
-    expires_at = now + SESSION_TTL
+    expires_at = now + ttl
     await connection.execute(
         insert(Session).values(
             id=session_id,

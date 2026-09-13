@@ -18,6 +18,15 @@ from typing import Final
 LOGIN_ATTEMPT_LIMIT: Final = 10
 LOGIN_WINDOW: Final = timedelta(minutes=1)
 
+DEMO_SESSION_LIMIT: Final = 5
+DEMO_SESSION_WINDOW: Final = timedelta(minutes=1)
+"""How often one client may be issued a scoped observer session.
+
+Lower than the sign-in budget, because there is nothing here to get right on the second
+try: a client that needs five sessions a minute is not somebody being shown the product.
+It is counted separately from sign-in so that neither can exhaust the other's allowance.
+"""
+
 
 @dataclass
 class FixedWindowLimiter:
@@ -49,3 +58,7 @@ class FixedWindowLimiter:
 
 def login_limiter() -> FixedWindowLimiter:
     return FixedWindowLimiter(limit=LOGIN_ATTEMPT_LIMIT, window=LOGIN_WINDOW)
+
+
+def demo_session_limiter() -> FixedWindowLimiter:
+    return FixedWindowLimiter(limit=DEMO_SESSION_LIMIT, window=DEMO_SESSION_WINDOW)
