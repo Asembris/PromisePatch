@@ -485,6 +485,23 @@ async def require_worker(connection: AsyncConnection, worker_id: str) -> None:
         raise UnknownWorkerError(f"no worker {worker_id!r}")
 
 
+def may_attest(role: str) -> bool:
+    """Whether a principal in this role may put a physical claim on the record at all.
+
+    The rule itself, separated from the lookup that reads a row, for one reason: a surface has
+    to be able to *ask* it. A screen that offered "report what happened" to an observer would be
+    drawing a control the domain refuses, and a screen that worked the answer out from the word
+    ``observer`` in TypeScript would be a second copy of this rule in a language nothing here
+    tests. :func:`require_attestor` is the only enforcement and it calls this, so the answer a
+    surface is given and the answer a write receives cannot drift apart.
+
+    Asking it is never the same as being allowed: every write still passes the real check
+    against the real row, and a caller that lied about its role to this function has changed
+    nothing about what the database will let it do.
+    """
+    return role != OBSERVER_ROLE
+
+
 async def require_attestor(connection: AsyncConnection, worker_id: str) -> None:
     """Who may put a physical claim on the record at all, before there is a case to ask about.
 
@@ -499,7 +516,7 @@ async def require_attestor(connection: AsyncConnection, worker_id: str) -> None:
     role = await connection.scalar(select(Worker.role).where(Worker.id == worker_id))
     if role is None:
         raise UnknownWorkerError(f"no worker {worker_id!r}")
-    if role == OBSERVER_ROLE:
+    if not may_attest(role):
         raise NotPermittedError(f"worker {worker_id!r} is an observer and may not attest a fact")
 
 

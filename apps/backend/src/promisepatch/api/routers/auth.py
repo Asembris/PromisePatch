@@ -54,6 +54,7 @@ from promisepatch.api.schemas.auth import (
     WorkerResponse,
 )
 from promisepatch.config import Settings
+from promisepatch.domain import intake
 from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
@@ -184,6 +185,7 @@ async def login(
             username=worker["username"],
             display_name=worker["display_name"],
             role=worker["role"],
+            may_report=intake.may_attest(worker["role"]),
         )
     )
 
@@ -248,6 +250,7 @@ async def demo_session(
             username=observer["username"],
             display_name=observer["display_name"],
             role=observer["role"],
+            may_report=intake.may_attest(observer["role"]),
         )
     )
 
@@ -279,5 +282,6 @@ async def me(principal: PrincipalDep) -> WorkerResponse:
             username=principal.username,
             display_name=principal.display_name,
             role=principal.role,
+            may_report=intake.may_attest(principal.role),
         )
     )

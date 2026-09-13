@@ -29,6 +29,20 @@ class WorkerIdentity(BaseModel):
     username: str
     display_name: str
     role: str
+    may_report: bool = Field(
+        description=(
+            "whether the domain would accept a physical claim from this principal at all, "
+            "asked of promisepatch.domain.intake.may_attest rather than worked out from role"
+        )
+    )
+    """Whether this principal may open a case by saying what happened.
+
+    Here rather than left to a screen, for the same reason ``may_speak`` is on the case
+    response: a surface that read ``role`` and decided for itself would be a second copy of the
+    domain's rule, in a language this suite does not test, and the two would eventually disagree
+    about somebody. The domain refuses a write regardless of what was drawn; what this field
+    buys is that the screen never *offers* what would be refused.
+    """
 
 
 class WorkerResponse(BaseModel):

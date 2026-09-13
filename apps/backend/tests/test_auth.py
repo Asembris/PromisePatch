@@ -29,6 +29,7 @@ from promisepatch.db.models import Session
 from promisepatch.db.models import Worker as WorkerRow
 from promisepatch.db.types import WORKER_ROLES
 from promisepatch.db.uow import Actor, UnitOfWork
+from promisepatch.domain import intake
 from promisepatch.fixtures import demo as demo_fixtures
 from promisepatch.main import create_app
 
@@ -76,6 +77,7 @@ def test_the_baker_can_sign_in(api: TestClient) -> None:
         "username": BAKER,
         "display_name": "Maya",
         "role": "baker",
+        "may_report": True,
     }
 
 
@@ -235,6 +237,26 @@ def test_me_returns_the_signed_in_worker(api: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["worker"]["username"] == OWNER
+
+
+def test_me_tells_a_baker_the_domain_would_take_their_word(api: TestClient) -> None:
+    """The screen asks the server whether to offer "report what happened", never a role table."""
+    login(api, BAKER, password_for("baker"))
+
+    assert api.get("/api/auth/me").json()["worker"]["may_report"] is True
+
+
+def test_me_tells_an_observer_the_domain_would_not(demo: TestClient) -> None:
+    demo.post("/api/auth/demo-session")
+
+    assert demo.get("/api/auth/me").json()["worker"]["may_report"] is False
+
+
+def test_the_field_is_the_rule_the_write_itself_enforces() -> None:
+    """One rule, asked twice. A surface cannot be told yes where a write would hear no."""
+    assert intake.may_attest("baker") is True
+    assert intake.may_attest("owner") is True
+    assert intake.may_attest(intake.OBSERVER_ROLE) is False
 
 
 def test_me_without_a_session_is_unauthenticated(api: TestClient) -> None:
@@ -481,6 +503,7 @@ def test_a_demo_session_is_issued_to_the_seeded_observer(demo: TestClient) -> No
         "username": OBSERVER,
         "display_name": "Observer",
         "role": "observer",
+        "may_report": False,
     }
     assert demo.get("/api/auth/me").json()["worker"]["role"] == "observer"
 
