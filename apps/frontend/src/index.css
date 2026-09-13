@@ -121,6 +121,92 @@ body {
 }
 
 /**
+ * Motion, and the one rule that decides whether a piece of it may exist.
+ *
+ * **Nothing here animates something that has not happened.** Every keyframe below is played
+ * when the backend has already said a thing is so — a chain that arrived, a state the server
+ * now reports, a drawer a reader opened over data already in hand. There is deliberately no
+ * thinking animation, no ambient movement, no shimmer standing in for a value, and no
+ * anticipatory motion on a control that has been pressed but not answered. A screen whose whole
+ * claim is that it renders what is true may not move as though something were happening.
+ *
+ * Each is short, plays once, and carries no information of its own: with every one of them
+ * removed the screen says exactly the same thing.
+ */
+
+/* A causal edge drawing itself along its own axis, once, when a chain the backend returned is
+   first laid out. It draws the direction the traversal actually ran. */
+@keyframes pp-draw-down {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes pp-draw-across {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Content settling in as it arrives from a read. Two pixels and a fade; never a slide-in. */
+@keyframes pp-settle {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* One promise's state, having actually changed on the server, drawing the eye to itself once. */
+@keyframes pp-restate {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.035);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-motion='draw-down'] {
+    transform-origin: top center;
+    animation: pp-draw-down 260ms ease-out both;
+  }
+
+  [data-motion='draw-across'] {
+    transform-origin: top center;
+    animation: pp-draw-down 260ms ease-out both;
+  }
+
+  @media (min-width: 80rem) {
+    [data-motion='draw-across'] {
+      transform-origin: left center;
+      animation: pp-draw-across 260ms ease-out both;
+    }
+  }
+
+  [data-motion='settle'] {
+    animation: pp-settle 200ms ease-out both;
+  }
+
+  [data-motion='restate'] {
+    animation: pp-restate 320ms ease-out both;
+  }
+}
+
+/**
  * Motion never gates a read, so removing all of it can never remove information.
  *
  * This is the whole of the reduced-motion contract: with it honoured the screen is identical

@@ -74,7 +74,7 @@ export function CausalEdge({
         data-orientation="vertical"
         className={`flex justify-center py-0.5 opacity-70 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${colour}`}
       >
-        <span className="h-2 w-[1.5px] rounded-full bg-current" />
+        <span data-motion="draw-down" className="h-2 w-[1.5px] rounded-full bg-current" />
       </span>
     )
   }
@@ -88,7 +88,10 @@ export function CausalEdge({
       data-orientation="horizontal"
       className={`flex min-w-3 flex-col items-center justify-center opacity-70 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 xl:flex-1 xl:flex-row ${colour}`}
     >
-      <span className="h-3 w-[1.5px] rounded-full bg-current xl:h-[1.5px] xl:w-auto xl:flex-1" />
+      <span
+        data-motion="draw-across"
+        className="h-3 w-[1.5px] rounded-full bg-current xl:h-[1.5px] xl:w-auto xl:flex-1"
+      />
       <svg viewBox="0 0 6 8" className="h-2 w-1.5 shrink-0 rotate-90 xl:rotate-0" fill="currentColor">
         <path d="M0 0 L6 4 L0 8 Z" />
       </svg>

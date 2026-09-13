@@ -63,7 +63,7 @@ export function Disclosure({
         <Chevron open={open} />
         {summary}
       </button>
-      <div id={panelId} hidden={!open}>
+      <div id={panelId} hidden={!open} data-motion={open ? 'settle' : undefined}>
         {open ? children : null}
       </div>
     </div>

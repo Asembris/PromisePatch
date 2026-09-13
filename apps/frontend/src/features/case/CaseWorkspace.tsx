@@ -80,7 +80,15 @@ export function CaseWorkspace({
 
 function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
-    <div className="space-y-4" data-testid="case-workspace" data-case-id={view.case_id}>
+    // `data-motion` on the case rather than on the shell: it plays when a case the backend
+    // returned is laid out, which is the moment a judge arriving by the one-action entry first
+    // sees one. Nothing plays while the read is in flight.
+    <div
+      className="space-y-4"
+      data-motion="settle"
+      data-testid="case-workspace"
+      data-case-id={view.case_id}
+    >
       <WhatHappened view={view} />
       <WhatYouMustDo view={view} />
       {/* Inside the workspace, under the action it belongs to, with the bands still on screen.

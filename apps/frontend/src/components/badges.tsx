@@ -92,7 +92,14 @@ export function PromiseStatePill({
       data-tone={treatment.tone}
       data-finished={treatment.finished}
     >
+      {/* `key` on the state, so the pill is a new element whenever the **server** reports a
+          different one and the one-shot mark plays exactly then. It cannot play early: this
+          component has no idea a turn is in flight, and the value it keys on is the backend's.
+          With motion removed the pill is identical, because the animation adds no glyph, no
+          colour and no word. */}
       <span
+        key={state}
+        data-motion="restate"
         className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-phrase font-medium ring-1 ring-inset ${TONE_PILL[treatment.tone]}`}
       >
         <StateMarker marker={treatment.marker} />
