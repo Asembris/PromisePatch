@@ -334,13 +334,23 @@ class Intake:
         fixture reset happens to notice next. A test that dirties state other tests read is a
         test that fails somebody else's assertion in a later run, from a different file.
         """
-        await self._set_worker(worker_id, present=True)
+        async with self.another_worker(worker_id, role="baker") as present:
+            yield present
+
+    @asynccontextmanager
+    async def another_worker(self, worker_id: str, *, role: str) -> AsyncIterator[str]:
+        """One more principal of any declared role, for the length of one test.
+
+        The role is a parameter because "who may speak on a case" is a question about roles, and
+        a helper that could only make bakers could only ask a third of it.
+        """
+        await self._set_worker(worker_id, role=role, present=True)
         try:
             yield worker_id
         finally:
-            await self._set_worker(worker_id, present=False)
+            await self._set_worker(worker_id, role=role, present=False)
 
-    async def _set_worker(self, worker_id: str, *, present: bool) -> None:
+    async def _set_worker(self, worker_id: str, *, role: str, present: bool) -> None:
         async with self.database.begin() as connection:
             unit_of_work = UnitOfWork(connection)
             async with unit_of_work.governed(
@@ -353,7 +363,7 @@ class Intake:
                         id=worker_id,
                         username=worker_id,
                         display_name=worker_id.capitalize(),
-                        role="baker",
+                        role=role,
                         password_hash="unusable",
                         created_at=datetime.now(UTC),
                     )
