@@ -47,7 +47,12 @@ from promisepatch.api.dependencies import (
     now,
 )
 from promisepatch.api.errors import ApiError
-from promisepatch.api.schemas.auth import LoginRequest, WorkerIdentity, WorkerResponse
+from promisepatch.api.schemas.auth import (
+    LoginRequest,
+    SignInOptions,
+    WorkerIdentity,
+    WorkerResponse,
+)
 from promisepatch.config import Settings
 from promisepatch.observability import get_logger
 
@@ -118,6 +123,22 @@ def _check_origin(request: Request, settings: Settings) -> None:
             code="ORIGIN_NOT_ALLOWED",
             message="this origin may not sign in to this deployment",
         )
+
+
+@router.get("/options", response_model=SignInOptions, summary="What ways in this deployment has")
+async def options(settings: SettingsDep) -> SignInOptions:
+    """Say which ways in exist, so the sign-in screen draws the ones that do.
+
+    Unauthenticated, because the sign-in screen has no session by definition, and it discloses
+    nothing about anybody: one boolean about this deployment's own configuration. The demo
+    session is an advertised way in rather than a hidden one -- a judge is meant to find it by
+    looking at the page -- so saying whether it is served costs nothing and stops a screen
+    drawing a control that would be dead.
+
+    It grants nothing either way. ``true`` here still issues no session; that needs the endpoint
+    below, with its own flag check, its own ``Origin`` check and its own limiter.
+    """
+    return SignInOptions(demo_session=settings.demo_session_enabled)
 
 
 @router.post("/login", response_model=WorkerResponse, summary="Sign in")

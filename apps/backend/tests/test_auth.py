@@ -659,3 +659,30 @@ async def _set_observer_present(present: bool) -> bool:
         return True
     finally:
         await database.dispose()
+
+
+def test_the_sign_in_options_say_nothing_about_anybody(demo: TestClient) -> None:
+    """One boolean about this deployment. No username, no principal, no session required."""
+    response = demo.get("/api/auth/options")
+
+    assert response.status_code == 200
+    assert response.json() == {"demo_session": True}
+
+
+def test_the_sign_in_options_are_readable_without_a_session(
+    runtime_settings: Settings, demo_state: object
+) -> None:
+    """Read by the screen that has no session by definition, so it cannot require one."""
+    with demo_app(runtime_settings, enabled=False) as client:
+        response = client.get("/api/auth/options")
+
+    assert response.status_code == 200
+    assert response.json() == {"demo_session": False}
+
+
+def test_advertising_the_demo_session_does_not_issue_one(demo: TestClient) -> None:
+    """Saying a door exists is not opening it: the read sets no cookie and names no worker."""
+    response = demo.get("/api/auth/options")
+
+    assert cookies.SESSION_COOKIE not in response.cookies
+    assert demo.get("/api/auth/me").status_code == 401

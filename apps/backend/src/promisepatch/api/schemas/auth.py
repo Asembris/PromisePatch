@@ -37,3 +37,24 @@ class WorkerResponse(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     worker: WorkerIdentity
+
+
+class SignInOptions(BaseModel):
+    """What ways in this deployment offers, so a screen draws the ones that exist.
+
+    Unauthenticated, and deliberately so: it is read by the sign-in screen, which by definition
+    has no session. It says nothing about anybody -- no username, no principal, no count -- only
+    what this deployment serves, which is the same thing a judge is meant to discover by looking
+    at the page.
+
+    It exists so the screen does not have to *probe*. A control drawn on the hope that an endpoint
+    is there is a control that can be dead on arrival, and the P7.1 contract forbids drawing a
+    capability that does not exist. One field now; a second way in would be a second field rather
+    than a second guess.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    demo_session: bool = Field(
+        description="whether POST /api/auth/demo-session is served by this deployment"
+    )
