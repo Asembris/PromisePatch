@@ -27,7 +27,7 @@
  */
 import type { ReactNode } from 'react'
 import type { ClarificationHistoryView } from '../../api/types'
-import { QuietCard, SectionLabel } from '../../components/surfaces'
+import { QuietCard } from '../../components/surfaces'
 import { Value } from '../../components/values'
 import { formatDateTime } from '../../components/time'
 
@@ -42,40 +42,53 @@ export function ClarificationHistory({
   if (answered.length === 0) return null
 
   return (
-    <div className="space-y-2" data-testid="clarification-history" data-count={answered.length}>
-      <SectionLabel>what was asked, and what you said</SectionLabel>
-      <ul className="space-y-2">
-        {answered.map((item) => (
-          <li key={item.clarification_id}>
-            <AnsweredQuestion item={item} />
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul className="space-y-1.5" data-testid="clarification-history" data-count={answered.length}>
+      {answered.map((item) => (
+        <li key={item.clarification_id}>
+          <AnsweredQuestion item={item} />
+        </li>
+      ))}
+    </ul>
   )
 }
 
+/**
+ * One exchange, in two lines rather than four.
+ *
+ * Band 1 is the most crowded region of the workspace and everything below it is the product's
+ * actual argument, so this earns its vertical space rather than being given it: the label sits
+ * on the question's own line, the attribution sits on the answer's, and the card is as tight as
+ * it can be without the quote losing the emphasis that marks it as somebody's own words.
+ */
 function AnsweredQuestion({ item }: { item: ClarificationHistoryView }): ReactNode {
   const resolved = item.options.find((option) => option.code === item.resolved_option_code)
 
   return (
     <QuietCard
-      className="px-4 py-2.5"
+      className="px-4 py-2"
       data-testid="clarification-answered"
       data-clarification-id={item.clarification_id}
       data-ordinal={item.ordinal}
     >
-      <p className="text-reason text-muted">{item.question}</p>
-      <blockquote className="mt-1 text-phrase font-medium text-ink">
-        “{item.answer_text}”
-      </blockquote>
-      <p className="mt-1 text-label text-muted uppercase">
-        <Value>{item.answered_by}</Value>
-        {item.answered_at === null ? null : <> · {formatDateTime(item.answered_at)}</>}
-        {resolved === undefined ? null : (
-          <span data-testid="clarification-resolved"> · read as {resolved.label}</span>
-        )}
+      <p className="flex flex-wrap items-baseline gap-x-2 text-reason text-muted">
+        <span className="text-label uppercase">asked</span>
+        {item.question}
       </p>
+      {/* A div rather than a paragraph: a blockquote is flow content and a paragraph may hold
+          only phrasing, so the browser would close the paragraph before the quote and leave the
+          attribution outside the row it belongs to. */}
+      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2.5">
+        <blockquote className="text-phrase font-medium text-ink">
+          “{item.answer_text}”
+        </blockquote>
+        <span className="text-label text-muted uppercase">
+          <Value>{item.answered_by}</Value>
+          {item.answered_at === null ? null : <> · {formatDateTime(item.answered_at)}</>}
+          {resolved === undefined ? null : (
+            <span data-testid="clarification-resolved"> · read as {resolved.label}</span>
+          )}
+        </span>
+      </div>
     </QuietCard>
   )
 }

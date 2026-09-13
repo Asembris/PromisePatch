@@ -197,10 +197,12 @@ function WhatYouMustDo({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   return (
     <section aria-label="What you must do now">
       <Card
-        className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-5"
+        className="flex flex-wrap items-baseline gap-x-5 gap-y-1.5 px-4 py-2.5 sm:px-5"
         data-testid="band-next-action"
       >
-        <div className="flex shrink-0 flex-col items-start gap-1.5 sm:w-32">
+        {/* No fixed column. The owner label is one short backend string and a reserved width
+            put a hand's breadth of empty card between it and the sentence it belongs to. */}
+        <div className="flex shrink-0 items-baseline gap-2">
           <SectionLabel>whose move</SectionLabel>
           <Badge tone={actionOwnerTone(action.owner)}>{action.owner_label}</Badge>
         </div>

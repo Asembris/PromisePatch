@@ -178,3 +178,54 @@ describe('each untouched promise', () => {
     expect(text).not.toContain('track-pr-d')
   })
 })
+
+// --------------------------------------------------------------- one sentence, not two
+
+describe('the reason an untouched promise gives', () => {
+  it('is the absence sentence alone when the backend sent one', () => {
+    render(
+      <UntouchedProof
+        promises={[
+          untouched('pr-e', 'EXT-E', 'Ahmed Bouazizi', {
+            reason_phrase: 'the exception reaches nothing it depends on',
+          }),
+        ]}
+        untouchedCount={1}
+        untouchedEffectCount={0}
+        promiseCount={6}
+      />,
+    )
+
+    const row = screen.getByTestId('untouched-row')
+    expect(within(row).getByTestId('causal-absence')).toHaveTextContent(NOT_REACHED)
+    // The fuller sentence already carries the reason; printing the phrase as well made every
+    // untouched row state its own conclusion twice.
+    expect(row).not.toHaveTextContent('the exception reaches nothing it depends on')
+  })
+
+  it('falls back to the reason phrase when no absence sentence arrived', () => {
+    render(
+      <UntouchedProof
+        promises={[
+          untouched('pr-f', 'EXT-F', 'Cafe Marlow', {
+            reason_phrase: 'what is already reserved for it still covers the need',
+            causal_chain: {
+              present: false,
+              steps: [],
+              absence_reason: null,
+              path_count: 0,
+              deciding_rule: null,
+            },
+          }),
+        ]}
+        untouchedCount={1}
+        untouchedEffectCount={0}
+        promiseCount={6}
+      />,
+    )
+
+    const row = screen.getByTestId('untouched-row')
+    expect(within(row).queryByTestId('causal-absence')).not.toBeInTheDocument()
+    expect(row).toHaveTextContent('what is already reserved for it still covers the need')
+  })
+})

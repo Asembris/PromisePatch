@@ -13,7 +13,9 @@
  * - **Why each one was not reached**, in the domain's own sentence — and the sentence is not the
  *   same sentence twice. A promise nothing reaches was never in danger; a promise a path reaches
  *   and finds nothing at risk was checked and cleared. Saying the first where the second is true
- *   would be exactly the kind of tidy overstatement this product exists not to make.
+ *   would be exactly the kind of tidy overstatement this product exists not to make. Literally
+ *   not twice, either: the row prints one of the two backend sentences about reachability, not
+ *   both, because the fuller one already contains the shorter.
  *
  * Quiet ground, never a success treatment, never collapsed, and never the thing that goes when
  * the viewport gets small. "Left alone" is the absence of an effect; a tick here would claim the
@@ -104,9 +106,14 @@ function UntouchedRow({ promise }: { promise: PromiseWorkspaceView }): ReactNode
         </span>
       </div>
 
-      {promise.reason_phrase === null ? null : (
+      {/* One sentence, not two that say the same thing. The absence reason is the fuller of
+          the pair — it names both the reachability and the rule detail — and on a real case it
+          literally contains the reason phrase, so printing both made every untouched row read
+          its own conclusion twice. The phrase is shown only where no absence reason arrived,
+          which is a promise an older backend told this screen nothing about. */}
+      {chain.absenceReason === null && promise.reason_phrase !== null ? (
         <p className="mt-1 text-reason text-muted">{promise.reason_phrase}</p>
-      )}
+      ) : null}
       <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <CausalAbsence reason={chain.absenceReason} />
         {chain.pathCount > 1 ? <CausalPathCount value={chain.pathCount} /> : null}

@@ -94,7 +94,11 @@ export function EvidenceLayers({ view }: { view: CaseWorkspaceResponse }): React
   return (
     <section aria-label="Evidence">
       <QuietCard className="px-4 py-3">
-        <Disclosure summary="Why did PromisePatch decide this?" testId="evidence-toggle" tone="loud">
+        <Disclosure
+          summary="Why did PromisePatch decide this?"
+          testId="evidence-toggle"
+          tone="loud"
+        >
           <div className="mt-4 space-y-4" data-testid="evidence-drawer">
             <PlainWords view={view} rows={rows} />
             <CausalPaths rows={rows} />
@@ -105,6 +109,18 @@ export function EvidenceLayers({ view }: { view: CaseWorkspaceResponse }): React
       </QuietCard>
     </section>
   )
+}
+
+/**
+ * The body of one layer, set in from the control that opened it.
+ *
+ * Depth is the whole idea here, so it is drawn: a rule down the left says that what follows
+ * belongs to the summary above it rather than to the layer above that. Without it four
+ * disclosures at the same indent read as four sections, and "one click deeper" stops being
+ * visible as soon as two of them are open at once.
+ */
+function LayerBody({ children }: { children: ReactNode }): ReactNode {
+  return <div className="mt-2 ml-1.5 border-l border-edge pl-3">{children}</div>
 }
 
 // ----------------------------------------------------------------------- 1. in plain words
@@ -176,7 +192,8 @@ function PlainWords({
 function CausalPaths({ rows }: { rows: readonly Subject[] }): ReactNode {
   return (
     <Disclosure summary="the path from what happened to each promise" testId="evidence-path">
-      <ul className="mt-2 space-y-2">
+      <LayerBody>
+        <ul className="space-y-2">
         {rows.map(({ track, promise }) => (
           <li
             key={track.track_id}
@@ -189,8 +206,9 @@ function CausalPaths({ rows }: { rows: readonly Subject[] }): ReactNode {
             </span>
             <ChainInWords chain={promise?.causal_chain} />
           </li>
-        ))}
-      </ul>
+          ))}
+        </ul>
+      </LayerBody>
     </Disclosure>
   )
 }
@@ -247,7 +265,8 @@ function WhatWasChecked({
   const reading = view.evidence.interpretation
   return (
     <Disclosure summary="what was checked, and under whose authority" testId="evidence-authority">
-      <div className="mt-2 space-y-3">
+      <LayerBody>
+        <div className="space-y-3">
         {reading === null ? null : (
           <p className="text-reason text-muted" data-testid="evidence-reading">
             The report was read by {reading.source.toLowerCase()} and the facts are attested by{' '}
@@ -272,8 +291,9 @@ function WhatWasChecked({
             <ApprovalLine approval={track.approval} />
             <RevalidationChecks revalidation={track.revalidation} />
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </LayerBody>
     </Disclosure>
   )
 }
@@ -347,7 +367,8 @@ function TechnicalRecord({
 }): ReactNode {
   return (
     <Disclosure summary="the technical record" testId="evidence-technical">
-      <div className="mt-2 space-y-3 font-mono text-state" data-testid="evidence-technical-panel">
+      <LayerBody>
+        <div className="space-y-3 font-mono text-state" data-testid="evidence-technical-panel">
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <dt className="text-muted">case</dt>
           <dd className="break-all">{evidence.case_id}</dd>
@@ -390,8 +411,9 @@ function TechnicalRecord({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
-      </div>
+      </LayerBody>
     </Disclosure>
   )
 }

@@ -127,10 +127,15 @@ describe('the case workspace', () => {
     expect(counts.getByText('3')).toBeInTheDocument()
     expect(counts.getByText('orders affected')).toBeInTheDocument()
     // The domain's sentence for the reason, not the token behind it: a band a baker reads
-    // may not print an enum, and the token itself is in the technical record.
+    // may not print an enum, and the token itself is in the technical record. Once, too —
+    // the fuller absence sentence already contains the shorter reason phrase, and a row that
+    // printed both said its own conclusion twice.
+    expect(within(rows[0]!).getByTestId('causal-absence')).toHaveTextContent(
+      'the exception reaches nothing it depends on',
+    )
     expect(
-      within(rows[0]!).getByText('the exception reaches nothing it depends on'),
-    ).toBeInTheDocument()
+      within(rows[0]!).getAllByText(/the exception reaches nothing it depends on/),
+    ).toHaveLength(1)
     stream.close()
   })
 
