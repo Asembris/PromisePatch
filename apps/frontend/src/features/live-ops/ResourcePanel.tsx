@@ -1,9 +1,15 @@
 /**
  * Ingredients and equipment, kept visually separate because they are different kinds of fact.
  *
- * The four ingredient quantities are the engine's own, passed through unchanged. Nothing here
- * recomputes availability, and three properties of the backend's numbers are preserved
- * exactly:
+ * The four ingredient quantities are the engine's own, passed through unchanged, and each
+ * column is headed with what its field actually means rather than with the shortest word that
+ * would fit. Two of the four are easy to read as something they are not: ``expected`` is supply
+ * still owed by an open commitment line, not an order and not a delivery that arrived; and
+ * ``available_by`` is a statement about a moment rather than a stock level, so the horizon is
+ * in the heading and not only in the panel's subtitle.
+ *
+ * Nothing here recomputes availability, and three properties of the backend's numbers are
+ * preserved exactly:
  *
  * - `null` is unknown and is rendered as unknown, never as `0`.
  * - a negative `available_by` is a shortfall and is shown as one, never clamped.
@@ -32,25 +38,33 @@ export function IngredientTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[44rem] border-collapse text-sm">
         <caption className="sr-only">
-          Ingredient availability computed by {at}. An empty cell is never shown: an unknown
-          quantity is labelled unknown.
+          Four quantities per ingredient, each one the engine's own and none of them derived
+          here: what is physically on hand, what is still expected from open commitments, what
+          earlier promises have reserved, and what is left available by {at}. An empty cell is
+          never shown: an unknown quantity is labelled unknown.
         </caption>
         <thead>
           <tr className="border-b border-edge bg-surface text-left text-xs font-medium text-muted">
             <th scope="col" className={CELL}>
               Ingredient
             </th>
-            <th scope="col" className={`${CELL} text-right`}>
+            <th scope="col" className={`${CELL} text-right`} data-field="on_hand">
               On hand
             </th>
-            <th scope="col" className={`${CELL} text-right`}>
-              Expected
+            {/* Expected *supply*, from commitment lines still open. It is not what anybody
+                ordered and it is not a delivery that arrived — a settled line contributes
+                nothing here, which is the whole reason the engine keeps the two apart. */}
+            <th scope="col" className={`${CELL} text-right`} data-field="expected">
+              Still expected
             </th>
-            <th scope="col" className={`${CELL} text-right`}>
+            <th scope="col" className={`${CELL} text-right`} data-field="reserved">
               Reserved
             </th>
-            <th scope="col" className={`${CELL} text-right`}>
-              Available
+            {/* `available_by`, and the name says the horizon out loud. A column headed
+                "Available" reads as a stock figure, and this one is a statement about a
+                moment: the same ingredient has a different answer by a different time. */}
+            <th scope="col" className={`${CELL} text-right`} data-field="available_by">
+              Available by {formatDateTime(at) ?? at}
             </th>
             <th scope="col" className={CELL}>
               Last posting
