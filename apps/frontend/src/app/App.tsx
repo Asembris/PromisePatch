@@ -59,10 +59,15 @@ export function App(): ReactNode {
     <div className="min-h-full">
       {/* First in the tab order, visible the moment it is focused, and pointing at the one
           landmark on the page. A judge or a worker arriving by keyboard should not have to walk
-          the header to reach the case. */}
+          the header to reach the case.
+
+          Every visible style is on `focus:` rather than on the base. `sr-only` sets its own
+          padding to zero, and a padded base put a 21-pixel clipped box in the document that
+          measured as a control nobody could see — so the unfocused link is now genuinely a
+          1px box, and the focused one is a full-size target. */}
       <a
         href="#case-surface"
-        className="sr-only rounded-control bg-brand px-4 py-2.5 text-sm font-semibold text-brand-ink focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-30"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-30 focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-control focus:bg-brand focus:px-4 focus:text-sm focus:font-semibold focus:text-brand-ink"
       >
         Skip to the case
       </a>
