@@ -108,7 +108,11 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
     <section aria-label="What happened">
       <div className="space-y-3" data-testid="band-what-happened">
         <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
-          <div className="min-w-0 flex-1 space-y-2">
+          {/* `basis-full` below `sm`, so the counts wrap under the quote instead of standing
+              beside it. `flex-1` alone has a zero basis, which never forces a wrap — it just
+              squeezes, and what it squeezes on a phone is the worker's own sentence, which is
+              the one piece of text on this screen a person is the source of. */}
+          <div className="min-w-0 flex-1 basis-full space-y-2 sm:basis-0">
             <CaseHeadlineBadge headline={view.headline} />
             {view.reported_text === null ? (
               <p className="text-sm text-muted">Nothing has been reported on this case yet.</p>
@@ -211,7 +215,12 @@ function WhatYouMustDo({ view }: { view: CaseWorkspaceResponse }): ReactNode {
           <SectionLabel>whose move</SectionLabel>
           <Badge tone={actionOwnerTone(action.owner)}>{action.owner_label}</Badge>
         </div>
-        <p className="min-w-0 flex-1 text-action font-medium" data-testid="next-action-sentence">
+        {/* Same rule as band 1: on a narrow screen the one thing this band exists to say drops
+            to its own line rather than sharing it with the owner chip. */}
+        <p
+          className="min-w-0 flex-1 basis-full text-action font-medium sm:basis-0"
+          data-testid="next-action-sentence"
+        >
           {action.action}
         </p>
       </Card>
