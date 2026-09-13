@@ -258,13 +258,35 @@ def test_line_quantities_are_whole_units(api: TestClient) -> None:
             assert line.quantity > 0
 
 
-WRITEABLE_PREFIXES = ("/api/auth", "/api/integrations")
-"""The only two families of route in this application that a caller may write to.
+WRITEABLE_PREFIXES = ("/api/auth", "/api/conversation", "/api/integrations")
+"""The only three families of route in this application that a caller may write to.
 
 ``/api/auth`` is a person signing in or out. ``/api/integrations`` is another *system* handing
 us something it has already done -- authenticated with a shared secret rather than a session,
-and storing the delivery rather than acting on it. Neither of them is an order editor, and the
-list is written here so that adding a third is a decision somebody has to make on purpose.
+and storing the delivery rather than acting on it.
+
+``/api/conversation`` is the third, added deliberately and not by accident: it is a person
+**saying something**, which is the only way a worker has ever been able to move a case. What was
+new was the transport, not the authority -- the same three application services the MCP tools
+reach, over a session instead of a service token, with the actor read off the session row.
+
+None of the three is an order editor, and the test below says so about this one specifically
+rather than trusting the prefix: what a caller may state is a sentence, a case and a plan
+identity the server itself handed out. There is no field naming an order, a line, a quantity or
+a recipe version, so there is nothing here that could be talked into editing one. The external
+order system remains the system of record, and PromisePatch still writes to an order only as a
+governed recovery amendment raised by the worker process.
+"""
+
+CONVERSATION_FIELDS: dict[str, frozenset[str]] = {
+    "ReportTurn": frozenset({"command_id", "text"}),
+    "ClarifyTurn": frozenset({"command_id", "case_id", "text"}),
+    "ConfirmTurn": frozenset({"command_id", "case_id", "plan_id"}),
+}
+"""Every field a browser may put in a conversation request. Stated whole, not sampled.
+
+Written out so that a field added to one of these models fails here rather than passing a test
+that only looked for the words somebody thought to forbid.
 """
 
 
@@ -278,6 +300,68 @@ def test_no_write_route_exists_for_orders_or_promises(api: TestClient) -> None:
         methods = {method.upper() for method in operations}
         mutating = methods & {"POST", "PUT", "PATCH", "DELETE"}
         assert not mutating or path.startswith(WRITEABLE_PREFIXES), (path, mutating)
+
+
+def test_the_conversation_routes_are_not_an_order_editor(api: TestClient) -> None:
+    """The third writeable family states words, never a change to somebody's order.
+
+    The prefix allowlist above says these routes may write. This says what they may write *about*:
+    a sentence, a case, and an opaque plan identity the server handed out. There is no field for
+    an order, a line, a quantity, a resource or a recipe version, so no caller -- and no model
+    behind one -- has anything to fill in that could reach the order book. What actually amends an
+    order is a governed recovery amendment raised by the worker process, and nothing on this
+    surface can name one.
+    """
+    schema = api.get("/openapi.json").json()
+    models = schema["components"]["schemas"]
+
+    for model, expected in CONVERSATION_FIELDS.items():
+        assert frozenset(models[model]["properties"]) == expected, model
+        # `extra="forbid"`: a field a caller invented is refused rather than ignored.
+        assert models[model]["additionalProperties"] is False, model
+
+
+def test_no_conversation_request_carries_an_actor_or_a_clock(api: TestClient) -> None:
+    """Who is speaking and when they spoke are the server's, and there is no field to say otherwise.
+
+    Asserted over the published schema rather than over the source, because the schema is what a
+    caller reads: if any of these names appeared here, somebody would reasonably try to set it.
+    """
+    schema = api.get("/openapi.json").json()
+    models = schema["components"]["schemas"]
+    forbidden = {
+        "worker_id",
+        "worker",
+        "actor",
+        "attested_by",
+        "reported_by",
+        "confirmed_by",
+        "role",
+        "observed_at",
+        "recorded_at",
+        "now",
+        "timestamp",
+    }
+
+    for model in CONVERSATION_FIELDS:
+        assert not (frozenset(models[model]["properties"]) & forbidden), model
+
+
+def test_every_conversation_route_is_a_session_mutation(api: TestClient) -> None:
+    """Three POSTs and nothing else: no read, no delete, no route that skipped the list."""
+    schema = api.get("/openapi.json").json()
+
+    conversation = {
+        path: set(operations)
+        for path, operations in schema["paths"].items()
+        if path.startswith("/api/conversation")
+    }
+
+    assert conversation == {
+        "/api/conversation/report": {"post"},
+        "/api/conversation/clarify": {"post"},
+        "/api/conversation/confirm": {"post"},
+    }
 
 
 def test_the_integration_ingress_is_the_only_route_an_order_can_arrive_through(
