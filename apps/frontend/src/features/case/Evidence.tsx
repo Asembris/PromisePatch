@@ -385,9 +385,21 @@ function TechnicalRecord({
             {evidence.interpretation === null ? null : (
               <>
                 <dt className="text-muted">reading</dt>
-                <dd>
+                <dd data-testid="evidence-reading">
                   {evidence.interpretation.source} · {evidence.interpretation.outcome ?? '—'} ·{' '}
-                  <Value>{evidence.interpretation.model_id}</Value>
+                  {/* A deterministic reading has no `model_id` because no model was consulted,
+                      and the absent-value marker reads that as "we do not know which one" —
+                      the opposite of the claim. Which of the two renderings applies is the
+                      backend's `source`, not an inference: the enum carries the meaning. */}
+                  {evidence.interpretation.source === 'DETERMINISTIC' &&
+                  evidence.interpretation.model_id === null &&
+                  evidence.interpretation.provider === null ? (
+                    <span className="text-muted" data-testid="evidence-no-model">
+                      no model was called
+                    </span>
+                  ) : (
+                    <Value>{evidence.interpretation.model_id}</Value>
+                  )}
                 </dd>
               </>
             )}

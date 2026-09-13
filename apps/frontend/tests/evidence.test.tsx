@@ -377,3 +377,85 @@ describe('closing a layer', () => {
     stream.close()
   })
 })
+
+// ----------------------------------------------- the reading, and whether a model was in it
+
+describe('the technical record says whether a model read the report', () => {
+  /** Open every layer down to the technical record, which is where provenance lives. */
+  async function openTechnical(): Promise<HTMLElement> {
+    await openEvidence()
+    await userEvent.click(screen.getByTestId('evidence-technical'))
+    return screen.getByTestId('evidence-technical-panel')
+  }
+
+  it('says no model was called rather than leaving the model unknown', async () => {
+    // The canonical case is resolved deterministically, so `model_id` and `provider` are null
+    // because nothing was asked — not because the answer was lost. "unknown" reads as the
+    // second, and the whole authority claim rests on it being the first.
+    const { stream } = mountAtCase()
+    const panel = await openTechnical()
+
+    const reading = within(panel).getByTestId('evidence-reading')
+    expect(within(reading).getByTestId('evidence-no-model')).toHaveTextContent(
+      'no model was called',
+    )
+    expect(within(reading).queryByText('unknown')).not.toBeInTheDocument()
+    stream.close()
+  })
+
+  it('still names the reading source and outcome beside it', async () => {
+    const { stream } = mountAtCase()
+    const panel = await openTechnical()
+
+    expect(panel).toHaveTextContent('DETERMINISTIC')
+    expect(panel).toHaveTextContent('RESOLVED')
+    stream.close()
+  })
+
+  it('claims nothing about a model when the reading was a model reading', async () => {
+    // A semantic reading whose id is recorded names it. Nothing here may say "no model was
+    // called" about a case where one was — the claim is the backend's source, not a null check.
+    const { stream } = mountAtCase(() =>
+      json({
+        ...SETTLED_CASE,
+        evidence: {
+          ...SETTLED_CASE.evidence,
+          interpretation: {
+            ...SETTLED_CASE.evidence.interpretation,
+            source: 'SEMANTIC_ASSISTED',
+            provider: 'bedrock',
+            model_id: 'us.amazon.nova-2-lite-v1:0',
+          },
+        },
+      }),
+    )
+    const panel = await openTechnical()
+
+    expect(within(panel).queryByTestId('evidence-no-model')).not.toBeInTheDocument()
+    expect(panel).toHaveTextContent('us.amazon.nova-2-lite-v1:0')
+    stream.close()
+  })
+
+  it('falls back to the unknown marker when a model reading recorded no id', async () => {
+    const { stream } = mountAtCase(() =>
+      json({
+        ...SETTLED_CASE,
+        evidence: {
+          ...SETTLED_CASE.evidence,
+          interpretation: {
+            ...SETTLED_CASE.evidence.interpretation,
+            source: 'SEMANTIC_ASSISTED',
+            provider: 'bedrock',
+            model_id: null,
+          },
+        },
+      }),
+    )
+    const panel = await openTechnical()
+
+    const reading = within(panel).getByTestId('evidence-reading')
+    expect(within(reading).queryByTestId('evidence-no-model')).not.toBeInTheDocument()
+    expect(within(reading).getByText('unknown')).toBeInTheDocument()
+    stream.close()
+  })
+})
