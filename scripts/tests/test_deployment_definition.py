@@ -512,10 +512,16 @@ def test_the_public_name_serves_the_page_rather_than_a_sentence_about_it() -> No
 def test_the_intent_api_is_refused_before_the_catch_all_can_publish_it() -> None:
     """The catch-all ends an allowlist, and `/internal*` is what the allowlist was keeping out.
 
-    `handle` blocks are evaluated in the order they are written, so the refusal has to be above
-    the proxy rather than merely present. Below it, `POST /internal/intents/report` from the
-    public internet reaches the intent API with nothing in front of it but a service token the
-    `api` container holds -- which is a published internal write surface, not a hardened one.
+    Without the refusal, `POST /internal/intents/report` from the public internet reaches the
+    intent API with nothing in front of it but a service token the `api` container holds -- a
+    published internal write surface rather than a hardened one.
+
+    What makes the refusal win is Caddy's own ordering: it compiles `handle` blocks
+    most-specific-first, so a path matcher always beats the catch-all whatever order they are
+    written in. Checked against `caddy adapt`, which puts `/internal*` first and the unmatched
+    block last. This asserts the written order anyway, because a reader checks a file rather
+    than a compiled configuration, and a refusal written below the thing it refuses reads as
+    dead code to whoever tidies it next.
     """
     directives = _caddy_directives()
     refusal = _handle_index(directives, "handle /internal* {")
