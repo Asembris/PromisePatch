@@ -109,11 +109,11 @@ export function resetOrderSystem(): void {
  * it is generated per machine, and a literal here would be a token that is wrong everywhere but
  * the machine it was written on.
  *
- * It is used here to do what no browser can: **open a case.** That is deliberate, and it is the
- * shape of the product rather than a convenience. A case begins when somebody reports a physical
- * fact through the conversational surface; the workspace is where a case is then read and
- * answered. So the suite arranges a case the way the system really does, and then drives the
- * browser against it.
+ * It is used here to **arrange** a case, so that a spec about something else -- a layout at four
+ * widths, a keyboard path -- does not spend its first minute driving a browser through a
+ * conversation it is not testing. The browser can now open a case of its own through
+ * ``/api/conversation/report``, and `worker-report.spec.ts` is the spec that proves it; the
+ * helpers below are the arrangement, not the claim.
  */
 function serviceToken(): string {
   return process.env.E2E_SERVICE_TOKEN ?? readEnv(API_ENV, 'PP_INTERNAL_SERVICE_TOKEN')
@@ -168,4 +168,68 @@ export async function waitForHeadline(caseId: string, headline: string): Promise
     last = await caseStatus(caseId)
   }
   return last
+}
+
+/** Answer the one question a case is waiting on, from outside the browser. */
+export async function answerClarification(caseId: string, text: string): Promise<void> {
+  const response = await fetch(`${promisePatchAPI()}/internal/intents/clarify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken() },
+    body: JSON.stringify({ command_id: crypto.randomUUID(), case_id: caseId, text }),
+  })
+  if (!response.ok) throw new Error(`clarify refused: ${response.status} ${await response.text()}`)
+}
+
+/** Headlines past analysis, where bands 3 and 4 have something in them. */
+const ANALYSED_HEADLINES = new Set(['PLANNED', 'WORKING', 'WAITING', 'SETTLED'])
+
+/**
+ * A read-only session, minted the way the sign-in screen mints one, with its cookies kept.
+ *
+ * Node's `fetch` carries no cookie jar, so the two headers are moved across by hand. Nothing
+ * else about it differs from what a browser does, and what it can see is exactly what an
+ * observer can see -- which is all this needs.
+ */
+async function observerCookies(): Promise<string> {
+  const response = await fetch(`${promisePatchAPI()}/api/auth/demo-session`, { method: 'POST' })
+  if (!response.ok) {
+    throw new Error(`demo session refused: ${response.status} ${await response.text()}`)
+  }
+  const issued = (response.headers as unknown as { getSetCookie: () => string[] }).getSetCookie()
+  return issued.map((cookie) => cookie.split(';')[0]).join('; ')
+}
+
+/** The first case already past analysis, or `null` when this stack holds none. */
+async function alreadyAnalysed(): Promise<string | null> {
+  const cookie = await observerCookies()
+  const response = await fetch(`${promisePatchAPI()}/api/cases`, { headers: { cookie } })
+  if (!response.ok) return null
+  const body = (await response.json()) as { cases: { case_id: string; headline: string }[] }
+  return body.cases.find((row) => ANALYSED_HEADLINES.has(row.headline))?.case_id ?? null
+}
+
+/**
+ * A case far enough along that bands 3 and 4 have something in them.
+ *
+ * A layout spec needs promises on the screen, threatened and untouched, and the only honest way
+ * to get them is to let the real workflow reach them: report, answer the question it asks, wait
+ * for the plan. Nothing here asserts anything -- a failure in this helper is a stack that is not
+ * working, and the spec that called it will say so where it stands.
+ *
+ * **An existing one is reused, and that is not an optimisation.** Reporting the same incident a
+ * second time does not repeat the experiment: the first case already holds the tracks the second
+ * would reason about, so the clarification it is asked is a different question with different
+ * options, and the answer written for the first one cannot resolve it -- the case lands in
+ * `NEEDS_HUMAN_INTERPRETATION` and stays there. Playwright starts a fresh worker after a failed
+ * test and runs a file-level `beforeAll` again in it, so "arrange unconditionally" is a thing
+ * that really happens rather than a hypothetical.
+ */
+export async function analysedCase(report: string, answer: string): Promise<string> {
+  const existing = await alreadyAnalysed()
+  if (existing !== null) return existing
+  const caseId = await reportCase(report)
+  await waitForHeadline(caseId, 'CLARIFYING')
+  await answerClarification(caseId, answer)
+  await waitForHeadline(caseId, 'PLANNED')
+  return caseId
 }
