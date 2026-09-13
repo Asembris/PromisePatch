@@ -618,3 +618,59 @@ def test_an_answer_receipt_promises_nothing_at_all() -> None:
     assert "Nothing has changed yet" in spoken
     for forbidden in ("planned", "recovered", "confirmed", "changed the"):
         assert forbidden not in spoken
+
+
+# ------------------------------------------------- a deadline, in words rather than in ISO-8601
+
+
+def test_a_spoken_deadline_is_not_read_out_as_a_machine_timestamp() -> None:
+    """The spoken status is the only carrier of a customer's clock, and it is read aloud.
+
+    ``isoformat`` puts microseconds and a UTC offset into a sentence a worker hears. The zone
+    is named rather than dropped, because a clock time with no clock named makes the reader
+    guess which one it is.
+    """
+    waiting = track(
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(provider_ref="tg-42"),
+        deadline=NOW,
+    )
+    spoken = render(project(case("WAITING", waiting)))
+    assert "by 2026-03-04 07:00 (UTC)" in spoken
+    assert NOW.isoformat() not in spoken
+    assert "T07:00" not in spoken
+
+
+def test_a_deadline_keeps_its_machine_form_in_the_field_built_for_it() -> None:
+    """The sentence is for people; the field stays ISO-8601 so a surface can render its own."""
+    waiting = track(
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(provider_ref="tg-42"),
+        deadline=NOW,
+    )
+    promise = project(case("WAITING", waiting)).threatened[0]
+    assert promise.deadline_at == NOW.isoformat()
+    assert promise.deadline_phrase == "2026-03-04 07:00 (UTC)"
+
+
+def test_a_next_action_does_not_restate_the_deadline_beside_it() -> None:
+    """Two readings of one instant on adjacent lines, and the sentence carried the machine's."""
+    waiting = track(
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(provider_ref="tg-42"),
+        deadline=NOW,
+    )
+    promise = project(case("WAITING", waiting)).threatened[0]
+    assert promise.next_action == "Nothing. The customer has been asked and has not answered."
+    assert "2026" not in promise.next_action
+
+
+def test_a_promise_with_no_deadline_claims_no_moment_at_all() -> None:
+    escalated = track(state="BLOCKED", classification="ESCALATE", reason="NOSUB_CONSTRAINT")
+    promise = project(case("PLANNED", escalated)).threatened[0]
+    assert promise.deadline_at is None
+    assert promise.deadline_phrase is None
+    assert "by " not in render(project(case("PLANNED", escalated)))

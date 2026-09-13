@@ -357,8 +357,7 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
           reason_phrase: 'the change is visible and the order says to ask',
           deadline_at: '2026-03-04T10:05:00+00:00',
           owner: 'CUSTOMER',
-          next_action:
-            'Nothing. The customer has been asked and has not answered by 2026-03-04T10:05:00+00:00.',
+          next_action: 'Nothing. The customer has been asked and has not answered.',
           track_state: 'WAITING_FOR_CUSTOMER',
           classification: 'APPROVAL_REQUIRED',
           rule_id: 'R-VISIBLE-ASK',

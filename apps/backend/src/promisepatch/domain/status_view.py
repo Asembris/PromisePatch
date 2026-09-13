@@ -27,6 +27,7 @@ not restate it, because a paraphrase of "planned" is one word away from "done".
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Final
 
@@ -196,6 +197,18 @@ class PromiseView:
     """
 
     deadline_at: str | None
+    """The customer's own clock, machine-readable, for a surface that renders its own time."""
+
+    deadline_phrase: str | None
+    """The same moment in words, for the surfaces that have only a sentence to say it in.
+
+    Spoken status has no structured field beside it, so the deadline has to survive inside the
+    sentence -- and an ISO-8601 string with microseconds and an offset is machine vocabulary
+    being read out loud. Composed here, once, from the moment that still has a type, because a
+    caller reconstructing it from :attr:`deadline_at` would be a second implementation of the
+    same wording.
+    """
+
     track_id: str
     track_state: str
     classification: str | None
@@ -373,12 +386,13 @@ def _promise(case_state: str, track: TrackStatus) -> PromiseView:
         reason=track.reason_detail or "",
         reason_phrase=closed_phrase(FactId.IMPACT_REASON, track.reason_detail),
         deadline_at=None if track.deadline_at is None else track.deadline_at.isoformat(),
+        deadline_phrase=None if track.deadline_at is None else _spoken_moment(track.deadline_at),
         track_id=str(track.track_id),
         track_state=track.state,
         classification=track.classification,
         rule_id=track.rule_id,
         owner=_promise_owner(state),
-        next_action=_promise_next_action(state, track),
+        next_action=_promise_next_action(state),
     )
 
 
@@ -525,12 +539,30 @@ def _promise_owner(state: PromiseState) -> ActionOwner:
     return _PROMISE_OWNERS.get(state, ActionOwner.NOBODY)
 
 
-def _promise_next_action(state: PromiseState, track: TrackStatus) -> str:
-    """This promise's next action, with the customer's own deadline where there is one."""
-    action = _PROMISE_ACTIONS.get(state, "Nothing yet. This promise has not been decided.")
-    if state is PromiseState.REQUESTED and track.deadline_at is not None:
-        return f"{action[:-1]} by {track.deadline_at.isoformat()}."
-    return action
+def _spoken_moment(moment: datetime) -> str:
+    """A moment in the shape the customer's own message already uses, rather than as ISO-8601.
+
+    ``%Y-%m-%d %H:%M`` rather than a written-out weekday, for the reason
+    :func:`promisepatch.domain.messaging.render_due` gives: ``strftime``'s names follow whatever
+    locale the process is in, and wording that depends on a container's environment is wording
+    no test can pin down.
+
+    The zone is named and not converted. This module may not read the environment, so it cannot
+    know the kitchen's own zone -- and a sentence that states a clock time without saying whose
+    clock it is has made the reader guess.
+    """
+    return f"{moment.astimezone(UTC):%Y-%m-%d %H:%M} (UTC)"
+
+
+def _promise_next_action(state: PromiseState) -> str:
+    """This promise's next action.
+
+    The deadline is deliberately *not* restated here. Every surface that renders this sentence
+    renders :attr:`PromiseView.deadline_at` beside it, in its own reader's clock, so repeating
+    the moment inside the sentence put two readings of one instant on adjacent lines -- and the
+    one inside the sentence was the machine's.
+    """
+    return _PROMISE_ACTIONS.get(state, "Nothing yet. This promise has not been decided.")
 
 
 def _next_action(
@@ -652,7 +684,7 @@ def render(view: CaseView) -> str:
 
 def _promise_line(item: PromiseView) -> str:
     reason = _reason(item)
-    deadline = "" if item.deadline_at is None else f", by {item.deadline_at}"
+    deadline = "" if item.deadline_phrase is None else f", by {item.deadline_phrase}"
     return f"{item.customer_name} ({item.order_external_id}): {item.phrase}{deadline} - {reason}"
 
 
