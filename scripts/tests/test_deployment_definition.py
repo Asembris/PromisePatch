@@ -51,6 +51,7 @@ from scripts.aws_preflight import (
 )
 from scripts.deployment_smoke import PROTOCOL_REVISION
 
+from promisepatch.config import Settings
 from promisepatch.fixtures import demo
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -311,6 +312,40 @@ def test_the_deployed_api_is_pointed_at_a_real_model(template: dict[str, Any]) -
         "the deployed api would run the fake provider: the loop would work and call no model"
     )
     assert "PP_BEDROCK_MODEL_ID=" in block, "which model is not left to a default here"
+
+
+def test_the_deployment_offers_the_one_action_way_in_and_the_repository_does_not(
+    template: dict[str, Any],
+) -> None:
+    """A judge reaches a real case in one action here, and nowhere else by default.
+
+    ``POST /api/auth/demo-session`` issues a session naming the seeded observer, which the
+    domain admits to case reads and refuses every write. That is a deliberate choice for this
+    deployment rather than a standing unauthenticated session endpoint in every copy of the
+    repository, so the setting is on in the host's environment file and off in the model's
+    default -- and the second half is what this asserts alongside the first.
+    """
+    block = _env_file_block(template, "api.env", "mcp.env")
+    assert "PP_DEMO_SESSION_ENABLED=true" in block, (
+        "the deployed API does not serve the observer session, so the judge entry is not there"
+    )
+    assert Settings.model_fields["demo_session_enabled"].default is False, (
+        "the endpoint is on by default, which makes every copy of this repository serve it"
+    )
+
+
+def test_the_deployment_serves_the_page_from_the_image_rather_than_from_configuration(
+    template: dict[str, Any],
+) -> None:
+    """``PP_STATIC_ROOT`` belongs to the image that carries the bundle, not to the host.
+
+    A host that had to be told where the bundle is could be told wrongly, or not at all, and
+    the symptom either way is a deployment that answers every API call and shows no page.
+    """
+    script = _user_data(template)
+    assert "PP_STATIC_ROOT" not in script, (
+        "the host configures where the bundle is; the image that built it already knows"
+    )
 
 
 def test_the_order_simulator_holds_no_postgres_credential(template: dict[str, Any]) -> None:

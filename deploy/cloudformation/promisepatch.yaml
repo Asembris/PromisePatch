@@ -505,6 +505,13 @@ Resources:
               PP_ORDER_SYSTEM_WEBHOOK_SECRET=${!WEBHOOK_SECRET}
               PP_ORDER_SYSTEM_BASE_URL=http://order-simulator:8100
               PP_CORS_ORIGINS=${!PUBLIC}
+              # The one-action way in, for somebody being shown the product. Off in every copy of
+              # the repository and turned on here, for this deployment, deliberately: it takes no
+              # credential, publishes none, and issues a session naming the seeded observer, whom
+              # the domain admits to case reads and to no write at all. Setting it back to false
+              # removes the endpoint at the next boot with no code change, and revoking a session
+              # row ends an issued one immediately.
+              PP_DEMO_SESSION_ENABLED=true
               # The worker every statement arriving over the MCP surface is attributed to.
               # It must name a row the seed actually creates: intake refuses an unknown
               # attester with SURFACE_WORKER_MISSING, so a name nothing seeded is not a
