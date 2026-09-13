@@ -127,3 +127,61 @@ async def test_a_worker_who_does_not_exist_may_not_be_shown_a_case(physical: Int
     opened = await physical.report()
 
     assert not await readable(physical, opened.case_id, "nobody-by-that-name")
+
+
+# ------------------------------------------- and who may put a physical claim on the record
+
+
+async def attestor(physical: Intake, worker_id: str) -> bool:
+    """Whether the domain would let this worker open a case at all."""
+    async with physical.database.connect() as connection:
+        try:
+            await intake.require_attestor(connection, worker_id)
+        except intake.NotPermittedError:
+            return False
+    return True
+
+
+async def test_the_people_who_may_speak_on_a_case_may_also_open_one(physical: Intake) -> None:
+    """Additive again: every principal that could attest before still can."""
+    assert await attestor(physical, BAKER)
+    assert await attestor(physical, OWNER)
+
+    async with physical.another_worker(STRANGER, role="baker") as stranger:
+        assert await attestor(physical, stranger)
+
+
+async def test_an_observer_may_not_open_a_case(physical: Intake) -> None:
+    """The gap ``require_permitted`` alone cannot close, because opening has no case yet.
+
+    Whoever opens a case is precisely whom ``require_permitted`` admits to it afterwards, so a
+    principal allowed to open one would have granted itself every write on it. This is the check
+    that stops the read widening turning into a write by that route.
+    """
+    async with physical.another_worker(OBSERVER, role="observer") as observer:
+        assert not await attestor(physical, observer)
+
+
+async def test_an_observer_is_refused_even_on_a_case_it_somehow_opened(
+    physical: Intake,
+) -> None:
+    """Defence in depth: the refusal is a property of ``require_permitted`` itself.
+
+    ``require_attestor`` already means no observer can be a case's opener, so this condition
+    should be unreachable. It is asserted anyway by naming the observer as the opener directly --
+    because "an observer may write nothing" should be checkable in one function rather than
+    reconstructed from two.
+    """
+    opened = await physical.report()
+
+    async with physical.another_worker(OBSERVER, role="observer") as observer:
+        await physical.reopen_as(opened.case_id, observer)
+        assert not await permitted(physical, opened.case_id, observer)
+        assert await readable(physical, opened.case_id, observer)
+
+
+async def test_a_worker_who_does_not_exist_may_not_open_a_case(physical: Intake) -> None:
+    """A statement needs an attestor who exists, and that answer has not changed."""
+    async with physical.database.connect() as connection:
+        with pytest.raises(intake.UnknownWorkerError):
+            await intake.require_attestor(connection, "nobody-by-that-name")

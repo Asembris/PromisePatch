@@ -58,6 +58,14 @@ logger = get_logger(__name__)
 OWNER_ROLE = "owner"
 """The role that may speak on any case, not only on the one it opened."""
 
+OBSERVER_ROLE = "observer"
+"""The role that may be shown a case and may say nothing to one, ever.
+
+Named in this module because both of the questions it changes are this module's:
+:func:`require_attestor` refuses it a physical claim, and :func:`require_permitted` refuses it a
+case. :func:`require_readable` is the only function here that admits it.
+"""
+
 
 class IntakeConflictError(RuntimeError):
     """The same command id arrived carrying a different request.
@@ -148,7 +156,11 @@ async def open_physical_exception(
 
     try:
         async with database.begin() as connection:
-            await require_worker(connection, worker_id)
+            # Not `require_worker`. Opening a case is the one intake path with no case to be
+            # permitted on, so "may this person speak here" cannot be asked yet -- and a
+            # principal who may not speak on a case must not be able to create one it would then
+            # be the opener of, because the opener is exactly who `require_permitted` admits.
+            await require_attestor(connection, worker_id)
             now = await database_now(connection)
             unit_of_work = UnitOfWork(connection)
             async with unit_of_work.governed(
@@ -473,6 +485,24 @@ async def require_worker(connection: AsyncConnection, worker_id: str) -> None:
         raise UnknownWorkerError(f"no worker {worker_id!r}")
 
 
+async def require_attestor(connection: AsyncConnection, worker_id: str) -> None:
+    """Who may put a physical claim on the record at all, before there is a case to ask about.
+
+    Every other intake path asks :func:`require_permitted`, which is a question about *this* case
+    and needs one to exist. Opening a case has no case yet, so the question here is narrower and
+    prior: is this principal one of the people whose word about the kitchen counts.
+
+    An observer's does not. It has to be refused *here* rather than later, because the person who
+    opens a case is precisely the person ``require_permitted`` admits to it afterwards -- so a
+    principal that could open one would have granted itself every subsequent write on it.
+    """
+    role = await connection.scalar(select(Worker.role).where(Worker.id == worker_id))
+    if role is None:
+        raise UnknownWorkerError(f"no worker {worker_id!r}")
+    if role == OBSERVER_ROLE:
+        raise NotPermittedError(f"worker {worker_id!r} is an observer and may not attest a fact")
+
+
 async def actor_for(connection: AsyncConnection, worker_id: str) -> Actor:
     """A staff member's audit identity, taken from their role rather than assumed.
 
@@ -484,23 +514,30 @@ async def actor_for(connection: AsyncConnection, worker_id: str) -> Actor:
 
 
 async def require_permitted(connection: AsyncConnection, *, case_id: UUID, worker_id: str) -> None:
-    """Who may speak on a case: the worker who opened it, or an owner.
+    """Who may speak on a case: the worker who opened it, or an owner. Never an observer.
 
     Narrow on purpose. A physical attestation is only worth anything if the person making it
     was in a position to see the thing, and "somebody else's case" is not that position. An
     owner is included because escalation is theirs to resolve.
+
+    The observer refusal is first and is unconditional, which is defence in depth rather than a
+    second answer: :func:`require_attestor` already stops an observer opening a case, so the
+    opener branch below could not reach one. Stating it here makes "an observer may write nothing"
+    a property of this one function -- the function every write in this system passes through --
+    rather than a conclusion somebody has to reconstruct from two of them.
+
+    It narrows nothing that was ever admitted. Before the observer role existed every principal
+    was a baker or an owner, and each of them gets exactly the answer they got before.
     """
+    role = await connection.scalar(select(Worker.role).where(Worker.id == worker_id))
+    if role == OBSERVER_ROLE:
+        raise NotPermittedError(f"worker {worker_id!r} is an observer and may not speak on a case")
     opened_by = await connection.scalar(select(Case.opened_by).where(Case.id == case_id))
     if opened_by == worker_id:
         return
-    role = await connection.scalar(select(Worker.role).where(Worker.id == worker_id))
     if role == OWNER_ROLE:
         return
     raise NotPermittedError(f"worker {worker_id!r} did not open case {case_id} and is not an owner")
-
-
-OBSERVER_ROLE = "observer"
-"""A principal that may be shown a case. It appears in :func:`require_readable` and nowhere else."""
 
 
 async def require_readable(connection: AsyncConnection, *, case_id: UUID, worker_id: str) -> None:

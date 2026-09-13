@@ -350,6 +350,25 @@ class Intake:
         finally:
             await self._set_worker(worker_id, role=role, present=False)
 
+    async def reopen_as(self, case_id: UUID, worker_id: str) -> None:
+        """Rewrite who opened a case, to construct a state the domain should not be able to reach.
+
+        Only a test may do this, and only for the narrow purpose of asserting that a defence
+        holds even when the condition it defends against has somehow come about anyway. Nothing
+        in production writes ``opened_by`` after a case exists.
+        """
+        async with self.database.begin() as connection:
+            unit_of_work = UnitOfWork(connection)
+            async with unit_of_work.governed(
+                event_type="INTAKE_TEST_SETUP",
+                actor=Actor(kind="SYSTEM", id="intake-tests"),
+                authority="NONE",
+                case_id=case_id,
+            ) as write:
+                await write.execute(
+                    sa_update(Case).where(Case.id == case_id).values(opened_by=worker_id)
+                )
+
     async def _set_worker(self, worker_id: str, *, role: str, present: bool) -> None:
         async with self.database.begin() as connection:
             unit_of_work = UnitOfWork(connection)
