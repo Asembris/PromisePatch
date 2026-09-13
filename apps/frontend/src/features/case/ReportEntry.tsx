@@ -23,10 +23,11 @@
  *   from the row it wrote. There is no field here for a worker, and the request model would
  *   reject one.
  */
-import { useState, type FormEvent, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { ApiError } from '../../api/client'
 import { useMe, useReportTurn } from '../../api/queries'
 import { Card, SectionLabel } from '../../components/surfaces'
+import { TurnComposer } from '../voice/TurnComposer'
 
 /** A fresh command identity, so a retry of one turn is that turn arriving twice. */
 function commandId(): string {
@@ -41,26 +42,16 @@ function messageFor(error: Error): string {
 export function ReportEntry({ onOpened }: { onOpened: (caseId: string) => void }): ReactNode {
   const me = useMe()
   const report = useReportTurn()
-  const [text, setText] = useState('')
 
   // The backend's answer about this caller, never a role compared here. Absent while the
   // session is still being read, which is the honest state: nobody has been told yes yet.
   if (me.data?.worker.may_report !== true) return null
 
-  function onSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    if (text.trim().length === 0 || report.isPending) return
-    report.mutate(
-      { commandId: commandId(), text },
-      {
-        onSuccess: (accepted) => {
-          setText('')
-          // The id the backend derived, not one composed here. Navigation is the only thing
-          // that happens on success: the case it opens is read from the server like any other.
-          onOpened(accepted.case_id)
-        },
-      },
-    )
+  async function onSend(text: string): Promise<void> {
+    const accepted = await report.mutateAsync({ commandId: commandId(), text })
+    // The id the backend derived, not one composed here. Navigation is the only thing that
+    // happens on success: the case it opens is read from the server like any other.
+    onOpened(accepted.case_id)
   }
 
   return (
@@ -72,32 +63,15 @@ export function ReportEntry({ onOpened }: { onOpened: (caseId: string) => void }
           it has been worked out.
         </p>
 
-        <form className="space-y-3" onSubmit={onSubmit}>
-          <label className="block text-label text-muted uppercase" htmlFor="report-text">
-            what happened
-          </label>
-          <textarea
-            id="report-text"
-            name="report"
-            rows={3}
-            value={text}
-            disabled={report.isPending}
-            onChange={(event) => {
-              setText(event.target.value)
-            }}
-            placeholder="Today’s raspberry delivery didn’t arrive."
-            className="w-full rounded-control border border-edge bg-panel px-3 py-2.5 text-sm text-ink placeholder:text-muted/60 disabled:opacity-60"
-            data-testid="report-text"
-          />
-          <button
-            type="submit"
-            disabled={report.isPending || text.trim().length === 0}
-            data-testid="report-send"
-            className="min-h-11 rounded-control bg-brand px-4 py-2.5 text-sm font-semibold text-brand-ink transition-opacity hover:opacity-90 disabled:opacity-60"
-          >
-            {report.isPending ? 'Writing it down…' : 'Report this'}
-          </button>
-        </form>
+        <TurnComposer
+          idPrefix="report"
+          label="what happened"
+          placeholder="Today’s raspberry delivery didn’t arrive."
+          sendLabel="Report this"
+          pendingLabel="Writing it down…"
+          pending={report.isPending}
+          onSend={onSend}
+        />
 
         {report.error ? (
           <p
