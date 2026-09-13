@@ -66,3 +66,38 @@ def test_the_api_template_allowlist_is_literal_loopback_only() -> None:
     for origin in _allowlist(API_TEMPLATE):
         assert "*" not in origin, f"{origin} is a wildcard"
         assert re.fullmatch(r"http://(localhost|127\.0\.0\.1):\d+", origin), origin
+
+
+def _setting(template: Path, key: str) -> str:
+    for line in template.read_text(encoding="utf-8").splitlines():
+        name, _, value = line.partition("=")
+        if name.strip() == key:
+            return value.strip()
+    raise AssertionError(f"{template.name} does not set {key}")
+
+
+def test_the_local_stack_offers_the_way_in_that_needs_no_credentials() -> None:
+    """The demo stack advertises the scoped observer session, so the entry is not a dead button.
+
+    The sign-in screen draws that control only where ``GET /api/auth/options`` says it is served,
+    which is the same file this reads. A stack whose template turned it off would show the
+    credentials and nothing else -- correct, and not the demo.
+    """
+    assert _setting(API_TEMPLATE, "PP_DEMO_SESSION_ENABLED") == "true"
+
+
+def test_the_local_stack_still_refuses_a_fixture_reset_over_http() -> None:
+    """The API container holds no reset authority, and the new flag did not quietly add one.
+
+    Assignments only, not the prose: the template explains in a comment why these two are absent,
+    and a test that searched the whole file would be satisfied by the explanation.
+    """
+    assigned = {
+        line.partition("=")[0].strip()
+        for line in API_TEMPLATE.read_text(encoding="utf-8").splitlines()
+        if not line.lstrip().startswith("#") and "=" in line
+    }
+
+    assert "PP_ALLOW_FIXTURE_RESET" not in assigned
+    assert "PP_MIGRATION_DATABASE_URL" not in assigned
+    assert "PP_DEMO_SESSION_ENABLED" in assigned
