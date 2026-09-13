@@ -39,6 +39,7 @@ from promisepatch.api.schemas.readiness import (
     MigrationReadiness,
     ReadinessResponse,
 )
+from promisepatch.config import Settings
 from promisepatch.db import HEAD_REVISION, RuntimeDatabase
 from promisepatch.db.boundary import RUNTIME_ROLE
 from promisepatch.db.models import FixtureState
@@ -88,11 +89,16 @@ async def read_fixture(connection: AsyncConnection) -> FixtureReadiness:
 
 @router.get("/healthz", response_model=HealthResponse, summary="Liveness probe")
 async def healthz(request: Request) -> HealthResponse:
+    settings: Settings = request.app.state.settings
     return HealthResponse(
         status="ok",
         service="api",
         version=__version__,
         boot_id=request.app.state.boot_id,
+        # Empty rather than absent when the build arg was not supplied, so the two cases --
+        # "built from no commit" and "built from a commit nobody recorded" -- do not have to be
+        # told apart by a caller who has only the answer.
+        image=settings.image_tag or None,
     )
 
 

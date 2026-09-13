@@ -96,6 +96,15 @@ class Settings(BaseSettings):
     demo_owner_password: SecretStr | None = None
     """Password seeded for the demo owner login by ``pp reset-demo-state``."""
 
+    image_tag: str | None = None
+    """The commit the container image was built from, baked in at build time.
+
+    Set by the image build (``--build-arg PP_IMAGE_TAG``) and by nothing else: it is not
+    configuration, it is identity, and a process reads it so that ``/healthz`` can say which
+    build is answering. Absent when the code is running from a checkout rather than an image,
+    which is every local run and every test.
+    """
+
     static_root: Path | None = None
     """Where the built browser bundle is, when this process is the one serving it.
 

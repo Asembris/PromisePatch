@@ -150,9 +150,14 @@ stage_images () {
   # The host is Graviton, so the images are built for arm64 whatever this machine is. The
   # build itself is the repository's own Dockerfile with its own pinned lockfile: deployment
   # changes where the image runs, not what is in it.
+  # `--build-arg PP_IMAGE_TAG` is what makes the running image name itself: the API reports
+  # it at /healthz, and the smoke check compares that with the tag the stack says it
+  # deployed. A host serving an older image than the stack declares is then a failed check
+  # rather than something somebody has to think to look for.
   docker buildx build --platform linux/arm64 \
     --file "${REPO_ROOT}/docker/Dockerfile.backend" \
     --secret "id=extra_ca,src=${REPO_ROOT}/docker/env/extra-ca.crt" \
+    --build-arg "PP_IMAGE_TAG=${tag}" \
     --tag "${registry}/promisepatch/backend:${tag}" --push "$REPO_ROOT"
   docker buildx build --platform linux/arm64 \
     --file "${REPO_ROOT}/docker/Dockerfile.simulator" \

@@ -391,6 +391,25 @@ def _env_file_block(template: dict[str, Any], start_marker: str, end_marker: str
     return script[script.index(start_marker) : script.index(end_marker)]
 
 
+def test_the_image_is_built_knowing_which_commit_it_is() -> None:
+    """Otherwise "which version is deployed" is answered by asserting it rather than asking.
+
+    ``deploy.sh`` refuses to tag a dirty tree, so the tag names a commit; baking it in means the
+    running process can say so, and the smoke check can compare that with the tag the stack
+    declares. Without the build argument the image is anonymous and the comparison is impossible
+    -- which is the state the first deployment was in, where a stack update reported success and
+    the host went on serving an older image.
+    """
+    dockerfile = _backend_dockerfile()
+    assert "ARG PP_IMAGE_TAG" in dockerfile, "the image takes no build-time identity"
+    assert "ENV PP_IMAGE_TAG=" in dockerfile, "the identity never reaches the running process"
+    build = (DEPLOY / "deploy.sh").read_text(encoding="utf-8")
+    assert "PP_IMAGE_TAG=${tag}" in build, (
+        "the build never passes the tag it pushes, so the image would name a different commit "
+        "or none at all"
+    )
+
+
 # ------------------------------------------------------------------ what the TLS proxy serves
 
 

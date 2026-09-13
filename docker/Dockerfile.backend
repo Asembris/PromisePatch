@@ -133,6 +133,13 @@ COPY --chown=promisepatch:promisepatch apps/backend/alembic apps/backend/alembic
 COPY --from=frontend --chown=promisepatch:promisepatch /ui/dist /app/frontend
 ENV PP_STATIC_ROOT=/app/frontend
 
+# Which commit this image was built from, baked in rather than configured. It is the only way
+# "which version is deployed" can be answered from outside the deployment: the package version
+# moves once a release, the tag names a commit, and `deploy.sh` refuses to tag a dirty tree. It
+# is last so that changing it invalidates no layer above it, and empty when nobody supplied it.
+ARG PP_IMAGE_TAG=""
+ENV PP_IMAGE_TAG=$PP_IMAGE_TAG
+
 USER promisepatch
 
 # The API port, and only the API port. The migration and seed containers listen on nothing.
