@@ -499,6 +499,33 @@ async def require_permitted(connection: AsyncConnection, *, case_id: UUID, worke
     raise NotPermittedError(f"worker {worker_id!r} did not open case {case_id} and is not an owner")
 
 
+OBSERVER_ROLE = "observer"
+"""A principal that may be shown a case. It appears in :func:`require_readable` and nowhere else."""
+
+
+async def require_readable(connection: AsyncConnection, *, case_id: UUID, worker_id: str) -> None:
+    """Who may be *shown* a case: whoever may speak on it, or an observer.
+
+    A second, wider question than :func:`require_permitted`, and deliberately a separate
+    function rather than a flag on that one. Every write in this system gates on
+    ``require_permitted``, which has no branch for an observer and is not changed by this being
+    here -- so the read widening cannot reach a write even by mistake, and a write route added
+    later with no observer check of its own still refuses one. A parameter would have made the
+    two answers one call site apart.
+
+    It is additive: everyone this admits who was admitted before is admitted for the same
+    reason, by the same function, and the only new admission is a role the database did not have
+    a week ago. Nothing that could speak stops being able to.
+    """
+    try:
+        await require_permitted(connection, case_id=case_id, worker_id=worker_id)
+    except NotPermittedError:
+        role = await connection.scalar(select(Worker.role).where(Worker.id == worker_id))
+        if role != OBSERVER_ROLE:
+            raise
+    return
+
+
 async def _next_ordinal(connection: AsyncConnection, case_id: UUID) -> int:
     value = await connection.scalar(
         select(func.coalesce(func.max(CaseReport.ordinal), 0)).where(CaseReport.case_id == case_id)

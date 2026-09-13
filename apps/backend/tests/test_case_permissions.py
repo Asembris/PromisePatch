@@ -82,3 +82,48 @@ async def test_a_worker_who_does_not_exist_may_not_speak(physical: Intake) -> No
     opened = await physical.report()
 
     assert not await permitted(physical, opened.case_id, "nobody-by-that-name")
+
+
+# ------------------------------------------------- and who may be shown one, which is wider
+
+
+async def readable(physical: Intake, case_id: UUID, worker_id: str) -> bool:
+    """Whether the domain would let this worker be shown this case."""
+    async with physical.database.connect() as connection:
+        try:
+            await intake.require_readable(connection, case_id=case_id, worker_id=worker_id)
+        except intake.NotPermittedError:
+            return False
+    return True
+
+
+async def test_everyone_who_may_speak_on_a_case_may_also_be_shown_it(physical: Intake) -> None:
+    """The widening is additive: nothing that could speak stops being able to read."""
+    opened = await physical.report()
+
+    assert await readable(physical, opened.case_id, BAKER)
+    assert await readable(physical, opened.case_id, OWNER)
+
+
+async def test_an_observer_may_be_shown_a_case_it_may_not_speak_on(physical: Intake) -> None:
+    """The one new admission, and the exact distance between the two questions."""
+    opened = await physical.report()
+
+    async with physical.another_worker(OBSERVER, role="observer") as observer:
+        assert await readable(physical, opened.case_id, observer)
+        assert not await permitted(physical, opened.case_id, observer)
+
+
+async def test_a_stranger_is_refused_the_read_as_well_as_the_write(physical: Intake) -> None:
+    """Only the observer role is added. A baker on somebody else's case is still refused."""
+    opened = await physical.report()
+
+    async with physical.another_worker(STRANGER, role="baker") as stranger:
+        assert not await readable(physical, opened.case_id, stranger)
+
+
+async def test_a_worker_who_does_not_exist_may_not_be_shown_a_case(physical: Intake) -> None:
+    """An id nobody holds has no role, so the observer branch cannot rescue it."""
+    opened = await physical.report()
+
+    assert not await readable(physical, opened.case_id, "nobody-by-that-name")

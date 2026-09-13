@@ -5,10 +5,11 @@ something, through the conversational surface and the intent API behind it, wher
 attestation, the confirmation and the audit row are governed together. A browser button that
 posted a state change would be a second authority with none of that machinery around it.
 
-**The same permission the tools enforce.** ``require_permitted`` is the domain's answer to "may
-this worker speak about that case", and it runs here exactly as it runs for the MCP surface. A
-case id is a value a caller can type into a URL, and the answer to "may I read somebody else's
-case" has to be the domain's rather than the transport's convenience.
+**The same permission the tools enforce, widened once and only for reading.**
+``require_readable`` is the domain's answer to "may this worker be *shown* that case": whoever
+may speak on it, plus an observer. It is a different function from the ``require_permitted``
+every write gates on, which is unchanged -- so nothing here can widen a write, and the answer to
+"may I read somebody else's case" is still the domain's rather than the transport's convenience.
 
 **Existence before permission**, so the two refusals stay different answers. Case ids are
 UUIDs and the caller holds a live session, so this is not an enumeration surface, and a screen
@@ -83,7 +84,7 @@ async def read_case(
         if not await connection.scalar(select(Case.id).where(Case.id == case_id)):
             raise NO_SUCH_CASE
         try:
-            await intake.require_permitted(
+            await intake.require_readable(
                 connection, case_id=case_id, worker_id=principal.worker_id
             )
         except intake.NotPermittedError as error:
