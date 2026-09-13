@@ -84,19 +84,35 @@ function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
     // returned is laid out, which is the moment a judge arriving by the one-action entry first
     // sees one. Nothing plays while the read is in flight.
     <div
-      className="space-y-4"
+      className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start xl:gap-4 xl:space-y-0"
       data-motion="settle"
       data-testid="case-workspace"
       data-case-id={view.case_id}
     >
-      <WhatHappened view={view} />
-      <WhatYouMustDo view={view} />
+      <div className="xl:col-start-1 xl:row-start-1">
+        <WhatHappened view={view} />
+      </div>
+      <div className="xl:col-start-1 xl:row-start-2">
+        <WhatYouMustDo view={view} />
+      </div>
       {/* Inside the workspace, under the action it belongs to, with the bands still on screen.
           A conversation on a route of its own would be a second surface describing the same
-          case, and the two would eventually disagree about which was current. */}
-      <Conversation view={view} />
-      <Propagation view={view} />
-      <EvidenceLayers view={view} />
+          case, and the two would eventually disagree about which was current.
+
+          Beside the bands rather than above them once there is width for both — placed by the
+          grid, never by moving it in the markup. Stacked, it stood between band 2 and band 3
+          and spent the whole of the first screen, so the one comparison this product exists to
+          show began below the fold. The document order is unchanged, which is what keeps the
+          reading order and the phone layout the same as they were. */}
+      <div className="xl:col-start-2 xl:row-start-1 xl:row-span-3">
+        <Conversation view={view} />
+      </div>
+      <div className="xl:col-start-1 xl:row-start-3">
+        <Propagation view={view} />
+      </div>
+      <div className="xl:col-start-1 xl:row-start-4">
+        <EvidenceLayers view={view} />
+      </div>
     </div>
   )
 }
