@@ -240,16 +240,20 @@ export const PLANNED_CASE: CaseWorkspaceResponse = {
       ordinal: 1,
       slot: 'SCOPE',
       question: 'Which of them did not arrive?',
+      // The codes the engine actually mints, not `A` and `B`. A single letter is not a
+      // fixture of a code, it is a fixture of a character: "this code never reaches a person"
+      // passes against `A` for as long as no rendered string happens to contain one, and a
+      // runner on a 12-hour clock supplies one in `07:05 AM`.
       options: [
-        { code: 'A', label: 'Only the raspberries' },
-        { code: 'B', label: 'The whole delivery' },
+        { code: 'JUST_RASPBERRIES', label: 'Only the raspberries' },
+        { code: 'WHOLE_DELIVERY', label: 'The whole delivery' },
       ],
       asked_at: '2026-03-04T07:05:30+00:00',
       answered: true,
       answer_text: 'just the raspberries, the strawberries came',
       answered_by: 'maya',
       answered_at: '2026-03-04T07:05:50+00:00',
-      resolved_option_code: 'A',
+      resolved_option_code: 'JUST_RASPBERRIES',
     },
   ],
   next_action: {
@@ -436,8 +440,8 @@ export const CLARIFYING_CASE: CaseWorkspaceResponse = {
     clarification_id: '7c8d9e0f-1a2b-4c3d-8e4f-5a6b7c8d9e0f',
     question: 'Which of them did not arrive?',
     options: [
-      { code: 'A', label: 'Only the raspberries' },
-      { code: 'B', label: 'The whole delivery' },
+      { code: 'JUST_RASPBERRIES', label: 'Only the raspberries' },
+      { code: 'WHOLE_DELIVERY', label: 'The whole delivery' },
     ],
   },
   clarifications: [

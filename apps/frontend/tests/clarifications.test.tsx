@@ -68,15 +68,20 @@ describe('the clarification history', () => {
     stream.close()
   })
 
-  it('prints no option code at a person', async () => {
+  it('prints no option code and no slot name at a person', async () => {
     const stream = mountAtCase()
 
     const history = await screen.findByTestId('clarification-history')
 
-    expect(history.textContent ?? '').not.toContain(
-      PLANNED_CASE.clarifications[0]!.resolved_option_code!,
-    )
-    expect(history.textContent ?? '').not.toContain('SCOPE')
+    const text = history.textContent ?? ''
+    // The resolved code, the codes it was chosen from, and the slot the question filled. All
+    // four are real engine values and none of them is language, so the row shows the option's
+    // own label instead and the codes stay on the wire.
+    for (const code of PLANNED_CASE.clarifications[0]!.options.map((option) => option.code)) {
+      expect(text, code).not.toContain(code)
+    }
+    expect(text).not.toContain(PLANNED_CASE.clarifications[0]!.resolved_option_code!)
+    expect(text).not.toContain(PLANNED_CASE.clarifications[0]!.slot)
     stream.close()
   })
 
@@ -121,7 +126,7 @@ describe('the question still open', () => {
         question: {
           clarification_id: 'b2c3d4e5-6f70-4a1b-8c2d-3e4f5a6b7c8d',
           question: 'Which line should the substitute go on?',
-          options: [{ code: 'A', label: 'The charlotte' }],
+          options: [{ code: 'LINE_CHARLOTTE', label: 'The charlotte' }],
         },
         clarifications: [
           ...PLANNED_CASE.clarifications,
@@ -130,7 +135,7 @@ describe('the question still open', () => {
             ordinal: 2,
             slot: 'LINE',
             question: 'Which line should the substitute go on?',
-            options: [{ code: 'A', label: 'The charlotte' }],
+            options: [{ code: 'LINE_CHARLOTTE', label: 'The charlotte' }],
             asked_at: '2026-03-04T07:06:00+00:00',
             answered: false,
             answer_text: null,
