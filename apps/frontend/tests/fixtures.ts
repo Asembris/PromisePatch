@@ -14,7 +14,13 @@
 import type { PromisesResponse, PromiseView, ResourcesResponse, WorkerResponse } from '../src/api/types'
 
 export const MAYA: WorkerResponse = {
-  worker: { id: 'maya', username: 'maya', display_name: 'Maya', role: 'baker' },
+  worker: {
+    id: 'maya',
+    username: 'maya',
+    display_name: 'Maya',
+    role: 'baker',
+    may_report: true,
+  },
 }
 
 function promise(

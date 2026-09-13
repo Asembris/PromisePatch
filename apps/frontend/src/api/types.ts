@@ -36,6 +36,15 @@ export interface WorkerIdentity {
   username: string
   display_name: string
   role: string
+  /**
+   * Whether the domain would take a physical claim from this principal at all.
+   *
+   * The backend's answer, from the rule the write itself enforces. A screen that read `role`
+   * and decided for itself would be a second copy of that rule in a language nothing here
+   * tests against a durable database, and an observer would eventually be offered a control
+   * the domain refuses.
+   */
+  may_report: boolean
 }
 
 export interface WorkerResponse {

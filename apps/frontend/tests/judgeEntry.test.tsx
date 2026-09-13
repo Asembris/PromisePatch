@@ -30,7 +30,13 @@ const DEMO_SESSION = '/api/auth/demo-session'
 const CASE_PATH = `/api/cases/${CASE_ID}`
 
 const JUDGE = {
-  worker: { id: 'judge', username: 'judge', display_name: 'Observer', role: 'observer' },
+  worker: {
+    id: 'judge',
+    username: 'judge',
+    display_name: 'Observer',
+    role: 'observer',
+    may_report: false,
+  },
 }
 
 /** What the backend says about this caller. The screen is told; it infers nothing from the role. */

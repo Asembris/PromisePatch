@@ -35,6 +35,7 @@ import {
   login,
   logout,
   openDemoSession,
+  reportTurn,
 } from './client'
 import type {
   CaseListResponse,
@@ -253,11 +254,11 @@ export async function refreshOperationalState(client: QueryClient): Promise<void
 // ------------------------------------------------------------------- saying something to a case
 
 /**
- * The two turns a case can be given from its own workspace.
+ * The three turns a person can take: one that opens a case, and two that a case can be given.
  *
- * Both follow the same rule and it is the important one: **nothing changes on screen until the
- * backend says it did.** There is no optimistic update, no pre-applied state and no local copy of
- * the case — the mutation settles, the case query is invalidated, and the next render draws
+ * All three follow the same rule and it is the important one: **nothing changes on screen until
+ * the backend says it did.** There is no optimistic update, no pre-applied state and no local
+ * copy of the case — the mutation settles, the case query is invalidated, and the next render draws
  * whatever the authoritative read then returns. A panel that moved a promise forward while the
  * request was in flight would be showing an outcome nobody had committed.
  *
@@ -265,6 +266,34 @@ export async function refreshOperationalState(client: QueryClient): Promise<void
  * information about the case. A stale `plan_id` in particular means the case moved, and the
  * honest response to that is to re-read it and show the plan that is really on offer.
  */
+export interface ReportTurnInput {
+  commandId: string
+  text: string
+}
+
+/**
+ * The first thing anybody says to this product: what happened, in their own words.
+ *
+ * It carries no case id because there is no case yet — the backend derives one from the command
+ * and returns it, and the screen navigates to whatever it returned. Nothing is created here
+ * optimistically: until this resolves there is no row, no case and nothing on screen claiming
+ * one, because a case that turned out not to exist would be the screen having invented an
+ * attestation.
+ *
+ * `casesKey` is invalidated on settle rather than on success, for the same reason the two turns
+ * below do it: a refusal is also information about what is on record.
+ */
+export function useReportTurn(): UseMutationResult<TurnAccepted, Error, ReportTurnInput> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ commandId, text }: ReportTurnInput) =>
+      reportTurn({ command_id: commandId, text }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: casesKey })
+    },
+  })
+}
+
 export interface ClarifyTurnInput {
   commandId: string
   caseId: string

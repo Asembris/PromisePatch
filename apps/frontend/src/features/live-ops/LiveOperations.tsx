@@ -30,6 +30,7 @@ import { Disclosure } from '../../components/disclosure'
 import { Message, Panel } from '../../components/surfaces'
 import { formatDateTime } from '../../components/time'
 import { CaseList } from '../case/CaseList'
+import { ReportEntry } from '../case/ReportEntry'
 import { PromiseTable } from './PromiseTable'
 import { EquipmentList, IngredientTable } from './ResourcePanel'
 
@@ -42,6 +43,10 @@ export function LiveOperations({
 }): ReactNode {
   return (
     <main className="mx-auto max-w-[76rem] space-y-5 px-4 py-5 sm:px-6 sm:py-6">
+      {/* Above the list, because a worker arriving with something to say has no row to click.
+          It draws itself only for a principal the backend says may attest, so an observer
+          never sees it — not greyed out, not at all. */}
+      <ReportEntry onOpened={onOpenCase} />
       <CaseList onOpen={onOpenCase} />
       <OrderContext stream={stream} />
     </main>

@@ -34,7 +34,13 @@ const CONFIRM_PATH = '/api/conversation/confirm'
 
 /** The observer a scoped demo session names. Role and `may_speak` both come from the backend. */
 const JUDGE = {
-  worker: { id: 'judge', username: 'judge', display_name: 'Observer', role: 'observer' },
+  worker: {
+    id: 'judge',
+    username: 'judge',
+    display_name: 'Observer',
+    role: 'observer',
+    may_report: false,
+  },
 }
 
 const OBSERVED_CASE = { ...PLANNED_CASE, may_speak: false, permitted_verbs: ['status'] }
