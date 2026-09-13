@@ -57,6 +57,15 @@ export function App(): ReactNode {
 
   return (
     <div className="min-h-full">
+      {/* First in the tab order, visible the moment it is focused, and pointing at the one
+          landmark on the page. A judge or a worker arriving by keyboard should not have to walk
+          the header to reach the case. */}
+      <a
+        href="#case-surface"
+        className="sr-only rounded-control bg-brand px-4 py-2.5 text-sm font-semibold text-brand-ink focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-30"
+      >
+        Skip to the case
+      </a>
       <Header worker={worker} stream={stream} />
       {route.caseId === null ? (
         <LiveOperations stream={stream} onOpenCase={route.open} />

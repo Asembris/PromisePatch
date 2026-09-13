@@ -49,7 +49,11 @@ export function Disclosure({
           if (open) button.current?.focus()
           setOpen((current) => !current)
         }}
-        className={`inline-flex items-center gap-1.5 rounded-quiet transition-colors ${
+        // `min-h-11` is 44px, which is the smallest target a finger can be asked to hit. The
+        // negative inline margin keeps the text where it was: the target grows, the layout does
+        // not move, and a control that was reachable only with a mouse becomes reachable on a
+        // phone without the page being redrawn around it.
+        className={`-mx-2 inline-flex min-h-11 items-center gap-1.5 rounded-quiet px-2 transition-colors ${
           tone === 'loud'
             ? 'text-meta font-medium text-muted hover:text-ink'
             : 'text-label text-muted uppercase hover:text-ink'

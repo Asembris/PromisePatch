@@ -47,7 +47,7 @@ export function Header({
           type="button"
           onClick={() => signOut.mutate()}
           disabled={signOut.isPending}
-          className="rounded-control border border-edge px-2.5 py-1 text-meta font-medium text-muted transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-60"
+          className="inline-flex min-h-11 items-center rounded-control border border-edge px-3 text-meta font-medium text-muted transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-60"
         >
           {signOut.isPending ? 'Signing out…' : 'Sign out'}
         </button>

@@ -51,12 +51,12 @@ export function CaseWorkspace({
   const workspace = useCase(caseId)
 
   return (
-    <main className="mx-auto w-full max-w-[76rem] px-4 py-5 sm:px-6 sm:py-6">
+    <main id="case-surface" className="mx-auto w-full max-w-[76rem] px-4 py-5 sm:px-6 sm:py-6">
       <div className="mb-3 flex items-center">
         <button
           type="button"
           onClick={onClose}
-          className="text-meta text-muted transition-colors hover:text-ink"
+          className="-mx-2 inline-flex min-h-11 items-center rounded-quiet px-2 text-meta text-muted transition-colors hover:text-ink"
         >
           ← All cases
         </button>
