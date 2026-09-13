@@ -545,10 +545,10 @@ async def require_readable(connection: AsyncConnection, *, case_id: UUID, worker
 
     A second, wider question than :func:`require_permitted`, and deliberately a separate
     function rather than a flag on that one. Every write in this system gates on
-    ``require_permitted``, which has no branch for an observer and is not changed by this being
-    here -- so the read widening cannot reach a write even by mistake, and a write route added
-    later with no observer check of its own still refuses one. A parameter would have made the
-    two answers one call site apart.
+    ``require_permitted``, which refuses an observer outright -- so the read widening cannot
+    reach a write even by mistake, and a write route added later with no observer check of its
+    own still refuses one. A parameter on that function would have put "may read" and "may write"
+    one argument apart in the function every write in the system calls.
 
     It is additive: everyone this admits who was admitted before is admitted for the same
     reason, by the same function, and the only new admission is a role the database did not have
