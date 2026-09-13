@@ -51,7 +51,9 @@ export function App(): ReactNode {
     )
   }
 
-  if (worker === null) return <LoginScreen />
+  // The shell owns the address bar, so the sign-in screen asks it to open a case rather
+  // than moving the URL under a component that does not own it.
+  if (worker === null) return <LoginScreen onEntered={route.open} />
 
   return (
     <div className="min-h-full">

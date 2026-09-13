@@ -31,6 +31,7 @@ import {
   fetchMe,
   fetchPromises,
   fetchResources,
+  fetchSignInOptions,
   login,
   logout,
   openDemoSession,
@@ -40,6 +41,7 @@ import type {
   CaseWorkspaceResponse,
   PromisesResponse,
   ResourcesResponse,
+  SignInOptions,
   TurnAccepted,
   WorkerResponse,
 } from './types'
@@ -48,6 +50,7 @@ export const meKey = ['me'] as const
 export const promisesKey = ['promises'] as const
 export const resourcesKey = ['resources'] as const
 export const casesKey = ['cases'] as const
+export const signInOptionsKey = ['sign-in-options'] as const
 
 /** One key per case, so a feed frame refreshes the case being read and not every case ever read. */
 export function caseKey(caseId: string): readonly [string, string] {
@@ -153,6 +156,22 @@ export function useCase(caseId: string | null): UseQueryResult<CaseWorkspaceResp
     retry: retryTransportFailures,
     staleTime: OPERATIONAL_STALE_TIME,
     refetchInterval: recoverFromFailure,
+  })
+}
+
+/**
+ * What ways in exist, read before the sign-in screen draws them.
+ *
+ * Unauthenticated and cached for the session: it is one boolean about this deployment's own
+ * configuration, it cannot change between two renders of a page, and a screen that re-read it
+ * would be polling a constant.
+ */
+export function useSignInOptions(): UseQueryResult<SignInOptions, Error> {
+  return useQuery({
+    queryKey: signInOptionsKey,
+    queryFn: ({ signal }) => fetchSignInOptions(signal),
+    retry: retryTransportFailures,
+    staleTime: Infinity,
   })
 }
 

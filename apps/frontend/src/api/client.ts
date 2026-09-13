@@ -22,6 +22,7 @@ import type {
   ErrorResponse,
   PromisesResponse,
   ResourcesResponse,
+  SignInOptions,
   TurnAccepted,
   WorkerResponse,
 } from './types'
@@ -156,6 +157,11 @@ export async function fetchResources(signal?: AbortSignal): Promise<ResourcesRes
 
 export async function fetchCases(signal?: AbortSignal): Promise<CaseListResponse> {
   return requestJson<CaseListResponse>('/api/cases', signal ? { signal } : {})
+}
+
+/** What ways in this deployment offers. No session required; the sign-in screen has none. */
+export async function fetchSignInOptions(signal?: AbortSignal): Promise<SignInOptions> {
+  return requestJson<SignInOptions>('/api/auth/options', signal ? { signal } : {})
 }
 
 /** A session for somebody being shown the product. No credentials go out, and none come back. */

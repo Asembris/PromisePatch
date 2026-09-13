@@ -417,6 +417,17 @@ export interface CaseWorkspaceResponse {
  * rendered to a person **unchanged** — a screen that re-worded it would be one word away from
  * saying a plan was carried out.
  */
+/**
+ * What ways in this deployment offers.
+ *
+ * Read before the sign-in screen draws anything, so a control is rendered because the endpoint
+ * behind it is served rather than on the hope that it is. Saying a door exists is not opening
+ * one: the demo session still has its own flag check, `Origin` check and limiter.
+ */
+export interface SignInOptions {
+  demo_session: boolean
+}
+
 export interface TurnAccepted {
   case_id: string
   statement_id: string
