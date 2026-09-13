@@ -391,6 +391,68 @@ def _env_file_block(template: dict[str, Any], start_marker: str, end_marker: str
     return script[script.index(start_marker) : script.index(end_marker)]
 
 
+# ------------------------------------------------------------------ what the TLS proxy serves
+
+
+def _caddy_directives() -> list[str]:
+    """The Caddyfile with its explanation removed, so an example in a comment is not a route."""
+    return [
+        line.strip()
+        for line in CADDYFILE_PATH.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def _handle_index(directives: list[str], directive: str) -> int:
+    matches = [index for index, line in enumerate(directives) if line == directive]
+    assert len(matches) == 1, f"{directive!r} appears {len(matches)} times; expected once"
+    return matches[0]
+
+
+def test_the_public_name_serves_the_page_rather_than_a_sentence_about_it() -> None:
+    """The deployed root was a one-line 404 until the bundle had somewhere to be served from."""
+    directives = _caddy_directives()
+    catch_all = _handle_index(directives, "handle {")
+    assert directives[catch_all + 1] == "reverse_proxy api:8000", (
+        "the catch-all no longer reaches the process that holds the bundle"
+    )
+    assert "PromisePatch deployed loop" not in CADDYFILE_PATH.read_text(encoding="utf-8"), (
+        "the placeholder landing response is still being served somewhere"
+    )
+
+
+def test_the_intent_api_is_refused_before_the_catch_all_can_publish_it() -> None:
+    """The catch-all ends an allowlist, and `/internal*` is what the allowlist was keeping out.
+
+    `handle` blocks are evaluated in the order they are written, so the refusal has to be above
+    the proxy rather than merely present. Below it, `POST /internal/intents/report` from the
+    public internet reaches the intent API with nothing in front of it but a service token the
+    `api` container holds -- which is a published internal write surface, not a hardened one.
+    """
+    directives = _caddy_directives()
+    refusal = _handle_index(directives, "handle /internal* {")
+    assert directives[refusal + 1] == "respond 404", "the refusal does not refuse"
+    assert refusal < _handle_index(directives, "handle {"), (
+        "the catch-all proxy is above the /internal refusal, so /internal is published"
+    )
+
+
+def test_every_other_route_still_wins_against_the_catch_all() -> None:
+    """A catch-all added below a route changes nothing; added above one it swallows it."""
+    directives = _caddy_directives()
+    catch_all = _handle_index(directives, "handle {")
+    for directive in (
+        "handle /mcp* {",
+        "handle /api* {",
+        "handle /events* {",
+        "handle /readyz {",
+        "handle /healthz {",
+    ):
+        assert _handle_index(directives, directive) < catch_all, (
+            f"{directive!r} is below the catch-all and would never be reached"
+        )
+
+
 # ------------------------------------------------------------------ the image the host runs
 
 

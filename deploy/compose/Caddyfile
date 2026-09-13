@@ -57,10 +57,20 @@
 		reverse_proxy api:8000
 	}
 
-	# Nothing else is served. The evidence UI is not deployed by this stack yet, so an
-	# unmatched path is a 404 from here rather than a route into something unfinished.
+	# The intent API is reachable from the `mcp` container over the private network and
+	# from nowhere else. That used to be true because `handle /api*` was an allowlist and
+	# everything else fell through to a 404; the catch-all below ends the allowlist, so
+	# the refusal is stated here instead of inherited -- and `scripts/deployment_smoke.py`
+	# asserts it from outside the deployment rather than trusting this line.
+	handle /internal* {
+		respond 404
+	}
+
+	# Everything else is the evidence UI, served by the API process out of the backend
+	# image (ADR-0012). Last, so every handle above still wins, and an unknown `/api/...`
+	# path is answered by the API's own JSON 404 rather than by a page.
 	handle {
-		respond "PromisePatch deployed loop. Endpoints: /mcp, /api, /readyz" 404
+		reverse_proxy api:8000
 	}
 
 	header {
