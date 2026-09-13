@@ -52,21 +52,38 @@ export function UntouchedProof({
         data-universe={promiseCount}
       >
         {/* Two integers with a word between them, and no arithmetic anywhere near it: the
-            denominator is the case's own universe and the backend publishes both figures. */}
-        <span className="inline-flex items-baseline gap-1.5">
-          <Count value={untouchedCount} label="left alone" />
-          <span className="text-label text-muted uppercase">
-            of {promiseCount} this case considered
-          </span>
-        </span>
-        <Count
-          value={untouchedEffectCount}
-          label="incident-caused effects on them"
-          one="incident-caused effect on them"
-        />
+            denominator is the case's own universe and the backend publishes both figures.
+
+            Withheld entirely while that denominator is zero. A case still asking its question
+            has assessed no promise, so "0 left alone, 0 incident-caused effects" would be this
+            product's headline claim made before any of the work that earns it — and a reader
+            cannot tell a zero that was counted from a zero that was merely not yet reached.
+            `status_view` already refuses to speak the same line for the same reason. */}
+        {promiseCount === 0 ? (
+          <span className="text-label text-muted uppercase">nothing assessed yet</span>
+        ) : (
+          <>
+            <span className="inline-flex items-baseline gap-1.5">
+              <Count value={untouchedCount} label="left alone" />
+              <span className="text-label text-muted uppercase">
+                of {promiseCount} this case considered
+              </span>
+            </span>
+            <Count
+              value={untouchedEffectCount}
+              label="incident-caused effects on them"
+              one="incident-caused effect on them"
+            />
+          </>
+        )}
       </div>
 
-      {promises.length === 0 ? (
+      {promiseCount === 0 ? (
+        <QuietCard className="px-4 py-3 text-sm text-muted">
+          This case has not assessed a promise yet, so it claims nothing about what it left
+          alone.
+        </QuietCard>
+      ) : promises.length === 0 ? (
         <QuietCard className="px-4 py-3 text-sm text-muted">
           No promise in this case was left alone.
         </QuietCard>

@@ -229,3 +229,53 @@ describe('the reason an untouched promise gives', () => {
     expect(row).toHaveTextContent('what is already reserved for it still covers the need')
   })
 })
+
+describe('a case that has assessed nothing claims nothing', () => {
+  // `promise_count` is the case's own universe. While it is zero the case is still working out
+  // what the report even means, and every figure this band exists to publish is unearned: the
+  // zero has not been counted, it has merely not been reached yet. The band stays on the screen,
+  // because the rule that it is never dropped is not suspended by an empty case — what changes
+  // is what it is allowed to say.
+  function mountEmpty(): void {
+    render(
+      <UntouchedProof
+        promises={[]}
+        untouchedCount={0}
+        untouchedEffectCount={0}
+        promiseCount={0}
+      />,
+    )
+  }
+
+  it('publishes no zero-effect proof before it has assessed a promise', () => {
+    mountEmpty()
+    expect(screen.queryByText(/incident-caused effect/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/this case considered/)).not.toBeInTheDocument()
+    expect(screen.getByText('nothing assessed yet')).toBeInTheDocument()
+  })
+
+  it('does not say promises were left alone when none has been looked at', () => {
+    mountEmpty()
+    expect(screen.queryByText('No promise in this case was left alone.')).not.toBeInTheDocument()
+    expect(screen.getByText(/claims nothing about what it left alone/)).toBeInTheDocument()
+  })
+
+  it('keeps the band itself, because an empty case is not a reason to drop it', () => {
+    mountEmpty()
+    expect(screen.getByTestId('untouched-proof')).toBeInTheDocument()
+    expect(screen.getByText('nothing below this line was reached')).toBeInTheDocument()
+  })
+
+  it('still makes the claim once the case has a universe to make it about', () => {
+    render(
+      <UntouchedProof
+        promises={[]}
+        untouchedCount={0}
+        untouchedEffectCount={0}
+        promiseCount={6}
+      />,
+    )
+    expect(screen.getByText('No promise in this case was left alone.')).toBeInTheDocument()
+    expect(screen.getByText(/of 6 this case considered/)).toBeInTheDocument()
+  })
+})
