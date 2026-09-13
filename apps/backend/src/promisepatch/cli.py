@@ -224,9 +224,14 @@ def resolve_anchor(given: str, settings: Settings) -> datetime:
     A naive value is read in the bakery's timezone rather than the server's, because "seven in
     the morning" is a claim about the kitchen, and the machine running this command may be
     nowhere near it. An aware value is taken as given.
+
+    An omitted one is ``now``, corrected by :func:`promisepatch.fixtures.demo.resolve_demo_anchor`
+    for the two hours a day where ``now`` would put the fixture's two deliveries on one bakery
+    day and leave the demo undrivable. An operator who names an anchor gets exactly it — that
+    is what naming one is for, including naming one this refuses to choose.
     """
     if not given:
-        return datetime.now(UTC)
+        return demo.resolve_demo_anchor(datetime.now(UTC), settings.bakery_tz)
     try:
         parsed = datetime.fromisoformat(given)
     except ValueError as error:

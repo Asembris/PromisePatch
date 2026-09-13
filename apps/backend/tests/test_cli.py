@@ -130,10 +130,21 @@ def test_an_aware_anchor_is_taken_as_given() -> None:
     )
 
 
-def test_an_omitted_anchor_is_now() -> None:
+def test_an_omitted_anchor_is_now_wherever_now_would_work() -> None:
+    """Twenty-two hours a day this is the identity, and the test says which hours those are.
+
+    It cannot simply assert ``now``, because for two hours a day ``now`` is refused — see
+    :func:`promisepatch.fixtures.demo.resolve_demo_anchor`. Asserting the identity
+    unconditionally is what made this test fail only when it ran late at night.
+    """
     before = datetime.now(UTC)
     resolved = resolve_anchor("", Settings(bakery_tz=TUNIS))
-    assert before <= resolved <= datetime.now(UTC)
+    local = before.astimezone(ZoneInfo(TUNIS))
+    within_the_refused_window = local.hour == 0 or local.hour >= 23
+    if not within_the_refused_window:
+        assert before <= resolved <= datetime.now(UTC)
+    else:
+        assert resolved != before
 
 
 def test_an_unparseable_anchor_is_refused() -> None:

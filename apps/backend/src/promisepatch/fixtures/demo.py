@@ -13,8 +13,9 @@ in again.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Final
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from promise_graph.examples import hollow_oak
 from promise_graph.snapshot import GraphSnapshot
@@ -82,3 +83,65 @@ SEEDED_WORKERS: Final[tuple[StaffSeed, ...]] = (*STAFF, OBSERVER)
 def build_snapshot(anchor: datetime) -> GraphSnapshot:
     """The demo graph, with every instant measured from ``anchor``."""
     return hollow_oak.hollow_oak(anchor)
+
+
+def _delivery_offsets() -> tuple[timedelta, timedelta]:
+    """How far after the anchor the fixture's two Valley Produce deliveries fall.
+
+    Measured off the dataset rather than written down, for this module's standing reason: a
+    duration typed here would be a second copy of a bakery fact, and it would go stale the
+    first time the fixture moved a delivery.
+    """
+    commitments = hollow_oak.hollow_oak(hollow_oak.ANCHOR).commitments
+    return (
+        commitments[hollow_oak.VP_TODAY].due_at - hollow_oak.ANCHOR,
+        commitments[hollow_oak.VP_TOMORROW].due_at - hollow_oak.ANCHOR,
+    )
+
+
+def resolve_demo_anchor(now: datetime, timezone: str) -> datetime:
+    """The instant to load the demo at: ``now``, unless ``now`` would break the fixture.
+
+    The fixture states its two Valley Produce deliveries as offsets from the anchor — one an
+    hour after it, one twenty-three hours after it — and the whole canonical scenario rests on
+    those landing on *different* bakery days, because the clarifying question the case asks is
+    "the whole delivery, or just the raspberries?" about **today's** one.
+
+    Which day an instant belongs to is the kitchen's calendar day, and it is read from the real
+    clock rather than from the anchor (:func:`promisepatch.domain.physical.bakery_day`). So an
+    anchor too close to local midnight collapses the distinction, in one of two ways:
+
+    * **within an hour of midnight**, tomorrow's delivery is still today, and the interpreter
+      cannot tell which delivery "today's" names — it asks which commitment is meant, and every
+      option carries the same words, so no answer resolves it;
+    * **within an hour of the day ending**, today's delivery has moved into tomorrow, and there
+      is no delivery today for the report to be about at all.
+
+    Both leave a case stuck in ``CLARIFYING`` with nothing a worker can say to move it. The
+    window is narrow and it is real: it is two hours out of every twenty-four, and it is why a
+    reset run late at night produces a demo nobody can drive.
+
+    So an omitted anchor is ``now`` for the twenty-two hours where ``now`` works, and the
+    nearest instant that works for the two where it does not. The correction is minutes rather
+    than hours — the fixture's geometry relative to the anchor is preserved, which is the whole
+    reason it is anchored on ``now`` in the first place.
+    """
+    today_after, tomorrow_after = _delivery_offsets()
+    day = timedelta(days=1)
+    # Tomorrow's delivery must clear midnight; today's must not reach it.
+    earliest, latest = day - tomorrow_after, day - today_after
+
+    try:
+        zone = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):  # pragma: no cover - configuration error
+        return now
+    local = now.astimezone(zone)
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    since_midnight = local - midnight
+    if earliest <= since_midnight < latest:
+        return now
+
+    # A minute inside the late edge rather than on it, because the boundary itself is the
+    # first instant that fails.
+    target = earliest if since_midnight < earliest else latest - timedelta(minutes=1)
+    return (midnight + target).astimezone(UTC)
