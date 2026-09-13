@@ -400,6 +400,12 @@ export interface CaseWorkspaceResponse {
   untouched_effect_count: number
   plan_id: string | null
   awaiting_confirmation: boolean
+  /** The whole case, spoken, exactly as the status tool renders it. Rendered verbatim, never cut. */
+  speech: string
+  /** Whether the domain would let this caller say anything to this case. Never inferred here. */
+  may_speak: boolean
+  /** What this caller may do to this case now. The backend's list; the screen filters nothing. */
+  permitted_verbs: string[]
   evidence: EvidenceView
 }
 

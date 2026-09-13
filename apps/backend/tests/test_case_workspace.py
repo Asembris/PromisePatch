@@ -32,7 +32,9 @@ from promise_graph.examples import hollow_oak as ho
 from promisepatch.api.routers import auth as login_router
 from promisepatch.api.schemas.cases import CaseListResponse, CaseWorkspaceResponse
 from promisepatch.config import Settings
+from promisepatch.domain import analysis, status_view
 from promisepatch.main import create_app
+from promisepatch.orchestrator import policy
 from promisepatch.worker import Worker
 
 pytestmark = pytest.mark.integration
@@ -632,3 +634,152 @@ async def test_the_case_list_offers_the_case_a_reload_should_return_to(
     assert listing.cases[0].state == "PLANNED"
     assert listing.cases[0].headline == "PLANNED"
     assert listing.cases[0].reported_text == CANONICAL_REPORT
+
+
+# ------------------------------------------- what a conversation panel is told, and is not
+
+
+class Observing:
+    """A browser holding a scoped observer session against the real application.
+
+    The same shape as :class:`SignedIn` and deliberately so: one running application, one client,
+    and one live session on it. What differs is only how the session was obtained -- no username,
+    no password, and a principal the server chose.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self.app = create_app(
+            order_system_settings(settings).model_copy(update={"demo_session_enabled": True})
+        )
+        self.client: httpx2.AsyncClient | None = None
+
+    async def __aenter__(self) -> httpx2.AsyncClient:
+        self._lifespan = self.app.router.lifespan_context(self.app)
+        await self._lifespan.__aenter__()
+        self.client = await _open_browser(self.app)
+        response = await self.client.post("/api/auth/demo-session")
+        assert response.status_code == 200, response.text
+        assert response.json()["worker"]["role"] == "observer"
+        return self.client
+
+    async def __aexit__(self, *exc: Any) -> None:
+        if self.client is not None:
+            await self.client.aclose()
+        await self._lifespan.__aexit__(*exc)
+
+
+async def test_the_case_carries_the_whole_status_spoken_byte_for_byte(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """``speech`` is the engine's own rendering, so a panel reads it rather than composing one."""
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+    status = await analysis.read_case_status(physical.database, case_id=case_id)
+
+    assert view.speech == status_view.render(status_view.project(status))
+    assert view.speech != view.sentence
+
+
+async def test_the_spoken_status_is_the_one_the_status_tool_answers_with(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """One rendering for both surfaces. A browser and a tool call cannot describe a case apart."""
+    opened = await physical.report(CANONICAL_REPORT)
+    await physical.drain()
+    status = await analysis.read_case_status(physical.database, case_id=opened.case_id)
+    spoken = status_view.render(status_view.project(status))
+
+    assert (await workspace(browser, opened.case_id)).speech == spoken
+
+
+async def test_a_worker_on_their_own_case_is_told_they_may_speak(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+
+    assert view.may_speak is True
+
+
+async def test_an_observer_is_told_it_may_not_speak_rather_than_left_to_infer(
+    runtime_settings: Settings, physical: Intake
+) -> None:
+    """The screen is handed the answer. A role it had to interpret would be a decision it made."""
+    case_id = await planned_case(physical)
+
+    async with Observing(runtime_settings) as client:
+        view = await workspace(client, case_id)
+
+    assert view.may_speak is False
+
+
+async def test_an_observer_is_offered_no_verb_that_would_change_anything(
+    runtime_settings: Settings, physical: Intake
+) -> None:
+    """Every effecting verb is withheld, on the one case that is genuinely waiting for a yes."""
+    case_id = await planned_case(physical)
+
+    async with Observing(runtime_settings) as client:
+        view = await workspace(client, case_id)
+
+    assert view.awaiting_confirmation is True
+    assert "confirm" not in view.permitted_verbs
+    assert "clarify" not in view.permitted_verbs
+    assert "report" not in view.permitted_verbs
+    assert view.permitted_verbs == ("status",)
+
+
+async def test_a_planned_case_offers_the_worker_a_confirmation(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """The one state in which a plan is actually waiting for a yes."""
+    view = await workspace(browser, await planned_case(physical))
+
+    assert "confirm" in view.permitted_verbs
+    assert "clarify" not in view.permitted_verbs
+
+
+async def test_a_case_with_a_question_open_offers_an_answer_and_not_a_confirmation(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    opened = await physical.report(CANONICAL_REPORT)
+    await physical.drain()
+
+    view = await workspace(browser, opened.case_id)
+
+    assert view.question is not None
+    assert "clarify" in view.permitted_verbs
+    assert "confirm" not in view.permitted_verbs
+
+
+async def test_the_verbs_offered_are_the_ones_the_conversation_policy_permits(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """One closed table for both surfaces, so a browser cannot be offered what a tool is not."""
+    view = await workspace(browser, await planned_case(physical))
+    reading = policy.CaseReading(
+        case_id=str(view.case_id),
+        headline=view.headline,
+        plan_id=view.plan_id,
+        awaiting_confirmation=view.awaiting_confirmation,
+        question=None if view.question is None else view.question.question,
+    )
+
+    assert view.permitted_verbs == tuple(
+        policy.TOOL_NAMES[tool] for tool in policy.permitted_for(policy.phase_of(reading))
+    )
+
+
+async def test_no_case_ever_offers_a_verb_outside_the_frozen_vocabulary(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """A fifth verb on the wire would be a screen able to ask for a tool nobody serves."""
+    names = set(policy.TOOL_NAMES.values())
+    asking = await physical.report(CANONICAL_REPORT)
+    await physical.drain()
+    waiting = await planned_case(physical)
+
+    for case_id in (asking.case_id, waiting):
+        assert set((await workspace(browser, case_id)).permitted_verbs) <= names

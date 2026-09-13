@@ -304,6 +304,13 @@ export const PLANNED_CASE: CaseWorkspaceResponse = {
   untouched_effect_count: 0,
   plan_id: 'ac1f2b3c4d5e6f70',
   awaiting_confirmation: true,
+  // The three fields a conversation panel is handed rather than working out. `speech` is the
+  // whole case as the backend renders it aloud, which is why it is not the headline sentence
+  // above; `permitted_verbs` is what this caller may do, already narrowed by `may_speak`.
+  speech:
+    'Planned, and waiting for you. Nothing has been done yet. Three orders are affected and two were left alone. Say yes to go ahead.',
+  may_speak: true,
+  permitted_verbs: ['confirm', 'status'],
   evidence: PLANNED_EVIDENCE,
 }
 
@@ -320,6 +327,9 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
   },
   plan_id: null,
   awaiting_confirmation: false,
+  speech:
+    'Waiting on a customer to answer. One promise needs the owner by hand. Nothing else is moving.',
+  permitted_verbs: ['status'],
   authority_bands: [
     {
       authority: 'STANDING_PREFERENCE',
@@ -467,6 +477,8 @@ export const CLARIFYING_CASE: CaseWorkspaceResponse = {
   untouched_effect_count: 0,
   plan_id: null,
   awaiting_confirmation: false,
+  speech: 'Waiting for your answer before anything is decided. Which of them did not arrive?',
+  permitted_verbs: ['clarify', 'status'],
 }
 
 export const CASES: CaseListResponse = {

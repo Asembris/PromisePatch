@@ -11,10 +11,16 @@ screen all describe a case by projecting the same value. A view that ran its own
 a third description of a case, and three descriptions eventually disagree about one of them
 with nothing to say which was right.
 
-**The words are not re-worded here.** ``phrase``, ``sentence``, ``reason`` and ``next_action``
-are copied. A view layer that rephrased "planned" for the screen would be doing exactly what a
-conversational layer is forbidden to do, and the frontend would then hold a vocabulary the
-contract fixes in the backend.
+**The words are not re-worded here.** ``phrase``, ``sentence``, ``reason``, ``next_action``
+and ``speech`` are copied. A view layer that rephrased "planned" for the screen would be doing
+exactly what a conversational layer is forbidden to do, and the frontend would then hold a
+vocabulary the contract fixes in the backend.
+
+**The verbs are not re-derived here either.** ``permitted_verbs`` comes from
+:mod:`promisepatch.orchestrator.policy`, which is the closed phase table the conversational loop
+already reads, so a browser and a spoken conversation are offered the same thing in the same
+state. It is defence in depth in both places: the domain checks every call again when it arrives,
+and a verb this table allowed still fails there if the case has moved.
 """
 
 from __future__ import annotations
@@ -50,6 +56,7 @@ from promisepatch.api.schemas.cases import (
 )
 from promisepatch.db.models import Case, CaseReport
 from promisepatch.domain import analysis, causal, status_view
+from promisepatch.orchestrator import policy
 
 BAND_ORDER: Final[tuple[status_view.Authority, ...]] = (
     status_view.Authority.STANDING_PREFERENCE,
@@ -146,8 +153,16 @@ def _headline(state: str) -> status_view.CaseHeadline:
     return status_view.CASE_HEADLINES.get(state, status_view.CaseHeadline.UNDERSTANDING)
 
 
-def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorkspaceResponse:
-    """One case status, projected once and then arranged into the contract's five bands."""
+def build(
+    status: analysis.CaseStatus, *, opening: Opening | None, may_speak: bool
+) -> CaseWorkspaceResponse:
+    """One case status, projected once and then arranged into the contract's five bands.
+
+    ``may_speak`` is the domain's answer about the caller, resolved by the route that knows who
+    is asking and passed in rather than worked out here. This module has no principal and should
+    not acquire one: its job is to arrange a case, and a permission it could compute would be a
+    second implementation of a question the domain already answers.
+    """
     view = status_view.project(status)
     chains = {
         str(track.track_id): causal.chain_for(track, facts=status.node_facts)
@@ -178,7 +193,35 @@ def build(status: analysis.CaseStatus, *, opening: Opening | None) -> CaseWorksp
         untouched_effect_count=view.untouched_effect_count,
         plan_id=view.plan_id,
         awaiting_confirmation=view.awaiting_confirmation,
+        speech=status_view.render(view),
+        may_speak=may_speak,
+        permitted_verbs=_permitted_verbs(view, may_speak=may_speak),
         evidence=_evidence(status),
+    )
+
+
+def _permitted_verbs(view: status_view.CaseView, *, may_speak: bool) -> tuple[str, ...]:
+    """What this caller may do to this case now, from the conversation's own table.
+
+    Two narrowings, in this order. The phase decides what the *case* offers -- read off a status
+    the server rendered, exactly as the conversational loop does it, with an unrecognised headline
+    degrading to a read. Then ``may_speak`` decides what this *caller* may do with that, and a
+    caller the domain would refuse is left with the read.
+
+    The intersection is done here rather than on the screen because "what may I do" is one
+    question with one answer, and a surface handed two halves would have to combine them itself.
+    Neither half authorises anything: the domain checks the call again when it arrives.
+    """
+    reading = policy.CaseReading(
+        case_id=view.case_id,
+        headline=view.headline.value,
+        plan_id=view.plan_id,
+        awaiting_confirmation=view.awaiting_confirmation,
+        question=None if view.question is None else view.question.question,
+    )
+    offered = policy.permitted_for(policy.phase_of(reading))
+    return tuple(
+        policy.TOOL_NAMES[tool] for tool in offered if may_speak or tool not in policy.EFFECTING
     )
 
 

@@ -27,6 +27,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from promisepatch.api.dependencies import DatabaseDep, PrincipalDep
 from promisepatch.api.errors import ApiError
@@ -89,10 +90,28 @@ async def read_case(
             )
         except intake.NotPermittedError as error:
             raise NOT_PERMITTED from error
+        # Asked here, where the caller is known, and answered by the same function every write
+        # gates on. The screen is then told what it may offer instead of reading a role and
+        # deciding for itself -- and the domain refuses the call again either way.
+        may_speak = await _may_speak(connection, case_id=case_id, worker_id=principal.worker_id)
         opening = await view.first_report(connection, case_id=case_id)
 
     try:
         status = await analysis.read_case_status(database, case_id=case_id)
     except analysis.CaseNotFoundError as error:
         raise NO_SUCH_CASE from error
-    return view.build(status, opening=opening)
+    return view.build(status, opening=opening, may_speak=may_speak)
+
+
+async def _may_speak(connection: AsyncConnection, *, case_id: UUID, worker_id: str) -> bool:
+    """Whether the domain would let this caller say anything to this case.
+
+    ``require_permitted`` itself, called and caught, rather than a rule restated here. A copy of
+    "the opener or an owner" in this module would be a second answer to the question, and the two
+    would eventually disagree about somebody on a screen that claims to be the truthful one.
+    """
+    try:
+        await intake.require_permitted(connection, case_id=case_id, worker_id=worker_id)
+    except intake.NotPermittedError:
+        return False
+    return True
