@@ -17,18 +17,17 @@ import { fileURLToPath } from 'node:url'
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const OPERATOR_ENV = resolve(REPOSITORY_ROOT, 'docker', 'env', 'migrate.env')
+const API_ENV = resolve(REPOSITORY_ROOT, 'docker', 'env', 'api.env')
 
 /** The operator reset, run the way an operator runs it: the privileged container, not the API. */
 const DEFAULT_RESET_COMMAND = 'docker compose run --rm seed'
 
-function readOperatorEnv(key: string): string {
+function readEnv(file: string, key: string): string {
   let contents: string
   try {
-    contents = readFileSync(OPERATOR_ENV, 'utf8')
+    contents = readFileSync(file, 'utf8')
   } catch {
-    throw new Error(
-      `${OPERATOR_ENV} is missing. Run: uv run python scripts/bootstrap_local_env.py`,
-    )
+    throw new Error(`${file} is missing. Run: uv run python scripts/bootstrap_local_env.py`)
   }
   for (const line of contents.split('\n')) {
     const trimmed = line.trim()
@@ -37,7 +36,11 @@ function readOperatorEnv(key: string): string {
     if (separator === -1) continue
     if (trimmed.slice(0, separator).trim() === key) return trimmed.slice(separator + 1).trim()
   }
-  throw new Error(`${key} is not set in ${OPERATOR_ENV}`)
+  throw new Error(`${key} is not set in ${file}`)
+}
+
+function readOperatorEnv(key: string): string {
+  return readEnv(OPERATOR_ENV, key)
 }
 
 export interface Credentials {
@@ -95,4 +98,74 @@ export function resetOrderSystem(): void {
     { cwd: REPOSITORY_ROOT },
   )
   void response
+}
+
+// ------------------------------------------------- opening a case, from outside the browser
+
+/**
+ * The credential the `mcp` process presents to the intent API.
+ *
+ * Read from the generated file rather than duplicated, for the same reason the passwords are:
+ * it is generated per machine, and a literal here would be a token that is wrong everywhere but
+ * the machine it was written on.
+ *
+ * It is used here to do what no browser can: **open a case.** That is deliberate, and it is the
+ * shape of the product rather than a convenience. A case begins when somebody reports a physical
+ * fact through the conversational surface; the workspace is where a case is then read and
+ * answered. So the suite arranges a case the way the system really does, and then drives the
+ * browser against it.
+ */
+function serviceToken(): string {
+  return process.env.E2E_SERVICE_TOKEN ?? readEnv(API_ENV, 'PP_INTERNAL_SERVICE_TOKEN')
+}
+
+interface CaseStatus {
+  case_id: string
+  headline: string
+  plan_id: string | null
+  awaiting_confirmation: boolean
+  question: { question: string } | null
+}
+
+/** Open a case for one spoken physical exception, as the conversational surface does. */
+export async function reportCase(text: string): Promise<string> {
+  const response = await fetch(`${promisePatchAPI()}/internal/intents/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken() },
+    body: JSON.stringify({ command_id: crypto.randomUUID(), text }),
+  })
+  if (!response.ok) throw new Error(`report refused: ${response.status} ${await response.text()}`)
+  return ((await response.json()) as { case_id: string }).case_id
+}
+
+/** One case as the engine currently sees it. The same read the MCP `status` tool makes. */
+export async function caseStatus(caseId: string): Promise<CaseStatus> {
+  const response = await fetch(`${promisePatchAPI()}/internal/intents/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken() },
+    body: JSON.stringify({ case_id: caseId }),
+  })
+  if (!response.ok) throw new Error(`status refused: ${response.status} ${await response.text()}`)
+  return (await response.json()) as CaseStatus
+}
+
+/**
+ * Wait until the real worker process has moved the case to a headline.
+ *
+ * The worker is a separate container on a lease and a poll interval, so "the case is planned"
+ * is a thing that becomes true a moment after the answer is stored rather than as part of
+ * storing it. That is the product's own asynchrony and the suite waits for it rather than
+ * papering over it.
+ */
+export async function waitForHeadline(caseId: string, headline: string): Promise<CaseStatus> {
+  const deadline = Date.now() + 120_000
+  let last = await caseStatus(caseId)
+  while (last.headline !== headline) {
+    if (Date.now() > deadline) {
+      throw new Error(`case ${caseId} is ${last.headline}, not ${headline}, after two minutes`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    last = await caseStatus(caseId)
+  }
+  return last
 }
