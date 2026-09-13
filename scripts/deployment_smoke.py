@@ -11,7 +11,18 @@ fail a deployment that came up too permissive rather than only one that is down:
 * the signed-webhook endpoint must reject a body whose signature is absent or wrong, so the
   order system's identity is still verified after the hop crosses TLS;
 * the ``initialize`` handshake must negotiate exactly the pinned protocol revision, because a
-  deployment that quietly negotiated an older one would not be the audited surface.
+  deployment that quietly negotiated an older one would not be the audited surface;
+* ``POST /internal/intents/report`` must be ``404`` from outside. The TLS proxy used to refuse
+  it by accident -- everything but a short allowlist fell through to a 404 -- and it now serves
+  the page from a catch-all, so the refusal is a line somebody wrote and can therefore be a
+  line somebody deletes;
+* an unknown ``/api/...`` path must answer the API's JSON rather than the page.
+
+Two further checks assert that the deployment is the one that was deployed, rather than merely
+a working one: the root serves the real bundle, and ``/healthz`` names the commit its image was
+built from. ``PP_EXPECTED_IMAGE_TAG`` enables the second, and ``deploy.sh smoke`` sets it from
+the stack's own ``ImageTag`` parameter -- so a host still serving an older image fails here
+instead of being found out later.
 
 **TLS verification is on and is never turned off.** No check asks httpx to skip it; a
 certificate that does not verify fails the run, which is the point of deploying with a real
@@ -44,6 +55,14 @@ PROTOCOL_REVISION = "2025-11-25"
 
 WEBHOOK_PATH = "/api/integrations/order-system/events"
 MCP_PATH = "/mcp"
+INTERNAL_PATH = "/internal/intents/report"
+UNKNOWN_API_PATH = "/api/there-is-no-such-route"
+ABSENT_UUID = "00000000-0000-4000-8000-000000000000"
+# Shaped like a real case id and naming nothing. The page is served for a deep link because
+# the path is not the API's, never because the case exists.
+DEEP_LINK = f"/?case={ABSENT_UUID}"
+# What the built page has and a sentence about the deployment does not.
+ROOT_ELEMENT = 'id="root"'
 
 TIMEOUT = httpx2.Timeout(20.0, connect=10.0)
 
@@ -269,6 +288,119 @@ def _json_candidates(payload: str) -> Iterable[str]:
             yield line[len("data:") :].strip()
 
 
+def check_spa_at_root(client: httpx2.Client, target: Target) -> Check:
+    """The judge's one action lands somewhere, and the somewhere is the real bundle.
+
+    Asserting a 200 alone would pass on the one-line sentence this deployment used to answer
+    with, so what is asserted is the two things only a built page has: the element the
+    application mounts into, and a module the page loads.
+    """
+    asserts = "GET / serves the built page"
+    try:
+        answer = client.get(target.url("/"))
+    except httpx2.HTTPError as error:
+        return _failed("spa-at-root", asserts, f"{type(error).__name__}: {error}")
+    if answer.status_code != 200:
+        return _failed("spa-at-root", asserts, f"status {answer.status_code}")
+    body = answer.text
+    if ROOT_ELEMENT not in body or "<script" not in body:
+        return _failed("spa-at-root", asserts, "the root answers, but not with a built page")
+    cache = answer.headers.get("cache-control")
+    if cache != "no-store":
+        return _failed(
+            "spa-at-root",
+            asserts,
+            f"cache-control {cache!r}: a held index outlives the bundle it names",
+        )
+    return _passed("spa-at-root", asserts, f"{len(body)} bytes, not stored")
+
+
+def check_deep_link(client: httpx2.Client, target: Target) -> Check:
+    """A reload, a restored tab and a pasted link all arrive as a cold request for this path."""
+    asserts = "GET /?case=<id> serves the page rather than a 404"
+    try:
+        answer = client.get(target.url(DEEP_LINK))
+    except httpx2.HTTPError as error:
+        return _failed("deep-link", asserts, f"{type(error).__name__}: {error}")
+    if answer.status_code != 200 or ROOT_ELEMENT not in answer.text:
+        return _failed("deep-link", asserts, f"status {answer.status_code}")
+    return _passed("deep-link", asserts, "200")
+
+
+def check_unknown_api_path_is_not_the_page(client: httpx2.Client, target: Target) -> Check:
+    """An API client that mistypes a path is told so, in the shape it expects.
+
+    A bundle mounted carelessly answers anything with the page, which turns a mistyped API path
+    into an HTML document with status 200: nothing errored, and the body is not what anybody
+    asked for.
+    """
+    asserts = "an unknown /api path answers JSON rather than the page"
+    try:
+        answer = client.get(target.url(UNKNOWN_API_PATH))
+    except httpx2.HTTPError as error:
+        return _failed("unknown-api-path", asserts, f"{type(error).__name__}: {error}")
+    if answer.status_code != 404:
+        return _failed("unknown-api-path", asserts, f"status {answer.status_code}, expected 404")
+    if "<html" in answer.text or ROOT_ELEMENT in answer.text:
+        return _failed("unknown-api-path", asserts, "the bundle answered for an API path")
+    return _passed("unknown-api-path", asserts, "404 json")
+
+
+def check_internal_is_not_published(client: httpx2.Client, target: Target) -> Check:
+    """The intent API is reachable from the ``mcp`` container and from nowhere else.
+
+    It was unreachable by accident until the page needed a catch-all: the proxy's allowlist
+    404ed everything it did not name. The refusal is now a line somebody wrote, which means it
+    is a line somebody can delete, which is why it is checked from outside rather than read in
+    a file.
+    """
+    asserts = "POST /internal/intents/report from outside is 404"
+    try:
+        answer = client.post(
+            target.url(INTERNAL_PATH),
+            json={"command_id": ABSENT_UUID, "text": "deployment smoke"},
+        )
+    except httpx2.HTTPError as error:
+        return _failed("internal-not-published", asserts, f"{type(error).__name__}: {error}")
+    if answer.status_code != 404:
+        return _failed(
+            "internal-not-published",
+            asserts,
+            f"status {answer.status_code}: the internal intent API is published",
+        )
+    return _passed("internal-not-published", asserts, "404")
+
+
+def check_deployed_image(client: httpx2.Client, target: Target) -> Check:
+    """What is running, against what the stack says it deployed.
+
+    The first release was believed deployed and was not: a stack update carrying a new image tag
+    reported success, left the instance id alone, and the host went on serving the image it
+    first booted with. This is the check that fails when that happens.
+    """
+    expected = os.environ.get("PP_EXPECTED_IMAGE_TAG")
+    asserts = "the deployed image is the commit the stack declares"
+    if not expected:
+        return Check(
+            name="deployed-image",
+            asserts=asserts,
+            outcome=Outcome.SKIPPED,
+            detail="PP_EXPECTED_IMAGE_TAG is not set",
+        )
+    try:
+        answer = client.get(target.url("/healthz"))
+    except httpx2.HTTPError as error:
+        return _failed("deployed-image", asserts, f"{type(error).__name__}: {error}")
+    if answer.status_code != 200:
+        return _failed("deployed-image", asserts, f"status {answer.status_code}")
+    served = answer.json().get("image")
+    if served != expected:
+        return _failed(
+            "deployed-image", asserts, f"serving {served!r}, the stack declares {expected!r}"
+        )
+    return _passed("deployed-image", asserts, str(served))
+
+
 CHECKS: tuple[Callable[[httpx2.Client, Target], Check], ...] = (
     check_tls_and_readiness,
     check_http_redirects,
@@ -277,6 +409,11 @@ CHECKS: tuple[Callable[[httpx2.Client, Target], Check], ...] = (
     check_host_refused,
     check_webhook_rejects_unsigned,
     check_protocol_revision,
+    check_spa_at_root,
+    check_deep_link,
+    check_unknown_api_path_is_not_the_page,
+    check_internal_is_not_published,
+    check_deployed_image,
 )
 
 

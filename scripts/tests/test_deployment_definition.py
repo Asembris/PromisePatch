@@ -1282,4 +1282,27 @@ def test_the_smoke_check_asserts_refusals_and_not_only_availability() -> None:
         "check_origin_refused",
         "check_host_refused",
         "check_webhook_rejects_unsigned",
+        # The newest one, and the only refusal here that used to be a side effect rather than a
+        # decision: `/internal` was unreachable because the proxy named what it served and 404ed
+        # the rest. Serving the page needs a catch-all, so the refusal became a line -- and a
+        # line can be deleted, which is why it is now asserted against the running deployment.
+        "check_internal_is_not_published",
     } <= names
+
+
+def test_the_smoke_check_proves_the_deployment_is_the_one_that_was_deployed() -> None:
+    """Up is not the same claim as current, and only the second one is about a release.
+
+    A deployment that answers every endpoint perfectly while serving last week's image passes
+    every availability check there is. These two are what make that a failure: the root has to
+    serve the built page, and the running process has to name the commit the stack declares.
+    """
+    from scripts.deployment_smoke import CHECKS
+
+    names = {check.__name__ for check in CHECKS}
+    assert {"check_spa_at_root", "check_deep_link", "check_deployed_image"} <= names
+    build = (DEPLOY / "deploy.sh").read_text(encoding="utf-8")
+    assert "PP_EXPECTED_IMAGE_TAG=" in build, (
+        "nothing tells the smoke check which commit the stack declares, so the one check that "
+        "would catch a host serving an older image reports SKIPPED and the run still passes"
+    )

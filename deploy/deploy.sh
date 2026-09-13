@@ -263,13 +263,16 @@ stage_rollout () {
 # way to be sure the thing being smoke-checked is the thing that was deployed.
 stage_smoke () {
   say "smoke"
-  local origin
-  origin="$(aws cloudformation describe-stacks --region "$REGION" \
-    --stack-name "$STACK_NAME" \
-    --query "Stacks[0].Outputs[?OutputKey=='PublicUrl'].OutputValue" --output text)"
+  local origin declared
+  origin="$(stack_output PublicUrl)"
   [[ -n "$origin" && "$origin" != "None" ]] || die "the stack publishes no PublicUrl"
-  printf '  origin %s\n' "$origin"
-  ( cd "$REPO_ROOT" && uv run python scripts/deployment_smoke.py --base-url "$origin" )
+  # What the stack says it deployed, so the check can compare it with what the deployed
+  # process says it is. Read from the stack rather than from this shell: the question is
+  # whether the host runs what the stack declares, and taking both sides from this checkout
+  # would answer a different one.
+  declared="$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Parameters[?ParameterKey=='ImageTag'].ParameterValue" --output text)"
+  printf '  origin %s, declared %s\n' "$origin" "$declared"
+  ( cd "$REPO_ROOT" && PP_EXPECTED_IMAGE_TAG="$declared" uv run python scripts/deployment_smoke.py --base-url "$origin" )
 }
 
 case "$STAGE" in
