@@ -83,6 +83,8 @@ class RecordingIntents:
     clarify_body: dict[str, Any] | None = None
     confirm_status: int = 202
     confirm_body: dict[str, Any] | None = None
+    withdraw_status: int = 202
+    withdraw_body: dict[str, Any] | None = None
     status_status: int = 200
     status_body: dict[str, Any] | None = None
 
@@ -92,6 +94,7 @@ class RecordingIntents:
                 Route("/internal/intents/report", self._report, methods=["POST"]),
                 Route("/internal/intents/clarify", self._clarify, methods=["POST"]),
                 Route("/internal/intents/confirm", self._confirm, methods=["POST"]),
+                Route("/internal/intents/withdraw", self._withdraw, methods=["POST"]),
                 Route("/internal/intents/status", self._status, methods=["POST"]),
             ]
         )
@@ -140,6 +143,23 @@ class RecordingIntents:
             "speech": "Confirmed. Nothing has been changed yet.",
         }
         return JSONResponse(payload, status_code=self.confirm_status)
+
+    async def _withdraw(self, request: Request) -> JSONResponse:
+        body = await request.json()
+        self.calls.append(RecordedCall("withdraw", dict(request.headers), body))
+        payload = self.withdraw_body or {
+            "case_id": body.get("case_id"),
+            "command_id": body.get("command_id"),
+            "state": "CANCELLED",
+            "created": True,
+            "withdrawn_by": SURFACE_WORKER,
+            "withdrawn": 2,
+            "escalated": 0,
+            "reversed_writes": ["cancelled 1 piece of work that had not started"],
+            "applied": [],
+            "speech": "Withdrawn. Nothing was sent and no order was changed.",
+        }
+        return JSONResponse(payload, status_code=self.withdraw_status)
 
     async def _status(self, request: Request) -> JSONResponse:
         body = await request.json()

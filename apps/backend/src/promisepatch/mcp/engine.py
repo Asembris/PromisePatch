@@ -147,6 +147,21 @@ class CaseEngine:
             correlation_id=correlation_id,
         )
 
+    async def withdraw(
+        self, *, case_id: UUID, command_id: UUID, correlation_id: UUID
+    ) -> dict[str, Any]:
+        """Withdraw one exception. A case and a command identity, and nothing else travels.
+
+        In particular no reason and no physical claim: what is reversible is decided from rows
+        under the case lock in the engine, and a fact is corrected by its own attestation. This
+        process could not supply either if a caller asked it to -- it has no rows and no field.
+        """
+        return await self._post(
+            "/internal/intents/withdraw",
+            {"command_id": str(command_id), "case_id": str(case_id)},
+            correlation_id=correlation_id,
+        )
+
     async def status(self, *, case_id: UUID, correlation_id: UUID) -> dict[str, Any]:
         """Read one case as it currently stands, already projected and already rendered."""
         return await self._post(

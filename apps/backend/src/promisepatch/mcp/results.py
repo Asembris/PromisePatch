@@ -89,6 +89,52 @@ class ConfirmResult(Envelope):
     speech: str = Field(description="what to say back, rendered deterministically by the engine")
 
 
+class WithdrawResult(Envelope):
+    """What a withdrawal stopped, and -- in its own field -- what it could not stop.
+
+    ``applied`` is the field that makes this result honest, and it is why a withdrawal does not
+    reuse the confirmation's shape. Every entry in it is a sentence about something a customer or
+    the order system **already has**: an amendment that stands, a message that cannot be unsent.
+    A result that carried only ``reversed_writes`` would let a conversation describe a rollback
+    that did not happen.
+
+    Nothing here reports a physical fact. Withdrawing a plan does not un-spoil an ingredient or
+    make a missing delivery arrive, and there is no field in this schema that could say it did.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    created: bool = Field(
+        description="false when this exact withdrawal was already accepted, which is a success"
+    )
+    withdrawn_by: str = Field(
+        description=(
+            "the worker the case engine attributed this withdrawal to, resolved from server "
+            "configuration. Not something the caller chose and not something it can change."
+        )
+    )
+    withdrawn: int = Field(
+        description="promises taken out of the case with nothing having been carried out for them"
+    )
+    escalated: int = Field(
+        description="promises handed to the owner because something had already gone out"
+    )
+    reversed_writes: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "what this withdrawal stood down, each already true when the result is returned"
+        ),
+    )
+    applied: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "what had already happened and is **not** undone. Deliver every entry: it is the "
+            "difference between a withdrawal and a rollback, and the rollback did not happen."
+        ),
+    )
+    speech: str = Field(description="what to say back, rendered deterministically by the engine")
+
+
 class OptionResult(BaseModel):
     """One answer the open question will accept."""
 

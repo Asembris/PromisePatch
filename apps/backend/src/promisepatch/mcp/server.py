@@ -1,4 +1,4 @@
-"""The real MCP Streamable HTTP server: two tools, one envelope, no authority of its own.
+"""The real MCP Streamable HTTP server: the frozen tools, one envelope, no authority of its own.
 
 Protocol revision **2025-11-25**, over Streamable HTTP at ``/mcp``, on the official Python SDK
 pinned to an exact release. The revision is the thing being claimed, not the package: the SDK
@@ -20,11 +20,18 @@ JSON-RPC layer sees a byte, so an unauthenticated caller cannot even discover th
 Neither is a substitute for the domain's own checks, which run again on every intent regardless
 of what this process believed.
 
-**The surface is closed and it is not an authority.** Four tools in this slice. None takes an
-actor, a timestamp, a version, a customer or a consent: the case engine resolves who is
-speaking from its own configuration, and there is no argument here that a model could fill in
-to become somebody else. What this process adds is a transport and a delegation; every rule
-about who may do what still lives behind the intent API.
+**The surface is closed and it is not an authority.** Five tools, which is the whole frozen
+surface. None takes an actor, a timestamp, a version, a customer or a consent: the case engine
+resolves who is speaking from its own configuration, and there is no argument here that a model
+could fill in to become somebody else. What this process adds is a transport and a delegation;
+every rule about who may do what still lives behind the intent API.
+
+**A withdrawal stops future work and is never an undo.** ``withdraw`` takes a case and nothing
+else -- no reason, and no field that could name a physical fact, because withdrawing a plan is
+not a claim about the kitchen. Its result carries two lists, and the second one is the reason it
+is a separate schema: ``applied`` says what a customer or the order system already has and what
+therefore stands. Deliver it. A conversation that reported only the first list would be
+describing a rollback nobody performed.
 
 **A confirmation quotes a plan back.** ``confirm`` requires the ``plan_id`` that ``status``
 returned, and the engine checks it against the plan the case is currently offering. So a yes
@@ -60,6 +67,7 @@ from promisepatch.mcp.results import (
     QuestionResult,
     ReportResult,
     StatusResult,
+    WithdrawResult,
 )
 from promisepatch.observability import get_logger
 
@@ -333,6 +341,66 @@ def build_server(engine: CaseEngine) -> MCPServer:
         )
 
     @server.tool(
+        name="withdraw",
+        title="Withdraw an exception the worker no longer stands behind",
+        description=(
+            "Stop the work this case has not carried out yet. It is not an undo: anything the "
+            "order system has already accepted, and any message a customer has already "
+            "received, stays exactly as it is and is listed in `applied`. Read that list out. "
+            "It reverses no physical fact."
+        ),
+    )
+    async def withdraw(
+        case_id: Annotated[
+            str,
+            Field(description="The case the worker is withdrawing, from `report` or `status`."),
+        ],
+        client_request_id: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "An optional idempotency key of your own. Sending the same key twice is "
+                    "the same withdrawal arriving twice, and withdraws nothing a second time."
+                )
+            ),
+        ] = None,
+    ) -> WithdrawResult:
+        principal = require_principal()
+        case = _case_id(case_id)
+        command_id = command_id_for(principal.client_id, client_request_id)
+        correlation_id = uuid4()
+        body = await _call(
+            engine.withdraw(
+                case_id=case,
+                command_id=command_id,
+                correlation_id=correlation_id,
+            )
+        )
+        logger.info(
+            "mcp.tool.withdraw",
+            client=principal.client_id,
+            case_id=case_id,
+            correlation_id=str(correlation_id),
+        )
+        return WithdrawResult(
+            ok=True,
+            intent="withdraw",
+            correlation_id=str(correlation_id),
+            case_id=_text(body, "case_id"),
+            state=_text(body, "state"),
+            created=bool(body.get("created", False)),
+            withdrawn_by=_required(body, "withdrawn_by"),
+            withdrawn=int(body.get("withdrawn", 0)),
+            escalated=int(body.get("escalated", 0)),
+            reversed_writes=_sentences(body, "reversed_writes"),
+            # Read defensively and separately from the rest: if the engine said something had
+            # already happened, this process must carry every word of it. A field quietly
+            # defaulting to empty here would turn an honest answer into a clean one.
+            applied=_sentences(body, "applied"),
+            speech=_required(body, "speech"),
+        )
+
+    @server.tool(
         name="status",
         title="Read a case",
         description=(
@@ -506,6 +574,19 @@ def _question(body: dict[str, Any]) -> QuestionResult | None:
             if isinstance(item, dict)
         ),
     )
+
+
+def _sentences(body: dict[str, Any], key: str) -> tuple[str, ...]:
+    """A list of rendered sentences, or an empty one -- never a partially readable list.
+
+    Each entry is passed on exactly as the engine composed it. This process has no rows and
+    therefore nothing to check them against, which is the point: it delivers the engine's words
+    rather than summarising them into its own.
+    """
+    value = body.get(key)
+    if not isinstance(value, list):
+        return ()
+    return tuple(str(item) for item in value)
 
 
 def _promises(body: dict[str, Any], key: str) -> tuple[PromiseResult, ...]:

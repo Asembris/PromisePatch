@@ -149,11 +149,36 @@ async def test_the_instructions_state_the_boundary(mcp: McpServer) -> None:
 # ------------------------------------------------------------------------------- discovery
 
 
-async def test_discovery_offers_exactly_the_four_tools_of_this_slice(mcp: McpServer) -> None:
-    """Four, and the withdrawal is still absent rather than present and refusing."""
+async def test_discovery_offers_exactly_the_five_frozen_tools(mcp: McpServer) -> None:
+    """Five, which is the whole frozen surface, and nothing beyond it.
+
+    No order, resource, recipe, reservation or consent verb appears -- not disabled and not
+    present-and-refusing. A surface that can only do five things is a surface a model cannot be
+    talked into doing a sixth with.
+    """
     async with mcp.session() as session:
         tools = await session.list_tools()
-    assert sorted(tool.name for tool in tools.tools) == ["clarify", "confirm", "report", "status"]
+    assert sorted(tool.name for tool in tools.tools) == [
+        "clarify",
+        "confirm",
+        "report",
+        "status",
+        "withdraw",
+    ]
+
+
+async def test_a_withdrawal_can_name_a_case_and_nothing_else(mcp: McpServer) -> None:
+    """No reason, no actor, and above all no field that could claim a physical fact.
+
+    Withdrawing a plan is a decision about what may be done to a customer promise. Correcting
+    the kitchen is a separate attestation under a separate authority, and an argument here that
+    could carry one would put both in a single call.
+    """
+    async with mcp.session() as session:
+        tools = await session.list_tools()
+    withdraw = next(tool for tool in tools.tools if tool.name == "withdraw")
+    assert sorted(withdraw.input_schema["properties"]) == ["case_id", "client_request_id"]
+    assert sorted(withdraw.input_schema["required"]) == ["case_id"]
 
 
 async def test_no_tool_lets_a_caller_choose_a_plan_it_was_not_shown(mcp: McpServer) -> None:
@@ -474,6 +499,88 @@ async def test_a_confirmation_for_a_case_this_surface_may_not_touch_is_refused(
     assert ToolCode.UNAUTHORIZED_SURFACE.value in _text(result)
 
 
+# -------------------------------------------------------------------------------- withdraw
+
+
+async def test_withdraw_forwards_the_case_and_invents_nothing_beside_it(mcp: McpServer) -> None:
+    """A case and a command identity reach the engine, and no third thing does."""
+    assert mcp.intents is not None
+    case_id = str(uuid4())
+    async with mcp.session() as session:
+        result = await session.call_tool("withdraw", {"case_id": case_id})
+    assert result.is_error is not True
+    assert mcp.intents.last.path == "withdraw"
+    assert sorted(mcp.intents.last.body) == ["case_id", "command_id"]
+    assert mcp.intents.last.body["case_id"] == case_id
+
+
+async def test_a_withdrawal_delivers_what_it_could_not_stop_word_for_word(
+    mcp: McpServer,
+) -> None:
+    """The half that makes the answer honest travels intact through this process.
+
+    The engine said an order had already been changed. A transport that dropped, trimmed or
+    summarised that sentence would hand a conversation a clean withdrawal to describe, and the
+    conversation would describe one.
+    """
+    assert mcp.intents is not None
+    case_id = str(uuid4())
+    already = "1 order had already been changed in the order system, and that change stands"
+    mcp.intents.withdraw_body = {
+        "case_id": case_id,
+        "command_id": str(uuid4()),
+        "state": "RECONCILING",
+        "created": True,
+        "withdrawn_by": SURFACE_WORKER,
+        "withdrawn": 0,
+        "escalated": 2,
+        "reversed_writes": ["released 1 production task this case had put on hold"],
+        "applied": [already],
+        "speech": f"Withdrawn. I could not undo what had already happened: {already}.",
+    }
+    async with mcp.session() as session:
+        result = await session.call_tool("withdraw", {"case_id": case_id})
+    body = result.structured_content
+    assert body is not None
+    assert body["applied"] == [already]
+    assert body["escalated"] == 2
+    assert body["speech"].endswith(f"{already}.")
+
+
+async def test_a_withdrawal_the_engine_refused_is_not_reported_as_one(mcp: McpServer) -> None:
+    """A case that has already finished is a refusal, never a quietly successful withdrawal."""
+    assert mcp.intents is not None
+    mcp.intents.withdraw_status = 409
+    mcp.intents.withdraw_body = {"error": {"code": "CASE_NOT_WITHDRAWABLE"}}
+    async with mcp.session() as session:
+        result = await session.call_tool("withdraw", {"case_id": str(uuid4())})
+    assert result.is_error is True
+    assert ToolCode.CASE_NOT_IN_STATE.value in _text(result)
+
+
+async def test_the_same_withdrawal_key_reaches_one_command(mcp: McpServer) -> None:
+    """A retry of one withdrawal is that withdrawal arriving twice, not a second one."""
+    assert mcp.intents is not None
+    case_id = str(uuid4())
+    async with mcp.session() as session:
+        await session.call_tool("withdraw", {"case_id": case_id, "client_request_id": "turn-9"})
+        first = mcp.intents.last.body["command_id"]
+        await session.call_tool("withdraw", {"case_id": case_id, "client_request_id": "turn-9"})
+        second = mcp.intents.last.body["command_id"]
+    assert first == second
+
+
+async def test_a_withdrawal_of_something_that_is_not_a_case_troubles_no_engine(
+    mcp: McpServer,
+) -> None:
+    assert mcp.intents is not None
+    async with mcp.session() as session:
+        result = await session.call_tool("withdraw", {"case_id": "the raspberry one"})
+    assert result.is_error is True
+    assert ToolCode.INVALID_ARGUMENT.value in _text(result)
+    assert mcp.intents.calls == []
+
+
 # ---------------------------------------------------------------------------------- status
 
 
@@ -575,7 +682,7 @@ async def test_a_missing_argument_is_a_tool_error_not_a_crash(mcp: McpServer) ->
 
 async def test_an_unknown_tool_is_refused(mcp: McpServer) -> None:
     async with mcp.session() as session:
-        result = await session.call_tool("withdraw", {"case_id": str(uuid4())})
+        result = await session.call_tool("amend_order", {"case_id": str(uuid4())})
     assert result.is_error is True
 
 
