@@ -1060,3 +1060,111 @@ async def test_a_confirmation_survives_the_connection_that_gave_it(
 
 def _tool_text(result: Any) -> str:
     return "\n".join(block.text for block in result.content if block.type == "text")
+
+
+async def test_a_worker_calls_a_planned_case_off_over_the_real_protocol(
+    chain: McpServer, physical: Intake
+) -> None:
+    """The fifth verb, end to end, on a case that had reached a plan and no further.
+
+    Driven by the official SDK client against the real Streamable HTTP endpoint, with the worker
+    process doing the reading between turns, exactly as the confirmation path is driven. The
+    claim being proved is a negative one: after the withdrawal the case is finished, no order was
+    touched, no customer was asked, and the result said nothing had been.
+    """
+    async with chain.session() as session:
+        opened = await session.call_tool("report", {"text": CANONICAL_REPORT})
+    assert opened.structured_content is not None
+    case_id = UUID(opened.structured_content["case_id"])
+
+    await physical.drain_intake(case_id)
+    async with chain.session() as session:
+        answered = await session.call_tool(
+            "clarify", {"case_id": str(case_id), "answer": RASPBERRY_ONLY}
+        )
+    assert answered.is_error is not True, _tool_text(answered)
+
+    await physical.drain()
+    async with chain.session() as session:
+        planned = await session.call_tool("status", {"case_id": str(case_id)})
+    assert planned.structured_content is not None
+    assert planned.structured_content["headline"] == "PLANNED"
+
+    async with chain.session() as session:
+        stopped = await session.call_tool("withdraw", {"case_id": str(case_id)})
+    assert stopped.is_error is not True, _tool_text(stopped)
+    assert stopped.structured_content is not None
+    assert stopped.structured_content["state"] == "CANCELLED"
+    assert stopped.structured_content["withdrawn_by"] == BAKER
+    assert stopped.structured_content["applied"] == [], "nothing had gone out to fail to stop"
+
+    # Read back over the same transport: finished, and nothing carried out on the way there.
+    async with chain.session() as session:
+        after = await session.call_tool("status", {"case_id": str(case_id)})
+    assert after.structured_content is not None
+    assert after.structured_content["headline"] == "CANCELLED"
+    for promise in after.structured_content["threatened"]:
+        assert promise["state"] not in {"RECOVERED", "REQUESTED", "APPLYING", "CONSENTED"}
+
+    # And over a separate connection, against the rows themselves.
+    assert (await physical.case(case_id)).state == "CANCELLED"
+    assert await physical.effects() == []
+    assert [row.raw_text for row in await physical.reports(case_id)] == [
+        CANONICAL_REPORT,
+        RASPBERRY_ONLY,
+    ]
+
+
+async def test_a_withdrawn_case_stays_withdrawn_when_the_worker_process_runs_again(
+    chain: McpServer, physical: Intake
+) -> None:
+    """Restart safety for the one operation whose whole job is that nothing else happens.
+
+    A worker process picks up whatever the ledger still holds. After a withdrawal it must find
+    nothing that produces an effect -- otherwise a case a person called off would carry on doing
+    the work they called off, minutes later, with nobody watching.
+    """
+    case_id = await physical.resolved_case()
+    async with chain.session() as session:
+        stopped = await session.call_tool("withdraw", {"case_id": str(case_id)})
+    assert stopped.is_error is not True, _tool_text(stopped)
+
+    await physical.drain()
+    await physical.drain(worker=physical.worker())
+
+    assert (await physical.case(case_id)).state == "CANCELLED"
+    assert await physical.effects() == []
+    async with chain.session() as session:
+        after = await session.call_tool("status", {"case_id": str(case_id)})
+    assert after.structured_content is not None
+    assert after.structured_content["headline"] == "CANCELLED"
+
+
+async def test_the_same_withdrawal_replayed_over_the_transport_withdraws_once(
+    chain: McpServer, physical: Intake
+) -> None:
+    """A client that retries with its own key reaches one withdrawal, not two.
+
+    The second call is a success carrying ``created: false``. A *fresh* key on the same finished
+    case is a different request and is refused, because there is no future work left to stop and
+    answering "withdrawn" would tell somebody something had been stopped that already happened.
+    """
+    case_id = await physical.resolved_case()
+    async with chain.session() as session:
+        first = await session.call_tool(
+            "withdraw", {"case_id": str(case_id), "client_request_id": "turn-4"}
+        )
+        version = (await physical.case(case_id)).version
+        replay = await session.call_tool(
+            "withdraw", {"case_id": str(case_id), "client_request_id": "turn-4"}
+        )
+        fresh = await session.call_tool("withdraw", {"case_id": str(case_id)})
+
+    assert first.structured_content is not None
+    assert first.structured_content["created"] is True
+    assert replay.is_error is not True, _tool_text(replay)
+    assert replay.structured_content is not None
+    assert replay.structured_content["created"] is False
+    assert (await physical.case(case_id)).version == version
+    assert fresh.is_error is True
+    assert "CASE_NOT_IN_STATE" in _tool_text(fresh)
