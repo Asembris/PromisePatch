@@ -81,6 +81,15 @@ class ConfirmTurn(BaseModel):
     name, and withdrawal is its own capability with its own rules; calling this endpoint *is* the
     yes. It is also not a customer's consent, which is a literal reply on that customer's own
     channel and cannot be produced by anybody pressing a button in this building.
+
+    ``text`` is the one field a spoken confirmation adds, and its **absence** is as meaningful as
+    its presence (ADR-0015). Omitted, the explicit confirmation control was pressed and the press
+    itself is the yes: there is no sentence to read and none is invented, because a screen that
+    filled this in on a worker's behalf would be composing an attestation nobody made. Present, it
+    is what the worker actually said, and the route reads it with the closed literal rule the
+    conversational orchestrator already uses -- so a sentence that is not a plain yes confirms
+    nothing. Either way ``plan_id`` decides *which* plan a yes is about, and nothing here can
+    widen that.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -93,6 +102,16 @@ class ConfirmTurn(BaseModel):
         description=(
             "the identity of the plan being confirmed, exactly as the case response returned it. "
             "Opaque: it names a plan the server rendered and cannot describe one it did not."
+        ),
+    )
+    text: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_UNTRUSTED_CHARACTERS,
+        description=(
+            "what the worker said, verbatim, when they said it rather than pressed it. Read by "
+            "the server with the existing literal rule and never by the caller; omit it for the "
+            "explicit control, whose press is itself the yes."
         ),
     )
 

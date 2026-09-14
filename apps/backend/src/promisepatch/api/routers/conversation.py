@@ -65,6 +65,7 @@ from promisepatch.api.schemas.conversation import (
 )
 from promisepatch.domain import cases, intake, recovery, status_view, withdrawal
 from promisepatch.observability import get_logger
+from promisepatch.orchestrator.policy import reads_as_worker_confirmation
 
 logger = get_logger(__name__)
 
@@ -81,6 +82,25 @@ A deployment problem rather than a caller problem -- they signed in perfectly we
 would be telling somebody to fix something that is not theirs. It is also the one condition here
 that is not a refusal *about the case*, which is why it is stated in this module rather than in
 the shared mapping.
+"""
+
+
+NOT_A_PLAIN_YES = ApiError(
+    status_code=409,
+    code="NOT_A_PLAIN_YES",
+    message="that was not a plain yes, so nothing was confirmed",
+)
+"""A spoken confirmation whose words do not read as an agreement (ADR-0015).
+
+Raised *before* the domain is called, so no command is written and the case is exactly as it was.
+It is deliberately not re-routed anywhere: a sentence this cannot read as a yes is not stored as a
+clarification, not treated as a withdrawal and not answered with a question. Doing something else
+with words nobody could read as agreement would be the surface guessing at what a worker meant,
+and the whole reason the check exists is that nothing may guess here.
+
+``409`` rather than ``400`` because every ``409`` this router returns means one thing to a reader
+and to a listener alike -- the case is exactly as it was -- which is precisely what this leaves
+behind.
 """
 
 
@@ -227,7 +247,23 @@ async def confirm(
     case sits exactly where this left it. A worker's yes is also not a customer's consent -- it
     authorises *asking* an approval-required customer, and no endpoint here can record a decision
     on somebody else's behalf.
+
+    A spoken confirmation carries the worker's own words, and they are read **here** rather than
+    by the browser that captured them (ADR-0015). The rule is
+    :func:`promisepatch.orchestrator.policy.reads_as_worker_confirmation`, imported rather than
+    rewritten: the same closed opening affirmations and the same disqualifying words the
+    conversational orchestrator has always applied, so the two surfaces cannot drift into
+    disagreeing about what a yes is. A press of the explicit control carries no words at all and
+    is unchanged -- the press is the yes.
+
+    Neither reading widens what a yes is *about*. ``plan_id`` still decides that, still compared
+    under the confirming lock by the domain, so this check can only ever refuse a confirmation
+    the control could have made and never permit one it could not.
     """
+    if turn.text is not None and not reads_as_worker_confirmation(turn.text):
+        logger.info("conversation.confirm.not_a_yes", case_id=str(turn.case_id))
+        raise NOT_A_PLAIN_YES
+
     try:
         result = await recovery.confirm_plan(
             database,
