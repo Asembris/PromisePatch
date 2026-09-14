@@ -194,6 +194,7 @@ def build(
         plan_id=view.plan_id,
         awaiting_confirmation=view.awaiting_confirmation,
         speech=status_view.render(view),
+        spoken=status_view.render_spoken(view),
         may_speak=may_speak,
         permitted_verbs=_permitted_verbs(view, may_speak=may_speak),
         evidence=_evidence(status),

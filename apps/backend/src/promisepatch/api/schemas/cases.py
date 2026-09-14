@@ -295,14 +295,17 @@ class CaseWorkspaceResponse(BaseModel):
     rows of the untouched tracks rather than published as a constant. The proof of the claim is
     that the same field could come back non-zero.
 
-    The last three fields are what a conversation panel needs and must never work out for itself.
+    The last four fields are what a conversation panel needs and must never work out for itself.
     ``sentence`` is band 1's headline; ``speech`` is the **whole** case spoken, byte for byte what
     :func:`promisepatch.domain.status_view.render` produces and what the MCP ``status`` tool
     answers with, so a panel reads the engine's own words aloud rather than assembling its own
-    from the bands beside it. ``may_speak`` is the domain's answer about *this* caller rather than
-    a role the screen was left to interpret, and ``permitted_verbs`` is what that caller may do to
-    this case right now -- the conversation's own closed phase table, already narrowed by
-    ``may_speak``. A screen that decided any of the three would be deciding who may act.
+    from the bands beside it. ``spoken`` is the same case composed shorter by
+    :func:`promisepatch.domain.status_view.render_spoken`, inside the G7 word budget, for a
+    worker who is listening rather than reading (ADR-0014) -- counted where ``speech`` names,
+    and never a trimmed copy of it. ``may_speak`` is the domain's answer about *this* caller
+    rather than a role the screen was left to interpret, and ``permitted_verbs`` is what that
+    caller may do to this case right now -- the conversation's own closed phase table, already
+    narrowed by ``may_speak``. A screen that decided any of these would be deciding who may act.
 
     None of them authorises anything. Every call is checked again by the domain when it arrives,
     so these stop a screen *offering* what would be refused; they do not make an offer binding.
@@ -339,6 +342,9 @@ class CaseWorkspaceResponse(BaseModel):
     plan_id: str | None
     awaiting_confirmation: bool
     speech: str = Field(description="the whole case, spoken, exactly as the status tool renders it")
+    spoken: str = Field(
+        description="the same case composed short enough to hear, inside the G7 word budget"
+    )
     may_speak: bool = Field(
         description="whether the domain would let this caller say anything to this case"
     )

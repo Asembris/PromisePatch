@@ -151,6 +151,7 @@ async def report(
         created=result.created,
         worker_id=principal.worker_id,
         speech=status_view.render_report_receipt(),
+        spoken=status_view.render_report_receipt(),
     )
 
 
@@ -204,6 +205,7 @@ async def clarify(
         created=result.created,
         worker_id=principal.worker_id,
         speech=status_view.render_clarification_receipt(),
+        spoken=status_view.render_clarification_receipt(),
     )
 
 
@@ -264,6 +266,12 @@ async def confirm(
             escalated=len(result.escalated),
             already_confirmed=not result.created,
         ),
+        spoken=status_view.render_confirmation_spoken(
+            applying=len(result.applying),
+            awaiting_approval=len(result.awaiting_approval),
+            escalated=len(result.escalated),
+            already_confirmed=not result.created,
+        ),
     )
 
 
@@ -313,6 +321,13 @@ async def withdraw(
     )
     reversals = [(kind.value, count) for kind, count in result.reversals]
     applied = [(kind.value, count) for kind, count in result.applied]
+    withdrawal_speech = status_view.render_withdrawal(
+        withdrawn=len(result.withdrawn),
+        escalated=len(result.escalated),
+        reversals=reversals,
+        applied=applied,
+        already_withdrawn=not result.created,
+    )
     return WithdrawalAccepted(
         case_id=result.case_id,
         command_id=result.command_id,
@@ -323,13 +338,12 @@ async def withdraw(
         escalated=len(result.escalated),
         reversed_writes=status_view.render_reversals(reversals),
         applied=status_view.render_applied(applied),
-        speech=status_view.render_withdrawal(
-            withdrawn=len(result.withdrawn),
-            escalated=len(result.escalated),
-            reversals=reversals,
-            applied=applied,
-            already_withdrawn=not result.created,
-        ),
+        speech=withdrawal_speech,
+        # Deliberately the same sentence. Every clause names a distinct consequence class with
+        # its own count, and `docs/bounded-withdrawal.md` fixes that the applied half is never
+        # dropped -- counting four reversal kinds as one number would lose the distinction that
+        # document exists to protect. It is long, and staying long is the correct answer here.
+        spoken=withdrawal_speech,
     )
 
 
@@ -341,6 +355,7 @@ def _accepted(
     created: bool,
     worker_id: str,
     speech: str,
+    spoken: str,
 ) -> TurnAccepted:
     """One answer shape for all three turns, so no endpoint grows a different idea of success."""
     return TurnAccepted(
@@ -350,4 +365,5 @@ def _accepted(
         created=created,
         attested_by=worker_id,
         speech=speech,
+        spoken=spoken,
     )

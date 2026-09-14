@@ -148,6 +148,9 @@ class WithdrawalAccepted(BaseModel):
         ),
     )
     speech: str = Field(description="what to say back, rendered deterministically by the domain")
+    spoken: str = Field(
+        description="the same answer composed short enough to hear, inside the G7 word budget"
+    )
 
 
 class TurnAccepted(BaseModel):
@@ -160,6 +163,10 @@ class TurnAccepted(BaseModel):
     ``speech`` is rendered by :mod:`promisepatch.domain.status_view` and is delivered to a person
     unchanged. A panel that re-worded it would be one word away from saying a plan was carried
     out, which is the failure this whole product exists not to have.
+
+    ``spoken`` is the same answer, composed shorter by the same module for a worker who is
+    listening rather than reading (ADR-0014). Both are the backend's: a browser chooses which
+    one to read aloud and which to show, and composes neither.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -174,3 +181,6 @@ class TurnAccepted(BaseModel):
         description="the worker this server attributed the statement to, from the session row"
     )
     speech: str = Field(description="what to say back, rendered deterministically by the domain")
+    spoken: str = Field(
+        description="the same answer composed short enough to hear, inside the G7 word budget"
+    )
