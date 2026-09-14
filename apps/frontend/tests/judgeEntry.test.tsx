@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { NO_CASE_TO_OPEN } from '../src/api/queries'
 import { CASES, CASE_ID, PLANNED_CASE } from './caseFixtures'
 import { PROMISES, RESOURCES } from './fixtures'
 import {
@@ -158,6 +159,76 @@ describe('the judge entry', () => {
       'too many demo sessions from this client',
     )
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  })
+
+  it('says so when the case list cannot be read, rather than doing nothing at all', async () => {
+    // The failure this pins is silence. The session is issued, the list read fails, and before
+    // the read moved behind the mutation the press left the judge on this screen with the
+    // button enabled, no error and nothing happening — indistinguishable from a dead product.
+    mockBackend(
+      signedOut({
+        [DEMO_SESSION]: () => json(JUDGE),
+        '/api/cases': () => apiError(503, 'UNAVAILABLE', 'the case list could not be read'),
+      }),
+    )
+    renderApp()
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: /look around a real case/i }))
+
+    // Generous, because the read is retried before it gives up and each attempt backs off.
+    expect(
+      await screen.findByTestId('judge-entry-error', undefined, { timeout: 10_000 }),
+    ).toHaveTextContent('the case list could not be read')
+    expect(screen.queryByTestId('case-workspace')).not.toBeInTheDocument()
+  })
+
+  it('tries the case list again when the first read fails on a cold backend', async () => {
+    // The read that starts the whole product now has the retry every other read has. One
+    // unlucky first request on a backend that has just come up is what this covers, and it is
+    // the shape that was failing the durability suite on a cold CI stack.
+    let attempts = 0
+    const stream = new FakeStream()
+    mockBackend(
+      signedOut({
+        [DEMO_SESSION]: () => json(JUDGE),
+        '/api/promises': () => json(PROMISES),
+        '/api/resources': () => json(RESOURCES),
+        '/api/cases': () => {
+          attempts += 1
+          if (attempts === 1) return apiError(503, 'UNAVAILABLE', 'not ready yet')
+          return json(CASES)
+        },
+        [CASE_PATH]: () => json(OBSERVED_CASE),
+        '/events': () => streamResponse(stream),
+      }),
+    )
+    renderApp()
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: /look around a real case/i }))
+
+    expect(
+      await screen.findByTestId('case-workspace', undefined, { timeout: 10_000 }),
+    ).toHaveAttribute('data-case-id', CASE_ID)
+    expect(attempts).toBeGreaterThan(1)
+    stream.close()
+  })
+
+  it('says there is nothing to look at rather than pressing into an empty list', async () => {
+    mockBackend(
+      signedOut({
+        [DEMO_SESSION]: () => json(JUDGE),
+        '/api/cases': () => json({ cases: [] }),
+      }),
+    )
+    renderApp()
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: /look around a real case/i }))
+
+    expect(await screen.findByTestId('judge-entry-error')).toHaveTextContent(NO_CASE_TO_OPEN)
+    expect(screen.queryByTestId('case-workspace')).not.toBeInTheDocument()
   })
 
   it('leaves the credentials path exactly as it was', async () => {

@@ -196,18 +196,57 @@ export function useLogin(): UseMutationResult<WorkerResponse, Error, Credentials
 }
 
 /**
+ * What the judge entry says when the deployment has no case to open.
+ *
+ * A real answer rather than a dead press: the button cannot honour its promise, and the reason
+ * is that nothing has been reported, which is not a fault.
+ */
+export const NO_CASE_TO_OPEN =
+  'there is no case to look at yet. Nothing has gone wrong; nothing has been reported here.'
+
+/**
  * One action, and somebody is looking at a real case.
  *
  * Nothing is sent and nothing comes back but the principal the server chose. The response is the
  * same shape `me` returns, so it seeds the cache directly rather than causing a second round trip
  * to ask who is now signed in.
+ *
+ * **Both halves of the action are in the mutation, and that is the point.** Opening the session
+ * is not the thing somebody asked for -- arriving at a case is -- so the case list is read here,
+ * through `fetchQuery` with the same `retry` and `staleTime` every other read in this file uses.
+ * Reading it in the screen instead left the one read that starts the whole product as the only
+ * read with no retry behind it: a cold backend that answered the second request and not the
+ * first would strand a judge on the sign-in screen with the button enabled, no error and nothing
+ * happening, which is exactly the silent failure `recoverFromFailure` above exists to prevent.
+ *
+ * It also throws rather than resolving to nothing when there is no case to open. A deployment
+ * with an empty list cannot honour this button, and saying so is the only honest answer -- the
+ * alternative is a press that visibly does nothing, which reads as a broken product rather than
+ * as an empty one.
  */
-export function useDemoSession(): UseMutationResult<WorkerResponse, Error, void> {
+export function useDemoSession(): UseMutationResult<string, Error, void> {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: openDemoSession,
-    onSuccess: (worker) => {
+    mutationFn: async () => {
+      const worker = await openDemoSession()
+      // The list is read before the principal is seeded, and the order is the whole behaviour.
+      // Seeding `me` is what moves the shell off this screen, so doing it first would carry a
+      // judge away from the only place the failure below can be drawn -- and strand them on a
+      // signed-in shell with no case and no explanation. The session cookie is already set by
+      // the call above, so this read is authenticated either way.
+      //
+      // Seeded under the list's own key, so the workspace this is about to open does not
+      // immediately ask for the same rows a second time.
+      const list = await client.fetchQuery({
+        queryKey: casesKey,
+        queryFn: ({ signal }) => fetchCases(signal),
+        retry: retryTransportFailures,
+        staleTime: OPERATIONAL_STALE_TIME,
+      })
+      const newest = list.cases[0]
+      if (newest === undefined) throw new Error(NO_CASE_TO_OPEN)
       client.setQueryData(meKey, worker)
+      return newest.case_id
     },
   })
 }

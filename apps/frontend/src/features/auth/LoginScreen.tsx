@@ -21,12 +21,17 @@
  * the screen chooses nothing about the case, it goes to the one the backend put at the top — and
  * the address bar then carries it, so a reload lands back on the same durable case.
  *
+ * Both halves of that live in `useDemoSession`, which is why this screen reads no list itself.
+ * The mutation either hands over a case id or fails, so there is no path on which the button is
+ * pressed and nothing at all happens: a failure is the mutation's failure and is drawn below,
+ * with the retry every other read in this product already has behind it.
+ *
  * Errors are the backend's message. A wrong password and an unknown user are one answer by
  * design, and the screen does not try to be more helpful than the endpoint was.
  */
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { useDemoSession, useLogin, useSignInOptions } from '../../api/queries'
-import { ApiError, fetchCases } from '../../api/client'
+import { NO_CASE_TO_OPEN, useDemoSession, useLogin, useSignInOptions } from '../../api/queries'
+import { ApiError } from '../../api/client'
 import { PromisePatchLockup } from '../../components/Brand'
 
 const FIELD =
@@ -34,6 +39,10 @@ const FIELD =
 
 function messageFor(error: Error): string {
   if (error instanceof ApiError) return error.message
+  // Our own sentence, and the one case where this screen has something truthful of its own to
+  // say. Everything else is a transport failure whose message is jargon to the person reading
+  // it, so it keeps the plain wording rather than leaking one.
+  if (error.message === NO_CASE_TO_OPEN) return error.message
   return 'the request could not be completed'
 }
 
@@ -55,16 +64,9 @@ export function LoginScreen({
   }
 
   function onLookAround(): void {
-    look.mutate(undefined, {
-      onSuccess: () => {
-        // The session exists now, so the list can be read. The first row is the backend's own
-        // newest, and going to it is what makes this one action rather than two.
-        void fetchCases().then((list) => {
-          const newest = list.cases[0]
-          if (newest !== undefined) onEntered(newest.case_id)
-        })
-      },
-    })
+    // The case id is the mutation's own result: the session and the list it needs are one
+    // action, and a failure in either half is a failure of the press rather than silence.
+    look.mutate(undefined, { onSuccess: onEntered })
   }
 
   return (
