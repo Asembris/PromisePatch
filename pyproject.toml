@@ -651,17 +651,20 @@ forbidden_modules = [
     "urllib",
 ]
 
-# The module that can ask a model what a customer's sentence looked like does not hold the
-# parser that reads a literal yes. Direct imports only, and deliberately so: the step ledger
-# reaches every executor, so a whole-graph ban would say nothing about any module in the domain.
-# What this does say is that `customer_intent` names no parser and no decision, which -- with
-# the source assertions in `test_customer_intent` -- is the two halves of "the model understands;
-# the deterministic protocol authorizes" written where a build can check them.
+# Nothing on the path a customer's reply takes holds the parser that reads a literal yes, and
+# since ADR-0008 nothing on it can reach a model either. Direct imports only, and deliberately
+# so: the step ledger reaches every executor, so a whole-graph ban would say nothing about any
+# module in the domain. What this does say is that the module answering an unreadable reply
+# names no parser, no decision and no provider -- which, with the source assertions in
+# `test_customer_intent`, is "the model understands; the deterministic protocol authorizes"
+# written where a build can check it. The ban on `promisepatch.semantic` is the structural half
+# of ADR-0008: putting a classifier back on the consent path fails the build rather than a
+# review.
 [[tool.importlinter.contracts]]
-name = "apparent intent does not hold the literal parser"
+name = "the customer reply path holds neither the parser nor a provider"
 type = "forbidden"
 source_modules = ["promisepatch.domain.customer_intent"]
-forbidden_modules = ["promisepatch.domain.consent"]
+forbidden_modules = ["promisepatch.domain.consent", "promisepatch.semantic"]
 allow_indirect_imports = true
 
 # The order system is a different system, and this is what makes that structural rather than
