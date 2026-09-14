@@ -580,6 +580,31 @@ async def test_a_confirmation_is_never_rendered_in_consents_language(
         assert consent_word not in speech
 
 
+async def test_every_turn_answers_with_a_spoken_form_inside_the_reply_budget(
+    worker: Browser, physical: Intake
+) -> None:
+    """G7 gives a spoken reply 40 words. Each of the three turns answers with one (ADR-0014).
+
+    The confirmation is the one that needed composing -- its long form reaches 41 in the branch
+    where all three bands are non-zero. The two receipts were already inside, and are asserted
+    here rather than assumed so a longer receipt fails on this route and not in a demo.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    confirmed = await worker.say(
+        "confirm",
+        {"command_id": str(uuid4()), "case_id": str(case_id), "plan_id": view.plan_id},
+    )
+
+    body = confirmed.json()
+    assert len(body["spoken"].split()) <= 40, body["spoken"]
+    # Shorter, and still saying the thing the long one ends with. A confirmation that dropped
+    # this clause to fit would be the exact failure the budget must never buy.
+    assert "Nothing has been changed yet" in body["spoken"]
+    assert body["speech"] != body["spoken"]
+
+
 # --------------------------------------------------- a withdrawal, and what it cannot undo
 
 

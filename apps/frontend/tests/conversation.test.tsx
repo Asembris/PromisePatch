@@ -54,6 +54,7 @@ function accepted(speech: string, statementId = 'b7c1e2d3-4f5a-4b6c-8d7e-9f0a1b2
     created: true,
     attested_by: 'maya',
     speech,
+    spoken: speech,
   }
 }
 
@@ -446,6 +447,7 @@ describe('the conversation panel', () => {
           reversed_writes: ['released 1 production task this case had put on hold'],
           applied: [already],
           speech: `Withdrawn. I could not undo what had already happened: ${already}.`,
+          spoken: `Withdrawn. I could not undo what had already happened: ${already}.`,
         }),
     })
     const user = userEvent.setup()
@@ -474,6 +476,7 @@ describe('the conversation panel', () => {
           reversed_writes: ['cancelled 1 piece of work that had not started'],
           applied: [],
           speech: 'Withdrawn: I cancelled 1 piece of work that had not started.',
+          spoken: 'Withdrawn: I cancelled 1 piece of work that had not started.',
         }),
     })
     const user = userEvent.setup()
@@ -503,6 +506,7 @@ describe('the conversation panel', () => {
           reversed_writes: [],
           applied: [],
           speech: 'Withdrawn. Nothing was sent and no order was changed.',
+          spoken: 'Withdrawn. Nothing was sent and no order was changed.',
         })
       },
     })

@@ -693,6 +693,26 @@ async def test_the_spoken_status_is_the_one_the_status_tool_answers_with(
     assert (await workspace(browser, opened.case_id)).speech == spoken
 
 
+async def test_the_case_also_carries_the_short_rendering_a_worker_hears(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """``spoken`` is the same case composed shorter by the same module. Never a cut copy.
+
+    Both are the backend's, which is the point of ADR-0014: the screen shows one and the
+    loudspeaker reads the other, and a browser composes neither. It is inside the G7 reply
+    budget while `speech` on this shape is well past it.
+    """
+    case_id = await planned_case(physical)
+
+    view = await workspace(browser, case_id)
+    status = await analysis.read_case_status(physical.database, case_id=case_id)
+
+    assert view.spoken == status_view.render_spoken(status_view.project(status))
+    assert view.spoken != view.speech
+    assert len(view.spoken.split()) < len(view.speech.split())
+    assert len(view.spoken.split()) <= 70
+
+
 async def test_a_worker_on_their_own_case_is_told_they_may_speak(
     browser: httpx2.AsyncClient, physical: Intake
 ) -> None:

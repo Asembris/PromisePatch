@@ -83,6 +83,7 @@ function accepted(): unknown {
     created: true,
     attested_by: 'maya',
     speech: 'I have written that down exactly as you said it.',
+    spoken: 'I have written that down exactly as you said it.',
   }
 }
 
