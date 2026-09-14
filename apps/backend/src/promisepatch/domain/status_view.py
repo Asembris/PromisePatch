@@ -26,6 +26,7 @@ not restate it, because a paraphrase of "planned" is one word away from "done".
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -778,6 +779,123 @@ def render_confirmation(
         f"Confirmed: {_joined(parts)}. Nothing has been changed yet - "
         "ask me for the status to hear what actually happened."
     )
+
+
+_REVERSED_SENTENCES: Final[dict[str, tuple[str, str]]] = {
+    "TASK_HOLD": (
+        "released 1 production task this case had put on hold",
+        "released {count} production tasks this case had put on hold",
+    ),
+    "OPEN_REQUEST": (
+        "stood down 1 approval request, so nothing it carried authorises anything now",
+        "stood down {count} approval requests, so nothing they carried authorises anything now",
+    ),
+    "UNSENT_EFFECT": (
+        "stopped 1 change that was queued and had not gone out",
+        "stopped {count} changes that were queued and had not gone out",
+    ),
+    "PLANNED_WORK": (
+        "cancelled 1 piece of work that had not started",
+        "cancelled {count} pieces of work that had not started",
+    ),
+}
+"""What a withdrawal actually stood down, in a sentence per kind. Singular and plural, written.
+
+Every one of these is in the past tense and every one of them is true: the row was changed in
+the transaction that produced the count. Nothing here is a forecast.
+"""
+
+_APPLIED_SENTENCES: Final[dict[str, tuple[str, str]]] = {
+    "ORDER_AMENDED": (
+        "1 order had already been changed in the order system, and that change stands",
+        "{count} orders had already been changed in the order system, and those changes stand",
+    ),
+    "CUSTOMER_ASKED": (
+        "1 customer had already been asked, and a sent message cannot be unsent",
+        "{count} customers had already been asked, and a sent message cannot be unsent",
+    ),
+    "EFFECT_IN_FLIGHT": (
+        "1 change was already being sent when you withdrew, so I cannot say whether it landed",
+        "{count} changes were already being sent when you withdrew, "
+        "so I cannot say whether they landed",
+    ),
+}
+"""What had already happened, said as something that is not undone.
+
+The wording is deliberately blunt in the one direction that matters. "That change stands" and
+"cannot be unsent" are the sentences that stop a withdrawal reading as an undo, and the
+in-flight one refuses to claim an outcome nobody observed.
+"""
+
+
+def render_reversals(reversals: Sequence[tuple[str, int]]) -> tuple[str, ...]:
+    """One sentence per thing a withdrawal stood down, in the order it was given."""
+    return tuple(_countable(_REVERSED_SENTENCES, kind, count) for kind, count in reversals)
+
+
+def render_applied(applied: Sequence[tuple[str, int]]) -> tuple[str, ...]:
+    """One sentence per thing a withdrawal could not stop, in the order it was given."""
+    return tuple(_countable(_APPLIED_SENTENCES, kind, count) for kind, count in applied)
+
+
+def _countable(table: dict[str, tuple[str, str]], kind: str, count: int) -> str:
+    """The written sentence for a kind, or a plain fallback rather than a blank line.
+
+    An unrecognised kind is a mapping this module has not been taught, and a surface showing
+    nothing for it would hide a consequence. It says what it knows -- the kind and the count --
+    which is understated rather than untrue.
+    """
+    forms = table.get(kind)
+    if forms is None:
+        return f"{count} x {kind.lower().replace('_', ' ')}"
+    return forms[0] if count == 1 else forms[1].format(count=count)
+
+
+def render_withdrawal(
+    *,
+    withdrawn: int,
+    escalated: int,
+    reversals: Sequence[tuple[str, int]],
+    applied: Sequence[tuple[str, int]],
+    already_withdrawn: bool,
+) -> str:
+    """What a worker's withdrawal stopped, and -- never omitted -- what it did not stop.
+
+    Three rules hold this text together, and each of them is a way the sentence could otherwise
+    lie:
+
+    * **The applied half is never dropped.** If anything had already reached a customer or the
+      order system it is said out loud, in the same breath as the withdrawal, so no listener
+      hears "withdrawn" and infers "undone".
+    * **No physical fact is mentioned as reversed**, because none is. A withdrawal is a decision
+      about what may be done to a promise; what happened in the kitchen is a separate authority
+      and is untouched (§11.8).
+    * **An escalation is named as somebody's job**, not as a tidy ending. When something had
+      already gone out the owner has work, and the closing clause says so.
+    """
+    if already_withdrawn:
+        return (
+            "You had already withdrawn this one - I have not done it twice. "
+            "Ask me for the status to hear where it stands."
+        )
+    parts: list[str] = ["Withdrawn"]
+    stopped = render_reversals(reversals)
+    if stopped:
+        parts.append(f"I {_joined(list(stopped))}")
+    elif not applied:
+        parts.append("there was nothing outstanding to stop")
+    sentence = f"{parts[0]}: {'; '.join(parts[1:])}." if len(parts) > 1 else f"{parts[0]}."
+    if not applied:
+        if withdrawn:
+            return f"{sentence} {_promises(withdrawn)} are out of this case, and nothing was sent."
+        return f"{sentence} Nothing was sent and no order was changed."
+    already = _joined(list(render_applied(applied)))
+    owner = (
+        f" {_promises(escalated)} are with the owner now."
+        if escalated
+        else " The owner picks this up from here."
+    )
+    return f"{sentence} I could not undo what had already happened: {already}.{owner}"
 
 
 def _orders(count: int) -> str:
