@@ -90,6 +90,35 @@ image_tag () {
   git -C "$REPO_ROOT" rev-parse --short=12 HEAD
 }
 
+# What CloudFormation currently declares this deployment runs, and what the host will converge
+# on at its next boot. Both are read back rather than recomputed here, because the question
+# below is whether the control plane, the parameter the host reads and this release give the
+# same answer, and taking two of the three from this checkout would answer a different one.
+declared_image_tag () {
+  aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Parameters[?ParameterKey=='ImageTag'].ParameterValue" --output text
+}
+
+converged_image_tag () {
+  aws ssm get-parameter --region "$REGION" --name "${PREFIX}/image-tag" --query Parameter.Value --output text
+}
+
+# There are three separate declarations of which image is deployed -- the stack parameter, the
+# SSM parameter the host converges on, and the commit whose image was pushed -- and a release is
+# only a release when all three name the same one. Each stage succeeds on its own, so before
+# this existed a run of `images`, `config` and `rollout` without `stack` converged the host onto
+# a new image and left CloudFormation declaring the previous commit: the host served the new
+# build, `/healthz` agreed with this checkout, and nothing compared either with the stack until
+# somebody thought to run `smoke`. That drift was observed on the deployed stack, which declared
+# `87f3a13f26a9` while SSM, the host and `/healthz` all said `acfdd975dd4d`.
+require_image_declarations_agree () {
+  local tag="$1" declared converged
+  converged="$(converged_image_tag)"
+  declared="$(declared_image_tag)"
+  [[ "$converged" == "$tag" ]] || die "SSM names $converged, this release names $tag; run config"
+  [[ "$declared" == "$tag" ]] || die "the stack declares $declared, this release names $tag; run stack"
+  printf '  the stack, SSM and this release all name %s\n' "$tag"
+}
+
 # ------------------------------------------------------------------------------------ stages
 
 stage_preflight () {
@@ -243,6 +272,11 @@ stage_rollout () {
   instance="$(stack_output HostInstanceId)"
   origin="$(stack_output PublicUrl)"
   [[ -n "$instance" && "$instance" != "None" ]] || die "the stack publishes no HostInstanceId"
+  # Before the reboot, not after it, and against the two declarations this stage does not
+  # own: a rollout whose stack still names the previous commit is the drift itself, and a
+  # rollout whose SSM parameter still names it would converge the host onto the old image
+  # and then spend fifteen minutes failing to explain why.
+  require_image_declarations_agree "$tag"
   printf '  rebooting %s onto %s\n' "$instance" "$tag"
   aws ec2 reboot-instances --region "$REGION" --instance-ids "$instance"
   deadline=$((SECONDS + 900))
