@@ -48,8 +48,10 @@ import type {
   WithdrawalAccepted,
 } from '../../api/types'
 import { Card, SectionLabel } from '../../components/surfaces'
+import { audioStarted } from '../../instrumentation/turnTiming'
 import { TurnComposer } from '../voice/TurnComposer'
 import { speakAloud, speechPlaybackAvailable, stopSpeaking } from '../voice/speech'
+import { announceTurnRefused, announceTurnSent, speakTurnReply } from '../voice/turnVoice'
 import { CASE_VOICE_LABEL, caseVoiceState, type CaseVoiceState } from './voiceState'
 
 /**
@@ -103,16 +105,38 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
     ])
   }
 
+  /**
+   * What a turn sounds like, in the one place all three of them pass through.
+   *
+   * Three audible moments and not one more: the acknowledgement when the turn leaves, the
+   * backend's own sentence when it comes back, and a statement that nothing happened when it was
+   * refused. The middle one is `accepted.speech` byte for byte — this panel composes no sentence
+   * for a screen and composes none for a loudspeaker either.
+   */
+  function reply(accepted: { speech: string }): void {
+    speakTurnReply(accepted.speech)
+  }
+
   async function onAnswer(text: string): Promise<void> {
-    const accepted = await clarify.mutateAsync({
-      commandId: commandId(),
-      caseId: view.case_id,
-      text,
-    })
-    record(text, accepted)
+    announceTurnSent()
+    try {
+      const accepted = await clarify.mutateAsync({
+        commandId: commandId(),
+        caseId: view.case_id,
+        text,
+      })
+      record(text, accepted)
+      reply(accepted)
+    } catch (failure) {
+      announceTurnRefused()
+      // Rethrown, because the composer keeps a worker's words on a refusal and only a rejection
+      // tells it the turn did not happen.
+      throw failure
+    }
   }
 
   function onWithdraw(): void {
+    announceTurnSent()
     withdraw.mutate(
       { commandId: commandId(), caseId: view.case_id },
       {
@@ -126,16 +150,25 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
             attested_by: accepted.withdrawn_by,
             speech: accepted.speech,
           })
+          reply(accepted)
         },
+        onError: announceTurnRefused,
       },
     )
   }
 
   function onConfirm(): void {
     if (view.plan_id === null) return
+    announceTurnSent()
     confirm.mutate(
       { commandId: commandId(), caseId: view.case_id, planId: view.plan_id },
-      { onSuccess: (accepted) => record('Yes, go ahead.', accepted) },
+      {
+        onSuccess: (accepted) => {
+          record('Yes, go ahead.', accepted)
+          reply(accepted)
+        },
+        onError: announceTurnRefused,
+      },
     )
   }
 
@@ -232,7 +265,12 @@ function VoiceStateChip({ state }: { state: CaseVoiceState }): ReactNode {
 }
 
 /**
- * The backend's sentence, out loud, unchanged.
+ * The backend's sentence, out loud, unchanged, whenever a worker asks for it again.
+ *
+ * Every turn now speaks its own answer as it resolves, so this control is no longer how a
+ * worker hears the case — it is stop and replay: interrupt what is being said, or hear the whole
+ * standing status again without taking a turn to get it. Both are what the contract means by
+ * interruption and retry being available throughout.
  *
  * Offered only where the browser has a voice of its own, because there is nothing to fall back
  * to and a dead control is worse than an absent one. It reads `speech` and can read nothing
@@ -255,7 +293,16 @@ function ReadAloud({ text }: { text: string }): ReactNode {
           setSpeaking(false)
           return
         }
-        speakAloud(text)
+        speakAloud(text, {
+          onStart: () => {
+            audioStarted('replay')
+          },
+          // So the control tells the truth about itself once the sentence has finished, rather
+          // than offering to stop something nobody is saying any more.
+          onDone: () => {
+            setSpeaking(false)
+          },
+        })
         setSpeaking(true)
       }}
       className="min-h-11 rounded-control border border-edge-strong bg-panel px-3 py-2 text-meta font-medium text-muted transition-colors hover:text-ink"

@@ -28,6 +28,7 @@ import { ApiError } from '../../api/client'
 import { useMe, useReportTurn } from '../../api/queries'
 import { Card, SectionLabel } from '../../components/surfaces'
 import { TurnComposer } from '../voice/TurnComposer'
+import { announceTurnRefused, announceTurnSent, speakTurnReply } from '../voice/turnVoice'
 
 /** A fresh command identity, so a retry of one turn is that turn arriving twice. */
 function commandId(): string {
@@ -48,7 +49,20 @@ export function ReportEntry({ onOpened }: { onOpened: (caseId: string) => void }
   if (me.data?.worker.may_report !== true) return null
 
   async function onSend(text: string): Promise<void> {
-    const accepted = await report.mutateAsync({ commandId: commandId(), text })
+    // A worker who spoke this one is holding a crate and not looking at a screen, so the turn
+    // is acknowledged out loud the moment it leaves — about the turn, never about a case.
+    announceTurnSent()
+    let accepted
+    try {
+      accepted = await report.mutateAsync({ commandId: commandId(), text })
+    } catch (failure) {
+      announceTurnRefused()
+      throw failure
+    }
+    // The backend's receipt for the statement it wrote down, byte for byte. It is spoken before
+    // the case opens because it is this turn's answer, and the workspace that follows says
+    // nothing aloud of its own accord.
+    speakTurnReply(accepted.speech)
     // The id the backend derived, not one composed here. Navigation is the only thing that
     // happens on success: the case it opens is read from the server like any other.
     onOpened(accepted.case_id)
