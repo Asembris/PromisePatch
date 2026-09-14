@@ -28,9 +28,6 @@ from promisepatch.domain import cases, intake, status_view, withdrawal
 
 pytestmark = pytest.mark.integration
 
-physical = physical
-"""Re-exported so the fixture resolves in this module. The suite's own convention."""
-
 BLOCKED = (ho.PROMISE_C, ho.PROMISE_D)
 """The two promises whose confirmation takes a production hold -- the first consequential write
 this build can perform without a provider having answered anything."""
