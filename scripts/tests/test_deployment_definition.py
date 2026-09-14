@@ -482,6 +482,150 @@ def test_a_release_reboots_the_host_and_then_checks_what_it_serves() -> None:
     )
 
 
+# ------------------------------------------------------- one answer to "which image is this"
+
+
+def _deploy_script() -> str:
+    return (DEPLOY / "deploy.sh").read_text(encoding="utf-8")
+
+
+def _stage(name: str) -> str:
+    """One stage function's body, so a property is asserted where it has to hold."""
+    script = _deploy_script()
+    opening = f"stage_{name} () {{"
+    assert opening in script, f"there is no stage_{name}"
+    start = script.index(opening)
+    return script[start : script.index("\n}\n", start)]
+
+
+def _stack_parameter_overrides() -> list[str]:
+    """The parameter names `stage_stack` passes, in the order it passes them."""
+    stack = _stage("stack")
+    overrides = stack[stack.index("--parameter-overrides") :]
+    return re.findall(r'"([A-Za-z]+)=', overrides)
+
+
+def test_the_stack_is_told_the_tag_this_run_pushed() -> None:
+    """The control plane's answer and the registry's have to come from the same place.
+
+    ``images``, ``config`` and ``stack`` each derive the tag from ``image_tag``, which is the
+    commit and refuses a dirty tree. A stack stage that took it from anywhere else -- an
+    argument, an environment variable, a moving ``latest`` -- could declare a commit whose image
+    was never pushed, which is the same defect as declaring one that has been superseded and no
+    easier to see from outside.
+    """
+    stack = _stage("stack")
+    assert 'tag="$(image_tag)"' in stack, "the stack stage derives the tag from something else"
+    assert '"ImageTag=${tag}"' in stack, "the stack is never told which image this run pushed"
+    for stage in ("images", "config"):
+        assert "image_tag" in _stage(stage), f"stage_{stage} does not use the same tag"
+
+
+def test_the_stack_stage_supplies_every_parameter_that_has_no_default(
+    template: dict[str, Any],
+) -> None:
+    """So a tag change cannot quietly reset or drop an unrelated one.
+
+    ``aws cloudformation deploy`` carries forward the previous value of any parameter it is not
+    given, which is what keeps ``InstanceType``, ``DatabaseInstanceClass`` and the rest untouched
+    by a release. That is only safe while the parameters with no default -- the ones with no
+    value to fall back to -- are all supplied by the same run. And every override has to name a
+    parameter the template actually declares, or the deploy fails at the point of use for a
+    reason that was readable here.
+    """
+    declared = template["Parameters"]
+    overrides = _stack_parameter_overrides()
+    required = {name for name, spec in declared.items() if "Default" not in spec}
+    assert required <= set(overrides), (
+        f"the stack stage supplies no value for {sorted(required - set(overrides))}"
+    )
+    assert set(overrides) <= set(declared), (
+        f"the stack stage overrides {sorted(set(overrides) - set(declared))}, which the "
+        "template does not declare"
+    )
+    assert overrides != ["ImageTag"], (
+        "the stack stage passes the image tag alone, so every other parameter depends on "
+        "whatever the last deploy happened to leave behind"
+    )
+
+
+def test_a_release_cannot_leave_the_stack_declaring_the_previous_commit() -> None:
+    """The defect this guard was written after, and the only stage that can still close it.
+
+    The three declarations of which image is deployed are written by three stages that each
+    succeed alone: ``images`` pushes it, ``config`` writes the SSM parameter the host converges
+    on, and ``stack`` records it in CloudFormation. Running the first two and then ``rollout``
+    put the new image on the host, agreed with ``/healthz``, and left the stack declaring the
+    previous commit -- which is the state the deployed stack was found in, declaring
+    ``87f3a13f26a9`` while SSM and ``/healthz`` both said ``acfdd975dd4d``. So the stage that
+    makes a release live compares all three first, and refuses instead of rebooting.
+    """
+    script = _deploy_script()
+    assert "require_image_declarations_agree ()" in script, (
+        "nothing compares the three declarations, so images, config and rollout still succeed "
+        "with a stale stack"
+    )
+    rollout = _stage("rollout")
+    assert 'require_image_declarations_agree "$tag"' in rollout, (
+        "the rollout does not check the declarations it does not own"
+    )
+    assert rollout.index("require_image_declarations_agree") < rollout.index("reboot-instances"), (
+        "the check runs after the host has already been rebooted onto the new image"
+    )
+    check = script[
+        script.index("require_image_declarations_agree ()") : script.index("stage_preflight ()")
+    ]
+    assert "declared_image_tag" in check, "the stack's own declaration is never read back"
+    assert "converged_image_tag" in check, "the parameter the host reads is never read back"
+    assert check.count("|| die") == 2, "a disagreement is read and not refused"
+
+
+def test_the_smoke_stage_refuses_a_deployment_whose_declarations_disagree() -> None:
+    """Three answers in three places, and the check that has to see all of them.
+
+    ``check_deployed_image`` compares the stack's declaration with ``/healthz``, and that is the
+    only comparison the smoke script itself can make: it runs from outside AWS against a public
+    origin and makes no AWS call. The SSM parameter is invisible to it, and a stack and a host
+    that agree while SSM names something else are one reboot away from disagreeing. So the stage
+    reads that third answer and fails before spending the HTTP checks.
+    """
+    smoke = _stage("smoke")
+    assert 'declared="$(declared_image_tag)"' in smoke, "the stack's declaration is not read"
+    assert 'converged="$(converged_image_tag)"' in smoke, "the SSM parameter is not read"
+    assert '|| die "the stack declares $declared, SSM names $converged"' in smoke, (
+        "the two are read and never compared"
+    )
+    assert 'PP_EXPECTED_IMAGE_TAG="$declared"' in smoke, (
+        "the smoke script is not told which commit to expect, so the one check that compares "
+        "the deployment with its declaration reports SKIPPED"
+    )
+    assert smoke.index("|| die") < smoke.index("deployment_smoke.py"), (
+        "the HTTP checks run before the declarations are compared"
+    )
+
+
+def test_a_release_is_a_parameter_write_and_a_reboot_rather_than_a_new_instance() -> None:
+    """``UserData`` runs once per instance, so nothing a release changes may live in it.
+
+    A stack update carrying a new ``ImageTag`` reports ``UPDATE_COMPLETE`` and leaves the
+    instance id unchanged; cloud-init does not run the bootstrap again. The image tag therefore
+    reaches the host through the SSM parameter ``converge.sh`` re-reads at every boot, and the
+    rollout is a reboot rather than an instance replacement. A rollout that deployed the stack,
+    stopped and started the host, or replaced it would be a different and far more expensive
+    claim than the one this stage makes.
+    """
+    rollout = _stage("rollout")
+    assert "ec2 reboot-instances" in rollout, "nothing makes the host re-read anything"
+    for expensive in ("cloudformation deploy", "update-stack", "run-instances", "terminate"):
+        assert expensive not in rollout, (
+            f"the rollout stage runs {expensive!r}; a release is a parameter write and a reboot"
+        )
+    assert "HostInstanceId" in rollout, (
+        "the rollout does not reboot the instance the stack published, so it may be rebooting "
+        "something else or nothing"
+    )
+
+
 # ------------------------------------------------------------------ what the TLS proxy serves
 
 
