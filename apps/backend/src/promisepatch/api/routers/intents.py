@@ -1,8 +1,8 @@
 """``/internal/intents/*`` -- the case engine's entrance for the conversational surface.
 
-Four endpoints, ``report``, ``clarify``, ``confirm`` and ``status``, and they are the only way
-a tool call reaches a case. Everything about them is shaped by one sentence: **the model
-understands; the deterministic protocol authorizes.**
+Five endpoints -- ``report``, ``clarify``, ``confirm``, ``withdraw`` and ``status`` -- and they
+are the only way a tool call reaches a case. Everything about them is shaped by one sentence:
+**the model understands; the deterministic protocol authorizes.**
 
 **It authenticates a service, not a person.** The caller is the ``mcp`` process. There is no
 session cookie and no CSRF token, because a server holds neither and a cookie it did hold would
@@ -36,6 +36,11 @@ whatever the case happens to hold when it arrives. Worker plan confirmation is a
 customer consent: it authorises *asking* an approval-required customer and nothing more, and no
 endpoint here can record a decision on a customer's behalf.
 
+**A withdrawal stops future work and is never an undo.** ``withdraw`` reports, in sentences the
+domain composed, both what it stood down and what had already reached a customer or the order
+system -- and it reverses no physical fact, because facts and recovery authorisation are separate
+authorities. There is no request field here that could name one.
+
 **``status`` is rendered here, not paraphrased there.** The answer carries sentences produced
 by :mod:`promisepatch.domain.status_view` from the durable case, so a conversational layer
 delivers deterministic status rather than restating it. A layer that re-words "planned" is one
@@ -68,9 +73,11 @@ from promisepatch.api.schemas.intents import (
     ReportAccepted,
     ReportIntent,
     StatusIntent,
+    WithdrawalAccepted,
+    WithdrawIntent,
 )
 from promisepatch.db.models import Case
-from promisepatch.domain import analysis, cases, intake, recovery, status_view
+from promisepatch.domain import analysis, cases, intake, recovery, status_view, withdrawal
 from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
@@ -329,6 +336,76 @@ async def confirm(
             awaiting_approval=len(result.awaiting_approval),
             escalated=len(result.escalated),
             already_confirmed=not result.created,
+        ),
+    )
+
+
+@router.post(
+    "/withdraw",
+    response_model=WithdrawalAccepted,
+    status_code=202,
+    summary="Withdraw an exception, stopping the work that has not happened yet",
+)
+async def withdraw(
+    request: Request,
+    intent: WithdrawIntent,
+    settings: SettingsDep,
+    database: DatabaseDep,
+    service_token: Annotated[str | None, Header(alias=SERVICE_TOKEN_HEADER)] = None,
+) -> WithdrawalAccepted:
+    """Stop what this case had not done yet, and say plainly what it had already done.
+
+    ``202``, like its neighbours, and for a sharper reason: the half of this answer that matters
+    is the half nothing can change. Anything the order system has accepted or a customer has
+    received is reported as applied and is left exactly where it is -- this endpoint has no
+    branch that recalls a message or reverses an amendment, because neither is a thing the
+    product can do. Nor does it touch a physical fact: withdrawing a plan does not un-spoil
+    anything, and correcting the kitchen is a separate attestation this route cannot reach.
+    """
+    worker_id = _authenticate(settings, service_token)
+    try:
+        result = await withdrawal.withdraw_exception(
+            database,
+            case_id=intent.case_id,
+            command_id=intent.command_id,
+            worker_id=worker_id,
+            correlation_id=_correlation_id(request),
+        )
+    except intake.UnknownWorkerError as error:
+        logger.error("intents.surface_worker_unknown", worker=worker_id)
+        raise SURFACE_WORKER_MISSING from error
+    except (
+        cases.CaseMissingError,
+        intake.NotPermittedError,
+        withdrawal.CaseNotWithdrawableError,
+        withdrawal.WithdrawalConflictError,
+    ) as error:
+        raise _refused(error) from error
+
+    logger.info(
+        "intents.withdraw.accepted",
+        case_id=str(result.case_id),
+        created=result.created,
+        worker=worker_id,
+    )
+    reversals = [(kind.value, count) for kind, count in result.reversals]
+    applied = [(kind.value, count) for kind, count in result.applied]
+    return WithdrawalAccepted(
+        case_id=result.case_id,
+        command_id=result.command_id,
+        state=result.state,
+        created=result.created,
+        withdrawn_by=worker_id,
+        withdrawn=len(result.withdrawn),
+        escalated=len(result.escalated),
+        reversed_writes=status_view.render_reversals(reversals),
+        applied=status_view.render_applied(applied),
+        speech=status_view.render_withdrawal(
+            withdrawn=len(result.withdrawn),
+            escalated=len(result.escalated),
+            reversals=reversals,
+            applied=applied,
+            already_withdrawn=not result.created,
         ),
     )
 

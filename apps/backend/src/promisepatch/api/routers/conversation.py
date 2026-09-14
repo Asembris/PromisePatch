@@ -1,6 +1,6 @@
-"""``/api/conversation/*`` -- the three things a person can say to a case from their browser.
+"""``/api/conversation/*`` -- the four things a person can say to a case from their browser.
 
-The same three application services the MCP tools reach, called over a different credential. Every
+The same four application services the MCP tools reach, called over a different credential. Every
 sentence below is about that difference, because the difference is exactly one thing: **who the
 server decides is speaking.**
 
@@ -11,7 +11,7 @@ presenting a credential it should never have been able to obtain, and it would s
 this router with no session and be refused as unauthenticated.
 
 **CSRF is load-bearing here for the first time.** Until now the only browser mutation in this
-product was logging out. These three change a case, so each one runs through
+product was logging out. These four change a case, so each one runs through
 ``CsrfPrincipalDep``: the token is minted with the session, stored on its row, echoed by the
 client in a header, and compared against **the row** rather than against the cookie. ``SameSite``
 removes most of the surface before that check runs; the check is what remains correct when it
@@ -36,6 +36,11 @@ rolled back. And a confirmation is bound to a plan: ``plan_id`` is the identity 
 presented, compared under the lock the confirmation is written with, so a yes authorises the plan
 that was read and never whatever the case happens to hold when it arrives.
 
+**A withdrawal stops future work and is never an undo.** ``withdraw`` answers with two lists the
+domain composed: what it stood down, and what had already reached a customer or the order system
+and is therefore *not* reversed. No physical fact moves -- facts and recovery authorisation are
+separate authorities, and no field on this route could name one.
+
 **Every answer is a permission, never an outcome.** ``202`` throughout, counts that say what may
 now happen, and speech rendered by :mod:`promisepatch.domain.status_view` and delivered unchanged.
 """
@@ -55,8 +60,10 @@ from promisepatch.api.schemas.conversation import (
     ConfirmTurn,
     ReportTurn,
     TurnAccepted,
+    WithdrawalAccepted,
+    WithdrawTurn,
 )
-from promisepatch.domain import cases, intake, recovery, status_view
+from promisepatch.domain import cases, intake, recovery, status_view, withdrawal
 from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
@@ -256,6 +263,72 @@ async def confirm(
             awaiting_approval=len(result.awaiting_approval),
             escalated=len(result.escalated),
             already_confirmed=not result.created,
+        ),
+    )
+
+
+@router.post(
+    "/withdraw",
+    response_model=WithdrawalAccepted,
+    status_code=202,
+    summary="Withdraw an exception, stopping the work that has not happened yet",
+)
+async def withdraw(
+    turn: WithdrawTurn,
+    principal: CsrfPrincipalDep,
+    database: DatabaseDep,
+) -> WithdrawalAccepted:
+    """Stop what this case had not done yet, and say plainly what it had already done.
+
+    The honest half of this answer is ``applied``, and it is never empty when something had gone
+    out. Anything the order system has accepted or a customer has received is left exactly where
+    it is: there is no branch here that recalls a message or reverses an amendment, because
+    neither is a thing this product can do. Nor does a withdrawal touch a physical fact -- the
+    ingredient that did not arrive still did not arrive, and only a correcting attestation, which
+    this route cannot reach, changes that.
+    """
+    try:
+        result = await withdrawal.withdraw_exception(
+            database,
+            case_id=turn.case_id,
+            command_id=turn.command_id,
+            worker_id=principal.worker_id,
+        )
+    except intake.UnknownWorkerError as error:
+        logger.error("conversation.attestor_unknown", worker=principal.worker_id)
+        raise ATTESTOR_MISSING from error
+    except (
+        cases.CaseMissingError,
+        intake.NotPermittedError,
+        withdrawal.CaseNotWithdrawableError,
+        withdrawal.WithdrawalConflictError,
+    ) as error:
+        raise _refused(error) from error
+
+    logger.info(
+        "conversation.withdraw.accepted",
+        case_id=str(result.case_id),
+        created=result.created,
+        worker=principal.worker_id,
+    )
+    reversals = [(kind.value, count) for kind, count in result.reversals]
+    applied = [(kind.value, count) for kind, count in result.applied]
+    return WithdrawalAccepted(
+        case_id=result.case_id,
+        command_id=result.command_id,
+        state=result.state,
+        created=result.created,
+        withdrawn_by=principal.worker_id,
+        withdrawn=len(result.withdrawn),
+        escalated=len(result.escalated),
+        reversed_writes=status_view.render_reversals(reversals),
+        applied=status_view.render_applied(applied),
+        speech=status_view.render_withdrawal(
+            withdrawn=len(result.withdrawn),
+            escalated=len(result.escalated),
+            reversals=reversals,
+            applied=applied,
+            already_withdrawn=not result.created,
         ),
     )
 

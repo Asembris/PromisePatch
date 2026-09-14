@@ -42,6 +42,7 @@ from promisepatch.main import create_app
 REPORT = "/internal/intents/report"
 CLARIFY = "/internal/intents/clarify"
 CONFIRM = "/internal/intents/confirm"
+WITHDRAW = "/internal/intents/withdraw"
 STATUS = "/internal/intents/status"
 BASE = "http://api.test"
 
@@ -92,6 +93,20 @@ class Boundary:
         }
         body.update(kwargs.pop("extra", {}))
         return await self.client.post(CONFIRM, json=body, headers=_service(**kwargs))
+
+    async def withdraw(
+        self,
+        case_id: UUID | str,
+        *,
+        command_id: UUID | None = None,
+        **kwargs: Any,
+    ) -> httpx2.Response:
+        body: dict[str, Any] = {
+            "command_id": str(command_id or uuid4()),
+            "case_id": str(case_id),
+        }
+        body.update(kwargs.pop("extra", {}))
+        return await self.client.post(WITHDRAW, json=body, headers=_service(**kwargs))
 
     async def status(self, case_id: UUID | str, **kwargs: Any) -> httpx2.Response:
         return await self.client.post(
@@ -636,6 +651,145 @@ async def test_the_plan_a_surface_is_shown_is_the_plan_a_confirmation_is_measure
         checked = await current_plan_id(connection, case_id=case_id, case_version=read.case_version)
     assert shown == read.plan_id
     assert shown == checked
+
+
+# --------------------------------------------------------------- what withdraw stops
+
+
+async def test_withdrawing_a_planned_case_stops_it_and_carries_nothing_out(
+    boundary: Boundary,
+) -> None:
+    """The verb exists on this surface, and it answers with what it did rather than a status."""
+    case_id = await _planned(boundary)
+
+    response = await boundary.withdraw(case_id)
+
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["state"] == "CANCELLED"
+    assert body["created"] is True
+    assert body["withdrawn_by"] == BAKER
+    assert body["applied"] == []
+    assert await boundary.physical.effects() == []
+
+
+async def test_a_withdrawal_cannot_name_the_worker_who_made_it(boundary: Boundary) -> None:
+    """The actor is the server's. A request that tries to carry one is refused, not ignored."""
+    case_id = await _planned(boundary)
+
+    response = await boundary.withdraw(case_id, extra={"worker_id": OWNER})
+
+    assert response.status_code == 422, response.text
+    assert (await boundary.physical.case(case_id)).state == "PLANNED"
+
+
+async def test_a_withdrawal_cannot_name_a_physical_fact_to_correct(boundary: Boundary) -> None:
+    """Withdrawing a plan is not a claim about the kitchen, and there is no field for one.
+
+    Correcting a fact is a separate attestation with its own intent. A withdrawal that could
+    carry one would be two authorities travelling in one call.
+    """
+    case_id = await _planned(boundary)
+
+    response = await boundary.withdraw(case_id, extra={"text": CORRECTION})
+
+    assert response.status_code == 422, response.text
+
+
+async def test_withdrawing_a_case_this_surface_did_not_open_is_refused(
+    boundary: Boundary,
+) -> None:
+    case_id = await _planned(boundary)
+    async with boundary.physical.another_baker("sam") as stranger:
+        await boundary.physical.reopen_as(case_id, stranger)
+        response = await boundary.withdraw(case_id)
+
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["code"] == "CASE_NOT_PERMITTED"
+
+
+async def test_withdrawing_a_case_that_does_not_exist_is_not_found(boundary: Boundary) -> None:
+    response = await boundary.withdraw(uuid4())
+
+    assert response.status_code == 404, response.text
+    assert response.json()["error"]["code"] == "CASE_NOT_FOUND"
+
+
+async def test_withdrawing_a_case_that_already_finished_is_refused(boundary: Boundary) -> None:
+    """A finished case has no future work to stop, so "withdrawn" would be an untrue answer."""
+    case_id = await _planned(boundary)
+    assert (await boundary.withdraw(case_id)).status_code == 202
+
+    response = await boundary.withdraw(case_id)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "CASE_NOT_WITHDRAWABLE"
+
+
+async def test_a_redelivered_withdrawal_withdraws_once(boundary: Boundary) -> None:
+    case_id = await _planned(boundary)
+    command_id = uuid4()
+
+    first = await boundary.withdraw(case_id, command_id=command_id)
+    version = (await boundary.physical.case(case_id)).version
+    second = await boundary.withdraw(case_id, command_id=command_id)
+
+    assert first.json()["created"] is True
+    assert second.status_code == 202, second.text
+    assert second.json()["created"] is False
+    assert (await boundary.physical.case(case_id)).version == version
+
+
+async def test_a_command_id_already_used_for_a_confirmation_is_a_conflict(
+    boundary: Boundary,
+) -> None:
+    """One identity, two intents. Reading the second as a retry of the first would lose one."""
+    case_id = await _planned(boundary)
+    command_id = uuid4()
+    plan_id = await boundary.plan_of(case_id)
+    assert (await boundary.confirm(case_id, plan_id, command_id=command_id)).status_code == 202
+
+    response = await boundary.withdraw(case_id, command_id=command_id)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "COMMAND_CONFLICT"
+
+
+async def test_a_withdrawal_without_the_service_token_writes_nothing(
+    boundary: Boundary,
+) -> None:
+    case_id = await _planned(boundary)
+
+    response = await boundary.withdraw(case_id, token=None)
+
+    assert response.status_code == 401, response.text
+    assert (await boundary.physical.case(case_id)).state == "PLANNED"
+
+
+async def test_a_withdrawal_after_a_confirmation_reports_what_it_could_not_stop(
+    boundary: Boundary,
+) -> None:
+    """The honest half. A confirmation has taken holds, so this is not a clean cancellation."""
+    case_id = await _planned(boundary)
+    plan_id = await boundary.plan_of(case_id)
+    assert (await boundary.confirm(case_id, plan_id)).status_code == 202
+
+    body = (await boundary.withdraw(case_id)).json()
+
+    assert body["state"] != "CANCELLED"
+    assert body["escalated"] >= 1
+    assert body["reversed_writes"], "releasing the holds is a thing this has to say it did"
+    assert "undone" not in body["speech"]
+
+
+async def _planned(boundary: Boundary) -> UUID:
+    """The canonical case over this surface, carried to a plan waiting for a yes."""
+    opened = (await boundary.report()).json()
+    case_id = UUID(opened["case_id"])
+    await boundary.physical.drain()
+    assert (await boundary.clarify(case_id)).status_code == 202
+    await boundary.physical.drain()
+    return case_id
 
 
 # ------------------------------------------------------- the whole chain, end to end

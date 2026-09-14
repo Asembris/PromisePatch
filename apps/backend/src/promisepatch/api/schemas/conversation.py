@@ -97,6 +97,59 @@ class ConfirmTurn(BaseModel):
     )
 
 
+class WithdrawTurn(BaseModel):
+    """A worker withdrawing an exception they no longer stand behind.
+
+    A case and a command identity, and nothing else. No reason field, because a reason is not an
+    authority; no field naming what to reverse, because what is reversible is decided from rows
+    under the case lock; and no field that could name a physical fact, because withdrawing a plan
+    is not a claim about the kitchen and correcting one is a separate attestation this panel
+    cannot reach.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    command_id: UUID = Field(description="stable command identity; a redelivery must reuse it")
+    case_id: UUID
+
+
+class WithdrawalAccepted(BaseModel):
+    """What a withdrawal stopped, and -- never omitted -- what it could not stop.
+
+    Both lists are sentences the **domain** composed, delivered to a person unchanged. ``applied``
+    is the half that keeps this honest: every entry is something a customer or the order system
+    already has. A screen that rendered only ``reversed_writes`` would be drawing a rollback that
+    did not happen, which is why the field is on the response rather than left to a caller to
+    work out from counts.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case_id: UUID
+    command_id: UUID
+    state: str
+    created: bool = Field(
+        description="false for a redelivery of a withdrawal already accepted, which is a success"
+    )
+    withdrawn_by: str = Field(
+        description="the worker this server attributed the withdrawal to, from the session row"
+    )
+    withdrawn: int = Field(description="promises taken out of the case with nothing carried out")
+    escalated: int = Field(
+        description="promises handed to the owner because something had already gone out"
+    )
+    reversed_writes: tuple[str, ...] = Field(
+        default=(), description="what was stood down, each already true when this returns"
+    )
+    applied: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "what had already happened and is **not** undone. Empty only when nothing had."
+        ),
+    )
+    speech: str = Field(description="what to say back, rendered deterministically by the domain")
+
+
 class TurnAccepted(BaseModel):
     """What the case engine did with one turn. A permission, never an outcome.
 

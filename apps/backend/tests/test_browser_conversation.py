@@ -580,6 +580,101 @@ async def test_a_confirmation_is_never_rendered_in_consents_language(
         assert consent_word not in speech
 
 
+# --------------------------------------------------- a withdrawal, and what it cannot undo
+
+
+async def test_a_worker_withdraws_a_planned_case_from_their_own_browser(
+    worker: Browser, physical: Intake
+) -> None:
+    """The fifth verb over the session credential, attributed to the session and nothing else."""
+    case_id = await planned(physical)
+
+    response = await worker.say("withdraw", {"command_id": str(uuid4()), "case_id": str(case_id)})
+
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["withdrawn_by"] == BAKER
+    assert body["state"] == "CANCELLED"
+    assert (await physical.case(case_id)).state == "CANCELLED"
+
+
+async def test_a_withdrawal_without_its_csrf_token_is_refused(
+    worker: Browser, physical: Intake
+) -> None:
+    """The newest mutation is not the one that forgot the check."""
+    case_id = await planned(physical)
+
+    response = await worker.say(
+        "withdraw",
+        {"command_id": str(uuid4()), "case_id": str(case_id)},
+        headers={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSRF_TOKEN_INVALID"
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_an_observer_may_not_withdraw_a_case(observer: Browser, physical: Intake) -> None:
+    """Read-only means read-only, and the refusal is the domain's rather than this route's."""
+    case_id = await planned(physical)
+
+    response = await observer.say("withdraw", {"command_id": str(uuid4()), "case_id": str(case_id)})
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CASE_NOT_PERMITTED"
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_a_withdrawal_cannot_name_the_worker_who_made_it(
+    worker: Browser, physical: Intake
+) -> None:
+    case_id = await planned(physical)
+
+    response = await worker.say(
+        "withdraw",
+        {"command_id": str(uuid4()), "case_id": str(case_id), "worker_id": OWNER},
+    )
+
+    assert response.status_code == 422, response.text
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_a_withdrawal_after_a_confirmation_never_reads_as_an_undo(
+    worker: Browser, physical: Intake
+) -> None:
+    """The sentence a person sees says what stands, not that everything was rolled back."""
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+    confirmed = await worker.say(
+        "confirm",
+        {"command_id": str(uuid4()), "case_id": str(case_id), "plan_id": view.plan_id},
+    )
+    assert confirmed.status_code == 202, confirmed.text
+
+    body = (
+        await worker.say("withdraw", {"command_id": str(uuid4()), "case_id": str(case_id)})
+    ).json()
+
+    assert body["state"] != "CANCELLED"
+    assert body["escalated"] >= 1
+    assert "undone" not in body["speech"]
+    assert "rolled back" not in body["speech"]
+
+
+async def test_a_withdrawn_case_cannot_be_withdrawn_again(
+    worker: Browser, physical: Intake
+) -> None:
+    case_id = await planned(physical)
+    first = await worker.say("withdraw", {"command_id": str(uuid4()), "case_id": str(case_id)})
+    assert first.status_code == 202, first.text
+
+    again = await worker.say("withdraw", {"command_id": str(uuid4()), "case_id": str(case_id)})
+
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "CASE_NOT_WITHDRAWABLE"
+
+
 # --------------------------------------------------------- the two transports say one thing
 
 

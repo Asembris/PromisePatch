@@ -145,6 +145,63 @@ class ConfirmationAccepted(BaseModel):
     speech: str = Field(description="what to say back, rendered deterministically by the domain")
 
 
+class WithdrawIntent(BaseModel):
+    """A worker withdrawing an exception they no longer stand behind.
+
+    A case and a command identity, and nothing else. There is no field for a reason, because a
+    reason is not an authority and storing a free-text one here would put unattested prose in
+    the record of why a customer promise stopped being recovered; no field for what to reverse,
+    because what is reversible is decided from rows under the case lock and never proposed by a
+    caller; and no field for an actor or a clock, for the reason at the top of this module.
+
+    In particular there is no field that could name a physical fact. Withdrawing a plan is not
+    a claim about the kitchen, and correcting a fact is a separate attestation with its own
+    intent -- a withdrawal that could carry one would be two authorities in one call.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    command_id: UUID = Field(description="stable command identity; a redelivery must reuse it")
+    case_id: UUID
+
+
+class WithdrawalAccepted(BaseModel):
+    """What a withdrawal stopped, and -- never omitted -- what it could not stop.
+
+    ``reversed_writes`` and ``applied`` are both lists of sentences the **domain** composed. The
+    second one is the half that makes this answer honest: every entry in it is something a
+    customer or the order system already has, said in words that do not read as an undo. A
+    surface that rendered only the first half would be describing a rollback that did not happen.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case_id: UUID
+    command_id: UUID
+    state: str
+    created: bool = Field(
+        description="false for a redelivery of a withdrawal already accepted, which is a success"
+    )
+    withdrawn_by: str = Field(
+        description="the worker this server attributed the withdrawal to, from its own settings"
+    )
+    withdrawn: int = Field(description="promises taken out of the case with nothing carried out")
+    escalated: int = Field(
+        description="promises handed to the owner because something had gone out"
+    )
+    reversed_writes: tuple[str, ...] = Field(
+        default=(), description="what was stood down, each already true when this returns"
+    )
+    applied: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "what had already happened and is **not** undone. Empty only when nothing had. "
+            "Never summarise this away: it is the difference between a withdrawal and a rollback."
+        ),
+    )
+    speech: str = Field(description="what to say back, rendered deterministically by the domain")
+
+
 class StatusIntent(BaseModel):
     """A request to read one case as it currently stands."""
 

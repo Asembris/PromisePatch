@@ -29,7 +29,7 @@ from __future__ import annotations
 from typing import Final
 
 from promisepatch.api.errors import ApiError
-from promisepatch.domain import analysis, cases, intake, recovery
+from promisepatch.domain import analysis, cases, intake, recovery, withdrawal
 
 CASE_NOT_FOUND: Final = ApiError(
     status_code=404,
@@ -82,6 +82,18 @@ PLAN_NOT_CONFIRMABLE: Final = ApiError(
 )
 """There is no plan on offer, so there is nothing a yes could be about."""
 
+CASE_NOT_WITHDRAWABLE: Final = ApiError(
+    status_code=409,
+    code="CASE_NOT_WITHDRAWABLE",
+    message="that case has already finished, so there is no future work to stop",
+)
+"""A withdrawal of a case that already ran.
+
+Refused rather than answered as a success. A caller told "withdrawn" about a case that resolved
+an hour ago would believe something had been stopped that had already happened, which is the one
+thing a withdrawal must never imply.
+"""
+
 _MAPPING: Final[tuple[tuple[type[BaseException], ApiError], ...]] = (
     (cases.CaseMissingError, CASE_NOT_FOUND),
     (analysis.CaseNotFoundError, CASE_NOT_FOUND),
@@ -91,6 +103,8 @@ _MAPPING: Final[tuple[tuple[type[BaseException], ApiError], ...]] = (
     (recovery.StalePlanError, PLAN_SUPERSEDED),
     (recovery.PlanNotConfirmableError, PLAN_NOT_CONFIRMABLE),
     (recovery.ConfirmationConflictError, COMMAND_CONFLICT),
+    (withdrawal.CaseNotWithdrawableError, CASE_NOT_WITHDRAWABLE),
+    (withdrawal.WithdrawalConflictError, COMMAND_CONFLICT),
 )
 """Every domain refusal a transport is allowed to translate, and the one answer for each.
 
@@ -116,6 +130,7 @@ def refusal_for(error: BaseException) -> ApiError | None:
 __all__ = [
     "CASE_NOT_FOUND",
     "CASE_NOT_PERMITTED",
+    "CASE_NOT_WITHDRAWABLE",
     "COMMAND_CONFLICT",
     "NOT_AWAITING_CLARIFICATION",
     "PLAN_NOT_CONFIRMABLE",
