@@ -297,14 +297,20 @@ stage_rollout () {
 # way to be sure the thing being smoke-checked is the thing that was deployed.
 stage_smoke () {
   say "smoke"
-  local origin declared
+  local origin declared converged
   origin="$(stack_output PublicUrl)"
   [[ -n "$origin" && "$origin" != "None" ]] || die "the stack publishes no PublicUrl"
   # What the stack says it deployed, so the check can compare it with what the deployed
   # process says it is. Read from the stack rather than from this shell: the question is
   # whether the host runs what the stack declares, and taking both sides from this checkout
   # would answer a different one.
-  declared="$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Parameters[?ParameterKey=='ImageTag'].ParameterValue" --output text)"
+  declared="$(declared_image_tag)"
+  # And the third declaration, which no HTTP check can see. The host converges on the SSM
+  # parameter, so a stack and a host that agree while SSM names something else are one
+  # reboot away from disagreeing. Compared here rather than inside the smoke script, which
+  # is run from outside AWS against a public origin and makes no AWS call at all.
+  converged="$(converged_image_tag)"
+  [[ "$converged" == "$declared" ]] || die "the stack declares $declared, SSM names $converged"
   printf '  origin %s, declared %s\n' "$origin" "$declared"
   ( cd "$REPO_ROOT" && PP_EXPECTED_IMAGE_TAG="$declared" uv run python scripts/deployment_smoke.py --base-url "$origin" )
 }
