@@ -24,6 +24,7 @@ import type {
   ResourcesResponse,
   SignInOptions,
   TurnAccepted,
+  WithdrawalAccepted,
   WorkerResponse,
 } from './types'
 
@@ -203,6 +204,22 @@ export async function clarifyTurn(body: {
   text: string
 }): Promise<TurnAccepted> {
   return requestJson<TurnAccepted>('/api/conversation/clarify', { method: 'POST', body })
+}
+
+/**
+ * Stop the work this case has not carried out yet.
+ *
+ * A case and a command identity travel, and nothing else: no reason, and no field that could
+ * claim a physical fact, because withdrawing a plan is not a claim about the kitchen. The answer
+ * carries two lists the backend composed, and the second one — `applied` — is what the screen
+ * must show whenever it is non-empty, because it is the difference between a withdrawal and a
+ * rollback that did not happen.
+ */
+export async function withdrawTurn(body: {
+  command_id: string
+  case_id: string
+}): Promise<WithdrawalAccepted> {
+  return requestJson<WithdrawalAccepted>('/api/conversation/withdraw', { method: 'POST', body })
 }
 
 /**

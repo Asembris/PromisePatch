@@ -22,6 +22,11 @@
  * - **A confirmation quotes a plan.** The `plan_id` sent is the one the case response presented,
  *   passed through unchanged. This panel cannot describe a plan, only name the one it was given,
  *   and a yes that quotes a plan the case has moved past is refused by the domain.
+ * - **A withdrawal is never drawn as an undo.** The control appears only where `permitted_verbs`
+ *   says so, it sends a case and nothing else, and what it prints afterwards is the backend's own
+ *   two lists — what was stood down, and what had already gone out and therefore stands. The
+ *   second list is rendered whenever it is non-empty, because omitting it is how a stopped case
+ *   comes to look like a reversed one.
  *
  * A refused turn is shown as what it is, with the backend's own message, and the case is re-read
  * either way — a refusal is information about the case, and the most common one means the case
@@ -36,8 +41,12 @@
  */
 import { useState, type ReactNode } from 'react'
 import { ApiError } from '../../api/client'
-import { useClarifyTurn, useConfirmTurn } from '../../api/queries'
-import type { CaseWorkspaceResponse, TurnAccepted } from '../../api/types'
+import { useClarifyTurn, useConfirmTurn, useWithdrawTurn } from '../../api/queries'
+import type {
+  CaseWorkspaceResponse,
+  TurnAccepted,
+  WithdrawalAccepted,
+} from '../../api/types'
 import { Card, SectionLabel } from '../../components/surfaces'
 import { TurnComposer } from '../voice/TurnComposer'
 import { speakAloud, speechPlaybackAvailable, stopSpeaking } from '../voice/speech'
@@ -69,16 +78,22 @@ function messageFor(error: Error): string {
 
 export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNode {
   const [exchanges, setExchanges] = useState<Exchange[]>([])
+  const [stopped, setStopped] = useState<WithdrawalAccepted | null>(null)
   const clarify = useClarifyTurn()
   const confirm = useConfirmTurn()
+  const withdraw = useWithdrawTurn()
 
   // Straight from the backend. `may_speak` is the domain's answer about this caller; the verbs
   // are the conversation's own closed table, already narrowed by it. Neither is derived here.
   const mayAnswer = view.may_speak && view.permitted_verbs.includes('clarify')
   const mayConfirm =
     view.may_speak && view.permitted_verbs.includes('confirm') && view.plan_id !== null
-  const pending = clarify.isPending || confirm.isPending
-  const failure = clarify.error ?? confirm.error
+  // Nothing local decides this. The verb is in the list or it is not, and where it is not there
+  // is no control at all — not a disabled one, because an advertised capability the case cannot
+  // offer is worse than an absent one.
+  const mayWithdraw = view.may_speak && view.permitted_verbs.includes('withdraw')
+  const pending = clarify.isPending || confirm.isPending || withdraw.isPending
+  const failure = clarify.error ?? confirm.error ?? withdraw.error
   const voiceState = caseVoiceState(view, { pending, refused: failure !== null })
 
   function record(spoken: string, accepted: TurnAccepted): void {
@@ -95,6 +110,25 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
       text,
     })
     record(text, accepted)
+  }
+
+  function onWithdraw(): void {
+    withdraw.mutate(
+      { commandId: commandId(), caseId: view.case_id },
+      {
+        onSuccess: (accepted) => {
+          setStopped(accepted)
+          record('Cancel that.', {
+            case_id: accepted.case_id,
+            statement_id: accepted.command_id,
+            state: accepted.state,
+            created: accepted.created,
+            attested_by: accepted.withdrawn_by,
+            speech: accepted.speech,
+          })
+        },
+      },
+    )
   }
 
   function onConfirm(): void {
@@ -168,7 +202,12 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
             onSend={onAnswer}
           />
         ) : null}
+        {stopped === null ? null : <Stopped result={stopped} />}
+
         {mayConfirm ? <Confirm onConfirm={onConfirm} pending={pending} /> : null}
+        {mayWithdraw ? (
+          <Withdraw onWithdraw={onWithdraw} pending={pending} sending={withdraw.isPending} />
+        ) : null}
       </Card>
     </section>
   )
@@ -254,6 +293,85 @@ function Confirm({
       </button>
       <p className="text-meta text-muted">
         This confirms the plan above. Nothing is carried out until it is.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * What a withdrawal stopped, and what it could not.
+ *
+ * Both lists are sentences the backend composed, printed verbatim. `applied` is rendered
+ * whenever it is non-empty and is never folded into the other list or summarised into a count:
+ * every entry in it is something a customer or the order system already has, and a screen that
+ * showed only what was stopped would be describing a rollback nobody performed.
+ *
+ * It also draws no physical claim, because a withdrawal makes none. The ingredient that did not
+ * arrive still did not arrive.
+ */
+function Stopped({ result }: { result: WithdrawalAccepted }): ReactNode {
+  return (
+    <div className="space-y-2" data-testid="withdrawal-result">
+      {result.reversed_writes.length === 0 ? null : (
+        <ul className="space-y-1" data-testid="withdrawal-reversed">
+          {result.reversed_writes.map((line) => (
+            <li key={line} className="text-sm text-muted">
+              {line}
+            </li>
+          ))}
+        </ul>
+      )}
+      {result.applied.length === 0 ? null : (
+        <div
+          className="rounded-quiet border border-owner/40 bg-owner/10 px-3 py-2"
+          data-testid="withdrawal-applied"
+        >
+          <p className="text-meta text-owner uppercase">this was not undone</p>
+          <ul className="mt-1 space-y-1">
+            {result.applied.map((line) => (
+              <li key={line} className="text-sm text-owner">
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Stop the work this case has not carried out yet.
+ *
+ * The button says what it does and refuses to suggest more. It stops what has not happened; it
+ * does not put anything back, and the sentence under it says so before anybody presses it —
+ * because the moment to learn that a withdrawal is not an undo is before the withdrawal, not
+ * after it.
+ */
+function Withdraw({
+  onWithdraw,
+  pending,
+  sending,
+}: {
+  onWithdraw: () => void
+  /** Any turn is in flight, so no second one may be started. */
+  pending: boolean
+  /** *This* turn is in flight. Only that may change what the button says about itself. */
+  sending: boolean
+}): ReactNode {
+  return (
+    <div className="space-y-1.5">
+      <button
+        type="button"
+        onClick={onWithdraw}
+        disabled={pending}
+        data-testid="conversation-withdraw"
+        className="min-h-11 rounded-control border border-edge-strong bg-panel px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-owner hover:text-owner disabled:opacity-60"
+      >
+        {sending ? 'Stopping…' : 'Call this off'}
+      </button>
+      <p className="text-meta text-muted">
+        This stops what has not happened yet. Anything already sent or changed stays as it is.
       </p>
     </div>
   )

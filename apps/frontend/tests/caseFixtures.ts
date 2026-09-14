@@ -310,7 +310,7 @@ export const PLANNED_CASE: CaseWorkspaceResponse = {
   speech:
     'Planned, and waiting for you. Nothing has been done yet. Three orders are affected and two were left alone. Say yes to go ahead.',
   may_speak: true,
-  permitted_verbs: ['confirm', 'status'],
+  permitted_verbs: ['confirm', 'withdraw', 'status'],
   evidence: PLANNED_EVIDENCE,
 }
 
@@ -477,7 +477,7 @@ export const CLARIFYING_CASE: CaseWorkspaceResponse = {
   plan_id: null,
   awaiting_confirmation: false,
   speech: 'Waiting for your answer before anything is decided. Which of them did not arrive?',
-  permitted_verbs: ['clarify', 'status'],
+  permitted_verbs: ['clarify', 'withdraw', 'status'],
 }
 
 export const CASES: CaseListResponse = {

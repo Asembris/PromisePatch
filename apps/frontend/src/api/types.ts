@@ -449,6 +449,32 @@ export interface TurnAccepted {
   speech: string
 }
 
+/**
+ * What a withdrawal stopped, and — never omitted — what it could not stop.
+ *
+ * `applied` is the half that keeps the screen honest. Every entry is a sentence the backend
+ * composed about something a customer or the order system **already has**: an amendment that
+ * stands, a message that cannot be unsent. A panel that rendered only `reversed_writes` would be
+ * drawing a rollback that did not happen.
+ */
+export interface WithdrawalAccepted {
+  case_id: string
+  command_id: string
+  state: string
+  /** False for a redelivery of a withdrawal already accepted, which is a success. */
+  created: boolean
+  /** The worker the *server* recorded. Nothing in the request could have changed it. */
+  withdrawn_by: string
+  withdrawn: number
+  escalated: number
+  /** What was stood down. Each sentence was already true when the response was written. */
+  reversed_writes: string[]
+  /** What had already happened and is **not** undone. Rendered whenever it is non-empty. */
+  applied: string[]
+  /** Rendered by the domain. Displayed verbatim. */
+  speech: string
+}
+
 export interface CaseSummaryView {
   case_id: string
   state: string

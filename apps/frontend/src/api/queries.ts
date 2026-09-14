@@ -36,6 +36,7 @@ import {
   logout,
   openDemoSession,
   reportTurn,
+  withdrawTurn,
 } from './client'
 import type {
   CaseListResponse,
@@ -44,6 +45,7 @@ import type {
   ResourcesResponse,
   SignInOptions,
   TurnAccepted,
+  WithdrawalAccepted,
   WorkerResponse,
 } from './types'
 
@@ -324,6 +326,35 @@ export function useConfirmTurn(): UseMutationResult<TurnAccepted, Error, Confirm
   return useMutation({
     mutationFn: ({ commandId, caseId, planId }: ConfirmTurnInput) =>
       confirmTurn({ command_id: commandId, case_id: caseId, plan_id: planId }),
+    onSettled: (_result, _error, variables) => {
+      void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
+      void client.invalidateQueries({ queryKey: casesKey })
+    },
+  })
+}
+
+export interface WithdrawTurnInput {
+  commandId: string
+  caseId: string
+}
+
+/**
+ * Withdraw one case.
+ *
+ * No plan identity, because a withdrawal is not about a plan: it stops the case, and what that
+ * means for each promise is decided by the domain from rows under the case lock. The case is
+ * re-read either way, so what the screen shows afterwards is the durable case rather than a
+ * guess at what the withdrawal produced.
+ */
+export function useWithdrawTurn(): UseMutationResult<
+  WithdrawalAccepted,
+  Error,
+  WithdrawTurnInput
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ commandId, caseId }: WithdrawTurnInput) =>
+      withdrawTurn({ command_id: commandId, case_id: caseId }),
     onSettled: (_result, _error, variables) => {
       void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
       void client.invalidateQueries({ queryKey: casesKey })

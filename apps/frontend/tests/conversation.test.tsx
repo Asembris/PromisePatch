@@ -31,6 +31,7 @@ import {
 const CASE_PATH = `/api/cases/${CASE_ID}`
 const CLARIFY_PATH = '/api/conversation/clarify'
 const CONFIRM_PATH = '/api/conversation/confirm'
+const WITHDRAW_PATH = '/api/conversation/withdraw'
 
 /** The observer a scoped demo session names. Role and `may_speak` both come from the backend. */
 const JUDGE = {
@@ -370,6 +371,153 @@ describe('the conversation panel', () => {
     const panel = await screen.findByTestId('conversation-panel')
 
     expect(panel.textContent ?? '').not.toMatch(/consent|on behalf of|approved by the customer/i)
+    stream.close()
+  })
+
+  // ------------------------------------------------------- a withdrawal, and what it is not
+
+  it('offers a withdrawal only because the backend listed the verb', async () => {
+    const { stream } = mountAtCase()
+
+    expect(await screen.findByTestId('conversation-withdraw')).toBeInTheDocument()
+    stream.close()
+  })
+
+  it('draws no withdrawal control at all where the backend did not list it', async () => {
+    const { stream } = mountAtCase({ [CASE_PATH]: () => json(SETTLED_CASE) })
+
+    await screen.findByTestId('conversation-panel')
+
+    expect(screen.queryByTestId('conversation-withdraw')).not.toBeInTheDocument()
+    stream.close()
+  })
+
+  it('offers an observer no withdrawal, whatever the case is doing', async () => {
+    const { stream } = mountAtCase({
+      '/api/auth/me': () => json(JUDGE),
+      [CASE_PATH]: () => json(OBSERVED_CASE),
+    })
+
+    await screen.findByTestId('conversation-read-only')
+
+    expect(screen.queryByTestId('conversation-withdraw')).not.toBeInTheDocument()
+    stream.close()
+  })
+
+  it('says a withdrawal is not an undo before anybody presses it', async () => {
+    const { stream } = mountAtCase()
+
+    const button = await screen.findByTestId('conversation-withdraw')
+
+    expect(button.parentElement?.textContent ?? '').toContain(
+      'Anything already sent or changed stays as it is',
+    )
+    stream.close()
+  })
+
+  it('changes nothing on screen until the backend has answered', async () => {
+    const { stream } = mountAtCase({
+      [WITHDRAW_PATH]: () => apiError(409, 'CASE_NOT_WITHDRAWABLE', 'that case has finished'),
+    })
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByTestId('conversation-withdraw'))
+
+    expect(await screen.findByTestId('conversation-refusal')).toHaveTextContent(
+      'that case has finished',
+    )
+    expect(screen.queryByTestId('withdrawal-result')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('conversation-transcript')).not.toBeInTheDocument()
+    stream.close()
+  })
+
+  it('prints what the withdrawal could not stop, in the backend’s own words', async () => {
+    const already = '1 order had already been changed in the order system, and that change stands'
+    const { stream } = mountAtCase({
+      [WITHDRAW_PATH]: () =>
+        json({
+          case_id: CASE_ID,
+          command_id: 'f1e2d3c4-b5a6-4978-8091-a2b3c4d5e6f7',
+          state: 'RECONCILING',
+          created: true,
+          withdrawn_by: 'maya',
+          withdrawn: 0,
+          escalated: 2,
+          reversed_writes: ['released 1 production task this case had put on hold'],
+          applied: [already],
+          speech: `Withdrawn. I could not undo what had already happened: ${already}.`,
+        }),
+    })
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByTestId('conversation-withdraw'))
+
+    const applied = await screen.findByTestId('withdrawal-applied')
+    expect(applied).toHaveTextContent(already)
+    expect(screen.getByTestId('withdrawal-reversed')).toHaveTextContent(
+      'released 1 production task this case had put on hold',
+    )
+    stream.close()
+  })
+
+  it('never says a withdrawal undid anything', async () => {
+    const { stream } = mountAtCase({
+      [WITHDRAW_PATH]: () =>
+        json({
+          case_id: CASE_ID,
+          command_id: 'f1e2d3c4-b5a6-4978-8091-a2b3c4d5e6f7',
+          state: 'CANCELLED',
+          created: true,
+          withdrawn_by: 'maya',
+          withdrawn: 3,
+          escalated: 0,
+          reversed_writes: ['cancelled 1 piece of work that had not started'],
+          applied: [],
+          speech: 'Withdrawn: I cancelled 1 piece of work that had not started.',
+        }),
+    })
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByTestId('conversation-withdraw'))
+    await screen.findByTestId('withdrawal-result')
+
+    const panel = screen.getByTestId('conversation-panel')
+    expect(panel.textContent ?? '').not.toMatch(/undone|undo|rolled back|reversed|put back/i)
+    stream.close()
+  })
+
+  it('re-reads the case after a withdrawal rather than patching it locally', async () => {
+    let served = PLANNED_CASE
+    const { stream, backend } = mountAtCase({
+      [CASE_PATH]: () => json(served),
+      [WITHDRAW_PATH]: () => {
+        served = { ...SETTLED_CASE, speech: 'Cancelled.' }
+        return json({
+          case_id: CASE_ID,
+          command_id: 'f1e2d3c4-b5a6-4978-8091-a2b3c4d5e6f7',
+          state: 'CANCELLED',
+          created: true,
+          withdrawn_by: 'maya',
+          withdrawn: 3,
+          escalated: 0,
+          reversed_writes: [],
+          applied: [],
+          speech: 'Withdrawn. Nothing was sent and no order was changed.',
+        })
+      },
+    })
+    const user = userEvent.setup()
+    await screen.findByTestId('conversation-withdraw')
+    const before = backend.countOf(CASE_PATH)
+
+    await user.click(screen.getByTestId('conversation-withdraw'))
+
+    await waitFor(() => {
+      expect(backend.countOf(CASE_PATH)).toBeGreaterThan(before)
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('conversation-speech')).toHaveTextContent('Cancelled.')
+    })
     stream.close()
   })
 })
