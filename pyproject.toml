@@ -39,6 +39,14 @@ dev = [
     # that had nothing to do with it.
     "pyyaml>=6.0",
     "types-PyYAML>=6.0",
+    # The backend suite is sharded across three runners in CI, and this is what decides which
+    # test goes to which shard. It splits by *measured duration* read from a committed
+    # `.test_durations`, not by a hand-kept list of files: a list would go stale silently the
+    # first time somebody added a test to the wrong side of it, and would need editing by a
+    # person who had no way to know which side was heavier. It selects, and never deselects --
+    # the union of the three groups is the whole suite, and a test missing from the durations
+    # file is still run, just placed by an estimate rather than a measurement.
+    "pytest-split>=0.10",
 ]
 
 # Evaluation only, and deliberately its own group rather than part of `dev`. It is not a default
