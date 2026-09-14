@@ -38,6 +38,7 @@ from promisepatch.orchestrator.policy import (
     phase_of,
     plan,
     reads_as_worker_confirmation,
+    reads_as_worker_withdrawal,
 )
 from promisepatch.orchestrator.surface import ToolOutcome
 from promisepatch.semantic import (
@@ -162,7 +163,22 @@ def test_a_read_is_the_only_verb_that_is_not_an_effect() -> None:
         ConversationTool.CLARIFY,
         ConversationTool.CONFIRM,
         ConversationTool.REPORT,
+        ConversationTool.WITHDRAW,
     ]
+
+
+def test_a_withdrawal_is_offered_only_where_there_is_a_case_to_withdraw() -> None:
+    """The frozen per-phase table, read literally: the two phases a worker is being asked in.
+
+    Not the opening phase, where there is no case; and not the phases the frozen table does not
+    name, which keep the read-only offer this loop already gave them. The domain admits a
+    withdrawal from any non-terminal case, so this table is the narrower of the two checks --
+    which is the whole point of it being a table rather than the rule.
+    """
+    withdrawing = {p for p, tools in PERMITTED.items() if ConversationTool.WITHDRAW in tools}
+    assert withdrawing == {ConversationPhase.CLARIFYING, ConversationPhase.PLANNED}
+    assert ConversationTool.WITHDRAW not in PERMITTED[ConversationPhase.NO_CASE]
+    assert ConversationTool.WITHDRAW not in PERMITTED[ConversationPhase.SETTLED]
 
 
 @pytest.mark.parametrize(
@@ -698,3 +714,100 @@ def test_a_refusal_is_read_by_its_code_and_an_unknown_one_is_unavailability(
     unrecognised refusal is never mapped onto the nearest familiar one.
     """
     assert refusal_code(text) is expected
+
+
+# ------------------------------------------------------- a withdrawal the worker asked for
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "cancel that",
+        "Cancel that, please.",
+        "ignore that - the raspberries were in the other crate",
+        "forget it",
+        "never mind",
+        "stop this",
+    ],
+)
+def test_these_are_a_worker_calling_it_off(said: str) -> None:
+    """A closed list of the ways people actually say stop. Nothing is inferred from tone."""
+    assert reads_as_worker_withdrawal(said) is True
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "",
+        "   ",
+        "I am not happy with that plan",
+        "can we do something else instead",
+        "that seems wrong",
+        "why would you cancel it",
+        "yes",
+        "what happens if I cancel that",
+        "no, cancel it",
+    ],
+)
+def test_these_are_not(said: str) -> None:
+    """Dissatisfaction is not a withdrawal, and a question about one is certainly not one.
+
+    The failure this guards is a conversation that stops a case because a worker sounded
+    unhappy. It fails towards asking again, which costs a turn.
+
+    "no, cancel it" is in this list and is the honest cost of matching only at the start of a
+    turn. It is plainly a withdrawal to a reader, and the worker is asked to say it again. A
+    parser that searched anywhere in the sentence would also match "what happens if I cancel
+    that", and the two cannot be told apart without the reading this module refuses to do.
+    """
+    assert reads_as_worker_withdrawal(said) is False
+
+
+def test_the_withdrawal_gate_is_not_the_confirmation_gate() -> None:
+    """Two different verbs, two different parsers, and neither answers for the other."""
+    assert reads_as_worker_confirmation("cancel that") is False
+    assert reads_as_worker_withdrawal("yes, go ahead") is False
+
+
+def test_a_withdrawal_carries_a_case_and_nothing_else() -> None:
+    """No plan identity and no wording: a withdrawal is not about a plan and carries no reason."""
+    conversation = Conversation(case_id=CASE, phase=ConversationPhase.PLANNED, plan_id=PLAN)
+
+    action = plan(ConversationTool.WITHDRAW, conversation, "cancel that")
+
+    assert isinstance(action, Action)
+    assert action.name == "withdraw"
+    assert action.arguments == {"case_id": CASE}
+    assert action.effecting is True
+
+
+def test_a_withdrawal_the_worker_did_not_ask_for_is_refused_before_the_surface() -> None:
+    """The model chose the verb; the worker did not say the word. Nothing is called."""
+    conversation = Conversation(case_id=CASE, phase=ConversationPhase.PLANNED, plan_id=PLAN)
+
+    blocked = plan(ConversationTool.WITHDRAW, conversation, "I am not sure about this plan")
+
+    assert blocked is Blocked.NEEDS_THE_WORKERS_WORD
+
+
+def test_a_withdrawal_in_a_phase_that_does_not_offer_it_is_refused() -> None:
+    """Checked here as well as at the boundary and again in the domain. Three, not one."""
+    conversation = Conversation(case_id=CASE, phase=ConversationPhase.WORKING)
+
+    blocked = plan(ConversationTool.WITHDRAW, conversation, "cancel that")
+
+    assert blocked is Blocked.NOT_PERMITTED_HERE
+
+
+def test_a_withdrawal_with_no_case_open_is_refused() -> None:
+    conversation = Conversation(phase=ConversationPhase.CLARIFYING)
+
+    blocked = plan(ConversationTool.WITHDRAW, conversation, "cancel that")
+
+    assert blocked is Blocked.NO_CASE_YET
+
+
+def test_every_blocked_reason_has_a_sentence_written_for_it() -> None:
+    """Including the new one. A refusal a model would have to phrase is a refusal it can shade."""
+    for reason in Blocked:
+        assert BLOCKED_SENTENCES[reason]

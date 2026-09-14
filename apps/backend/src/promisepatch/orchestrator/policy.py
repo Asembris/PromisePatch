@@ -15,14 +15,22 @@ all of them before a model is asked anything and one of them again after it answ
   an argument out of a model's answer, because a model's answer has no field that could carry
   one.
 
-And one rule that is not about tools at all: **a plan is confirmed by the worker or not at
-all.** :func:`reads_as_worker_confirmation` is a small literal parser over the worker's own
-words, and a ``CONFIRM`` that does not pass it is refused here before the surface is touched.
+And two rules that are not about tools at all. **A plan is confirmed by the worker or not at
+all**, and **a case is withdrawn by the worker or not at all.**
+
+:func:`reads_as_worker_confirmation` is a small literal parser over the worker's own words, and
+a ``CONFIRM`` that does not pass it is refused here before the surface is touched.
 It is *not* the consent parser and has nothing to do with a customer: worker plan confirmation
 and customer consent are different authorities produced by different people, and this function
 can no more record a customer's decision than the tool it guards can. It is deliberately
 stricter than the domain, which treats the call itself as the yes -- an extra lock on the one
 door a conversational layer could otherwise open by being agreeable.
+
+:func:`reads_as_worker_withdrawal` is its counterpart, and exists for the mirrored reason. A
+withdrawal stops work somebody asked for, so it must not be reachable by a model reading dismay
+into a turn: the worker has to have said to stop it, in a closed list of the ways people say
+that. A turn that is unhappy with the plan, or asking for a different one, is not a withdrawal
+and is answered with a read.
 
 Nothing here reaches a database, a provider, a socket, a clock or the environment. The
 import-linter contract of the same name enforces it, which is what makes "the conversation
@@ -52,17 +60,23 @@ TOOL_NAMES: Final[dict[ConversationTool, str]] = {
     ConversationTool.REPORT: "report",
     ConversationTool.CLARIFY: "clarify",
     ConversationTool.CONFIRM: "confirm",
+    ConversationTool.WITHDRAW: "withdraw",
     ConversationTool.STATUS: "status",
 }
-"""The verb vocabulary, mapped to the frozen tool names of the MCP surface. No fifth entry.
+"""The verb vocabulary, mapped to the frozen tool names of the MCP surface. Five, and no sixth.
 
 ``NONE`` is absent on purpose: it is a choice not to call anything, so there is nothing for it
-to name. The withdrawal tool is absent because it does not exist yet, and a name here for a
-tool the server does not serve would be a conversation that could ask for one.
+to name. Every other entry names a tool the server actually serves; a name here for one it did
+not would be a conversation that could ask for something nothing implements.
 """
 
 EFFECTING: Final[frozenset[ConversationTool]] = frozenset(
-    {ConversationTool.REPORT, ConversationTool.CLARIFY, ConversationTool.CONFIRM}
+    {
+        ConversationTool.REPORT,
+        ConversationTool.CLARIFY,
+        ConversationTool.CONFIRM,
+        ConversationTool.WITHDRAW,
+    }
 )
 """The verbs that leave a durable trace. At most one of these may run in a turn.
 
@@ -73,8 +87,16 @@ read cannot be the thing that went wrong, so a turn's budget can be spent on the
 PERMITTED: Final[dict[ConversationPhase, tuple[ConversationTool, ...]]] = {
     ConversationPhase.NO_CASE: (ConversationTool.REPORT,),
     ConversationPhase.UNDERSTANDING: (ConversationTool.STATUS,),
-    ConversationPhase.CLARIFYING: (ConversationTool.CLARIFY, ConversationTool.STATUS),
-    ConversationPhase.PLANNED: (ConversationTool.CONFIRM, ConversationTool.STATUS),
+    ConversationPhase.CLARIFYING: (
+        ConversationTool.CLARIFY,
+        ConversationTool.WITHDRAW,
+        ConversationTool.STATUS,
+    ),
+    ConversationPhase.PLANNED: (
+        ConversationTool.CONFIRM,
+        ConversationTool.WITHDRAW,
+        ConversationTool.STATUS,
+    ),
     ConversationPhase.WORKING: (ConversationTool.STATUS,),
     ConversationPhase.NEEDS_HUMAN: (ConversationTool.STATUS,),
     ConversationPhase.SETTLED: (ConversationTool.STATUS,),
@@ -84,6 +106,13 @@ PERMITTED: Final[dict[ConversationPhase, tuple[ConversationTool, ...]]] = {
 Read down the right-hand column and the shape of the product is visible: every phase permits a
 read or an opening report, exactly two of them permit anything else, and the one that permits a
 confirmation is the one in which a plan is genuinely waiting for a yes.
+
+**Withdrawal is offered in exactly those same two phases**, which is ARCHITECTURE_PLAN's frozen
+per-phase table read literally: absent from the opening phase, where there is no case to
+withdraw, and absent from every phase that table does not name. The domain is deliberately wider
+-- a withdrawal is admitted from any non-terminal case -- and that difference is the
+defence in depth this module keeps describing. What a phase *offers* is narrower than what the
+engine would accept, and a verb this table withholds is checked again behind it anyway.
 """
 
 HEADLINE_PHASES: Final[dict[str, ConversationPhase]] = {
@@ -207,6 +236,9 @@ class Blocked(StrEnum):
     NEEDS_THE_WORKERS_YES = "NEEDS_THE_WORKERS_YES"
     """A confirmation the worker did not actually give in their own words."""
 
+    NEEDS_THE_WORKERS_WORD = "NEEDS_THE_WORKERS_WORD"
+    """A withdrawal the worker did not actually ask for in their own words."""
+
 
 BLOCKED_SENTENCES: Final[dict[Blocked, str]] = {
     Blocked.NOT_UNDERSTOOD: (
@@ -221,6 +253,9 @@ BLOCKED_SENTENCES: Final[dict[Blocked, str]] = {
     ),
     Blocked.NEEDS_THE_WORKERS_YES: (
         "I will not confirm a plan unless you say yes to it yourself. Nothing has been changed."
+    ),
+    Blocked.NEEDS_THE_WORKERS_WORD: (
+        "I will not call this off unless you tell me to yourself. Nothing has been changed."
     ),
 }
 """What a blocked turn says. Written here, so a model never phrases a refusal it caused."""
@@ -293,6 +328,13 @@ def plan(tool: ConversationTool, conversation: Conversation, turn: str) -> Actio
         return Action(tool, TOOL_NAMES[tool], {"case_id": case_id})
     if tool is ConversationTool.CLARIFY:
         return Action(tool, TOOL_NAMES[tool], {"case_id": case_id, "answer": turn})
+    if tool is ConversationTool.WITHDRAW:
+        # No plan identity, because a withdrawal is not about a plan: it stops the case, and
+        # what that means for each promise is decided from rows under the case lock. The one
+        # gate here is that the worker themselves asked for it.
+        if not reads_as_worker_withdrawal(turn):
+            return Blocked.NEEDS_THE_WORKERS_WORD
+        return Action(tool, TOOL_NAMES[tool], {"case_id": case_id})
 
     plan_id = conversation.plan_id
     if plan_id is None:
@@ -359,6 +401,39 @@ different plan. The check is crude on purpose -- it fails towards asking again, 
 turn, rather than towards confirming something nobody agreed to, which costs an order.
 """
 
+WITHDRAWALS: Final[frozenset[str]] = frozenset(
+    {
+        "call it off",
+        "call that off",
+        "cancel it",
+        "cancel that",
+        "cancel this",
+        "disregard that",
+        "drop it",
+        "forget it",
+        "forget that",
+        "ignore that",
+        "ignore this",
+        "leave it",
+        "never mind",
+        "nevermind",
+        "scrap it",
+        "scrap that",
+        "stop it",
+        "stop this",
+        "withdraw it",
+        "withdraw that",
+        "withdraw this",
+    }
+)
+"""The forms a worker's "stop this" may take. Closed, and matched only at the start of a turn.
+
+Not a sentiment reading. A worker who is unhappy with a plan, arguing with it or asking for a
+different one has not withdrawn anything, and reading dissatisfaction as a withdrawal would stop
+a case nobody asked to stop. The list is short on purpose: it fails towards asking again, which
+costs a turn, rather than towards calling off work somebody wanted.
+"""
+
 _WORD_SEPARATORS = re.compile(r"[^a-z0-9]+")
 
 
@@ -392,6 +467,26 @@ def reads_as_worker_confirmation(text: str) -> bool:
     return any(words[: len(parts)] == parts for parts in (p.split() for p in AFFIRMATIONS))
 
 
+def reads_as_worker_withdrawal(text: str) -> bool:
+    """Whether the worker themselves asked for this case to stop, in this turn.
+
+    The mirror of :func:`reads_as_worker_confirmation`, and strict for the mirrored reason. A
+    withdrawal stops work a person asked for, so it must not be reachable by a model reading
+    frustration into a sentence: the turn has to open with one of a closed set of the ways
+    people actually say "call this off".
+
+    Matched at the start of the turn and nowhere else, which has an honest cost: "no, cancel
+    it" is plainly a withdrawal and is not read as one, and the worker is asked to say it
+    again. A parser that searched anywhere in the sentence would also match "what happens if I
+    cancel that", and telling those two apart needs exactly the reading this module refuses to
+    do. It fails towards asking, which costs a turn.
+    """
+    words = normalise(text).split()
+    if not words:
+        return False
+    return any(words[: len(parts)] == parts for parts in (p.split() for p in WITHDRAWALS))
+
+
 __all__ = [
     "AFFIRMATIONS",
     "BLOCKED_SENTENCES",
@@ -402,6 +497,7 @@ __all__ = [
     "PERMITTED",
     "REFUSAL_SENTENCES",
     "TOOL_NAMES",
+    "WITHDRAWALS",
     "Action",
     "Blocked",
     "CaseReading",
@@ -411,4 +507,5 @@ __all__ = [
     "phase_of",
     "plan",
     "reads_as_worker_confirmation",
+    "reads_as_worker_withdrawal",
 ]

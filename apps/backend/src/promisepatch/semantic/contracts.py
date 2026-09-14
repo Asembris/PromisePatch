@@ -191,6 +191,10 @@ class ConversationTool(StrEnum):
     that edits an order, records a consent decision, names a recipe version or attests a
     physical fact, because there is no such tool to name.
 
+    ``WITHDRAW`` is the only member that can stop a case, and stopping is all it does: it
+    carries no reason, reverses nothing already applied and makes no claim about the kitchen,
+    because none of those is a thing this vocabulary can express.
+
     ``NONE`` is always available and is the right answer whenever a turn is not a request for
     any of the others. It exists so that "say nothing and change nothing" is inside the
     vocabulary rather than something a model has to fail in order to express.
@@ -199,6 +203,7 @@ class ConversationTool(StrEnum):
     REPORT = "REPORT"
     CLARIFY = "CLARIFY"
     CONFIRM = "CONFIRM"
+    WITHDRAW = "WITHDRAW"
     STATUS = "STATUS"
     NONE = "NONE"
 

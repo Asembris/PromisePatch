@@ -131,6 +131,11 @@ is asking for.
   turn that discusses the plan, asks about it or agrees with the reasoning is not a yes.
 - CLARIFY is the worker answering the question that was put to them. Their answer is passed on
   exactly as they said it; you are not choosing what it means.
+- WITHDRAW is a worker saying this case should stop -- that they were wrong, or that they no
+  longer want it acted on. Choose it only when they themselves have just said so in this turn.
+  It stops what has not happened yet; it is not an undo, and choosing it does not reverse
+  anything that has already gone out. Do not choose it because a worker is unhappy with the
+  plan or is asking for a different one.
 - REPORT is a worker telling PromisePatch that something physical has gone wrong.
 - STATUS is a request to hear where the case stands. It changes nothing, and it is the safe
   choice whenever you are unsure between STATUS and something else.
