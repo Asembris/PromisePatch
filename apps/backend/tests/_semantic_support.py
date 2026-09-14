@@ -177,32 +177,3 @@ def scripted(intake: Any, *replies: object, identity: str | None = None) -> Scri
 def failing(intake: Any, error: SemanticError, *, times: int = 8) -> Scripted:
     """A worker whose model cannot be reached, for as many attempts as the test needs."""
     return scripted(intake, *([error] * times))
-
-
-# ------------------------------------------------------------------- reading a customer
-
-
-def intent(label: str) -> dict[str, Any]:
-    """One scripted reply-intent answer, as the raw tool input a model would return.
-
-    A dictionary rather than the enum, deliberately: the answers worth testing hardest are the
-    ones the boundary refuses, and ``APPROVE`` is a word a helpful model reaches for. A helper
-    that could only produce members of :class:`~promisepatch.semantic.ApparentIntent` could not
-    express the case where it reaches.
-    """
-    return {"apparent_intent": label}
-
-
-def classifier(intake: Any, *replies: object, identity: str | None = None) -> Scripted:
-    """A worker whose model reads customer replies this way, in this order, then goes quiet.
-
-    Scripted on ``CLASSIFY_REPLY_INTENT`` alone, so ``calls`` counts questions about a
-    customer's words and nothing else -- which is what makes "a literal YES costs no model
-    call" an assertion about a number rather than about a log line. An exhausted script falls
-    back to the fake's own cautious default, which is ``UNCLEAR``.
-    """
-    provider = FakeSemanticProvider({SemanticJob.CLASSIFY_REPLY_INTENT: list(replies)})
-    return Scripted(
-        provider=provider,
-        worker=intake.worker(identity=identity, semantic=provider),
-    )

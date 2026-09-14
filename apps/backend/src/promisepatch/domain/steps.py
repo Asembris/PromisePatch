@@ -323,7 +323,8 @@ def _executor_for(kind: str) -> StepExecutor | None:
     if kind in approvals.APPROVAL_STEP_KINDS:
         return approvals.execute
     if kind in approvals.CUSTOMER_INTENT_STEP_KINDS:
-        # The consent protocol names this step; a module that cannot record a decision runs it.
+        # The consent protocol names this step; a module that cannot record a decision, and
+        # since ADR-0008 cannot reach a model either, runs it.
         return customer_intent.execute
     if kind in revalidation.REVALIDATION_STEP_KINDS:
         return revalidation.execute

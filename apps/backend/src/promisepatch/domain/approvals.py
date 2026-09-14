@@ -163,22 +163,26 @@ APPROVAL_STEP_KINDS: Final[frozenset[str]] = frozenset(
 """Step kinds the worker routes here. Every one of them reads rows to decide."""
 
 STEP_INTERPRET_CUSTOMER_REPLY: Final = "INTERPRET_CUSTOMER_REPLY"
-"""The sixth transaction of the consent protocol, and the only one a model touches.
+"""The sixth transaction of the consent protocol: the one question an unreadable reply earns.
 
 Named here, with the rest of the protocol's vocabulary, and *implemented* in
 :mod:`promisepatch.domain.customer_intent`, which imports no decision machinery at all. The
-split is the boundary: the module that can ask a model what a sentence looked like cannot
-reach :class:`~promisepatch.db.models.ApprovalDecision`, and the module that records consent
-never calls a provider.
+split is the boundary: the module that sends the customer a further question cannot reach
+:class:`~promisepatch.db.models.ApprovalDecision`, and the module that records consent never
+sends a message.
+
+The name is older than the work. A model once read the reply in this step's own window; per
+ADR-0008 none does, and the prompt is built from the request the reply is bound to. The kind is
+kept because it is a durable identity -- on step rows, on audit rows and in the ledger of every
+case ever run -- and renaming it would rewrite history to describe today.
 
 It exists only for a reply that reached the literal parser and was not a decision, on a request
 that is open, undecided, in date and from the right channel -- which is why no unauthorised
-sender, expired window, duplicate delivery or literal ``YES`` ever costs a model call: the step
-that would make one is never created.
+sender, expired window, duplicate delivery or literal ``YES`` ever creates one.
 """
 
 CUSTOMER_INTENT_STEP_KINDS: Final[frozenset[str]] = frozenset({STEP_INTERPRET_CUSTOMER_REPLY})
-"""Kinds the worker routes to the semantic half, which is a different module on purpose."""
+"""Kinds routed to the module that asks again, which is a different module on purpose."""
 
 
 def request_step_key(track_id: UUID) -> str:
@@ -202,12 +206,12 @@ def expire_step_key(request_id: UUID) -> str:
 
 
 def interpret_step_key(reply_id: UUID) -> str:
-    """One semantic reading per stored reply, whatever the transport did.
+    """One further question per stored reply, whatever the transport did.
 
     Keyed on the reply rather than on the request, because a request may legitimately receive
-    more than one reply and each of them is its own question. Keyed on the *stored* reply -- a
-    value derived from the provider's message id -- so a redelivered message that somehow
-    reached the protocol twice proposes the identical step key and the unique index on
+    more than one reply and each of them is its own occasion to ask. Keyed on the *stored*
+    reply -- a value derived from the provider's message id -- so a redelivered message that
+    somehow reached the protocol twice proposes the identical step key and the unique index on
     ``(case_id, step_key)`` declines the second.
     """
     return f"interpret-reply:{reply_id}"
@@ -219,7 +223,7 @@ def request_of(step_key: str) -> UUID:
 
 
 def reply_of(step_key: str) -> UUID:
-    """The stored reply a semantic interpretation step is about."""
+    """The stored reply a confirmation step is about."""
     return UUID(step_key.partition(":")[2])
 
 
@@ -361,10 +365,9 @@ ESCALATION_CONFIRMATION_UNANSWERED: Final = "CONFIRMATION_UNANSWERED"
 """§13.6's ending for a second reply that is still not one of the two words.
 
 The customer was asked, in the plainest sentence the protocol has, to answer ``YES`` or ``NO``,
-and answered something else again. Reading further is not the system's to do: a second
-classification would be a second guess, and a second prompt would be a loop with a person at
-one end of it. The track goes to the owner with the raw text attached, which is the one reading
-of those words anybody is entitled to make.
+and answered something else again. Reading further is not the system's to do, and a second
+prompt would be a loop with a person at one end of it. The track goes to the owner with the raw
+text attached, which is the one reading of those words anybody is entitled to make.
 """
 
 
@@ -998,8 +1001,8 @@ async def _reply(
         # The one branch the whole authority model turns on. "Strawberries work" is a sentence
         # about strawberries; it is stored, and it decides nothing here or anywhere after here.
         return await _unrecognized(context)
-    # Literal, and therefore authoritative -- whatever a model said about an earlier reply on
-    # this request. A stored apparent intent is provenance; it is not an input to this line.
+    # Literal, and therefore authoritative -- whatever else the customer wrote on this request
+    # before it. An earlier reply is provenance; it is not an input to this line.
     return await _record_decision(context, decision=decision)
 
 
@@ -1009,11 +1012,11 @@ async def _unrecognized(context: _ReplyContext) -> StepOutcome:
     The rule is the request's own state, and it is deliberately a counter of one:
 
     * **First** non-literal reply, request ``SENT``: store it, and enqueue the durable work that
-      reads it and asks the customer to answer in words that count. Nothing is decided, nothing
-      is mutated, and the track keeps waiting.
+      asks the customer to answer in words that count. Nothing is decided, nothing is mutated,
+      and the track keeps waiting.
     * **Second** non-literal reply, request ``CONFIRMATION_PENDING``: the plainest sentence the
       protocol has was already sent and was answered with something else. The track escalates
-      with the raw text attached rather than being classified again.
+      with the raw text attached, for a person to read.
 
     That is also the whole of the duplicate-confirmation defence, and it is deterministic: the
     condition that permits a prompt is a state the prompt itself removes, so there is exactly
