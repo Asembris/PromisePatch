@@ -33,8 +33,6 @@ from promisepatch.config import Settings
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor
 from promisepatch.domain import (
-    approvals,
-    customer_intent,
     inbox,
     order_mirror,
     outbox,
@@ -133,17 +131,17 @@ class Worker:
         if claim is None:
             return None
         if claim.kind == STEP_INTERPRET_SEMANTICALLY:
-            # The provider calls in the step path are made here rather than inside the
-            # execution transaction. Between the claim and the execution is the only moment in
-            # the cycle when this process holds a lease on the work and no database
+            # The one provider call in the step path, and it is made here rather than inside
+            # the execution transaction. Between the claim and the execution is the only moment
+            # in the cycle when this process holds a lease on the work and no database
             # transaction at all, which is exactly what a call to somebody else's service
-            # needs. What either leaves behind is a row; what decides anything is the
-            # transaction below, which takes the locks and re-reads what it is deciding about.
+            # needs. What it leaves behind is a row; what decides anything is the transaction
+            # below, which takes the locks and re-reads what it is deciding about.
+            #
+            # A worker's sentence, and nothing else. Per ADR-0008 a customer's reply is never
+            # sent to a model: the two words that can answer are read by a parser, and the one
+            # question an unreadable reply earns is built from the request it is bound to.
             await semantic_intake.prepare(self.database, self.semantic, claim=claim)
-        elif claim.kind == approvals.STEP_INTERPRET_CUSTOMER_REPLY:
-            # The same arrangement for a customer's words. The transaction that consumes this
-            # one can send a message and cannot record consent, whatever comes back.
-            await customer_intent.prepare(self.database, self.semantic, claim=claim)
         result = await steps.execute_step(self.database, claim=claim, actor=self.actor)
         logger.info(
             "worker.step.executed",

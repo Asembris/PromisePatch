@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import ModuleType
 from typing import Any, cast
 from uuid import uuid4
 
@@ -299,29 +300,26 @@ def test_the_default_model_is_not_the_one_this_account_cannot_call() -> None:
     assert configured.require_bedrock_model_id() == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 
-async def test_both_semantic_jobs_are_answered_by_the_one_configured_provider(
+async def test_only_the_worker_s_own_sentence_is_ever_sent_to_the_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The worker's sentence and the customer's reply are read by the same provider object.
+    """One provider object, one job on the step path, and nothing about a customer's words.
 
-    This is why selecting a model selects it for both jobs: `Worker` has one provider field and
-    no per-job route to point somewhere else. Adding one would be the multi-model routing
-    ADR-0004 rejected, and no measured evidence asks for it -- no challenger cleared the frozen
-    materiality floor, so there is no better customer model to route to.
+    `Worker` has one provider field and no per-job route to point somewhere else. Adding one
+    would be the multi-model routing ADR-0004 rejected, and no measured evidence asks for it --
+    no challenger cleared the frozen materiality floor.
 
-    Both `prepare` functions are stood in for here, and so are the claim and the execution, so
-    what is asserted is the routing and nothing about a database.
+    The customer half is the ADR-0008 guard, asserted from the worker rather than from the
+    domain: the step kind a non-literal reply creates is claimed and handed to the ordinary
+    execution transaction with no call made about it. Reintroducing a classifier there fails
+    here twice over -- the recorded handoffs gain an entry, and the provider raises.
     """
     handed: dict[str, object] = {}
 
     async def record_worker(_db: object, provider: object, *, claim: StepClaim) -> None:
         handed["worker"] = provider
 
-    async def record_customer(_db: object, provider: object, *, claim: StepClaim) -> None:
-        handed["customer"] = provider
-
     monkeypatch.setattr(semantic_intake, "prepare", record_worker)
-    monkeypatch.setattr(customer_intent, "prepare", record_customer)
 
     kinds = iter((STEP_INTERPRET_SEMANTICALLY, STEP_INTERPRET_CUSTOMER_REPLY))
 
@@ -347,8 +345,22 @@ async def test_both_semantic_jobs_are_answered_by_the_one_configured_provider(
     await worker._execute_one_step()
     await worker._execute_one_step()
 
-    assert handed["worker"] is configured
-    assert handed["customer"] is configured
+    assert handed == {"worker": configured}
+    assert configured.calls == []
+
+
+def test_the_customer_reply_path_offers_nothing_to_prepare_a_reading_with() -> None:
+    """Structural, and the cheapest statement of ADR-0008 there is.
+
+    A module with no preparation function cannot be wired back onto the worker's step path by
+    accident; putting a classifier back there is a deliberate act that has to add one first.
+    """
+    assert not hasattr(customer_intent, "prepare")
+    assert "prepare" not in customer_intent.__all__
+    imported = {
+        module for module in vars(customer_intent).values() if isinstance(module, ModuleType)
+    }
+    assert not any(module.__name__.startswith("promisepatch.semantic") for module in imported)
 
 
 # ------------------------------------------------------------------------------ observability

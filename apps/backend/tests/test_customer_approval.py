@@ -46,7 +46,6 @@ from promisepatch.db.models import ApprovalDecision, ApprovalRequest, InboundRep
 from promisepatch.domain import approvals, cases, messaging, recovery
 from promisepatch.domain.adapters import FakeEffectAdapter, ProviderBehaviour
 from promisepatch.domain.model import DeliveryOutcome, DeliveryStatus
-from promisepatch.semantic import ApparentIntent
 
 pytestmark = pytest.mark.integration
 
@@ -523,10 +522,10 @@ async def test_a_non_literal_reply_decides_nothing(physical: Intake) -> None:
 async def test_a_non_literal_reply_is_kept_exactly_as_it_was_written(physical: Intake) -> None:
     """Stored as data, read as data, and never as an instruction.
 
-    The unscripted fake reads every reply as ``UNCLEAR``, which is also §14.3's deterministic
-    fallback for the job -- so this is the shape a deployment with no reachable model produces,
-    and it is the same shape as one with a confident model: a label beside the words, and no
-    decision anywhere near either of them.
+    The row carries the words, the sender and the request, and no reading of any of them: per
+    ADR-0008 nothing asks a model what the sentence looked like, so ``apparent_intent`` is the
+    column nothing writes. That is the whole of what the protocol has to go on, and it is
+    enough, because none of it is an answer.
     """
     await waiting_case(physical)
     request = await the_request(physical)
@@ -539,7 +538,7 @@ async def test_a_non_literal_reply_is_kept_exactly_as_it_was_written(physical: I
     assert replies[0].raw_text == NON_LITERAL
     assert replies[0].request_id == request.id
     assert replies[0].sender_identity == TOMAS_CHANNEL
-    assert replies[0].apparent_intent == ApparentIntent.UNCLEAR.value
+    assert replies[0].apparent_intent is None
     assert await physical.decisions() == []
 
 

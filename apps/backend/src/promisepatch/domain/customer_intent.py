@@ -1,58 +1,49 @@
-"""Reading a customer's free text, and asking them again in the two words that count.
+"""Asking a customer again, in the two words that count.
 
-This is the semantic half of the consent protocol, and it lives in its own module because of
-what it must not be able to do. The rule from §15 is that the model "can never produce a
-decision", and a rule enforced by remembering it is not enforced. So:
+A reply that reached the literal parser and was not one of the two words is not an answer. It
+is stored verbatim, it decides nothing, and §13.6 gives it exactly one response: a message
+asking the customer to reply ``YES`` or ``NO``. This module is that response, and nothing else.
+
+It lives in its own module because of what it must not be able to do. The rule from §15 is that
+the model "can never produce a decision", and a rule enforced by remembering it is not enforced.
+So:
 
 * Nothing here imports :mod:`promisepatch.domain.consent`, and nothing here can read a literal
   ``YES``. Deciding is somebody else's job and this module cannot do it by accident.
 * Nothing here imports :class:`~promisepatch.db.models.ApprovalDecision`, mentions
   ``approval_decisions``, or writes :class:`~promise_graph.model.ParserKind`. There is no line
   to delete to make this module safe, because there is no line that makes it unsafe.
-* The strongest word the vocabulary it consumes contains is ``APPARENT_APPROVE``, which is not
-  a member of :class:`~promise_graph.model.ApprovalDecisionKind` and cannot be handed anywhere
-  a decision is expected. A test asserts all of this against the source of this file.
+* Nothing here imports :mod:`promisepatch.semantic`. Per ADR-0008 the prompt this sends is
+  built from the request the reply is bound to and from nothing a model said, so the consent
+  path holds no provider call at all -- neither one whose answer is used, nor one whose answer
+  is ignored. An import-linter contract keeps it that way.
 
-**What it actually decides is nothing.** §13.6 gives all three labels -- ``APPARENT_APPROVE``,
-``APPARENT_DECLINE`` and ``UNCLEAR`` -- the same response: one confirmation prompt, the request
-to ``CONFIRMATION_PENDING``, the track left exactly where it was. So does the deterministic
-fallback for the job, which §14.3 fixes as ``UNCLEAR``. That is worth stating plainly, because
-it is the property the whole slice rests on:
+**What it decides is nothing.** It sends one message and moves the request to
+``CONFIRMATION_PENDING``; the track stays where it was, the case stays ``WAITING``, and the only
+thing that can settle either is a literal reply arriving afterwards. Which is also why a
+prompt-injected reply buys nothing here: whatever it demands, what goes out is the frozen
+sentence asking for a word that counts.
 
-    The label changes what the ledger records. It changes nothing about what happens.
-
-A model that answered ``APPARENT_APPROVE``, a model that answered ``APPARENT_DECLINE``, a model
-that returned malformed JSON and a model that could not be reached at all produce the identical
-message and the identical state. There is no branch here for a model to influence, which is why
-a prompt-injected reply cannot buy anything: complying with it perfectly still sends the
-customer the sentence asking them to type ``YES`` or ``NO``.
-
-**Two transactions and a call between them**, the same shape as every other provider call in
-PromisePatch::
+**One transaction**, taken by the ordinary step sweep::
 
     worker claims the INTERPRET_CUSTOMER_REPLY step   (the ordinary claim sweep)
             │
-            ├── transaction: read the reply and its request, decide whether to ask at all,
-            │   fingerprint the binding ... commit, hold nothing ...
-            ├── the provider call                     (no transaction, no lock, no connection)
-            └── transaction: write the reading onto the step row, fenced by the claim
-            │
-    worker executes the step                          (the ordinary execution transaction)
-            case, track and request locked; deadline, sender and binding re-checked;
-            one confirmation enqueued, or nothing at all
+            └── transaction: case, track and request locked; deadline, sender and binding
+                re-checked; one confirmation enqueued, or nothing at all
+
+The step kind still carries the name it was given when a model read the reply between those
+two moments. It is a durable identity -- it is on step rows, on audit rows and in the ledger of
+every case ever run -- so it is left alone, and the work it names is the work described above.
 
 **The step is never created for a reply that could not use one.** An unauthorised sender, a
 closed window, a settled request, a duplicate delivery and a literal ``YES`` are all refused by
-the reply step before this work exists, so none of them costs a model call. The re-checks in
-:func:`prepare` cover only the window between the enqueue and the claim, and the re-checks in
-:func:`execute` cover the window between the call and the commit -- which is where a customer's
-literal ``YES``, racing a model that is still thinking, wins absolutely and this work no-ops.
+the reply step before this work exists. The re-checks in :func:`execute` cover the window
+between the enqueue and the commit -- which is where a customer's literal ``YES``, racing this
+transaction, wins absolutely and this work no-ops.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -63,18 +54,14 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from promise_graph.model import ApprovalRequestState
-from promisepatch.db.clock import database_now
 from promisepatch.db.models import (
     ApprovalRequest,
-    Case,
-    CaseStep,
     Customer,
     InboundReply,
     Order,
 )
-from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor, UnitOfWork
-from promisepatch.domain import approvals, crash, messaging, retry, semantic_intake
+from promisepatch.domain import approvals, messaging
 from promisepatch.domain.cases import (
     OPEN_APPROVAL_STATES,
     LockedCase,
@@ -85,7 +72,6 @@ from promisepatch.domain.cases import (
 from promisepatch.domain.model import (
     EFFECT_TRACK_ID,
     EVENT_STEP_COMPLETED,
-    EVENT_STEP_FAILED,
     AppendEvent,
     CaseChange,
     Disposition,
@@ -93,35 +79,12 @@ from promisepatch.domain.model import (
     StepOutcome,
 )
 from promisepatch.domain.recovery import lock_track
-from promisepatch.domain.steps import StepClaim
 from promisepatch.graph.channel import split_channel
 from promisepatch.observability import get_logger
-from promisepatch.semantic import (
-    ApparentIntent,
-    ClassifyReplyIntentRequest,
-    ReplyIntentReading,
-    SemanticMetadata,
-    SemanticProvider,
-    SemanticProviderError,
-    SemanticValidationError,
-    UntrustedText,
-)
-from promisepatch.semantic.contracts import MAX_UNTRUSTED_CHARACTERS
 
 logger = get_logger(__name__)
 
 # ------------------------------------------------------------------------------- outcomes
-
-FALLBACK_INTENT: Final = ApparentIntent.UNCLEAR.value
-"""What the protocol proceeds on when no model produced a label. Fixed by §14.3.
-
-Recorded in the provenance and nowhere else. It is never written to
-``inbound_replies.apparent_intent``, because that column means "a classifier said this" and a
-value put there by a fallback would be indistinguishable later from one a model produced.
-
-It changes nothing that happens, which is the point of naming it: the label and the fallback
-lead to the same message and the same state, so a provider outage is not a different protocol.
-"""
 
 OUTCOME_CONFIRMATION_REQUESTED: Final = "CONFIRMATION_REQUESTED"
 """One confirmation prompt enqueued, and nothing else touched."""
@@ -148,15 +111,12 @@ honest here. The deadline timer escalates the track on its own.
 OUTCOME_UNAUTHORIZED: Final = "UNAUTHORIZED"
 """The channel moved under the reply. Unreachable from the reply step, and refused anyway."""
 
-OUTCOME_STALE: Final = "STALE"
-"""The reading answers a question about a binding that is no longer this one."""
-
 OUTCOME_UNBOUND: Final = "UNBOUND"
 """The reply no longer names a request. Nothing to confirm and nothing to conclude."""
 
 
 class CustomerIntentStateError(RuntimeError):
-    """A semantic reply step describes a shape of the world that cannot be true."""
+    """A confirmation step describes a shape of the world that cannot be true."""
 
 
 # -------------------------------------------------------------------------------- binding
@@ -187,228 +147,6 @@ class ReplyBinding:
     decided: bool
 
 
-def binding_fingerprint(binding: ReplyBinding) -> str:
-    """A stable name for "this reply, on this request, as it stood".
-
-    Recomputed by the consuming transaction under the case lock and compared with the one the
-    preparation stored. A supersession, a re-plan, a decision or a rebound option between the
-    call and the commit changes it, and a reading whose fingerprint no longer matches is
-    discarded rather than applied to a request it was not about.
-
-    The customer's words are hashed rather than carried. The fingerprint ends up on a step row
-    and in a log line, and §26 keeps what somebody wrote in the table a reader has to be
-    entitled to open -- so this identifies the text without reproducing a syllable of it.
-    """
-    payload = {
-        "reply": str(binding.reply_id),
-        "provider_message_id": binding.provider_message_id,
-        "sender": binding.sender,
-        "text": hashlib.sha256(binding.text.encode("utf-8")).hexdigest(),
-        "request": str(binding.request_id),
-        "track": str(binding.track_id),
-        "option": str(binding.option_id),
-        "option_code": binding.option_code,
-        "channel": binding.customer_channel,
-        "deadline": binding.deadline.isoformat(),
-        "state": binding.state,
-        "decided": binding.decided,
-    }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-
-
-def _blocking_reason(binding: ReplyBinding, *, case_state: str | None, now: datetime) -> str | None:
-    """Why this reply must not be sent to a model, or ``None`` if it may be.
-
-    Every one of these is also checked by the reply step before the work exists, and by the
-    consuming transaction under the case lock afterwards. Repeating them here is not belt and
-    braces for correctness -- the lock-held check is the authoritative one -- it is a cost
-    control: the cheapest semantic call is the one nobody makes, and a request that settled
-    while its interpretation queued is a call worth not making.
-    """
-    if case_state not in approvals.LIVE_CASE_STATES:
-        return f"the case is {case_state}"
-    if binding.decided or binding.state not in OPEN_APPROVAL_STATES:
-        return f"the request is {binding.state}, not open"
-    if binding.state != ApprovalRequestState.SENT.value:
-        return "a confirmation prompt is already outstanding on this request"
-    if now > binding.deadline:
-        return "the approval window has closed"
-    if binding.sender != binding.customer_channel:
-        return "the reply did not arrive on the customer's own channel"
-    if len(binding.text) > MAX_UNTRUSTED_CHARACTERS:
-        # Longer than one customer message, so it is not one. Refused rather than truncated: a
-        # reading of the first four thousand characters of something else is not a reading.
-        return "the reply is longer than one customer message"
-    return None
-
-
-# ----------------------------------------------------------------------------- preparation
-
-
-@dataclass(frozen=True, slots=True)
-class PreparedIntent:
-    """One question put to a model about a customer's reply, and what came back."""
-
-    status: str
-    payload: dict[str, Any]
-
-
-async def prepare(
-    database: RuntimeDatabase,
-    provider: SemanticProvider,
-    *,
-    claim: StepClaim,
-) -> PreparedIntent | None:
-    """Fetch this step's reading, if it should have one, and store it on the claimed row.
-
-    Called by the worker between claiming the step and executing it -- the only moment in the
-    cycle when the process holds a lease on the work and no database transaction at all, which
-    is exactly what a call to somebody else's service needs.
-
-    It decides nothing. What it leaves behind is a label on a step row, and the transaction that
-    consumes it re-reads the request under lock before that label is worth anything at all.
-    """
-    async with database.begin() as connection:
-        stored = semantic_intake.stored_reading(await _stored_result(connection, claim.step_id))
-        if stored is not None and stored.get("status") == semantic_intake.STATUS_READ:
-            # A previous attempt already got an answer and died before the transition consumed
-            # it. Asking again would cost money to learn the same thing.
-            return None
-
-        now = await database_now(connection)
-        case_state = await _case_state(connection, claim.case_id)
-        binding = await _binding(connection, approvals.reply_of(claim.step_key))
-        blocked = (
-            "the reply names no approval request"
-            if binding is None
-            else _blocking_reason(binding, case_state=case_state, now=now)
-        )
-        fingerprint = None if binding is None else binding_fingerprint(binding)
-
-    if blocked is not None or binding is None:
-        return await _store(
-            database,
-            claim=claim,
-            prepared=PreparedIntent(
-                status=semantic_intake.STATUS_UNNEEDED,
-                payload={
-                    "status": semantic_intake.STATUS_UNNEEDED,
-                    "detail": blocked,
-                    "request_hash": fingerprint,
-                    "provider": provider.name,
-                },
-            ),
-        )
-
-    common: dict[str, Any] = {
-        "request_hash": fingerprint,
-        "provider": provider.name,
-        "job": approvals.STEP_INTERPRET_CUSTOMER_REPLY,
-    }
-    # The reply text, and nothing else at all. No order, no option, no customer, no case, no
-    # history -- §14.3 fixes this job's input as "reply text only", and a classifier that knew
-    # which answer would be convenient would be a classifier with a reason to give it.
-    request = ClassifyReplyIntentRequest(
-        reply=UntrustedText(text=binding.text),
-        metadata=SemanticMetadata(case_id=str(claim.case_id)),
-    )
-
-    crash.at(crash.BEFORE_SEMANTIC_CALL)
-    try:
-        result = await provider.run(request)
-    except SemanticValidationError as rejected:
-        # The model answered something the boundary refuses -- malformed output, or a word like
-        # ``APPROVE`` that is not in this job's closed vocabulary. Never repaired into the
-        # nearest acceptable label: silently widening ``APPROVE`` to ``APPARENT_APPROVE`` would
-        # be the boundary letting a model reach for authority and then filing off the reach.
-        prepared = PreparedIntent(
-            status=semantic_intake.STATUS_REJECTED,
-            payload={
-                **common,
-                "status": semantic_intake.STATUS_REJECTED,
-                "failure": rejected.category.value,
-                "detail": str(rejected),
-            },
-        )
-    except SemanticProviderError as unavailable:
-        prepared = PreparedIntent(
-            status=semantic_intake.STATUS_UNAVAILABLE,
-            payload={
-                **common,
-                "status": semantic_intake.STATUS_UNAVAILABLE,
-                "retryable": unavailable.retryable,
-                "detail": str(unavailable),
-            },
-        )
-    else:
-        telemetry = result.telemetry
-        prepared = PreparedIntent(
-            status=semantic_intake.STATUS_READ,
-            payload={
-                **common,
-                "status": semantic_intake.STATUS_READ,
-                "model_id": telemetry.model_id,
-                "provider_attempts": telemetry.attempts,
-                "input_tokens": telemetry.usage.input_tokens,
-                "output_tokens": telemetry.usage.output_tokens,
-                "latency_ms": telemetry.usage.latency_ms,
-                # One label. Not the prompt, not the model's prose, and not a word of what the
-                # customer wrote -- that is on ``inbound_replies``, where it belongs.
-                "reading": result.value.model_dump(mode="json"),
-            },
-        )
-
-    crash.at(crash.AFTER_SEMANTIC_CALL)
-    return await _store(database, claim=claim, prepared=prepared)
-
-
-async def _store(
-    database: RuntimeDatabase, *, claim: StepClaim, prepared: PreparedIntent
-) -> PreparedIntent | None:
-    """Write the reading onto the claimed row, or discover the claim is no longer ours.
-
-    Fenced by ``(state, lease_owner, attempts)`` like every other write this claim makes, so a
-    worker that stalled past its lease and woke up holding a label cannot put that label on a
-    row another worker is already executing.
-    """
-    async with database.begin() as connection:
-        affected = (
-            await connection.execute(
-                update(CaseStep)
-                .where(
-                    CaseStep.id == claim.step_id,
-                    CaseStep.state == "IN_FLIGHT",
-                    CaseStep.lease_owner == claim.lease_owner,
-                    CaseStep.attempts == claim.attempts,
-                )
-                .values(result={semantic_intake.RESULT_KEY: prepared.payload})
-            )
-        ).rowcount
-    if affected != 1:
-        logger.info(
-            "worker.customer_intent.claim_lost",
-            step_id=str(claim.step_id),
-            step_key=claim.step_key,
-            attempt=claim.attempts,
-        )
-        return None
-    logger.info(
-        "worker.customer_intent.prepared",
-        step_id=str(claim.step_id),
-        step_key=claim.step_key,
-        attempt=claim.attempts,
-        status=prepared.status,
-        provider=prepared.payload.get("provider"),
-        model_id=prepared.payload.get("model_id"),
-        # The label, never the words. §26 keeps a customer's message in the table a reader has
-        # to be entitled to open, and out of a log that is shipped, sampled and searchable.
-        apparent_intent=_label_of(prepared.payload),
-    )
-    return prepared
-
-
 # ------------------------------------------------------------------------------ consumption
 
 
@@ -421,7 +159,7 @@ async def execute(
     now: datetime,
     worker: str,
 ) -> StepOutcome:
-    """Decide what the label fetched outside this transaction is worth. Usually: one message.
+    """Decide whether this reply still earns the one question §13.6 allows. Usually: yes.
 
     The lock order is the system's -- case, then track, then request -- so a customer's literal
     ``YES`` arriving at the same moment serialises against this rather than racing it, and
@@ -477,37 +215,11 @@ async def execute(
             request_id=binding.request_id,
         )
 
-    row = (
-        await connection.execute(
-            select(CaseStep.result, CaseStep.attempts).where(
-                CaseStep.case_id == case.id, CaseStep.step_key == step_key
-            )
-        )
-    ).one()
-    stored = semantic_intake.stored_reading(row.result) or {}
-    status = stored.get("status")
-
-    if stored.get("request_hash") not in (None, binding_fingerprint(binding)):
-        return _noop(
-            outcome=OUTCOME_STALE,
-            detail="the reading was produced against a binding that has since changed",
-            request_id=binding.request_id,
-        )
-    if status == semantic_intake.STATUS_UNAVAILABLE and not retry.is_exhausted(row.attempts):
-        # Nothing is known about how the reply reads, and asking again may well work. Nothing is
-        # concluded from silence and the retry ladder is the ordinary one.
-        return StepOutcome(
-            disposition=Disposition.RETRYING,
-            event_type=EVENT_STEP_FAILED,
-            error=f"semantic reading unavailable: {stored.get('detail') or status}",
-        )
-
     return await _request_confirmation(
         connection,
         case=case,
         track=track,
         binding=binding,
-        stored=stored,
         now=now,
         worker=worker,
         step_key=step_key,
@@ -520,25 +232,26 @@ async def _request_confirmation(
     case: LockedCase,
     track: Any,
     binding: ReplyBinding,
-    stored: dict[str, Any],
     now: datetime,
     worker: str,
     step_key: str,
 ) -> StepOutcome:
     """Ask the customer for one of the two words, and change nothing else in the world.
 
-    Reached identically for every label and for every failure. ``APPARENT_APPROVE`` sends this
-    message; ``APPARENT_DECLINE`` sends this message; ``UNCLEAR`` sends this message; a model
-    that returned nonsense sends this message under §14.3's deterministic fallback, which is
-    ``UNCLEAR``. §13.6 says a decline must be literal too, "because it escalates" -- so an
-    apparent no is no more authoritative here than an apparent yes, and neither is authority.
+    Reached identically for every reply that was not one of the two words, whatever it said.
+    §13.6 says a decline must be literal too, "because it escalates" -- so an agreeable sentence
+    is no more authoritative here than a reluctant one, and neither is authority.
 
-    What this writes: the label on the reply row when a model actually produced one, the
-    request to ``CONFIRMATION_PENDING``, and one outbox message. What it does not write: the
-    track, which stays ``WAITING_FOR_CUSTOMER``; the case, which stays ``WAITING`` because a
+    The prompt is built from the request the reply is bound to: the customer's own name, their
+    own order reference and the option code this request offered. Not from the reply, and not
+    from any reading of it -- which is what makes the sentence the customer receives a property
+    of the conversation they are already in rather than of anything they just typed.
+
+    What this writes: the request to ``CONFIRMATION_PENDING``, and one outbox message. What it
+    does not write: the reply row, which keeps the words exactly as they arrived; the track,
+    which stays ``WAITING_FOR_CUSTOMER``; the case, which stays ``WAITING`` because a
     ``CONFIRMATION_PENDING`` request is still an open one; and any decision, ever.
     """
-    label = _label_of(stored)
     addressee = await _addressee(connection, binding.order_id)
     text = messaging.build_confirmation_prompt(
         messaging.ApprovalMessage(
@@ -557,19 +270,6 @@ async def _request_confirmation(
 
     key = approvals.confirmation_idempotency_key(binding.request_id, binding.reply_id)
     kind, address = split_channel(binding.customer_channel)
-    semantic = {
-        "status": stored.get("status"),
-        "provider": stored.get("provider"),
-        "model_id": stored.get("model_id"),
-        "provider_attempts": stored.get("provider_attempts"),
-        "failure": stored.get("failure"),
-        "request_hash": stored.get("request_hash"),
-        "input_tokens": stored.get("input_tokens"),
-        "output_tokens": stored.get("output_tokens"),
-        "latency_ms": stored.get("latency_ms"),
-        "apparent_intent": label,
-        "fallback": None if label is not None else FALLBACK_INTENT,
-    }
 
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
@@ -586,7 +286,6 @@ async def _request_confirmation(
             "request_state": ApprovalRequestState.CONFIRMATION_PENDING.value,
             "decided": False,
             "track_state": track.state,
-            "apparent_intent": label,
             "idempotency_key": key,
         },
         provenance={
@@ -595,23 +294,16 @@ async def _request_confirmation(
             "provider_message_id": binding.provider_message_id,
             "inbox_event_id": None,
             "sender_identity": binding.sender,
-            # Named explicitly, and null. A confirmation is not a reading of consent by any
-            # parser, and the field being present and empty says so louder than its absence.
+            # Both named explicitly, and both null. A confirmation is not a reading of consent
+            # by any parser, and per ADR-0008 no model read the reply that earned it. The
+            # fields being present and empty say so louder than their absence would.
             "parser": None,
-            "semantic": semantic,
+            "semantic": None,
             "executed_by": worker,
             "step_key": step_key,
         },
         occurred_at=now,
     ) as write:
-        if label is not None:
-            # Written only when a classifier genuinely produced it. A column filled in by
-            # guesswork would be indistinguishable later from one filled in by a model that ran.
-            await write.execute(
-                update(InboundReply)
-                .where(InboundReply.id == binding.reply_id)
-                .values(apparent_intent=label)
-            )
         moved = (
             await write.execute(
                 update(ApprovalRequest)
@@ -634,9 +326,10 @@ async def _request_confirmation(
         "approval.confirmation_requested",
         request_id=str(binding.request_id),
         track_id=str(track.id),
-        apparent_intent=label,
-        status=stored.get("status"),
-        provider=stored.get("provider"),
+        # The request and the track, never the words. §26 keeps a customer's message in the
+        # table a reader has to be entitled to open, and out of a log that is shipped,
+        # sampled and searchable.
+        reply_id=str(binding.reply_id),
     )
     return StepOutcome(
         disposition=Disposition.DONE,
@@ -672,7 +365,7 @@ async def _request_confirmation(
         events=(
             AppendEvent(
                 type=approvals.EVENT_APPROVAL_INTERPRETATION_RESOLVED,
-                payload={"status": stored.get("status"), "apparent_intent": label},
+                payload={"outcome": OUTCOME_CONFIRMATION_REQUESTED},
                 entity_refs=({"kind": "approval_request", "id": str(binding.request_id)},),
             ),
             AppendEvent(
@@ -689,8 +382,6 @@ async def _request_confirmation(
             "outcome": OUTCOME_CONFIRMATION_REQUESTED,
             "track_id": str(track.id),
             "request_id": str(binding.request_id),
-            "apparent_intent": label,
-            "status": stored.get("status"),
             "idempotency_key": key,
         },
     )
@@ -722,24 +413,6 @@ def _noop(*, outcome: str, detail: str, request_id: UUID | None) -> StepOutcome:
     )
 
 
-# ---------------------------------------------------------------------------------- reading
-
-
-def _label_of(stored: dict[str, Any]) -> str | None:
-    """The apparent intent a stored reading carries, validated on the way back out.
-
-    Re-validated through the same strict model rather than read as a string, so a row edited by
-    hand, or written by an older build, is refused here rather than becoming a label nobody
-    checked. ``None`` is the ordinary answer whenever no model produced one.
-    """
-    if stored.get("status") != semantic_intake.STATUS_READ:
-        return None
-    reading = stored.get("reading")
-    if not isinstance(reading, dict):
-        return None
-    return ReplyIntentReading.model_validate(reading).apparent_intent.value
-
-
 @dataclass(frozen=True, slots=True)
 class _Addressee:
     """Who the confirmation is going to, and which order it is about."""
@@ -764,9 +437,8 @@ async def _addressee(connection: AsyncConnection, order_id: str) -> _Addressee:
 async def _binding(connection: AsyncConnection, reply_id: UUID) -> ReplyBinding | None:
     """The reply and the request it names, read together and without a lock.
 
-    Used to find out *which* rows to lock, and -- in :func:`prepare`, where nothing is locked at
-    all -- to decide whether a call is worth making. The authoritative reading is
-    :func:`_bound`, against the request row this transaction holds.
+    Used to find out *which* rows to lock. The authoritative reading is :func:`_bound`, against
+    the request row this transaction holds once it has them.
     """
     row = (
         await connection.execute(
@@ -811,9 +483,9 @@ async def _binding(connection: AsyncConnection, reply_id: UUID) -> ReplyBinding 
 def _bound(probe: ReplyBinding, request: Any) -> ReplyBinding:
     """The same binding, with every request-owned field taken from the locked row.
 
-    The reply's half cannot move -- ``inbound_replies`` is written once and never updated except
-    for the label this module puts on it -- so only the request's half is re-read. That is the
-    half a decision, an expiry or a supersession changes.
+    The reply's half cannot move -- ``inbound_replies`` is written once and never updated by
+    anything at all -- so only the request's half is re-read. That is the half a decision, an
+    expiry or a supersession changes.
     """
     return ReplyBinding(
         reply_id=probe.reply_id,
@@ -846,34 +518,14 @@ async def _lock_request(connection: AsyncConnection, request_id: UUID) -> Any:
     ).one_or_none()
 
 
-async def _case_state(connection: AsyncConnection, case_id: UUID) -> str | None:
-    """The case's state, read without a lock: this is a decision about whether to spend money.
-
-    The authoritative check is the one the consuming transaction makes under the case lock. A
-    race here can only cause a reading nobody needed, which is a fraction of a cent and no
-    correctness at all.
-    """
-    state = await connection.scalar(select(Case.state).where(Case.id == case_id))
-    return None if state is None else str(state)
-
-
-async def _stored_result(connection: AsyncConnection, step_id: UUID) -> object:
-    return await connection.scalar(select(CaseStep.result).where(CaseStep.id == step_id))
-
-
 __all__: Sequence[str] = [
-    "FALLBACK_INTENT",
     "OUTCOME_ALREADY_SETTLED",
     "OUTCOME_CONFIRMATION_OUTSTANDING",
     "OUTCOME_CONFIRMATION_REQUESTED",
-    "OUTCOME_STALE",
     "OUTCOME_TOO_LATE",
     "OUTCOME_UNAUTHORIZED",
     "OUTCOME_UNBOUND",
     "CustomerIntentStateError",
-    "PreparedIntent",
     "ReplyBinding",
-    "binding_fingerprint",
     "execute",
-    "prepare",
 ]
