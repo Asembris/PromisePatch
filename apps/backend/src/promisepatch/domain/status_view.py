@@ -721,6 +721,155 @@ def _reason(item: PromiseView) -> str:
     return "no reason recorded"
 
 
+# --------------------------------------------------------- the same case, short enough to hear
+
+
+_SPOKEN_ORDER: Final[tuple[PromiseState, ...]] = tuple(PromiseState)
+"""The order counted groups are spoken in: the vocabulary's own declaration order.
+
+Fixed rather than derived from the case, so the same case is read out in the same order every
+time and a listener hearing two statuses a minute apart is comparing like with like.
+"""
+
+_SELF_EVIDENT_BAND: Final[frozenset[PromiseState]] = frozenset(
+    {PromiseState.UNTOUCHED, PromiseState.LINKED, PromiseState.WITHDRAWN}
+)
+"""States whose authority band is a restatement of the state rather than a second fact.
+
+:func:`_authority` returns ``NONE`` for exactly these, *because of* the state. Saying the band
+beside the phrase would be saying the same thing twice, so the spoken form says it once.
+"""
+
+
+def render_spoken(view: CaseView) -> str:
+    """The same case as :func:`render`, counted instead of named, for a worker who is listening.
+
+    G7 gives a spoken reply 40 words and a spoken plan 70. ``render`` spends one line of about
+    thirteen words on every promise -- a name, an order id, a phrase, a deadline and a reason --
+    so a case with more than two or three promises cannot fit, and the canonical six-promise
+    case is 104 words. This composes the same case shorter rather than cutting the long one:
+    **there is no truncation anywhere in this function**, and a case with more distinct postures
+    than the budget has room for is read out long rather than read out wrong.
+
+    What is dropped is identity -- which customer, which order, by when, and why. All of it
+    stays on the screen, which renders ``render``'s text and the per-promise bands beside it.
+
+    What is kept is every distinction the truthful vocabulary carries: the headline, the open
+    question and its options, each promise state present with its count, each authority band
+    present with its count, the escalation, and the counted claim about what was left alone.
+    """
+    lines = [view.sentence]
+    if view.question is not None:
+        # The same rule as ``render``: a worker told only that an answer is wanted has to guess
+        # what was asked, and a model filling that gap is the invention the boundary exists to
+        # stop. The options are joined with "or" because they are alternatives, not a list.
+        lines.append(view.question.question)
+        labels = [option.label for option in view.question.options]
+        if labels:
+            lines.append(f"Answer {_either(labels)}.")
+    if view.threatened:
+        lines.extend(_counted(view.threatened))
+    if view.promises:
+        lines.append(_untouched_claim(view))
+    return "\n".join(lines)
+
+
+def _counted(threatened: tuple[PromiseView, ...]) -> list[str]:
+    """Every threatened promise, as counts per state -- with the band named where it varies.
+
+    Two shapes, chosen by whether the authority band is a shared fact or a distinguishing one.
+    Where every threatened promise sits in one band the band is a header and is said once;
+    where they are spread, each state clause carries its own breakdown. Naming a shared thing
+    once is not an omission, and it is what makes the plan of a six-promise case fit in 35
+    words rather than 43.
+    """
+    groups = [
+        (state, tuple(item for item in threatened if item.state is state))
+        for state in _SPOKEN_ORDER
+    ]
+    present = [(state, items) for state, items in groups if items]
+    bands = _band_counts(threatened)
+    if len(bands) == 1 and any(state not in _SELF_EVIDENT_BAND for state, _ in present):
+        clauses = [_clause(items) for _, items in present]
+        header = _AUTHORITY_BAND[bands[0][0]]
+        # One state, whose own phrase is the band's: heading it with the band would say the
+        # same five words twice. `AUTHORIZED` is the case -- it is "covered by a standing
+        # preference" and so is the only band it can sit in.
+        if len(clauses) == 1 and present[0][1][0].phrase == _band_word(bands[0][0]):
+            return [f"{clauses[0]}."]
+        return [f"{header}: {_joined(clauses)}."]
+    return [_qualified(state, items) + "." for state, items in present]
+
+
+def _band_counts(items: tuple[PromiseView, ...]) -> list[tuple[Authority, int]]:
+    """How many of these promises sit in each authority band, in the band order ``render`` uses.
+
+    ``NONE`` is folded into ``UNDECIDED`` exactly as ``render`` folds it, so the two renderings
+    group one case the same way and cannot drift into two different accounts of it.
+    """
+    counts: list[tuple[Authority, int]] = []
+    for band in (
+        Authority.STANDING_PREFERENCE,
+        Authority.CUSTOMER,
+        Authority.OWNER,
+        Authority.UNDECIDED,
+    ):
+        found = sum(1 for item in items if _spoken_band(item.authority) is band)
+        if found:
+            counts.append((band, found))
+    return counts
+
+
+def _spoken_band(authority: Authority) -> Authority:
+    return Authority.UNDECIDED if authority is Authority.NONE else authority
+
+
+def _clause(items: tuple[PromiseView, ...]) -> str:
+    """One promise state and how many promises are in it. The phrase is the table's, unchanged."""
+    return f"{len(items)} {items[0].phrase}"
+
+
+def _qualified(state: PromiseState, items: tuple[PromiseView, ...]) -> str:
+    """One state's clause, carrying whose authority those promises change under.
+
+    Dropped in two cases, neither of which loses anything. A state whose band is a restatement
+    of itself is said once. And a band phrase that is word for word the state phrase --
+    ``AUTHORIZED`` is "covered by a standing preference", and so is its band -- is a stutter
+    rather than a second fact.
+    """
+    clause = _clause(items)
+    if state in _SELF_EVIDENT_BAND:
+        return clause
+    bands = _band_counts(items)
+    if len(bands) == 1:
+        phrase = _band_word(bands[0][0])
+        return clause if phrase == items[0].phrase else f"{clause}, {phrase}"
+    return f"{clause}: " + _joined([f"{count} {_band_word(band)}" for band, count in bands])
+
+
+def _band_word(band: Authority) -> str:
+    """A band title as it reads mid-sentence. The words are the table's; only the case changes."""
+    title = _AUTHORITY_BAND[band]
+    return title[0].lower() + title[1:]
+
+
+def _untouched_claim(view: CaseView) -> str:
+    """The product's central claim, counted -- the same sentence ``render`` heads its band with."""
+    count = len(view.untouched)
+    if count == 0:
+        return "No promise in this case was left alone."
+    if count == 1:
+        return "1 promise was left alone."
+    return f"{count} promises were left alone."
+
+
+def _either(labels: list[str]) -> str:
+    """Options offered as alternatives. A joining word, and nothing that could be a claim."""
+    if len(labels) == 1:
+        return labels[0]
+    return f"{', '.join(labels[:-1])}, or {labels[-1]}"
+
+
 def render_report_receipt() -> str:
     """What is said back the instant a worker's report is stored, and nothing more.
 
@@ -779,6 +928,41 @@ def render_confirmation(
         f"Confirmed: {_joined(parts)}. Nothing has been changed yet - "
         "ask me for the status to hear what actually happened."
     )
+
+
+def render_confirmation_spoken(
+    *, applying: int, awaiting_approval: int, escalated: int, already_confirmed: bool
+) -> str:
+    """The same confirmation, for a worker who is listening rather than reading.
+
+    :func:`render_confirmation` reaches 41 words in one branch -- applying *and* awaiting
+    approval *and* escalated, all non-zero -- which is one over the spoken budget. The only
+    thing this drops is the closing invitation to ask for the status, which is guidance about
+    the conversation rather than a fact about the case.
+
+    Every count survives, each band keeps its own wording, and "Nothing has been changed yet"
+    survives, because that clause is the whole reason the long one ends the way it does: a
+    listener who heard only the numbers is still told that nothing is done.
+    """
+    if already_confirmed:
+        return render_confirmation(
+            applying=applying,
+            awaiting_approval=awaiting_approval,
+            escalated=escalated,
+            already_confirmed=True,
+        )
+    parts: list[str] = []
+    if applying:
+        parts.append(f"{_orders(applying)} covered by a standing preference")
+    if awaiting_approval:
+        parts.append(f"{_orders(awaiting_approval)} where I still have to ask the customer")
+    if escalated:
+        parts.append(f"{_orders(escalated)} that need the owner")
+    if not parts:
+        return (
+            "Confirmed. There was nothing left for me to carry out, so no order is being changed."
+        )
+    return f"Confirmed: {_joined(parts)}. Nothing has been changed yet."
 
 
 _REVERSED_SENTENCES: Final[dict[str, tuple[str, str]]] = {
