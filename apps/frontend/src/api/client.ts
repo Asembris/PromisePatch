@@ -229,11 +229,18 @@ export async function withdrawTurn(body: {
  * cannot describe a plan, only name the one it was given, and the domain compares it under the
  * lock it writes with — so a yes that quotes a plan the case has moved past is refused rather
  * than applied to whatever is there now.
+ *
+ * `text` is present only when the worker *said* it, and it is sent unread. Nothing here decides
+ * whether a sentence was a yes: the server applies the literal rule the orchestrator already
+ * uses, and a sentence this module had interpreted would be a page authorising a plan
+ * (ADR-0015). Omitted, the explicit control was pressed and the press is the yes — no sentence
+ * is composed to stand in for one nobody said.
  */
 export async function confirmTurn(body: {
   command_id: string
   case_id: string
   plan_id: string
+  text?: string
 }): Promise<TurnAccepted> {
   return requestJson<TurnAccepted>('/api/conversation/confirm', { method: 'POST', body })
 }

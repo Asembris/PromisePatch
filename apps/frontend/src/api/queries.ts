@@ -383,14 +383,27 @@ export interface ConfirmTurnInput {
   caseId: string
   /** The plan identity the case response presented, quoted back. The screen never composes one. */
   planId: string
+  /**
+   * What the worker said, when they said it rather than pressed it.
+   *
+   * Forwarded unread. Whether these words are a yes is the server's to decide with the rule it
+   * already has, and this layer is structurally incapable of deciding it — there is nowhere here
+   * that looks at the string (ADR-0015). Absent for the explicit control, whose press is the yes.
+   */
+  text?: string
 }
 
 export function useConfirmTurn(): UseMutationResult<TurnAccepted, Error, ConfirmTurnInput> {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: ({ commandId, caseId, planId }: ConfirmTurnInput) =>
+    mutationFn: ({ commandId, caseId, planId, text }: ConfirmTurnInput) =>
       timed('confirm', () =>
-        confirmTurn({ command_id: commandId, case_id: caseId, plan_id: planId }),
+        confirmTurn({
+          command_id: commandId,
+          case_id: caseId,
+          plan_id: planId,
+          ...(text === undefined ? {} : { text }),
+        }),
       ),
     onSettled: (_result, _error, variables) => {
       void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })

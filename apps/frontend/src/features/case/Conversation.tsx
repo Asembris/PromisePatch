@@ -160,19 +160,49 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
     )
   }
 
-  function onConfirm(): void {
-    if (view.plan_id === null) return
+  /**
+   * One yes, to one plan, however the worker gave it.
+   *
+   * `said` carries their own words when they spoke or typed them, and is absent when they
+   * pressed the control. It is **forwarded and never inspected**: whether a sentence reads as a
+   * yes is decided by the server with the rule the conversational orchestrator already uses, and
+   * a panel that checked first would be a screen authorising a plan (ADR-0015). There is
+   * deliberately nothing here that looks at the string.
+   *
+   * `plan_id` is unchanged either way — the identity the case response rendered, quoted back, and
+   * compared under the confirming lock. A spoken yes is a yes to the plan that was read out and
+   * to nothing else, exactly as a pressed one is.
+   *
+   * The transcript quotes what was actually given: their sentence when there was one, and the
+   * control's own label when there was not. A control press is not a sentence and must not be
+   * shown as one somebody said.
+   */
+  async function sendConfirmation(said?: string): Promise<void> {
+    const planId = view.plan_id
+    if (planId === null) return
     announceTurnSent()
-    confirm.mutate(
-      { commandId: commandId(), caseId: view.case_id, planId: view.plan_id },
-      {
-        onSuccess: (accepted) => {
-          record('Yes, go ahead.', accepted)
-          reply(accepted)
-        },
-        onError: announceTurnRefused,
-      },
-    )
+    try {
+      const accepted = await confirm.mutateAsync({
+        commandId: commandId(),
+        caseId: view.case_id,
+        planId,
+        ...(said === undefined ? {} : { text: said }),
+      })
+      record(said ?? 'Yes, go ahead.', accepted)
+      reply(accepted)
+    } catch (failure) {
+      announceTurnRefused()
+      // Rethrown for the same reason the answer composer rethrows: only a rejection tells the
+      // composer the turn did not happen, and a worker's words are theirs to keep when it did
+      // not. The control has no words to keep and catches it at its own call site.
+      throw failure
+    }
+  }
+
+  function onConfirm(): void {
+    // The refusal is already on screen through `confirm.error`; this only stops an unhandled
+    // rejection from a control that has no field to hand a sentence back to.
+    void sendConfirmation().catch(() => undefined)
   }
 
   return (
@@ -240,7 +270,24 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
         ) : null}
         {stopped === null ? null : <Stopped result={stopped} />}
 
-        {mayConfirm ? <Confirm onConfirm={onConfirm} pending={pending} /> : null}
+        {mayConfirm ? (
+          <>
+            {/* The same composer every other spoken turn goes through, so a confirmation gets
+                the same capture, the same transcript review before anything is sent, the same
+                discard, and the same timing anchors. A misheard yes cannot be sent unseen
+                because there is no path here that sends anything unseen. */}
+            <TurnComposer
+              idPrefix="confirm"
+              label="say yes to this plan, in your own words"
+              placeholder="Yes, go ahead."
+              sendLabel="Send"
+              pendingLabel="Sending…"
+              pending={pending}
+              onSend={sendConfirmation}
+            />
+            <Confirm onConfirm={onConfirm} pending={pending} />
+          </>
+        ) : null}
         {mayWithdraw ? (
           <Withdraw onWithdraw={onWithdraw} pending={pending} sending={withdraw.isPending} />
         ) : null}
