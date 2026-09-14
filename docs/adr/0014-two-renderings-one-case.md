@@ -11,10 +11,11 @@ is that slice. It reopens no frozen decision: the state vocabulary, the authorit
 five tools, the plan identity and the server-derived actor are all untouched.
 
 The measurement was reproduced rather than inherited, and the breach is wider than §7 recorded
-because §7 counted one reason wording and one band mix. The canonical six-promise shape is
-**104 words** at `PLANNED` (budget 70) and **87** at `EXECUTING` (budget 40); `ANALYZED` is
-**99**. The overrun is entirely the **per-promise band** — one line per promise carrying a
-customer name, an order id, a state phrase, a deadline and a reason.
+because §7 counted one band mix. On the fixture the new budget tests pin, the canonical
+six-promise shape is **94 words** at `PLANNED` (budget 70), **83** at `EXECUTING` (budget 40)
+and **89** at `ANALYZED`; a twelve-promise case reaches **214**. The overrun is entirely the
+**per-promise band** — one line per promise carrying a customer name, an order id, a state
+phrase, a deadline and a reason.
 
 ## Decision
 
