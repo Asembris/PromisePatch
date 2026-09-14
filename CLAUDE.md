@@ -253,14 +253,30 @@ and no timing exists. Nine anti-patterns are forbidden outright. **No frontend w
 AWS resource was touched, nothing was deployed and no push was made.** See
 `docs/p7.1-judge-ux-contract.md` and `docs/p7.1-design-handoff.md`.
 
-**Full G5 is not closed and is not claimed to be.** Three items are carried forward as explicit
-G7 obligations, exactly as the cutoff directs and with no promised capability silently deleted:
+**The runtime customer-intent classifier is removed, and that G7 obligation is discharged.** The
+old finding was re-verified rather than assumed and was still true: `worker.py` called
+`customer_intent.prepare`, which made a synchronous Bedrock `classify_reply_intent` call between
+a customer's reply and the prompt telling them how to answer. Nothing authoritative depended on
+it -- every label, a malformed answer and an unreachable provider reached the same branch and
+produced the same message and the same state -- so what it cost was latency, money and a failure
+mode on the one path where a person is waiting. The call, the label and the unavailable-provider
+retry are gone; the literal parser, the sender, deadline and binding checks, the single
+confirmation prompt, `CONFIRMATION_PENDING`, the escalation on a second unreadable reply and the
+frozen wording are all unchanged, and the prompt is now built from the request the reply is
+bound to. Three guards keep it out: an import-linter contract forbidding
+`domain.customer_intent` both `domain.consent` and `promisepatch.semantic`, a source assertion
+over the module naming no provider, and a provider that raises if the consent path asks it about
+a customer's words. The step kind, the step-key prefix, the two `semantic_interpretation_*`
+event types, the module name and `inbound_replies.apparent_intent` are all retained as durable
+identities and historical data. The evaluation surface is untouched: `evals` keeps the 56
+customer-intent cases, both splits, the challenger records and every measurement, and
+`pp semantic-smoke` still asks that job. See `docs/customer-intent-classifier-removal.md`.
+
+**Full G5 is not closed and is not claimed to be.** Two items remain as explicit G7
+obligations, exactly as the cutoff directs and with no promised capability silently deleted:
 the **bounded withdrawal**, which is the fifth frozen tool and remains absent rather than
-stubbed; the **removal of the runtime customer-intent classifier**, whose superseding decision
-is recorded in ADR-0008 but whose removal is a separate implementation slice that has not been
-performed -- `domain.customer_intent` is still reached from the worker; and the **finishing of
-the case workspace** beyond the minimal real-state view P5.4 shipped. Nothing here reopens the
-locked roadmap, and P6 -- the deployed external loop -- may begin under it.
+stubbed; and the **finishing of the case workspace** beyond the minimal real-state view P5.4
+shipped. Nothing here reopens the locked roadmap.
 
 ## Authoritative documents
 

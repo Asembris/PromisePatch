@@ -1,9 +1,10 @@
 # ADR-0008 — Remove the runtime customer-intent classifier
 
-Status: accepted — supersedes the RETAIN decision in
+Status: accepted, and **implemented on 2026-09-14** — supersedes the RETAIN decision in
 [`customer-intent-architecture-closeout.md`](../customer-intent-architecture-closeout.md)
 Date: 2026-09-09
 Phase: 5
+Implementation: [`customer-intent-classifier-removal.md`](../customer-intent-classifier-removal.md)
 
 ## Decision
 
@@ -87,6 +88,31 @@ would delay a message whose content was never in doubt.
 - The removal itself is an implementation slice, not this document. If it is not completed
   before the roadmap's September 18 P5 cutoff, it is carried as a named MUST item under G7 and
   never silently dropped.
+
+## Implementation note (2026-09-14)
+
+Added after the fact, and changing no reasoning above. The removal landed as described, with one
+deliberate difference from the wording of the Decision, recorded here rather than quietly.
+
+*The `classify_reply_intent` provider call is gone from the runtime, entirely.* No production
+path reaches it, and an import-linter contract forbids `promisepatch.domain.customer_intent`
+from importing `promisepatch.semantic` at all.
+
+*The step kind `INTERPRET_CUSTOMER_REPLY` is retained, carrying only deterministic work.* The
+Decision says the step is removed; it is not, and this is why. The kind is a durable identity —
+it is on step rows, on audit rows and in the ledger of every case ever run — so renaming it
+would orphan any step in flight and would rewrite history to describe today. The second
+transaction it names is also worth keeping on its own merits: it re-reads the request under the
+system's lock order, which is where a literal `YES` racing the prompt wins absolutely. What it
+no longer does is ask anybody anything. The same applies to the step-key prefix
+`interpret-reply:` and to the two `approval.semantic_interpretation_*` event types.
+
+Also retained, for the reasons this ADR already gives: the whole `classify_reply_intent` job
+(contract, prompt, schema, validators, scorers, the `ApparentIntent` vocabulary) because the
+evaluation surface is untouched, and `inbound_replies.apparent_intent`, which holds the labels
+taken while the classifier ran and is now written by nothing.
+
+Full record: [`customer-intent-classifier-removal.md`](../customer-intent-classifier-removal.md).
 
 ## Revisit trigger
 
