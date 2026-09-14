@@ -73,7 +73,7 @@ ADR-0009.
 
 **P5.2, clarification and plan confirmation, is done.** The surface is now four of the five
 frozen tools -- `report`, `clarify`, `confirm`, `status` -- with the bounded withdrawal still
-absent rather than stubbed. `clarify` stores the worker's answer to the one open question byte
+absent rather than stubbed *at that time*; it has since landed. `clarify` stores the worker's answer to the one open question byte
 for byte and hands the case back to the interpreter, concluding nothing; which physical outcome
 that answer selects is decided by the worker process, against options captured from the
 delivery's own rows when the question was asked. `confirm` requires a **`plan_id`**: a derived,
@@ -244,8 +244,8 @@ enumerate; the canonical demo is the frozen manifest's **`S11`**, where Lena's o
 removes her dependency *before* the incident, so her untouched row is contingent rather than
 arranged. The worker's sequence is locked against the orchestrator's own permitted-verb mapping,
 and two capabilities are recorded as genuinely absent rather than drawn as disabled controls:
-the **bounded withdrawal**, and **correcting a physical fact**, which exists in the domain but is
-reachable only from the CLI. The evidence section names, per judge question, the field that
+the **bounded withdrawal** (since implemented -- see below), and **correcting a physical fact**,
+which exists in the domain but is reachable only from the CLI. The evidence section names, per judge question, the field that
 answers it -- and **three P7.3 backend additions** where no field exists: the causal chain
 itself, the incident-caused-effect count on untouched orders, and the MCP correlation id. The
 Alexa+ voice contract is specified and **implemented nowhere**; no voice turn has been recorded
@@ -272,11 +272,30 @@ identities and historical data. The evaluation surface is untouched: `evals` kee
 customer-intent cases, both splits, the challenger records and every measurement, and
 `pp semantic-smoke` still asks that job. See `docs/customer-intent-classifier-removal.md`.
 
-**Full G5 is not closed and is not claimed to be.** Two items remain as explicit G7
-obligations, exactly as the cutoff directs and with no promised capability silently deleted:
-the **bounded withdrawal**, which is the fifth frozen tool and remains absent rather than
-stubbed; and the **finishing of the case workspace** beyond the minimal real-state view P5.4
-shipped. Nothing here reopens the locked roadmap.
+**The bounded withdrawal is implemented, and that G7 obligation is discharged.** The fifth
+frozen tool exists across the domain, both transports, the orchestrator and the case workspace,
+and every branch of it was reconstructed from the frozen sources rather than designed. A case
+with no consequential write reaches `CANCELLED` and every live track `WITHDRAWN`; a case that
+had already done something reverses what is reversible -- this case's production holds, its
+still-open approval requests, its undispatched effects and its unclaimed steps -- escalates
+every live track with a reason, and settles at `RESOLVED` carrying `needs_owner_attention`. It
+reverses **no** physical fact, unsays **no** customer decision, and rewrites **no** delivered
+effect: an amendment the order system accepted and a message a customer received are reported
+as *applied*, in sentences the domain composed, and the rendered speech is asserted never to
+read as an undo. A terminal case is refused rather than answered. The actor stays server-derived
+and no request field anywhere can name one, a reason or a physical claim. The verb is offered in
+`CLARIFYING` and `PLANNED` only, which is the frozen per-phase table read literally, and the
+screen draws the control only where `permitted_verbs` says so -- never disabled elsewhere.
+Proved by 70 targeted tests including three end to end over the real MCP transport; no live
+model call, nothing deployed, both holdouts sealed. One frozen item is deliberately **not**
+built and is stated rather than left to be found: §23's "please disregard" customer message,
+which has no precedent in this build and whose owner handoff is implemented instead. See
+`docs/bounded-withdrawal.md`.
+
+**Full G5 is not closed and is not claimed to be.** One item remains as an explicit G7
+obligation, exactly as the cutoff directs and with no promised capability silently deleted: the
+**finishing of the case workspace** beyond the minimal real-state view P5.4 shipped. Nothing
+here reopens the locked roadmap.
 
 ## Authoritative documents
 
