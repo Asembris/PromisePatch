@@ -282,6 +282,7 @@ CONVERSATION_FIELDS: dict[str, frozenset[str]] = {
     "ReportTurn": frozenset({"command_id", "text"}),
     "ClarifyTurn": frozenset({"command_id", "case_id", "text"}),
     "ConfirmTurn": frozenset({"command_id", "case_id", "plan_id"}),
+    "WithdrawTurn": frozenset({"command_id", "case_id"}),
 }
 """Every field a browser may put in a conversation request. Stated whole, not sampled.
 
@@ -348,7 +349,7 @@ def test_no_conversation_request_carries_an_actor_or_a_clock(api: TestClient) ->
 
 
 def test_every_conversation_route_is_a_session_mutation(api: TestClient) -> None:
-    """Three POSTs and nothing else: no read, no delete, no route that skipped the list."""
+    """Four POSTs and nothing else: no read, no delete, no route that skipped the list."""
     schema = api.get("/openapi.json").json()
 
     conversation = {
@@ -361,6 +362,7 @@ def test_every_conversation_route_is_a_session_mutation(api: TestClient) -> None
         "/api/conversation/report": {"post"},
         "/api/conversation/clarify": {"post"},
         "/api/conversation/confirm": {"post"},
+        "/api/conversation/withdraw": {"post"},
     }
 
 
