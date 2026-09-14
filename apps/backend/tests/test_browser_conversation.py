@@ -38,6 +38,7 @@ from promisepatch.api.schemas.cases import CaseWorkspaceResponse
 from promisepatch.config import Settings
 from promisepatch.domain.physical import case_id_for
 from promisepatch.main import create_app
+from promisepatch.orchestrator import policy
 
 pytestmark = pytest.mark.integration
 
@@ -603,6 +604,245 @@ async def test_every_turn_answers_with_a_spoken_form_inside_the_reply_budget(
     # this clause to fit would be the exact failure the budget must never buy.
     assert "Nothing has been changed yet" in body["spoken"]
     assert body["speech"] != body["spoken"]
+
+
+# ---------------------------------------------------------------- a yes somebody actually said
+#
+# ADR-0015. The words travel; the server reads them with the rule the orchestrator already uses;
+# the plan binding is untouched. These tests are about the one thing that is new -- that a
+# sentence is read here and not in a browser -- and about the three things that are not: which
+# plan a yes is about, who it is attributed to, and what a refusal leaves behind.
+
+
+async def test_a_spoken_plain_yes_confirms_the_plan_that_was_read_out(
+    worker: Browser, physical: Intake
+) -> None:
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await worker.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": view.plan_id,
+            "text": "yes, go ahead",
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    assert response.json()["attested_by"] == BAKER
+    assert (await physical.case(case_id)).state == "EXECUTING"
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "yes but not the strawberries",
+        "what does that mean for the wedding cake",
+        "hold on",
+        "no",
+        "cancel that",
+        "the strawberries came",
+    ],
+)
+async def test_a_spoken_sentence_that_is_not_a_plain_yes_confirms_nothing(
+    worker: Browser, physical: Intake, said: str
+) -> None:
+    """A qualification, a question, a refusal and an unrelated statement all reach one answer.
+
+    None of them is re-routed anywhere. The case is not clarified, not withdrawn and not asked a
+    question -- doing something else with words nobody could read as agreement would be the
+    surface guessing at what a worker meant.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await worker.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": view.plan_id,
+            "text": said,
+        },
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "NOT_A_PLAIN_YES"
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_a_spoken_yes_quoting_a_plan_the_case_is_not_offering_is_refused(
+    worker: Browser, physical: Intake
+) -> None:
+    """The literal rule is an extra gate, never a way around the plan binding.
+
+    A perfectly good yes against a stale identity is still ``PLAN_SUPERSEDED``, by the same code
+    path and the same lock a pressed confirmation goes through.
+    """
+    case_id = await planned(physical)
+
+    response = await worker.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": "0000000000000000",
+            "text": "yes, go ahead",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PLAN_SUPERSEDED"
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_a_sentence_that_is_not_a_yes_is_refused_before_the_plan_is_even_looked_at(
+    worker: Browser, physical: Intake
+) -> None:
+    """Both gates fail closed, and the one that runs first writes nothing.
+
+    A non-yes carrying a stale plan identity answers ``NOT_A_PLAIN_YES`` rather than
+    ``PLAN_SUPERSEDED``, which is the observable proof that no command reached the domain.
+    """
+    case_id = await planned(physical)
+
+    response = await worker.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": "0000000000000000",
+            "text": "no",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "NOT_A_PLAIN_YES"
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_a_spoken_yes_cannot_name_the_worker_who_gave_it(
+    worker: Browser, physical: Intake
+) -> None:
+    """The one field a spoken confirmation adds is words. It did not open a second one."""
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await worker.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": view.plan_id,
+            "text": "yes",
+            "worker_id": OWNER,
+        },
+    )
+
+    assert response.status_code == 422
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_a_pressed_confirmation_carries_no_words_and_is_unchanged(
+    worker: Browser, physical: Intake
+) -> None:
+    """The absence of the field is the control, and it still confirms.
+
+    The press is itself the yes: there is no sentence to read, and nothing fabricates one.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await worker.say(
+        "confirm",
+        {"command_id": str(uuid4()), "case_id": str(case_id), "plan_id": view.plan_id},
+    )
+
+    assert response.status_code == 202, response.text
+    assert (await physical.case(case_id)).state == "EXECUTING"
+
+
+@pytest.mark.parametrize("words", [None, "yes, go ahead"])
+async def test_the_control_and_a_spoken_yes_reach_one_route_and_one_answer(
+    worker: Browser, physical: Intake, words: str | None
+) -> None:
+    """One act, two ways of giving it, against the same case from the same starting world.
+
+    The two bodies differ by exactly one field -- the worker's own words, which the server reads
+    and a caller cannot act on -- and by nothing that decides anything. Same endpoint, same plan
+    binding, same attribution, same resulting state.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+    body: dict[str, Any] = {
+        "command_id": str(uuid4()),
+        "case_id": str(case_id),
+        "plan_id": view.plan_id,
+    }
+    if words is not None:
+        body["text"] = words
+
+    response = await worker.say("confirm", body)
+
+    assert response.status_code == 202, response.text
+    accepted = response.json()
+    assert accepted["attested_by"] == BAKER
+    assert accepted["state"] == "EXECUTING"
+    # A permission, never an outcome -- and the same sentence whichever way the yes was given.
+    assert "Nothing has been changed yet" in accepted["speech"]
+    assert (await physical.case(case_id)).state == "EXECUTING"
+
+
+async def test_the_spoken_rule_is_the_orchestrators_own(worker: Browser, physical: Intake) -> None:
+    """One rule, not two that can drift.
+
+    Asserted against the function itself rather than against a copy of its word list, so a
+    change to the orchestrator's affirmations moves this route with it or fails here.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+    said = next(iter(sorted(policy.AFFIRMATIONS)))
+    assert policy.reads_as_worker_confirmation(said) is True
+
+    response = await worker.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": view.plan_id,
+            "text": said,
+        },
+    )
+
+    assert response.status_code == 202, response.text
+
+
+async def test_an_observer_cannot_confirm_by_saying_yes_either(
+    observer: Browser, worker: Browser, physical: Intake
+) -> None:
+    """The literal rule gates what a sentence means, never who may say it.
+
+    Permission is still the domain's, and it refuses this caller after the words were read as a
+    perfectly good yes.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await observer.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": view.plan_id,
+            "text": "yes, go ahead",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CASE_NOT_PERMITTED"
+    assert (await physical.case(case_id)).state == "PLANNED"
 
 
 # --------------------------------------------------- a withdrawal, and what it cannot undo
