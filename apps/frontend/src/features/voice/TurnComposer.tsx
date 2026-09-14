@@ -21,6 +21,7 @@
  * between turns this component holds no microphone at all.
  */
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { captureStarted, speechEnded } from '../../instrumentation/turnTiming'
 import { speechCaptureAvailable, startCapture, type Capture } from './speech'
 
 /**
@@ -89,11 +90,20 @@ export function TurnComposer({
   function beginListening(): void {
     setTrouble(null)
     setHeard(null)
+    // A fresh capture, so nothing left over from an abandoned one is this turn's speech end.
+    captureStarted()
     const started = startCapture({
       onTranscript: (spoken) => {
         setHeard(spoken)
       },
+      // Both candidate speech-end instants are written down and neither is chosen. Which one
+      // G7's "speech ending" means is not declared, and the surface is not the place to decide
+      // it: a later slice picks in the open, with both readings in front of it.
+      onFinalResult: () => {
+        speechEnded('final_result')
+      },
       onEnd: () => {
+        speechEnded('recogniser_end')
         capture.current = null
         setListening(false)
       },
