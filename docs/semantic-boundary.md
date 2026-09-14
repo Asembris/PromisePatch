@@ -53,6 +53,13 @@ no database handle, imports no SQLAlchemy model and cannot be given one.
 |---|---|---|---|
 | `interpret_utterance` | one worker sentence, plus the graph's own vocabulary: resources with aliases, open commitments and their lines, equipment | a category, candidate bindings with confidence and evidence spans, scope and quantity hints, an advisory "this looked ambiguous" flag | the category was not offered, or any identifier is not a supplied candidate |
 | `classify_reply_intent` | one customer reply, and nothing else | `APPARENT_APPROVE` / `APPARENT_DECLINE` / `UNCLEAR` | the label is outside that closed set |
+
+`classify_reply_intent` is **evaluated-but-not-selected capability**. Per ADR-0008 it is not
+wired into production: no runtime path calls it, and an import-linter contract stops one being
+added. The job, its prompt, its schema and its scorers are kept whole because the evaluation
+surface is kept whole — the 56 gold cases, both splits, the challenger records and every
+measurement already taken. It is also what `pp semantic-smoke` asks, because a diagnostic that
+proves the machine can reach a model needs a small, safe question and this is the smallest one.
 | `verbalise` | deterministic facts already decided, each with an id, the subset the passage may not leave out, and a word limit | one short passage plus the ids of the facts it rests on | the passage exceeds the word limit, refers to a fact nobody supplied, or drops a required one |
 
 Each job defines exactly one tool, whose input schema is generated from the result model, so
@@ -286,79 +293,91 @@ for all along.
 No migration was needed for any of this. The step ledger already had a fenced result column,
 and the audit ledger already had provenance.
 
-## Where it is wired: reading a customer's reply
+## Where it is deliberately not wired: reading a customer's reply
 
-The second place a model is asked anything is the consent protocol, and it is the place where
-the boundary matters most, because the thing on the other side of it is somebody's consent.
+The second place a model **is not** asked anything is the consent protocol, and it is the place
+where the boundary matters most, because the thing on the other side of it is somebody's consent.
 
-### The order of the two readers
+### The order of the two readers, and then only one
 
 Every inbound reply goes to the literal parser first, always, and a reply that is exactly `YES`
 or exactly `NO` becomes an `ApprovalDecision` without a model being asked. That is asserted as a
 count rather than described: the customer-intent suite proves **zero** provider calls for each
 of them. Consent does not depend on a network, and a slow model cannot delay an answer.
 
-Only a reply that the parser could not read — on a request that is open, undecided, in date and
-from the customer's own channel — becomes a candidate for `classify_reply_intent`. Every one of
-those conditions is checked by the reply step *before* the semantic work exists, so an
-unauthorised sender, a closed window, a settled request and a redelivered message each cost
-nothing at all. The step that would make a model call is never created.
+A reply the parser cannot read is not sent anywhere either. ADR-0008 removed the synchronous
+`classify_reply_intent` call from this path: the reply is stored verbatim, it decides nothing,
+and the one question it earns is built from the request it is bound to. So the second reader
+described in earlier revisions of this document no longer exists, and the assertion is a
+provider that raises if it is asked about a customer's words at all.
 
-### What the reading buys
+Whether that further question is asked is still gated the same way — the request must be open,
+undecided, in date and on the customer's own channel — and every one of those conditions is
+checked by the reply step *before* any further work exists. An unauthorised sender, a closed
+window, a settled request and a redelivered message each produce no step at all.
 
-One message. `§13.6` gives all three labels — `APPARENT_APPROVE`, `APPARENT_DECLINE`,
-`UNCLEAR` — the same response, and so does `§14.3`'s deterministic fallback for the job, which
-is `UNCLEAR`. So the protocol is:
+### What an unreadable reply buys
+
+One message. `§13.6` gives every reply that is not one of the two words the same response,
+whether it sounds like agreement, refusal or neither:
 
 ```text
 reply the parser cannot read, request SENT
-  → classify_reply_intent (non-authoritative)
-  → store apparent_intent on inbound_replies
   → one confirmation prompt: "To confirm this change, reply YES. Reply NO to decline."
   → request CONFIRMATION_PENDING; track WAITING_FOR_CUSTOMER; case WAITING
 ```
 
-A model that answered `APPARENT_APPROVE`, a model that answered `APPARENT_DECLINE`, a model that
-returned malformed JSON and a model that could not be reached at all produce the *identical*
-message and the *identical* state. The label changes what the ledger records; it changes nothing
-about what happens. That is why a prompt-injected reply buys nothing: a model complying with it
-perfectly still results in the customer being asked to type `YES` or `NO`.
+The prompt is composed from the customer's own name, their own order reference and the option
+code this request offered — never from the reply, and never from any reading of it. `§14.3`'s
+deterministic fallback is therefore not a fallback any more; it is the only path. That is also
+why a prompt-injected reply buys nothing: there is nobody here to instruct. The text reaches a
+table and a message builder that never reads it.
 
-A second reply the parser cannot read is not classified again. `§13.6` escalates the track with
+A second reply the parser cannot read is not asked about again. `§13.6` escalates the track with
 the raw text attached, which is also the whole of the duplicate-prompt defence — the state that
 permits a prompt is the state the prompt removes.
 
 ### The structural half
 
 `promisepatch.domain.customer_intent` is a separate module from `promisepatch.domain.approvals`
-for one reason: it names no decision. It does not import the literal parser (an import-linter
-contract), and its source contains no `ApprovalDecision`, no `approval_decisions`, no
-`ParserKind` and no `ApprovalDecisionKind` (a test reads the file and asserts it). There is no
-line in it to review for safety, because there is no line in it that could be unsafe.
+for one reason: it names no decision. It imports neither the literal parser nor
+`promisepatch.semantic` (one import-linter contract covers both), and its source contains no
+`ApprovalDecision`, no `approval_decisions`, no `ParserKind`, no `ApprovalDecisionKind` and no
+provider type (a test reads the file and asserts it). There is no line in it to review for
+safety, because there is no line in it that could be unsafe.
+
+The step kind is still `INTERPRET_CUSTOMER_REPLY`, and the two domain events are still
+`approval.semantic_interpretation_requested` and `approval.semantic_interpretation_resolved`.
+Those names are older than the work they now name. They are durable identities — on step rows,
+on audit rows and in the ledger of every case ever run — so they are left alone rather than
+rewritten to describe today.
 
 ### The races, and who wins them
 
-- A literal `YES` arriving while the model is still reading an earlier reply decides the
-  request. The reading comes back, finds it answered, and no-ops — no prompt, no second
+- A literal `YES` that commits while the confirmation step is claimed decides the request. The
+  confirmation transaction runs, finds it answered, and no-ops — no prompt, no second
   transition, nothing disturbed.
-- A deadline that closes during the call sends no prompt. The consuming transaction compares
-  against the database's clock, so a model that took its time cannot extend a customer's window.
+- A deadline that closes in that same window sends no prompt. The transaction compares against
+  the database's clock, so a worker's backlog cannot extend a customer's window.
 - A decision that lands before the queued prompt is dispatched stops it going out, through the
   same pre-flight that refuses a late approval request. The customer is never asked about
   something they have already answered. (The refusal is a terminal outbox failure, so the case
   is flagged for owner attention — a message we composed was not sent, and the ledger says so.)
-- A crash before the call leaves the work to be redone; a crash after it leaves the answer on
-  the step row, so a restart consumes it rather than paying for it twice.
+- A crash before the confirmation commits leaves the work to be redone, and nothing of it
+  reached the database.
 
-Provenance runs `InboundReply → parser miss → classify_reply_intent → label → confirmation
-requested → outbound prompt → later literal YES/NO → ApprovalDecision`. The audit row for the
-confirmation is `actor = SYSTEM`, `authority = NONE`, `parser = null`; the audit row for the
-decision is `actor = CUSTOMER`, `authority = HUMAN_APPROVAL`, `parser = LITERAL`, and carries no
-semantic provenance at all. The ledger never says a model approved anything, because it did not.
+Provenance runs `InboundReply → parser miss → confirmation requested → outbound prompt → later
+literal YES/NO → ApprovalDecision`. The audit row for the confirmation is `actor = SYSTEM`,
+`authority = NONE`, `parser = null`, `semantic = null`; the audit row for the decision is
+`actor = CUSTOMER`, `authority = HUMAN_APPROVAL`, `parser = LITERAL`, and carries no semantic
+provenance at all. The ledger never says a model approved anything, because none ever read a
+word of it.
 
-No migration was needed. `approval_requests.state` already permitted `CONFIRMATION_PENDING` and
-`inbound_replies.apparent_intent` already existed — both were written into the baseline schema
-by the slice that froze the protocol, long before anything could fill them in.
+No migration was needed, in either direction. `approval_requests.state` already permitted
+`CONFIRMATION_PENDING` and `inbound_replies.apparent_intent` already existed — both written into
+the baseline schema by the slice that froze the protocol. The column is retained and is now
+written by nothing: it holds the labels taken while the classifier ran, and rows created since
+carry `null`.
 
 ## Where it is wired: explaining a settled outcome
 
