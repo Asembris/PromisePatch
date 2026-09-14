@@ -411,6 +411,8 @@ export interface CaseWorkspaceResponse {
   awaiting_confirmation: boolean
   /** The whole case, spoken, exactly as the status tool renders it. Rendered verbatim, never cut. */
   speech: string
+  /** The same case composed short enough to hear. Spoken aloud; never trimmed here. */
+  spoken: string
   /** Whether the domain would let this caller say anything to this case. Never inferred here. */
   may_speak: boolean
   /** What this caller may do to this case now. The backend's list; the screen filters nothing. */
@@ -447,6 +449,8 @@ export interface TurnAccepted {
   attested_by: string
   /** Rendered by the domain. Displayed verbatim. */
   speech: string
+  /** The same answer composed short enough to hear. Spoken aloud; never trimmed here. */
+  spoken: string
 }
 
 /**
@@ -473,6 +477,8 @@ export interface WithdrawalAccepted {
   applied: string[]
   /** Rendered by the domain. Displayed verbatim. */
   speech: string
+  /** The same answer composed short enough to hear. Spoken aloud; never trimmed here. */
+  spoken: string
 }
 
 export interface CaseSummaryView {

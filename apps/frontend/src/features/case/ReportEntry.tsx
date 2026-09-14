@@ -62,7 +62,7 @@ export function ReportEntry({ onOpened }: { onOpened: (caseId: string) => void }
     // The backend's receipt for the statement it wrote down, byte for byte. It is spoken before
     // the case opens because it is this turn's answer, and the workspace that follows says
     // nothing aloud of its own accord.
-    speakTurnReply(accepted.speech)
+    speakTurnReply(accepted.spoken)
     // The id the backend derived, not one composed here. Navigation is the only thing that
     // happens on success: the case it opens is read from the server like any other.
     onOpened(accepted.case_id)

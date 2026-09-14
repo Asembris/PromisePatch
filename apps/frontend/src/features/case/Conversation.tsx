@@ -110,11 +110,13 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
    *
    * Three audible moments and not one more: the acknowledgement when the turn leaves, the
    * backend's own sentence when it comes back, and a statement that nothing happened when it was
-   * refused. The middle one is `accepted.speech` byte for byte — this panel composes no sentence
-   * for a screen and composes none for a loudspeaker either.
+   * refused. The middle one is `accepted.spoken` byte for byte — the backend's own short
+   * rendering of the same answer (ADR-0014). This panel composes no sentence for a screen and
+   * composes none for a loudspeaker either; it chooses which of two server-composed strings
+   * goes to which, and can neither shorten nor lengthen either one.
    */
-  function reply(accepted: { speech: string }): void {
-    speakTurnReply(accepted.speech)
+  function reply(accepted: { spoken: string }): void {
+    speakTurnReply(accepted.spoken)
   }
 
   async function onAnswer(text: string): Promise<void> {
@@ -149,6 +151,7 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
             created: accepted.created,
             attested_by: accepted.withdrawn_by,
             speech: accepted.speech,
+            spoken: accepted.spoken,
           })
           reply(accepted)
         },
@@ -191,7 +194,7 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
           {view.speech}
         </p>
 
-        <ReadAloud text={view.speech} />
+        <ReadAloud text={view.spoken} />
 
         {exchanges.length === 0 ? null : (
           <ol className="space-y-2.5" data-testid="conversation-transcript">
@@ -273,9 +276,10 @@ function VoiceStateChip({ state }: { state: CaseVoiceState }): ReactNode {
  * interruption and retry being available throughout.
  *
  * Offered only where the browser has a voice of its own, because there is nothing to fall back
- * to and a dead control is worse than an absent one. It reads `speech` and can read nothing
- * else: there is no field here for a summary, and a spoken paraphrase of a plan is exactly the
- * failure the whole rendering rule exists to prevent.
+ * to and a dead control is worse than an absent one. It reads `spoken` — the backend's own
+ * short rendering of the same case — and can read nothing else: there is no field here for a
+ * summary this screen made, and a spoken paraphrase of a plan is exactly the failure the whole
+ * rendering rule exists to prevent.
  */
 function ReadAloud({ text }: { text: string }): ReactNode {
   const [available] = useState(() => speechPlaybackAvailable())
