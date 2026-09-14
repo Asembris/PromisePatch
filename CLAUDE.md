@@ -292,10 +292,25 @@ built and is stated rather than left to be found: §23's "please disregard" cust
 which has no precedent in this build and whose owner handoff is implemented instead. See
 `docs/bounded-withdrawal.md`.
 
-**Full G5 is not closed and is not claimed to be.** One item remains as an explicit G7
-obligation, exactly as the cutoff directs and with no promised capability silently deleted: the
-**finishing of the case workspace** beyond the minimal real-state view P5.4 shipped. Nothing
-here reopens the locked roadmap.
+**The case workspace is finished, and with it every item G5 carried into G7.** The third and
+last deferral -- the **finishing of the case workspace** beyond the minimal real-state view P5.4
+shipped -- is closed against the frozen G7 text rather than against a later paraphrase of it: one
+primary workspace on one route, a concise promise view, a stable dependency view whose four
+columns hold their geometry on every row, an expandable evidence drawer that arrives with the
+case, causal explanation only where a path exists, unrelated promises visible and quiet and
+counted, every status carried by a phrase and a state name and a marker shape rather than by
+colour, an owner and a next action and a reason on every blocked promise, and a reload, a restored
+tab or a second browser landing on the same durable case. Each criterion has a named passing test;
+238 frontend tests across 22 files pass on the working tree, none of them changed by the closeout.
+Two later documents said this was still open without naming a criterion it failed -- they copied a
+three-item list forward while the withdrawal beside it was genuinely open -- and they are left
+unedited, because each recorded truthfully what its own slice did. One design item stays recorded
+as unmet where it was recorded: the five demo-critical frames do not each compose in one unscrolled
+1280x800 viewport, a composition preference from this project's own P7.1 handoff list traded
+deliberately against the causal rows, and not a frozen criterion. **G7 as a whole remains open** --
+the ten-turn voice measurement, the comprehension check and the sixteen-scenario runner are
+untouched by this. Nothing here reopens the locked roadmap. See
+`docs/case-workspace-closeout.md`.
 
 ## Authoritative documents
 
