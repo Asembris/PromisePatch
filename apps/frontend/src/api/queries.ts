@@ -38,6 +38,7 @@ import {
   reportTurn,
   withdrawTurn,
 } from './client'
+import { responseReceived, turnSent, type TurnVerb } from '../instrumentation/turnTiming'
 import type {
   CaseListResponse,
   CaseWorkspaceResponse,
@@ -313,6 +314,30 @@ export interface ReportTurnInput {
 }
 
 /**
+ * One turn, with the two transport instants written down around it.
+ *
+ * Here rather than at the four call sites because this is the one place every turn actually
+ * leaves the browser: a verb instrumented at its button would be an anchor somebody has to
+ * remember to add, and the first one forgotten would be discovered as a hole in a measurement
+ * that had already been published.
+ *
+ * The send is stamped *before* the request is issued and the response *whichever way it went* —
+ * a refusal is a response and is timed like one. It records and it does not interpret: no
+ * duration is computed here and no claim about latency exists anywhere in this build.
+ */
+async function timed<T>(verb: TurnVerb, send: () => Promise<T>): Promise<T> {
+  turnSent(verb)
+  try {
+    const answer = await send()
+    responseReceived('accepted')
+    return answer
+  } catch (failure) {
+    responseReceived('refused')
+    throw failure
+  }
+}
+
+/**
  * The first thing anybody says to this product: what happened, in their own words.
  *
  * It carries no case id because there is no case yet — the backend derives one from the command
@@ -328,7 +353,7 @@ export function useReportTurn(): UseMutationResult<TurnAccepted, Error, ReportTu
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ commandId, text }: ReportTurnInput) =>
-      reportTurn({ command_id: commandId, text }),
+      timed('report', () => reportTurn({ command_id: commandId, text })),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: casesKey })
     },
@@ -345,7 +370,7 @@ export function useClarifyTurn(): UseMutationResult<TurnAccepted, Error, Clarify
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ commandId, caseId, text }: ClarifyTurnInput) =>
-      clarifyTurn({ command_id: commandId, case_id: caseId, text }),
+      timed('clarify', () => clarifyTurn({ command_id: commandId, case_id: caseId, text })),
     onSettled: (_result, _error, variables) => {
       void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
       void client.invalidateQueries({ queryKey: casesKey })
@@ -364,7 +389,9 @@ export function useConfirmTurn(): UseMutationResult<TurnAccepted, Error, Confirm
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ commandId, caseId, planId }: ConfirmTurnInput) =>
-      confirmTurn({ command_id: commandId, case_id: caseId, plan_id: planId }),
+      timed('confirm', () =>
+        confirmTurn({ command_id: commandId, case_id: caseId, plan_id: planId }),
+      ),
     onSettled: (_result, _error, variables) => {
       void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
       void client.invalidateQueries({ queryKey: casesKey })
@@ -393,7 +420,7 @@ export function useWithdrawTurn(): UseMutationResult<
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ commandId, caseId }: WithdrawTurnInput) =>
-      withdrawTurn({ command_id: commandId, case_id: caseId }),
+      timed('withdraw', () => withdrawTurn({ command_id: commandId, case_id: caseId })),
     onSettled: (_result, _error, variables) => {
       void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
       void client.invalidateQueries({ queryKey: casesKey })
