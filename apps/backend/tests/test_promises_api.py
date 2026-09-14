@@ -281,13 +281,16 @@ governed recovery amendment raised by the worker process.
 CONVERSATION_FIELDS: dict[str, frozenset[str]] = {
     "ReportTurn": frozenset({"command_id", "text"}),
     "ClarifyTurn": frozenset({"command_id", "case_id", "text"}),
-    "ConfirmTurn": frozenset({"command_id", "case_id", "plan_id"}),
+    "ConfirmTurn": frozenset({"command_id", "case_id", "plan_id", "text"}),
     "WithdrawTurn": frozenset({"command_id", "case_id"}),
 }
 """Every field a browser may put in a conversation request. Stated whole, not sampled.
 
 Written out so that a field added to one of these models fails here rather than passing a test
-that only looked for the words somebody thought to forbid.
+that only looked for the words somebody thought to forbid. ``ConfirmTurn.text`` is such a field
+and was such a failure: it arrived with ADR-0015, and it is admitted here because it is the
+worker's own sentence -- read on the route by a closed literal rule, never stored as a
+clarification and never able to name an order -- rather than because a test went red.
 """
 
 
@@ -312,6 +315,10 @@ def test_the_conversation_routes_are_not_an_order_editor(api: TestClient) -> Non
     behind one -- has anything to fill in that could reach the order book. What actually amends an
     order is a governed recovery amendment raised by the worker process, and nothing on this
     surface can name one.
+
+    A spoken confirmation adds a second sentence field and changes none of that. Words are what
+    this family has always carried; an order editor is a field naming an order, and there is
+    still no such field on any of the four.
     """
     schema = api.get("/openapi.json").json()
     models = schema["components"]["schemas"]
