@@ -56,6 +56,13 @@ export function speechCaptureAvailable(): boolean {
 export interface CaptureHandlers {
   /** Everything heard so far, final and interim together, so a person can see it landing. */
   onTranscript: (text: string, final: boolean) => void
+  /**
+   * The recogniser reported a final result. Fires again for each one, so the last call is the
+   * last final result — one of the two candidate instants for "the worker stopped speaking".
+   * The other is `onEnd`, which arrives afterwards. Neither is privileged here, because the
+   * frozen contract does not declare which of them "speech ending" means.
+   */
+  onFinalResult?: () => void
   /** Capture stopped, for any reason. The caller decides what the transcript is now worth. */
   onEnd: () => void
   /** The browser refused or failed. Carries its own word for it, never a sentence about a case. */
@@ -94,6 +101,7 @@ export function startCapture(handlers: CaptureHandlers): Capture | null {
       if (result.isFinal) final = true
     }
     handlers.onTranscript(heard, final)
+    if (final) handlers.onFinalResult?.()
   }
   recognition.onerror = (event) => {
     handlers.onError(event.error ?? 'unknown')
@@ -125,6 +133,21 @@ export function speechPlaybackAvailable(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
+/** What a caller may be told about one utterance. Nothing here is about a case. */
+export interface SpeechHandlers {
+  /**
+   * Sound actually began.
+   *
+   * From `SpeechSynthesisUtterance.onstart` and from nowhere else. `speak` returns the moment
+   * the utterance is queued, which on a cold voice list is well before anything is audible, so
+   * the return of this function is not when a worker started hearing a reply and must never be
+   * recorded as though it were.
+   */
+  onStart?: () => void
+  /** The utterance finished, was cancelled, or failed. A control that says "stop" needs this. */
+  onDone?: () => void
+}
+
 /**
  * Read one string aloud, exactly as it was given.
  *
@@ -132,12 +155,26 @@ export function speechPlaybackAvailable(): boolean {
  * function is deliberately incapable of altering it: there is no summary step, no truncation and
  * no wording of its own. A spoken paraphrase of "planned" is one word away from "done", so the
  * only thing that may be heard is the thing that is on the screen.
+ *
+ * Whatever was being said is cancelled first. That is what makes a short acknowledgement safe to
+ * speak while a turn is in flight: the moment the real answer exists it replaces the
+ * acknowledgement mid-word, rather than queueing behind it and arriving late.
  */
-export function speakAloud(text: string): void {
+export function speakAloud(text: string, handlers: SpeechHandlers = {}): void {
   if (!speechPlaybackAvailable()) return
   const synthesis = window.speechSynthesis
   synthesis.cancel()
-  synthesis.speak(new SpeechSynthesisUtterance(text))
+  const utterance = new SpeechSynthesisUtterance(text)
+  utterance.onstart = () => {
+    handlers.onStart?.()
+  }
+  utterance.onend = () => {
+    handlers.onDone?.()
+  }
+  utterance.onerror = () => {
+    handlers.onDone?.()
+  }
+  synthesis.speak(utterance)
 }
 
 /** Stop reading. Nothing about the case changes either way; this is a loudspeaker. */
