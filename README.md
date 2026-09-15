@@ -44,6 +44,15 @@ there is no score to report, and the first complete run will be published whatev
 [`docs/effect-set-manifest.md`](docs/effect-set-manifest.md) for the method, the partition
 algebra, the pass rule and the disclosure that these labels are developer-authored and finite.
 
+## What integrating this would actually require
+
+[`docs/prerequisites-integration-cost-and-limitations.md`](docs/prerequisites-integration-cost-and-limitations.md)
+is the honest version: which data has to be accurate and who maintains it, what an order system
+must satisfy to talk to this one, what the real deployment cost and found, what is simulated and
+what is not built at all — and what this repository does **not** establish. Every prerequisite
+there names the file, table or decision record that imposes it, and every figure is labelled
+measured, estimated or not measured.
+
 ## The deterministic engine
 
 `promise_graph` is a separate, pure package on purpose. It owns reachability, temporal
