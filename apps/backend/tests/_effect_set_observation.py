@@ -24,12 +24,26 @@ incident opens, and every count is measured against it and against this case's o
 external edit a customer made in the order system is that customer's own command, before or
 after the exception, and can never become an incident-caused effect.
 
+The window alone is not enough for a reservation, and that is the one place this had to be made
+sharper than it first was. Reservations are written in exactly one place -- the order mirror,
+where a line's claims are its pinned version times its quantity -- so *every* reservation change
+arrives through the same code path whether the order system was told to make it by this case or
+by the customer who owns the order. A census that compared reservation sets against the baseline
+and stopped there would count a cafe enlarging its own standing order, in the middle of an
+unrelated incident, as an effect of that incident. The frozen manifest names that false positive
+before it happens, in S14's own rationale. So a reservation change is counted only when the
+change that produced it was **commanded by this case**: the order-system event that moved the
+mirror carries the idempotency key of the amendment PromisePatch sent, and that key belongs to
+one of this case's tracks. The rows still have to have moved; the command is what says whose
+doing it was.
+
 Lifted verbatim from ``test_whole_delivery_counterfactual.py``, which was the first test to need
 it, so that the suite counts effects in exactly one place.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Final
 from uuid import UUID
@@ -41,10 +55,11 @@ from _order_system_support import Boundary
 from sqlalchemy import select
 
 from promise_graph.model import Classification
-from promisepatch.db.models import OutboxMessage, Reservation
+from promisepatch.db.models import InboxEvent, OutboxMessage, Reservation
 from promisepatch.domain import recovery
 from promisepatch.domain.approvals import EFFECT_MESSAGE_SEND
 from promisepatch.domain.model import EFFECT_CASE_ID, EFFECT_ORDER_AMEND, EFFECT_TRACK_ID
+from promisepatch.domain.order_mirror import ORDER_SYSTEM_SOURCE
 
 ORDERS: Final = orders()
 """The manifest's own order table: which promise, line and external id each label names."""
@@ -120,6 +135,40 @@ async def outbox_of(intake: Intake, case_id: UUID) -> list[Any]:
         )
 
 
+async def commanded_order_changes(intake: Intake) -> dict[str, frozenset[str]]:
+    """Which order-system changes this deployment itself commanded, per order.
+
+    Every reservation in the mirror is rewritten by one code path, and that path does not record
+    who asked. What does record it is the event the order system sent back: an ordinary customer
+    edit carries no command, and a governed recovery amendment carries the exact idempotency key
+    PromisePatch presented. So this reads the stored bodies of the deliveries the mirror actually
+    processed and returns, per external order, the set of amendment keys that moved it.
+
+    The raw body rather than the normalized record on purpose: the normalized record is what the
+    rest of the system reads, and it deliberately keeps only the envelope. The command lives on
+    the event itself.
+    """
+    async with intake.database.connect() as connection:
+        rows = (
+            await connection.execute(
+                select(InboxEvent.raw_body).where(
+                    InboxEvent.source == ORDER_SYSTEM_SOURCE, InboxEvent.state == "PROCESSED"
+                )
+            )
+        ).all()
+    commanded: dict[str, set[str]] = {}
+    for row in rows:
+        if not row.raw_body:
+            continue
+        event = json.loads(row.raw_body)
+        command = event.get("command")
+        if not command:
+            continue
+        external_id = str(event["order"]["external_id"])
+        commanded.setdefault(external_id, set()).add(str(command["idempotency_key"]))
+    return {external_id: frozenset(keys) for external_id, keys in commanded.items()}
+
+
 async def partition_of(intake: Intake, case_id: UUID) -> Partition:
     """The four partitions, read from the durable tracks this case decided."""
     members: dict[str, set[str]] = {name: set() for name in PARTITION_OF.values()}
@@ -142,6 +191,12 @@ async def census(intake: Intake, *, case_id: UUID, since: Baseline) -> Effects:
     outbox = await outbox_of(intake, case_id)
     reservations = await reservations_by_line(intake)
     tasks = await intake.tasks()
+    commanded = await commanded_order_changes(intake)
+    my_keys = frozenset(
+        row.idempotency_key
+        for row in outbox
+        if row.kind == EFFECT_ORDER_AMEND and row.idempotency_key is not None
+    )
 
     found: Effects = {}
 
@@ -163,7 +218,10 @@ async def census(intake: Intake, *, case_id: UUID, since: Baseline) -> Effects:
         record(
             order,
             "reservation_change",
-            int(reservations[entry["line"]] != since.reservations[entry["line"]]),
+            int(
+                reservations[entry["line"]] != since.reservations[entry["line"]]
+                and bool(commanded.get(entry["external_id"], frozenset()) & my_keys)
+            ),
         )
         held = tasks.get(f"task-{entry['line']}")
         record(order, "task_hold", int(held is not None and held[1] == case_id))
