@@ -170,7 +170,7 @@ it at `approvals.py:1522`. No manifest change, no census change, no worker chang
 `promisepatch.domain.recovery.hold_tasks` (`recovery.py:634`) updates only tasks whose state is
 `SCHEDULED`, at `recovery.py:654`:
 
-```python
+```text
 ProductionTask.state == "SCHEDULED",
 ```
 
