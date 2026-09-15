@@ -1,0 +1,1103 @@
+..F....FFF..F...                                                         [100%]Running teardown with pytest sessionfinish...
+
+================================== FAILURES ===================================
+________________ test_s12_external_edit_adds_dependency_before ________________
+
+chain = McpServer(url='http://127.0.0.1:55305/mcp', intents=None)
+wired = Boundary(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E26ADE90>), si...nt object at 0x00000205E2AD48F0>, dispatcher=<order_simulator.webhooks.WebhookDispatcher object at 0x00000205E2AD4CB0>)
+physical = Intake(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E26ADE90>), observed_at=datetime.datetime(2026, 9, 15, 16, 33, 16, 681612, tzinfo=datetime.timezone.utc))
+
+    async def test_s12_external_edit_adds_dependency_before(
+        chain: McpServer, wired: Boundary, physical: Intake
+    ) -> None:
+        """Ahmed changes his cake into the blast radius before anybody reports anything.
+    
+        The mirror image of S11, and the reason the pair is worth wiring together: membership of the
+        threatened set is decided by stored state at the moment of the exception, in both directions.
+        His order carries no constraint that could permit a substitution and no variant exists of the
+        version he has just moved to, so the shortfall reaches him and nothing this system may do
+        repairs it. His production task is already started in the fixture, which the scenario
+        stipulates rather than changes, and which does not alter the label.
+        """
+    
+        async def drive() -> dict[str, Observation]:
+            assert declared("S12") == ("PLANNED", "CONFIRMED", "CONSENT_SETTLED", "SETTLED")
+            await external_edit(physical, wired, order=AHMED_ORDER, item=RASPBERRY_LEMON)
+            since = await baseline_of(physical, wired)
+            observations: dict[str, Observation] = {}
+    
+            case_id = await reported(chain, physical)
+            await answered(chain, physical, case_id, RASPBERRY_ONLY)
+            await quiescent(physical, case_id)
+            observations["PLANNED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await confirmed(chain, physical, case_id)
+            await settle(physical, wired)
+            observations["CONFIRMED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await customer_consents(physical, wired, case_id)
+            observations["CONSENT_SETTLED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await settle(physical, wired)
+            await quiescent(physical, case_id)
+            observations["SETTLED"] = await observe(physical, case_id=case_id, since=since)
+            return observations
+    
+>       await scored("S12", drive)
+
+apps\backend\tests\test_effect_sets.py:490: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+apps\backend\tests\test_effect_sets.py:364: in scored
+    assert_passes(verdict)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+verdict = Verdict(scenario='S12', outcome='FAIL', reason='', diffs=(Diff(checkpoint='CONFIRMED', aspect='effects', subject='ord-...', observed='0'), Diff(checkpoint='SETTLED', aspect='effects', subject='ord-e/task_hold', expected='1', observed='0')))
+
+    def assert_passes(verdict: Verdict) -> None:
+        """Fail the test that produced this verdict, with the whole diff in the message.
+    
+        The verdict is recorded first by the caller, so a failure is captured before it is raised:
+        a run whose assertion aborted the session still leaves the diff behind for the capture.
+        """
+        if verdict.passed:
+            return
+        lines: Sequence[str] = [
+            f"{verdict.scenario}: {verdict.outcome}"
+            + (f" -- {verdict.reason}" if verdict.reason else ""),
+            *(
+                f"  {diff.checkpoint}/{diff.aspect} {diff.subject}: "
+                f"expected {diff.expected}, observed {diff.observed}"
+                for diff in verdict.diffs
+            ),
+        ]
+>       raise AssertionError("\n".join(lines))
+E       AssertionError: S12: FAIL
+E         CONFIRMED/effects ord-e/task_hold: expected 1, observed 0
+E         CONSENT_SETTLED/effects ord-e/task_hold: expected 1, observed 0
+E         SETTLED/effects ord-e/task_hold: expected 1, observed 0
+
+apps\backend\tests\_effect_set_judge.py:235: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+{"boot_id": "7c5d644c-febd-45a8-8d05-6d02f50c82ec", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:33:16.693614Z"}
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:33:16.735585Z"}
+StreamableHTTP session manager started
+simulator.start database=C:\Users\Asembris\AppData\Local\Temp\pytest-of-Asembris\pytest-864\test_s12_external_edit_adds_de0\order-simulator.sqlite3 undelivered=0 webhook_configured=True
+{"boot_id": "ed303d55-9557-4d25-bb41-d28b1994cda5", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:33:16.854580Z"}
+---------------------------- Captured stdout call -----------------------------
+simulator.order.changed event_id=1a384a7b-ec99-4440-b39c-b38de4789f01 external_order_id=EXT-E external_version=2 operation=operator_change
+HTTP Request: POST http://order-system.test/ui/orders/EXT-E/lines/ol-e "HTTP/1.1 303 See Other"
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:33:16.925231Z"}
+{"event_id": "1a384a7b-ec99-4440-b39c-b38de4789f01", "inbox_id": "ba9c6cf3-80ff-4c95-be24-11db258961b1", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "98148d1e-8ddd-4d4d-91f9-8e6a0c5855f0", "level": "info", "timestamp": "2026-09-15T16:33:16.986188Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=1a384a7b-ec99-4440-b39c-b38de4789f01 webhook_result=delivered
+{"inbox_id": "ba9c6cf3-80ff-4c95-be24-11db258961b1", "external_order_id": "EXT-E", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:67a63a4f", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:33:17.176993Z"}
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+{"case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "worker": "maya", "event": "intake.case.opened", "correlation_id": "149a967a-d1be-45b9-b3e0-8aac0b39a631", "level": "info", "timestamp": "2026-09-15T16:33:17.406978Z"}
+{"case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "created": true, "worker": "maya", "event": "intents.report.accepted", "correlation_id": "149a967a-d1be-45b9-b3e0-8aac0b39a631", "level": "info", "timestamp": "2026-09-15T16:33:17.406978Z"}
+HTTP Request: POST http://127.0.0.1:55300/internal/intents/report "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "correlation_id": "149a967a-d1be-45b9-b3e0-8aac0b39a631", "event": "mcp.tool.report", "level": "info", "timestamp": "2026-09-15T16:33:17.410172Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "133fc364-0a2b-45ae-8e43-ac6ae17cb08b", "step_key": "interpret:8c4c27df-dee0-4837-ab90-c1d3c3163133", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:17.503244Z"}
+{"step_id": "c88c4eaa-4e43-487b-ab9b-f672a3c49396", "step_key": "resolve:8c4c27df-dee0-4837-ab90-c1d3c3163133", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:17.644509Z"}
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+{"case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "worker": "maya", "event": "intake.clarification.answered", "correlation_id": "1a0000c4-f68a-4560-bbff-1fcb229b3a89", "level": "info", "timestamp": "2026-09-15T16:33:17.760661Z"}
+{"case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "created": true, "worker": "maya", "event": "intents.clarify.accepted", "correlation_id": "1a0000c4-f68a-4560-bbff-1fcb229b3a89", "level": "info", "timestamp": "2026-09-15T16:33:17.761198Z"}
+HTTP Request: POST http://127.0.0.1:55300/internal/intents/clarify "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "correlation_id": "1a0000c4-f68a-4560-bbff-1fcb229b3a89", "event": "mcp.tool.clarify", "level": "info", "timestamp": "2026-09-15T16:33:17.764436Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "76f1c5f7-a73c-47d1-8e1c-ffcb2bfa251a", "step_key": "interpret:9e8da159-353f-4314-ac86-fb66d359cc79", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:17.864806Z"}
+{"step_id": "ffb3ac5b-908b-4ea0-9eac-0819e04038e5", "step_key": "resolve:9e8da159-353f-4314-ac86-fb66d359cc79", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:18.048308Z"}
+{"step_id": "043f7e06-02d9-4089-84ef-772f3bd104f0", "step_key": "analyze:9e8da159-353f-4314-ac86-fb66d359cc79", "kind": "ANALYZE_IMPACT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:18.413587Z"}
+{"step_id": "8c5bec68-d449-41da-9717-fb86b60f75a7", "step_key": "plan:9e8da159-353f-4314-ac86-fb66d359cc79", "kind": "PLAN_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:18.829053Z"}
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+HTTP Request: POST http://127.0.0.1:55300/internal/intents/status "HTTP/1.1 200 OK"
+{"client": "bearer:6257d6aab6a6", "case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "correlation_id": "22c72f05-7632-437a-a61b-55f93b72bf36", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-09-15T16:33:19.334157Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+{"case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "worker": "maya", "applying": 1, "escalated": 3, "awaiting_approval": 1, "event": "recovery.plan.confirmed", "correlation_id": "7a894526-3621-4bed-b7c6-f3b5b9e2d826", "level": "info", "timestamp": "2026-09-15T16:33:19.568343Z"}
+{"case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "created": true, "worker": "maya", "event": "intents.confirm.accepted", "correlation_id": "7a894526-3621-4bed-b7c6-f3b5b9e2d826", "level": "info", "timestamp": "2026-09-15T16:33:19.569173Z"}
+HTTP Request: POST http://127.0.0.1:55300/internal/intents/confirm "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "correlation_id": "7a894526-3621-4bed-b7c6-f3b5b9e2d826", "event": "mcp.tool.confirm", "level": "info", "timestamp": "2026-09-15T16:33:19.579035Z"}
+Terminating session: None
+{"step_id": "1287c5e0-ac28-494d-b5d6-f4407e73c6ed", "step_key": "apply:2375c09f-59e9-5111-b505-57bf809e59b4", "kind": "APPLY_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:19.831348Z"}
+simulator.order.amended event_id=b4842558-cf4a-4cf4-9a8c-e47ad031f91e external_order_id=EXT-A external_version=2 idempotency_key=pp:amend:2375c09f-59e9-5111-b505-57bf809e59b4:40be078e-8357-58c7-85a5-fe06b24deb3c:1 operation=amendment replayed=False
+HTTP Request: POST http://order-system.test/orders/EXT-A/amendments "HTTP/1.1 200 OK"
+{"external_order_id": "EXT-A", "expected_version": 1, "idempotency_key": "pp:amend:2375c09f-59e9-5111-b505-57bf809e59b4:40be078e-8357-58c7-85a5-fe06b24deb3c:1", "status": "DELIVERED", "external_version": 2, "event": "worker.order_system.amended", "level": "info", "timestamp": "2026-09-15T16:33:19.853542Z"}
+{"effect_id": "cf384a7d-ed3b-4f2e-9e86-10b999308d4c", "kind": "ORDER_AMEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:33:19.872541Z"}
+{"step_id": "54e67565-1845-4be0-9073-8c2894e2c014", "step_key": "approval:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "kind": "REQUEST_APPROVAL", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:20.040067Z"}
+{"effect_id": "8fc69666-06b8-4638-aa89-5cf71b37bbb0", "kind": "MESSAGE_SEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:33:20.079066Z"}
+{"step_id": "b35873f0-7e22-4c62-95dd-f5085aa606ed", "step_key": "finalize:2375c09f-59e9-5111-b505-57bf809e59b4", "kind": "FINALIZE_RECOVERY", "attempt": 1, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:20.164066Z"}
+{"request_id": "3380636f-fd12-5724-9d5e-0c9a86a2063d", "track_id": "e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "attempts": 1, "case_state": "EXECUTING", "event": "approval.sent", "level": "info", "timestamp": "2026-09-15T16:33:20.284066Z"}
+{"step_id": "398f9e64-2ed7-40d6-a1fe-b288a221d408", "step_key": "approval-sent:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "kind": "MARK_APPROVAL_SENT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:20.309067Z"}
+{"event_id": "b4842558-cf4a-4cf4-9a8c-e47ad031f91e", "inbox_id": "24bf4d6e-dd56-4588-8aba-3bd7fc5e7596", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "bb3ffa15-eb7b-4ccd-8e48-26af62921535", "level": "info", "timestamp": "2026-09-15T16:33:20.398065Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=b4842558-cf4a-4cf4-9a8c-e47ad031f91e webhook_result=delivered
+{"step_id": "b35873f0-7e22-4c62-95dd-f5085aa606ed", "step_key": "finalize:2375c09f-59e9-5111-b505-57bf809e59b4", "kind": "FINALIZE_RECOVERY", "attempt": 2, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:20.467065Z"}
+{"inbox_id": "24bf4d6e-dd56-4588-8aba-3bd7fc5e7596", "external_order_id": "EXT-A", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:2870ec09", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:33:20.584590Z"}
+{"step_id": "b35873f0-7e22-4c62-95dd-f5085aa606ed", "step_key": "finalize:2375c09f-59e9-5111-b505-57bf809e59b4", "kind": "FINALIZE_RECOVERY", "attempt": 3, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:20.763591Z"}
+{"inbox_id": "41a3e65d-3f1b-42c9-ba90-1f43e59fd4d3", "source": "customer-reply", "state": "PROCESSED", "step_key": "inbox:41a3e65d-3f1b-42c9-ba90-1f43e59fd4d3", "worker": "DESKTOP-OKFJLHE:8260:6ce00fd1", "event": "worker.inbox.processed", "level": "info", "timestamp": "2026-09-15T16:33:21.021059Z"}
+{"request_id": "3380636f-fd12-5724-9d5e-0c9a86a2063d", "track_id": "e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "decision": "APPROVE", "parser": "LITERAL", "case_state": "REVALIDATING", "event": "approval.decided", "level": "info", "timestamp": "2026-09-15T16:33:21.098085Z"}
+{"step_id": "5e8c1242-dc95-4d0c-81cf-dd51b4b56cd7", "step_key": "inbox:41a3e65d-3f1b-42c9-ba90-1f43e59fd4d3", "kind": "RECEIVE_CUSTOMER_REPLY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:21.129563Z"}
+{"case_id": "caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "track_id": "e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "request_id": "3380636f-fd12-5724-9d5e-0c9a86a2063d", "as_of": 35613, "event": "revalidation.passed", "level": "info", "timestamp": "2026-09-15T16:33:21.455936Z"}
+{"step_id": "fee8c9b7-bd26-4968-ae4c-fdbc02aef903", "step_key": "revalidate:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "kind": "REVALIDATE_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:21.500893Z"}
+{"step_id": "4daaf8e8-b797-4406-bbd7-a94a4177a83b", "step_key": "reconcile:caffe3b9-cd10-59c4-8fc6-bab4e0a2c203", "kind": "RECONCILE_CASE", "attempt": 1, "result": "SKIPPED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:21.625893Z"}
+{"step_id": "f5118962-51b9-4b6c-8ea7-4b9e4c996a9c", "step_key": "apply:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "kind": "APPLY_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:21.845895Z"}
+simulator.order.amended event_id=1847bbbc-7ca6-405a-afb9-4c4a5b3be645 external_order_id=EXT-B external_version=2 idempotency_key=pp:amend:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91:d51c2a8d-f8b1-5e68-9ee4-2ab5c5673c3f:1 operation=amendment replayed=False
+HTTP Request: POST http://order-system.test/orders/EXT-B/amendments "HTTP/1.1 200 OK"
+{"external_order_id": "EXT-B", "expected_version": 1, "idempotency_key": "pp:amend:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91:d51c2a8d-f8b1-5e68-9ee4-2ab5c5673c3f:1", "status": "DELIVERED", "external_version": 2, "event": "worker.order_system.amended", "level": "info", "timestamp": "2026-09-15T16:33:21.869893Z"}
+{"effect_id": "2532ab27-88ae-4f74-895c-0f0f3a3578c0", "kind": "ORDER_AMEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:33:21.889894Z"}
+{"step_id": "a3e6890f-97ae-4a80-9cf7-135634be2953", "step_key": "finalize:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "kind": "FINALIZE_RECOVERY", "attempt": 1, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:21.963931Z"}
+{"event_id": "1847bbbc-7ca6-405a-afb9-4c4a5b3be645", "inbox_id": "49e9fcaf-83d1-4ae1-bf36-1660be1a8632", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "770ac870-02ec-4b05-94dd-84d5e1808e31", "level": "info", "timestamp": "2026-09-15T16:33:22.066943Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=1847bbbc-7ca6-405a-afb9-4c4a5b3be645 webhook_result=delivered
+{"step_id": "a3e6890f-97ae-4a80-9cf7-135634be2953", "step_key": "finalize:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "kind": "FINALIZE_RECOVERY", "attempt": 2, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:22.170055Z"}
+{"inbox_id": "49e9fcaf-83d1-4ae1-bf36-1660be1a8632", "external_order_id": "EXT-B", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:6ce00fd1", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:33:22.282057Z"}
+{"step_id": "a3e6890f-97ae-4a80-9cf7-135634be2953", "step_key": "finalize:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91", "kind": "FINALIZE_RECOVERY", "attempt": 3, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:22.481055Z"}
+------------------------------ Captured log call ------------------------------
+INFO     order_simulator.app:observability.py:27 simulator.order.changed event_id=1a384a7b-ec99-4440-b39c-b38de4789f01 external_order_id=EXT-E external_version=2 operation=operator_change
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/ui/orders/EXT-E/lines/ol-e "HTTP/1.1 303 See Other"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=1a384a7b-ec99-4440-b39c-b38de4789f01 webhook_result=delivered
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55300/internal/intents/report "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55300/internal/intents/clarify "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55300/internal/intents/status "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55305/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55300/internal/intents/confirm "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     order_simulator.app:observability.py:27 simulator.order.amended event_id=b4842558-cf4a-4cf4-9a8c-e47ad031f91e external_order_id=EXT-A external_version=2 idempotency_key=pp:amend:2375c09f-59e9-5111-b505-57bf809e59b4:40be078e-8357-58c7-85a5-fe06b24deb3c:1 operation=amendment replayed=False
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/orders/EXT-A/amendments "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=b4842558-cf4a-4cf4-9a8c-e47ad031f91e webhook_result=delivered
+INFO     order_simulator.app:observability.py:27 simulator.order.amended event_id=1847bbbc-7ca6-405a-afb9-4c4a5b3be645 external_order_id=EXT-B external_version=2 idempotency_key=pp:amend:e3b45572-fe0f-5c8c-9dfa-b89208fa5a91:d51c2a8d-f8b1-5e68-9ee4-2ab5c5673c3f:1 operation=amendment replayed=False
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/orders/EXT-B/amendments "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=1847bbbc-7ca6-405a-afb9-4c4a5b3be645 webhook_result=delivered
+-------------------------- Captured stdout teardown ---------------------------
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:33:23.539260Z"}
+{"boot_id": "ed303d55-9557-4d25-bb41-d28b1994cda5", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:33:23.543259Z"}
+simulator.stop 
+StreamableHTTP session manager shutting down
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:33:23.879900Z"}
+{"boot_id": "7c5d644c-febd-45a8-8d05-6d02f50c82ec", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:33:23.885735Z"}
+---------------------------- Captured log teardown ----------------------------
+INFO     order_simulator.app:observability.py:27 simulator.stop 
+INFO     mcp.server.streamable_http_manager:streamable_http_manager.py:166 StreamableHTTP session manager shutting down
+____________________ test_s06_stale_approved_order_version ____________________
+
+chain = McpServer(url='http://127.0.0.1:55594/mcp', intents=None)
+wired = Boundary(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E3339A50>), si...nt object at 0x00000205E35CFD70>, dispatcher=<order_simulator.webhooks.WebhookDispatcher object at 0x00000205E35DC200>)
+physical = Intake(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E3339A50>), observed_at=datetime.datetime(2026, 9, 15, 16, 33, 54, 666167, tzinfo=datetime.timezone.utc))
+
+    async def test_s06_stale_approved_order_version(
+        chain: McpServer, wired: Boundary, physical: Intake
+    ) -> None:
+        """Tomas approves a change to one cake, and then orders two.
+    
+        The hardest checkpoint is ``CONSENT_SETTLED``, where the declared count for his amendment is
+        zero. The decision is real, is kept, and authorises nothing, because it was given about an
+        order that has since moved. A fresh ask goes out instead -- one more message, no write --
+        and the difference between that and an amendment is the whole scenario.
+    
+        The edit is made deliberate rather than raced for: his order is changed while this case's own
+        work is held still, so "between the YES and the revalidation" is a fact about the sequence
+        rather than about which of two workers happened to win.
+        """
+    
+        async def drive() -> dict[str, Observation]:
+            assert declared("S06") == ("PLANNED", "CONFIRMED", "CONSENT_SETTLED", "SETTLED")
+            since = await baseline_of(physical, wired)
+            observations: dict[str, Observation] = {}
+    
+            case_id = await reported(chain, physical)
+            await answered(chain, physical, case_id, RASPBERRY_ONLY)
+            await quiescent(physical, case_id)
+            observations["PLANNED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await confirmed(chain, physical, case_id)
+            await settle(physical, wired)
+            observations["CONFIRMED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await physical.deliver_reply((await ask_for(physical, case_id, TOMAS)).id, CONSENT)
+            await physical.drain_until_decided(worker=worker_for(physical, wired))
+            await external_quantity_edit(
+                physical, wired, order=TOMAS_ORDER, quantity=2, case_id=case_id
+            )
+            await settle(physical, wired)
+            await quiescent(physical, case_id)
+            observations["CONSENT_SETTLED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await expire_open_ask(physical, case_id, TOMAS)
+            await settle(physical, wired)
+            await quiescent(physical, case_id)
+            observations["SETTLED"] = await observe(physical, case_id=case_id, since=since)
+            return observations
+    
+>       await scored("S06", drive)
+
+apps\backend\tests\test_effect_sets.py:711: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+apps\backend\tests\test_effect_sets.py:364: in scored
+    assert_passes(verdict)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+verdict = Verdict(scenario='S06', outcome='FAIL', reason='', diffs=(Diff(checkpoint='CONSENT_SETTLED', aspect='effects', subject...', observed='0'), Diff(checkpoint='SETTLED', aspect='effects', subject='ord-b/task_hold', expected='1', observed='0')))
+
+    def assert_passes(verdict: Verdict) -> None:
+        """Fail the test that produced this verdict, with the whole diff in the message.
+    
+        The verdict is recorded first by the caller, so a failure is captured before it is raised:
+        a run whose assertion aborted the session still leaves the diff behind for the capture.
+        """
+        if verdict.passed:
+            return
+        lines: Sequence[str] = [
+            f"{verdict.scenario}: {verdict.outcome}"
+            + (f" -- {verdict.reason}" if verdict.reason else ""),
+            *(
+                f"  {diff.checkpoint}/{diff.aspect} {diff.subject}: "
+                f"expected {diff.expected}, observed {diff.observed}"
+                for diff in verdict.diffs
+            ),
+        ]
+>       raise AssertionError("\n".join(lines))
+E       AssertionError: S06: FAIL
+E         CONSENT_SETTLED/effects ord-b/customer_message: expected 2, observed 1
+E         SETTLED/effects ord-b/customer_message: expected 2, observed 1
+E         SETTLED/effects ord-b/owner_escalation: expected 1, observed 0
+E         SETTLED/effects ord-b/task_hold: expected 1, observed 0
+
+apps\backend\tests\_effect_set_judge.py:235: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+{"boot_id": "cbde5b27-ac92-46d7-94d7-5c11db1c889d", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:33:54.681003Z"}
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:33:54.732611Z"}
+StreamableHTTP session manager started
+simulator.start database=C:\Users\Asembris\AppData\Local\Temp\pytest-of-Asembris\pytest-864\test_s06_stale_approved_order_0\order-simulator.sqlite3 undelivered=0 webhook_configured=True
+{"boot_id": "d5e65d6e-1021-4694-8daf-e80f0efe1bfe", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:33:54.862691Z"}
+---------------------------- Captured stdout call -----------------------------
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:33:54.942198Z"}
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+{"case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "worker": "maya", "event": "intake.case.opened", "correlation_id": "a51b6c48-e41e-4fbb-9126-3410e5ca738d", "level": "info", "timestamp": "2026-09-15T16:33:55.175560Z"}
+{"case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "created": true, "worker": "maya", "event": "intents.report.accepted", "correlation_id": "a51b6c48-e41e-4fbb-9126-3410e5ca738d", "level": "info", "timestamp": "2026-09-15T16:33:55.176562Z"}
+HTTP Request: POST http://127.0.0.1:55590/internal/intents/report "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "correlation_id": "a51b6c48-e41e-4fbb-9126-3410e5ca738d", "event": "mcp.tool.report", "level": "info", "timestamp": "2026-09-15T16:33:55.179562Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "b6955f1a-37b6-4299-a4aa-a9dc823f1833", "step_key": "interpret:dd350c43-4e73-4066-98e7-5d9397c959da", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:55.309040Z"}
+{"step_id": "79434dfc-b43c-4108-bca5-24f252b5d7b8", "step_key": "resolve:dd350c43-4e73-4066-98e7-5d9397c959da", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:55.468040Z"}
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+{"case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "worker": "maya", "event": "intake.clarification.answered", "correlation_id": "7892a550-868c-46c0-b7fe-965b60a4a00b", "level": "info", "timestamp": "2026-09-15T16:33:56.281288Z"}
+{"case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "created": true, "worker": "maya", "event": "intents.clarify.accepted", "correlation_id": "7892a550-868c-46c0-b7fe-965b60a4a00b", "level": "info", "timestamp": "2026-09-15T16:33:56.281288Z"}
+HTTP Request: POST http://127.0.0.1:55590/internal/intents/clarify "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "correlation_id": "7892a550-868c-46c0-b7fe-965b60a4a00b", "event": "mcp.tool.clarify", "level": "info", "timestamp": "2026-09-15T16:33:56.707227Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "69296df3-b963-4a2d-b9bb-c9a2bae8ee67", "step_key": "interpret:49c90a45-79b4-480c-9647-78443087f89a", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:56.784844Z"}
+{"step_id": "81f5f07e-4a31-4786-b1c1-8ec6c089ee5e", "step_key": "resolve:49c90a45-79b4-480c-9647-78443087f89a", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:57.316864Z"}
+{"step_id": "4019e5da-44d7-4175-95e9-9cc917da179e", "step_key": "analyze:49c90a45-79b4-480c-9647-78443087f89a", "kind": "ANALYZE_IMPACT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:33:58.556513Z"}
+{"step_id": "73b4e66c-9c75-4467-a7b0-4971da3314e7", "step_key": "plan:49c90a45-79b4-480c-9647-78443087f89a", "kind": "PLAN_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:00.114931Z"}
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+HTTP Request: POST http://127.0.0.1:55590/internal/intents/status "HTTP/1.1 200 OK"
+{"client": "bearer:6257d6aab6a6", "case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "correlation_id": "87cadae7-1a43-4b69-8562-9eb501005947", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-09-15T16:34:00.651692Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+{"case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "worker": "maya", "applying": 1, "escalated": 2, "awaiting_approval": 1, "event": "recovery.plan.confirmed", "correlation_id": "01904106-be74-495a-b1a6-ababb1518d2b", "level": "info", "timestamp": "2026-09-15T16:34:00.856756Z"}
+{"case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "created": true, "worker": "maya", "event": "intents.confirm.accepted", "correlation_id": "01904106-be74-495a-b1a6-ababb1518d2b", "level": "info", "timestamp": "2026-09-15T16:34:00.856756Z"}
+HTTP Request: POST http://127.0.0.1:55590/internal/intents/confirm "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "correlation_id": "01904106-be74-495a-b1a6-ababb1518d2b", "event": "mcp.tool.confirm", "level": "info", "timestamp": "2026-09-15T16:34:00.861756Z"}
+Terminating session: None
+{"step_id": "00d2470b-4b25-4343-8f5c-b72e1cba0973", "step_key": "apply:0746fd81-f8db-5ef0-b6b9-d4d74a4b304b", "kind": "APPLY_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:01.082706Z"}
+simulator.order.amended event_id=4ab2a3e3-7b82-4aa8-a21c-774d2c1eab0d external_order_id=EXT-A external_version=2 idempotency_key=pp:amend:0746fd81-f8db-5ef0-b6b9-d4d74a4b304b:bd34101e-c544-5ab3-a72e-69c531670f01:1 operation=amendment replayed=False
+HTTP Request: POST http://order-system.test/orders/EXT-A/amendments "HTTP/1.1 200 OK"
+{"external_order_id": "EXT-A", "expected_version": 1, "idempotency_key": "pp:amend:0746fd81-f8db-5ef0-b6b9-d4d74a4b304b:bd34101e-c544-5ab3-a72e-69c531670f01:1", "status": "DELIVERED", "external_version": 2, "event": "worker.order_system.amended", "level": "info", "timestamp": "2026-09-15T16:34:01.104704Z"}
+{"effect_id": "7a20b4f2-8849-41a3-8fd4-26f1ea8e645b", "kind": "ORDER_AMEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:34:01.125705Z"}
+{"step_id": "f827b934-4262-4395-83d1-a395c0865e9a", "step_key": "approval:b3612645-573f-50b1-bac2-637ebd757708", "kind": "REQUEST_APPROVAL", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:01.322018Z"}
+{"effect_id": "12daa397-ee8a-49c8-a59f-6b2d267f91a2", "kind": "MESSAGE_SEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:34:01.375030Z"}
+{"step_id": "7d17dda9-bc0b-4014-8af2-fa76e253a518", "step_key": "finalize:0746fd81-f8db-5ef0-b6b9-d4d74a4b304b", "kind": "FINALIZE_RECOVERY", "attempt": 1, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:01.466029Z"}
+{"request_id": "6d97509f-2748-546b-a9fb-2d023c9e113f", "track_id": "b3612645-573f-50b1-bac2-637ebd757708", "attempts": 1, "case_state": "EXECUTING", "event": "approval.sent", "level": "info", "timestamp": "2026-09-15T16:34:01.565031Z"}
+{"step_id": "364dd7ac-2ae5-47cd-9cae-b368b14a5dd4", "step_key": "approval-sent:b3612645-573f-50b1-bac2-637ebd757708", "kind": "MARK_APPROVAL_SENT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:01.594031Z"}
+{"event_id": "4ab2a3e3-7b82-4aa8-a21c-774d2c1eab0d", "inbox_id": "c28ad072-b01a-4a38-b7ec-5d51fd546c86", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "97f13fd7-1771-42bf-aa68-4152d837c8e3", "level": "info", "timestamp": "2026-09-15T16:34:01.828655Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=4ab2a3e3-7b82-4aa8-a21c-774d2c1eab0d webhook_result=delivered
+{"step_id": "7d17dda9-bc0b-4014-8af2-fa76e253a518", "step_key": "finalize:0746fd81-f8db-5ef0-b6b9-d4d74a4b304b", "kind": "FINALIZE_RECOVERY", "attempt": 2, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:01.980124Z"}
+{"inbox_id": "c28ad072-b01a-4a38-b7ec-5d51fd546c86", "external_order_id": "EXT-A", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:48deb50c", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:34:02.091660Z"}
+{"step_id": "7d17dda9-bc0b-4014-8af2-fa76e253a518", "step_key": "finalize:0746fd81-f8db-5ef0-b6b9-d4d74a4b304b", "kind": "FINALIZE_RECOVERY", "attempt": 3, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:02.302660Z"}
+{"inbox_id": "8af06801-1d93-4c78-b11a-7c10563c24a8", "source": "customer-reply", "state": "PROCESSED", "step_key": "inbox:8af06801-1d93-4c78-b11a-7c10563c24a8", "worker": "DESKTOP-OKFJLHE:8260:4db474bf", "event": "worker.inbox.processed", "level": "info", "timestamp": "2026-09-15T16:34:02.671758Z"}
+{"request_id": "6d97509f-2748-546b-a9fb-2d023c9e113f", "track_id": "b3612645-573f-50b1-bac2-637ebd757708", "decision": "APPROVE", "parser": "LITERAL", "case_state": "REVALIDATING", "event": "approval.decided", "level": "info", "timestamp": "2026-09-15T16:34:02.792758Z"}
+{"step_id": "5a3e7cc4-30f6-45f8-bc38-ba978df0c792", "step_key": "inbox:8af06801-1d93-4c78-b11a-7c10563c24a8", "kind": "RECEIVE_CUSTOMER_REPLY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:02.857192Z"}
+simulator.order.changed event_id=3c9a2829-5e63-4789-87d2-9723e230a329 external_order_id=EXT-B external_version=2 operation=operator_change
+HTTP Request: POST http://order-system.test/ui/orders/EXT-B/lines/ol-b "HTTP/1.1 303 See Other"
+{"event_id": "3c9a2829-5e63-4789-87d2-9723e230a329", "inbox_id": "b3a27252-d3e8-4c1e-bf13-3367eac67bf4", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "8eaaaf68-c5dc-4cbc-b9d0-59f875313824", "level": "info", "timestamp": "2026-09-15T16:34:03.108624Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=3c9a2829-5e63-4789-87d2-9723e230a329 webhook_result=delivered
+{"inbox_id": "b3a27252-d3e8-4c1e-bf13-3367eac67bf4", "external_order_id": "EXT-B", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:559cc304", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:34:03.337780Z"}
+{"case_id": "f816497d-3b94-581b-b6e8-aa43cbdeb8c5", "track_id": "b3612645-573f-50b1-bac2-637ebd757708", "deciding_check": 2, "event": "revalidation.stale", "level": "info", "timestamp": "2026-09-15T16:34:03.667817Z"}
+{"step_id": "a6a86227-0248-40d8-bfd2-c6127aafa410", "step_key": "revalidate:b3612645-573f-50b1-bac2-637ebd757708", "kind": "REVALIDATE_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:03.706700Z"}
+{"step_id": "f36890f9-54c4-4e3a-834e-8e1b5c5c0757", "step_key": "replan:b3612645-573f-50b1-bac2-637ebd757708", "kind": "REPLAN_TRACK", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:03.995852Z"}
+------------------------------ Captured log call ------------------------------
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55590/internal/intents/report "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55590/internal/intents/clarify "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55590/internal/intents/status "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55594/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55590/internal/intents/confirm "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     order_simulator.app:observability.py:27 simulator.order.amended event_id=4ab2a3e3-7b82-4aa8-a21c-774d2c1eab0d external_order_id=EXT-A external_version=2 idempotency_key=pp:amend:0746fd81-f8db-5ef0-b6b9-d4d74a4b304b:bd34101e-c544-5ab3-a72e-69c531670f01:1 operation=amendment replayed=False
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/orders/EXT-A/amendments "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=4ab2a3e3-7b82-4aa8-a21c-774d2c1eab0d webhook_result=delivered
+INFO     order_simulator.app:observability.py:27 simulator.order.changed event_id=3c9a2829-5e63-4789-87d2-9723e230a329 external_order_id=EXT-B external_version=2 operation=operator_change
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/ui/orders/EXT-B/lines/ol-b "HTTP/1.1 303 See Other"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=3c9a2829-5e63-4789-87d2-9723e230a329 webhook_result=delivered
+-------------------------- Captured stdout teardown ---------------------------
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:34:04.757872Z"}
+{"boot_id": "d5e65d6e-1021-4694-8daf-e80f0efe1bfe", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:34:04.762870Z"}
+simulator.stop 
+StreamableHTTP session manager shutting down
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:34:05.095641Z"}
+{"boot_id": "cbde5b27-ac92-46d7-94d7-5c11db1c889d", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:34:05.101489Z"}
+---------------------------- Captured log teardown ----------------------------
+INFO     order_simulator.app:observability.py:27 simulator.stop 
+INFO     mcp.server.streamable_http_manager:streamable_http_manager.py:166 StreamableHTTP session manager shutting down
+_____________________ test_s07_stale_approved_stock_state _____________________
+
+chain = McpServer(url='http://127.0.0.1:55676/mcp', intents=None)
+wired = Boundary(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E35B5750>), si...nt object at 0x00000205E321A5A0>, dispatcher=<order_simulator.webhooks.WebhookDispatcher object at 0x00000205E321A540>)
+physical = Intake(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E35B5750>), observed_at=datetime.datetime(2026, 9, 15, 16, 34, 6, 38069, tzinfo=datetime.timezone.utc))
+
+    async def test_s07_stale_approved_stock_state(
+        chain: McpServer, wired: Boundary, physical: Intake
+    ) -> None:
+        """Tomas approves a strawberry crown the kitchen can no longer make.
+    
+        The hardest checkpoint is ``CONSENT_SETTLED``, and it is the one place in the whole manifest
+        where a partition legitimately moves: his promise goes from needing his permission to
+        needing its owner, because the re-plan against the world as it now stands finds no valid
+        option at all. Asking him again -- which is right in S06 and would be wrong here -- would
+        show as a message this checkpoint does not declare.
+        """
+    
+        async def drive() -> dict[str, Observation]:
+            assert declared("S07") == ("PLANNED", "CONFIRMED", "CONSENT_SETTLED", "SETTLED")
+            since = await baseline_of(physical, wired)
+            observations: dict[str, Observation] = {}
+    
+            case_id = await reported(chain, physical)
+            await answered(chain, physical, case_id, RASPBERRY_ONLY)
+            await quiescent(physical, case_id)
+            observations["PLANNED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await confirmed(chain, physical, case_id)
+            await settle(physical, wired)
+            observations["CONFIRMED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await physical.deliver_reply((await ask_for(physical, case_id, TOMAS)).id, CONSENT)
+            await physical.drain_until_decided(worker=worker_for(physical, wired))
+            await physical.consume_stock(STRAWBERRIES, "-5.6")
+            await settle(physical, wired)
+            await quiescent(physical, case_id)
+            observations["CONSENT_SETTLED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await settle(physical, wired)
+            await quiescent(physical, case_id)
+            observations["SETTLED"] = await observe(physical, case_id=case_id, since=since)
+            return observations
+    
+>       await scored("S07", drive)
+
+apps\backend\tests\test_effect_sets.py:755: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+apps\backend\tests\test_effect_sets.py:364: in scored
+    assert_passes(verdict)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+verdict = Verdict(scenario='S07', outcome='FAIL', reason='', diffs=(Diff(checkpoint='SETTLED', aspect='effects', subject='ord-b/...', observed='0'), Diff(checkpoint='SETTLED', aspect='effects', subject='ord-b/task_hold', expected='1', observed='0')))
+
+    def assert_passes(verdict: Verdict) -> None:
+        """Fail the test that produced this verdict, with the whole diff in the message.
+    
+        The verdict is recorded first by the caller, so a failure is captured before it is raised:
+        a run whose assertion aborted the session still leaves the diff behind for the capture.
+        """
+        if verdict.passed:
+            return
+        lines: Sequence[str] = [
+            f"{verdict.scenario}: {verdict.outcome}"
+            + (f" -- {verdict.reason}" if verdict.reason else ""),
+            *(
+                f"  {diff.checkpoint}/{diff.aspect} {diff.subject}: "
+                f"expected {diff.expected}, observed {diff.observed}"
+                for diff in verdict.diffs
+            ),
+        ]
+>       raise AssertionError("\n".join(lines))
+E       AssertionError: S07: FAIL
+E         SETTLED/effects ord-b/owner_escalation: expected 1, observed 0
+E         SETTLED/effects ord-b/task_hold: expected 1, observed 0
+
+apps\backend\tests\_effect_set_judge.py:235: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+{"boot_id": "3ad842d0-a47d-401d-83d1-f554660ad975", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:34:06.053069Z"}
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:34:06.095784Z"}
+StreamableHTTP session manager started
+simulator.start database=C:\Users\Asembris\AppData\Local\Temp\pytest-of-Asembris\pytest-864\test_s07_stale_approved_stock_0\order-simulator.sqlite3 undelivered=0 webhook_configured=True
+{"boot_id": "8ca21b50-0c48-4df8-b19c-ee25ae3187b5", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:34:06.590104Z"}
+---------------------------- Captured stdout call -----------------------------
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:34:06.668534Z"}
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+{"case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "worker": "maya", "event": "intake.case.opened", "correlation_id": "ad04f2d6-03e0-499b-8bef-da755252c99e", "level": "info", "timestamp": "2026-09-15T16:34:06.908714Z"}
+{"case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "created": true, "worker": "maya", "event": "intents.report.accepted", "correlation_id": "ad04f2d6-03e0-499b-8bef-da755252c99e", "level": "info", "timestamp": "2026-09-15T16:34:06.908714Z"}
+HTTP Request: POST http://127.0.0.1:55672/internal/intents/report "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "correlation_id": "ad04f2d6-03e0-499b-8bef-da755252c99e", "event": "mcp.tool.report", "level": "info", "timestamp": "2026-09-15T16:34:06.912716Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "0a922892-b0fd-47ca-a3e7-96463247bfd0", "step_key": "interpret:19492242-ebe6-4954-8630-0a2b16418f3b", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:07.046700Z"}
+{"step_id": "9851771e-83b7-41f6-98cc-0d70fa67ccb1", "step_key": "resolve:19492242-ebe6-4954-8630-0a2b16418f3b", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:07.222020Z"}
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+{"case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "worker": "maya", "event": "intake.clarification.answered", "correlation_id": "33330d45-5354-406a-9982-990c77d9dcca", "level": "info", "timestamp": "2026-09-15T16:34:07.355150Z"}
+{"case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "created": true, "worker": "maya", "event": "intents.clarify.accepted", "correlation_id": "33330d45-5354-406a-9982-990c77d9dcca", "level": "info", "timestamp": "2026-09-15T16:34:07.355150Z"}
+HTTP Request: POST http://127.0.0.1:55672/internal/intents/clarify "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "correlation_id": "33330d45-5354-406a-9982-990c77d9dcca", "event": "mcp.tool.clarify", "level": "info", "timestamp": "2026-09-15T16:34:07.358151Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "d1f47894-137f-404a-ae13-4fb69dae8390", "step_key": "interpret:feca8c66-7c10-425e-af9d-490b571e9b87", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:07.451648Z"}
+{"step_id": "cebb1607-1244-49b3-b945-f1aa18511c05", "step_key": "resolve:feca8c66-7c10-425e-af9d-490b571e9b87", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:07.641173Z"}
+{"step_id": "6069994e-99e8-4ba2-8857-9649604c8d8b", "step_key": "analyze:feca8c66-7c10-425e-af9d-490b571e9b87", "kind": "ANALYZE_IMPACT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:07.979221Z"}
+{"step_id": "7baf810a-c62f-40d3-bbfb-a3fb00e9ddc6", "step_key": "plan:feca8c66-7c10-425e-af9d-490b571e9b87", "kind": "PLAN_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:08.510490Z"}
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+HTTP Request: POST http://127.0.0.1:55672/internal/intents/status "HTTP/1.1 200 OK"
+{"client": "bearer:6257d6aab6a6", "case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "correlation_id": "29ac0e89-5485-4ea5-bc30-a54570995399", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-09-15T16:34:08.902787Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+{"case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "worker": "maya", "applying": 1, "escalated": 2, "awaiting_approval": 1, "event": "recovery.plan.confirmed", "correlation_id": "54703e66-77b1-49d8-8d7c-026dd719f332", "level": "info", "timestamp": "2026-09-15T16:34:09.048433Z"}
+{"case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "created": true, "worker": "maya", "event": "intents.confirm.accepted", "correlation_id": "54703e66-77b1-49d8-8d7c-026dd719f332", "level": "info", "timestamp": "2026-09-15T16:34:09.048433Z"}
+HTTP Request: POST http://127.0.0.1:55672/internal/intents/confirm "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "correlation_id": "54703e66-77b1-49d8-8d7c-026dd719f332", "event": "mcp.tool.confirm", "level": "info", "timestamp": "2026-09-15T16:34:09.052437Z"}
+Terminating session: None
+{"step_id": "06b7d04e-715d-4435-abbc-b618ee9362de", "step_key": "apply:e89003d3-d9b7-5512-805f-271c153b2b85", "kind": "APPLY_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:09.270434Z"}
+simulator.order.amended event_id=3f2ac7f3-ec82-4c19-acba-5d59bd9c93d4 external_order_id=EXT-A external_version=2 idempotency_key=pp:amend:e89003d3-d9b7-5512-805f-271c153b2b85:f5151c75-f72e-5f5d-8988-4adf713044c0:1 operation=amendment replayed=False
+HTTP Request: POST http://order-system.test/orders/EXT-A/amendments "HTTP/1.1 200 OK"
+{"external_order_id": "EXT-A", "expected_version": 1, "idempotency_key": "pp:amend:e89003d3-d9b7-5512-805f-271c153b2b85:f5151c75-f72e-5f5d-8988-4adf713044c0:1", "status": "DELIVERED", "external_version": 2, "event": "worker.order_system.amended", "level": "info", "timestamp": "2026-09-15T16:34:09.459157Z"}
+{"effect_id": "5cf239a2-5176-4dc4-a482-478216ce238e", "kind": "ORDER_AMEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:34:09.477770Z"}
+{"step_id": "9addeecc-c611-4240-bfad-7424b16747d9", "step_key": "approval:0f377e16-1845-51ce-a6fc-ba3b6f2c064b", "kind": "REQUEST_APPROVAL", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:09.646616Z"}
+{"effect_id": "6379d7aa-3d97-45ef-8cf4-30cf06d6a48e", "kind": "MESSAGE_SEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:34:09.687617Z"}
+{"step_id": "eb80b135-3272-434e-98a0-32acc004b2a7", "step_key": "finalize:e89003d3-d9b7-5512-805f-271c153b2b85", "kind": "FINALIZE_RECOVERY", "attempt": 1, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:09.766274Z"}
+{"request_id": "70b119e9-311e-551c-acf7-708a1994073e", "track_id": "0f377e16-1845-51ce-a6fc-ba3b6f2c064b", "attempts": 1, "case_state": "EXECUTING", "event": "approval.sent", "level": "info", "timestamp": "2026-09-15T16:34:09.870443Z"}
+{"step_id": "270b01eb-d8eb-4fc8-81e7-72b20c6ea5a5", "step_key": "approval-sent:0f377e16-1845-51ce-a6fc-ba3b6f2c064b", "kind": "MARK_APPROVAL_SENT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:09.897444Z"}
+{"event_id": "3f2ac7f3-ec82-4c19-acba-5d59bd9c93d4", "inbox_id": "6960eee8-d80f-46b5-8d7f-155bf053fe73", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "36006c1c-2733-4554-b60f-fcf7021d2dac", "level": "info", "timestamp": "2026-09-15T16:34:10.219304Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=3f2ac7f3-ec82-4c19-acba-5d59bd9c93d4 webhook_result=delivered
+{"step_id": "eb80b135-3272-434e-98a0-32acc004b2a7", "step_key": "finalize:e89003d3-d9b7-5512-805f-271c153b2b85", "kind": "FINALIZE_RECOVERY", "attempt": 2, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:10.464465Z"}
+{"inbox_id": "6960eee8-d80f-46b5-8d7f-155bf053fe73", "external_order_id": "EXT-A", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:2d9da63c", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:34:10.603210Z"}
+{"step_id": "eb80b135-3272-434e-98a0-32acc004b2a7", "step_key": "finalize:e89003d3-d9b7-5512-805f-271c153b2b85", "kind": "FINALIZE_RECOVERY", "attempt": 3, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:10.791208Z"}
+{"inbox_id": "4b436afe-7788-44ec-ad01-ef5ab05871ee", "source": "customer-reply", "state": "PROCESSED", "step_key": "inbox:4b436afe-7788-44ec-ad01-ef5ab05871ee", "worker": "DESKTOP-OKFJLHE:8260:b47f71b5", "event": "worker.inbox.processed", "level": "info", "timestamp": "2026-09-15T16:34:11.082138Z"}
+{"request_id": "70b119e9-311e-551c-acf7-708a1994073e", "track_id": "0f377e16-1845-51ce-a6fc-ba3b6f2c064b", "decision": "APPROVE", "parser": "LITERAL", "case_state": "REVALIDATING", "event": "approval.decided", "level": "info", "timestamp": "2026-09-15T16:34:11.203631Z"}
+{"step_id": "3967351b-a010-4527-88ee-a03ae6d44e27", "step_key": "inbox:4b436afe-7788-44ec-ad01-ef5ab05871ee", "kind": "RECEIVE_CUSTOMER_REPLY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:11.239547Z"}
+{"case_id": "9280ff89-019f-55ba-b91d-b27ebb026346", "track_id": "0f377e16-1845-51ce-a6fc-ba3b6f2c064b", "deciding_check": 5, "event": "revalidation.stale", "level": "info", "timestamp": "2026-09-15T16:34:11.544171Z"}
+{"step_id": "7259999c-a2ff-4946-8eed-3061d98d5308", "step_key": "revalidate:0f377e16-1845-51ce-a6fc-ba3b6f2c064b", "kind": "REVALIDATE_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:11.576256Z"}
+{"step_id": "a3b7bea2-7fb2-4ec2-85de-e4f724aecfba", "step_key": "replan:0f377e16-1845-51ce-a6fc-ba3b6f2c064b", "kind": "REPLAN_TRACK", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:11.806707Z"}
+------------------------------ Captured log call ------------------------------
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55672/internal/intents/report "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55672/internal/intents/clarify "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55672/internal/intents/status "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55676/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55672/internal/intents/confirm "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     order_simulator.app:observability.py:27 simulator.order.amended event_id=3f2ac7f3-ec82-4c19-acba-5d59bd9c93d4 external_order_id=EXT-A external_version=2 idempotency_key=pp:amend:e89003d3-d9b7-5512-805f-271c153b2b85:f5151c75-f72e-5f5d-8988-4adf713044c0:1 operation=amendment replayed=False
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/orders/EXT-A/amendments "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=3f2ac7f3-ec82-4c19-acba-5d59bd9c93d4 webhook_result=delivered
+-------------------------- Captured stdout teardown ---------------------------
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:34:12.505602Z"}
+{"boot_id": "8ca21b50-0c48-4df8-b19c-ee25ae3187b5", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:34:12.512604Z"}
+simulator.stop 
+StreamableHTTP session manager shutting down
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:34:12.925740Z"}
+{"boot_id": "3ad842d0-a47d-401d-83d1-f554660ad975", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:34:12.931647Z"}
+---------------------------- Captured log teardown ----------------------------
+INFO     order_simulator.app:observability.py:27 simulator.stop 
+INFO     mcp.server.streamable_http_manager:streamable_http_manager.py:166 StreamableHTTP session manager shutting down
+___________________________ test_s08_foreign_sender ___________________________
+
+chain = McpServer(url='http://127.0.0.1:55732/mcp', intents=None)
+wired = Boundary(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E271C2D0>), si...nt object at 0x00000205E2FDE1E0>, dispatcher=<order_simulator.webhooks.WebhookDispatcher object at 0x00000205E2FDE6F0>)
+physical = Intake(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E271C2D0>), observed_at=datetime.datetime(2026, 9, 15, 16, 34, 13, 858037, tzinfo=datetime.timezone.utc))
+
+    async def test_s08_foreign_sender(chain: McpServer, wired: Boundary, physical: Intake) -> None:
+        """A literal YES arrives about Tomas's cake, from Ahmed's channel.
+    
+        The hardest checkpoint is ``CONSENT_SETTLED``, where the partition has not moved at all and
+        every count is the one it was. The word is literal and the request is open, and neither of
+        those makes the sender its customer. Ahmed's own order is the other half of it: a message
+        arriving on his channel is not an instruction about his cake, and his zero at every
+        checkpoint is as much the point as the refusal is.
+    
+        The foreign sender is an explicit operator action rather than a misdirected fixture: the
+        reply is put on the inbound transport carrying Ahmed's channel as its sender, which is the
+        one thing about it that differs from the reply S01 sends.
+        """
+    
+        async def drive() -> dict[str, Observation]:
+            assert declared("S08") == ("PLANNED", "CONFIRMED", "CONSENT_SETTLED", "SETTLED")
+            since = await baseline_of(physical, wired)
+            observations: dict[str, Observation] = {}
+    
+            case_id = await reported(chain, physical)
+            await answered(chain, physical, case_id, RASPBERRY_ONLY)
+            await quiescent(physical, case_id)
+            observations["PLANNED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await confirmed(chain, physical, case_id)
+            await settle(physical, wired)
+            observations["CONFIRMED"] = await observe(physical, case_id=case_id, since=since)
+    
+            ask = await ask_for(physical, case_id, TOMAS)
+            assert AHMED_CHANNEL != TOMAS_CHANNEL, "the foreign sender is not foreign"
+            await physical.deliver_reply(ask.id, CONSENT, sender=AHMED_CHANNEL)
+            await settle(physical, wired)
+            await quiescent(physical, case_id)
+            observations["CONSENT_SETTLED"] = await observe(physical, case_id=case_id, since=since)
+    
+            assert await expire_open_ask(physical, case_id, TOMAS), "his request was not left open"
+            await settle(physical, wired)
+            await quiescent(physical, case_id)
+            observations["SETTLED"] = await observe(physical, case_id=case_id, since=since)
+            return observations
+    
+>       await scored("S08", drive)
+
+apps\backend\tests\test_effect_sets.py:802: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+apps\backend\tests\test_effect_sets.py:364: in scored
+    assert_passes(verdict)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+verdict = Verdict(scenario='S08', outcome='FAIL', reason='', diffs=(Diff(checkpoint='SETTLED', aspect='effects', subject='ord-b/task_hold', expected='1', observed='0'),))
+
+    def assert_passes(verdict: Verdict) -> None:
+        """Fail the test that produced this verdict, with the whole diff in the message.
+    
+        The verdict is recorded first by the caller, so a failure is captured before it is raised:
+        a run whose assertion aborted the session still leaves the diff behind for the capture.
+        """
+        if verdict.passed:
+            return
+        lines: Sequence[str] = [
+            f"{verdict.scenario}: {verdict.outcome}"
+            + (f" -- {verdict.reason}" if verdict.reason else ""),
+            *(
+                f"  {diff.checkpoint}/{diff.aspect} {diff.subject}: "
+                f"expected {diff.expected}, observed {diff.observed}"
+                for diff in verdict.diffs
+            ),
+        ]
+>       raise AssertionError("\n".join(lines))
+E       AssertionError: S08: FAIL
+E         SETTLED/effects ord-b/task_hold: expected 1, observed 0
+
+apps\backend\tests\_effect_set_judge.py:235: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+{"boot_id": "2f2ee10a-a139-489c-b983-0d2274d61a33", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:34:13.869296Z"}
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:34:13.909989Z"}
+StreamableHTTP session manager started
+simulator.start database=C:\Users\Asembris\AppData\Local\Temp\pytest-of-Asembris\pytest-864\test_s08_foreign_sender0\order-simulator.sqlite3 undelivered=0 webhook_configured=True
+{"boot_id": "2c924004-8c39-4f72-860f-ad53ca80f8c6", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:34:14.258879Z"}
+---------------------------- Captured stdout call -----------------------------
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:34:14.348986Z"}
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+{"case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "worker": "maya", "event": "intake.case.opened", "correlation_id": "15ec9b99-2301-4a00-ab14-a1aea3ce9fbc", "level": "info", "timestamp": "2026-09-15T16:34:14.591003Z"}
+{"case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "created": true, "worker": "maya", "event": "intents.report.accepted", "correlation_id": "15ec9b99-2301-4a00-ab14-a1aea3ce9fbc", "level": "info", "timestamp": "2026-09-15T16:34:14.591003Z"}
+HTTP Request: POST http://127.0.0.1:55728/internal/intents/report "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "correlation_id": "15ec9b99-2301-4a00-ab14-a1aea3ce9fbc", "event": "mcp.tool.report", "level": "info", "timestamp": "2026-09-15T16:34:14.595298Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "c2890d15-afd4-40c9-ba20-e7ddf2c59597", "step_key": "interpret:9d95490a-e8bd-4d3c-a155-461df46673ea", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:14.734043Z"}
+{"step_id": "ca96d7fe-2273-4495-b9f4-fb8410d161c0", "step_key": "resolve:9d95490a-e8bd-4d3c-a155-461df46673ea", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:14.892289Z"}
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+{"case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "worker": "maya", "event": "intake.clarification.answered", "correlation_id": "42cb30eb-602e-4c14-9398-0f15ddad577c", "level": "info", "timestamp": "2026-09-15T16:34:15.040725Z"}
+{"case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "created": true, "worker": "maya", "event": "intents.clarify.accepted", "correlation_id": "42cb30eb-602e-4c14-9398-0f15ddad577c", "level": "info", "timestamp": "2026-09-15T16:34:15.040725Z"}
+HTTP Request: POST http://127.0.0.1:55728/internal/intents/clarify "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "correlation_id": "42cb30eb-602e-4c14-9398-0f15ddad577c", "event": "mcp.tool.clarify", "level": "info", "timestamp": "2026-09-15T16:34:15.044724Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "cf6a7d5c-af85-4b17-8d0b-07bbfd060c2d", "step_key": "interpret:a0602182-7346-448a-8e40-8589148d2f34", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:15.135780Z"}
+{"step_id": "a92bc34a-a89a-45bb-b280-878e8451bf49", "step_key": "resolve:a0602182-7346-448a-8e40-8589148d2f34", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:15.343678Z"}
+{"step_id": "b18d2e45-6480-4672-a866-bb67a31be2e9", "step_key": "analyze:a0602182-7346-448a-8e40-8589148d2f34", "kind": "ANALYZE_IMPACT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:15.721755Z"}
+{"step_id": "cececde4-d28f-42cc-bceb-4913685980b4", "step_key": "plan:a0602182-7346-448a-8e40-8589148d2f34", "kind": "PLAN_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:16.068776Z"}
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+HTTP Request: POST http://127.0.0.1:55728/internal/intents/status "HTTP/1.1 200 OK"
+{"client": "bearer:6257d6aab6a6", "case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "correlation_id": "5703d191-09c9-4c7a-abc7-5e4c528b5d3a", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-09-15T16:34:16.463007Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+{"case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "worker": "maya", "applying": 1, "escalated": 2, "awaiting_approval": 1, "event": "recovery.plan.confirmed", "correlation_id": "1e90251c-28ab-44b8-bc71-0cd67f454205", "level": "info", "timestamp": "2026-09-15T16:34:16.606490Z"}
+{"case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "created": true, "worker": "maya", "event": "intents.confirm.accepted", "correlation_id": "1e90251c-28ab-44b8-bc71-0cd67f454205", "level": "info", "timestamp": "2026-09-15T16:34:16.607028Z"}
+HTTP Request: POST http://127.0.0.1:55728/internal/intents/confirm "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "correlation_id": "1e90251c-28ab-44b8-bc71-0cd67f454205", "event": "mcp.tool.confirm", "level": "info", "timestamp": "2026-09-15T16:34:16.610228Z"}
+Terminating session: None
+{"step_id": "58f9c779-e379-4b1c-ae91-eb3a591ec5f8", "step_key": "approval:558ed19c-c9eb-56dd-a2b2-af1f58a17db0", "kind": "REQUEST_APPROVAL", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:16.817610Z"}
+{"effect_id": "55cbfd37-9ecf-4864-b7ee-c76921d12229", "kind": "MESSAGE_SEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:34:16.861960Z"}
+{"step_id": "5ca673fc-68ce-44d0-a87d-e4c00f9810af", "step_key": "apply:09147d93-6201-5b78-bb18-24dc10a608f1", "kind": "APPLY_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:17.038332Z"}
+simulator.order.amended event_id=60ad0db9-0b0f-403d-982c-9ef0ee1f6ebe external_order_id=EXT-A external_version=2 idempotency_key=pp:amend:09147d93-6201-5b78-bb18-24dc10a608f1:0a8f6ace-a10a-5ad8-8bd1-e9de4c83b1cc:1 operation=amendment replayed=False
+HTTP Request: POST http://order-system.test/orders/EXT-A/amendments "HTTP/1.1 200 OK"
+{"external_order_id": "EXT-A", "expected_version": 1, "idempotency_key": "pp:amend:09147d93-6201-5b78-bb18-24dc10a608f1:0a8f6ace-a10a-5ad8-8bd1-e9de4c83b1cc:1", "status": "DELIVERED", "external_version": 2, "event": "worker.order_system.amended", "level": "info", "timestamp": "2026-09-15T16:34:17.133009Z"}
+{"effect_id": "82ad8420-f2dd-427b-9fa3-7355e17c7429", "kind": "ORDER_AMEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:34:17.153648Z"}
+{"request_id": "623761ce-8e5c-5faf-9ee4-7672c605f5dd", "track_id": "558ed19c-c9eb-56dd-a2b2-af1f58a17db0", "attempts": 1, "case_state": "EXECUTING", "event": "approval.sent", "level": "info", "timestamp": "2026-09-15T16:34:17.239968Z"}
+{"step_id": "b26dded1-5618-4bae-9f67-117df0e78249", "step_key": "approval-sent:558ed19c-c9eb-56dd-a2b2-af1f58a17db0", "kind": "MARK_APPROVAL_SENT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:17.269938Z"}
+{"step_id": "eacc91de-3b1d-4080-8ed5-d79af9f4fe31", "step_key": "finalize:09147d93-6201-5b78-bb18-24dc10a608f1", "kind": "FINALIZE_RECOVERY", "attempt": 1, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:17.362280Z"}
+{"event_id": "60ad0db9-0b0f-403d-982c-9ef0ee1f6ebe", "inbox_id": "afdcce54-fa9a-4894-848f-5c0bf8d5f20e", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "848ff05e-1b73-4c13-9521-98538364618c", "level": "info", "timestamp": "2026-09-15T16:34:17.599461Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=60ad0db9-0b0f-403d-982c-9ef0ee1f6ebe webhook_result=delivered
+{"step_id": "eacc91de-3b1d-4080-8ed5-d79af9f4fe31", "step_key": "finalize:09147d93-6201-5b78-bb18-24dc10a608f1", "kind": "FINALIZE_RECOVERY", "attempt": 2, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:17.795758Z"}
+{"inbox_id": "afdcce54-fa9a-4894-848f-5c0bf8d5f20e", "external_order_id": "EXT-A", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:abaa9b97", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:34:17.896641Z"}
+{"step_id": "eacc91de-3b1d-4080-8ed5-d79af9f4fe31", "step_key": "finalize:09147d93-6201-5b78-bb18-24dc10a608f1", "kind": "FINALIZE_RECOVERY", "attempt": 3, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:18.067310Z"}
+{"inbox_id": "ed837f7f-ba2f-44db-a0b5-6d1a50fd8793", "source": "customer-reply", "state": "PROCESSED", "step_key": "inbox:ed837f7f-ba2f-44db-a0b5-6d1a50fd8793", "worker": "DESKTOP-OKFJLHE:8260:f4ff41f5", "event": "worker.inbox.processed", "level": "info", "timestamp": "2026-09-15T16:34:18.387789Z"}
+{"step_id": "c318d205-5f20-4b74-aa58-0aa2b0ba1bd4", "step_key": "inbox:ed837f7f-ba2f-44db-a0b5-6d1a50fd8793", "kind": "RECEIVE_CUSTOMER_REPLY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:18.508789Z"}
+{"timer_id": "001c29c2-f96c-4637-ac7f-88a6eaa4a2c2", "kind": "APPROVAL_DEADLINE", "subject_id": "623761ce-8e5c-5faf-9ee4-7672c605f5dd", "step_key": "approval-expired:623761ce-8e5c-5faf-9ee4-7672c605f5dd", "event": "worker.timer.fired", "level": "info", "timestamp": "2026-09-15T16:34:18.952686Z"}
+{"step_id": "a9839c91-3311-45ad-a9aa-1f7ccb1c61fa", "step_key": "approval-expired:623761ce-8e5c-5faf-9ee4-7672c605f5dd", "kind": "EXPIRE_APPROVAL", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:19.063656Z"}
+{"step_id": "9f20b52e-8208-4a66-a4b1-7ba9e2d9c564", "step_key": "revalidate:558ed19c-c9eb-56dd-a2b2-af1f58a17db0", "kind": "REVALIDATE_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:19.203684Z"}
+{"case_id": "d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "state": "RESOLVED", "needs_owner_attention": true, "event": "case.reconciled", "level": "info", "timestamp": "2026-09-15T16:34:19.300320Z"}
+{"step_id": "7638a294-2a55-411c-aa17-b595db4f7876", "step_key": "reconcile:d3a156de-d8a0-5cd9-bd25-10d88e8f4256", "kind": "RECONCILE_CASE", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:19.337030Z"}
+------------------------------ Captured log call ------------------------------
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55728/internal/intents/report "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55728/internal/intents/clarify "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55728/internal/intents/status "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55732/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55728/internal/intents/confirm "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     order_simulator.app:observability.py:27 simulator.order.amended event_id=60ad0db9-0b0f-403d-982c-9ef0ee1f6ebe external_order_id=EXT-A external_version=2 idempotency_key=pp:amend:09147d93-6201-5b78-bb18-24dc10a608f1:0a8f6ace-a10a-5ad8-8bd1-e9de4c83b1cc:1 operation=amendment replayed=False
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/orders/EXT-A/amendments "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=60ad0db9-0b0f-403d-982c-9ef0ee1f6ebe webhook_result=delivered
+-------------------------- Captured stdout teardown ---------------------------
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:34:19.826788Z"}
+{"boot_id": "2c924004-8c39-4f72-860f-ad53ca80f8c6", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:34:19.830790Z"}
+simulator.stop 
+StreamableHTTP session manager shutting down
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:34:20.267260Z"}
+{"boot_id": "2f2ee10a-a139-489c-b983-0d2274d61a33", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:34:20.274260Z"}
+---------------------------- Captured log teardown ----------------------------
+INFO     order_simulator.app:observability.py:27 simulator.stop 
+INFO     mcp.server.streamable_http_manager:streamable_http_manager.py:166 StreamableHTTP session manager shutting down
+_______________ test_s13_related_external_edit_after_exception ________________
+
+chain = McpServer(url='http://127.0.0.1:55925/mcp', intents=None)
+wired = Boundary(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E2532710>), si...nt object at 0x00000205E47E5CD0>, dispatcher=<order_simulator.webhooks.WebhookDispatcher object at 0x00000205E47E6120>)
+physical = Intake(database=RuntimeDatabase(engine=<sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x00000205E2532710>), observed_at=datetime.datetime(2026, 9, 15, 16, 34, 45, 994495, tzinfo=datetime.timezone.utc))
+
+    async def test_s13_related_external_edit_after_exception(
+        chain: McpServer, wired: Boundary, physical: Intake
+    ) -> None:
+        """Priya doubles her order after the plan is confirmed and before its amendment is sent.
+    
+        The hardest checkpoint is ``CONFIRMED``, where her declared amendment count is zero and her
+        track is on the owner's desk instead. An automatic recovery has no customer waiting on it,
+        which makes it the easiest place in the system to quietly claim a success: the plan was
+        authorised, the write was refused, and the honest outcome is the escalation rather than a
+        cake nobody planned for. Her classification does not move -- what the case decided about her
+        promise was right, and what failed was the write.
+        """
+    
+        async def drive() -> dict[str, Observation]:
+            assert declared("S13") == ("PLANNED", "CONFIRMED", "CONSENT_SETTLED", "SETTLED")
+            since = await baseline_of(physical, wired)
+            observations: dict[str, Observation] = {}
+    
+            case_id = await reported(chain, physical)
+            await answered(chain, physical, case_id, RASPBERRY_ONLY)
+            await quiescent(physical, case_id)
+            observations["PLANNED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await confirmed(chain, physical, case_id)
+            await external_quantity_edit(
+                physical, wired, order=PRIYA_ORDER, quantity=2, case_id=case_id
+            )
+            await settle(physical, wired)
+            observations["CONFIRMED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await customer_consents(physical, wired, case_id)
+            observations["CONSENT_SETTLED"] = await observe(physical, case_id=case_id, since=since)
+    
+            await settle(physical, wired)
+            await quiescent(physical, case_id)
+            observations["SETTLED"] = await observe(physical, case_id=case_id, since=since)
+            return observations
+    
+>       await scored("S13", drive)
+
+apps\backend\tests\test_effect_sets.py:936: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+apps\backend\tests\test_effect_sets.py:364: in scored
+    assert_passes(verdict)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+verdict = Verdict(scenario='S13', outcome='FAIL', reason='', diffs=(Diff(checkpoint='CONFIRMED', aspect='effects', subject='ord-...', observed='0'), Diff(checkpoint='SETTLED', aspect='effects', subject='ord-a/task_hold', expected='1', observed='0')))
+
+    def assert_passes(verdict: Verdict) -> None:
+        """Fail the test that produced this verdict, with the whole diff in the message.
+    
+        The verdict is recorded first by the caller, so a failure is captured before it is raised:
+        a run whose assertion aborted the session still leaves the diff behind for the capture.
+        """
+        if verdict.passed:
+            return
+        lines: Sequence[str] = [
+            f"{verdict.scenario}: {verdict.outcome}"
+            + (f" -- {verdict.reason}" if verdict.reason else ""),
+            *(
+                f"  {diff.checkpoint}/{diff.aspect} {diff.subject}: "
+                f"expected {diff.expected}, observed {diff.observed}"
+                for diff in verdict.diffs
+            ),
+        ]
+>       raise AssertionError("\n".join(lines))
+E       AssertionError: S13: FAIL
+E         CONFIRMED/effects ord-a/owner_escalation: expected 1, observed 0
+E         CONFIRMED/effects ord-a/task_hold: expected 1, observed 0
+E         CONSENT_SETTLED/effects ord-a/owner_escalation: expected 1, observed 0
+E         CONSENT_SETTLED/effects ord-a/task_hold: expected 1, observed 0
+E         SETTLED/effects ord-a/owner_escalation: expected 1, observed 0
+E         SETTLED/effects ord-a/task_hold: expected 1, observed 0
+
+apps\backend\tests\_effect_set_judge.py:235: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+{"boot_id": "dc077c36-02dc-408b-aefc-6b0e96db9d62", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:34:46.006664Z"}
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:34:46.049566Z"}
+StreamableHTTP session manager started
+simulator.start database=C:\Users\Asembris\AppData\Local\Temp\pytest-of-Asembris\pytest-864\test_s13_related_external_edit0\order-simulator.sqlite3 undelivered=0 webhook_configured=True
+{"boot_id": "a5a3d844-3d60-4041-8697-619d5bc28ae6", "env": "local", "version": "0.1.0", "database_configured": true, "event": "api.start", "level": "info", "timestamp": "2026-09-15T16:34:46.274423Z"}
+---------------------------- Captured stdout call -----------------------------
+{"channel": "promisepatch_events", "event": "events.listener_started", "level": "info", "timestamp": "2026-09-15T16:34:46.356763Z"}
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+{"case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "worker": "maya", "event": "intake.case.opened", "correlation_id": "1c9616b3-ca1c-4a4c-a9f4-d821e1b3b9e3", "level": "info", "timestamp": "2026-09-15T16:34:46.602876Z"}
+{"case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "created": true, "worker": "maya", "event": "intents.report.accepted", "correlation_id": "1c9616b3-ca1c-4a4c-a9f4-d821e1b3b9e3", "level": "info", "timestamp": "2026-09-15T16:34:46.602876Z"}
+HTTP Request: POST http://127.0.0.1:55921/internal/intents/report "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "correlation_id": "1c9616b3-ca1c-4a4c-a9f4-d821e1b3b9e3", "event": "mcp.tool.report", "level": "info", "timestamp": "2026-09-15T16:34:46.605875Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "b480dde3-fe39-46fc-9b02-6f246b7bf97c", "step_key": "interpret:ff01f5e0-5d52-40a7-b422-cb35cd23ae21", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:46.723529Z"}
+{"step_id": "90f1ab1f-c5db-4175-87b6-80d1b0ea1b6e", "step_key": "resolve:ff01f5e0-5d52-40a7-b422-cb35cd23ae21", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:46.902214Z"}
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+{"case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "worker": "maya", "event": "intake.clarification.answered", "correlation_id": "c1a7dcdc-c3e0-4837-983b-355c8569ed4f", "level": "info", "timestamp": "2026-09-15T16:34:47.024898Z"}
+{"case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "created": true, "worker": "maya", "event": "intents.clarify.accepted", "correlation_id": "c1a7dcdc-c3e0-4837-983b-355c8569ed4f", "level": "info", "timestamp": "2026-09-15T16:34:47.025424Z"}
+HTTP Request: POST http://127.0.0.1:55921/internal/intents/clarify "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "correlation_id": "c1a7dcdc-c3e0-4837-983b-355c8569ed4f", "event": "mcp.tool.clarify", "level": "info", "timestamp": "2026-09-15T16:34:47.028547Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+{"step_id": "3a8dcf3a-8029-4161-9890-44e306ce8fb0", "step_key": "interpret:7576338a-8fd7-432f-aaa8-6ff655ca07f4", "kind": "BEGIN_INTERPRETATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:47.114179Z"}
+{"step_id": "833ae767-9b39-4604-bde1-4882cc07688e", "step_key": "resolve:7576338a-8fd7-432f-aaa8-6ff655ca07f4", "kind": "RESOLVE_OBSERVATION", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:47.302255Z"}
+{"step_id": "70e49cff-64f3-4167-80a7-0635fee0c2c0", "step_key": "analyze:7576338a-8fd7-432f-aaa8-6ff655ca07f4", "kind": "ANALYZE_IMPACT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:47.660707Z"}
+{"step_id": "ddb51a6d-d5ea-4fb9-8390-5c4831ca7a87", "step_key": "plan:7576338a-8fd7-432f-aaa8-6ff655ca07f4", "kind": "PLAN_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:47.993338Z"}
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 202 Accepted"
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+HTTP Request: POST http://127.0.0.1:55921/internal/intents/status "HTTP/1.1 200 OK"
+{"client": "bearer:6257d6aab6a6", "case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "correlation_id": "9614ebb5-83a2-4543-8501-13bb10feae0c", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-09-15T16:34:48.399373Z"}
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+Terminating session: None
+HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+{"case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "worker": "maya", "applying": 1, "escalated": 2, "awaiting_approval": 1, "event": "recovery.plan.confirmed", "correlation_id": "88983f59-d99a-4c1a-957d-8957d06729e2", "level": "info", "timestamp": "2026-09-15T16:34:48.558582Z"}
+{"case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "created": true, "worker": "maya", "event": "intents.confirm.accepted", "correlation_id": "88983f59-d99a-4c1a-957d-8957d06729e2", "level": "info", "timestamp": "2026-09-15T16:34:48.558582Z"}
+HTTP Request: POST http://127.0.0.1:55921/internal/intents/confirm "HTTP/1.1 202 Accepted"
+{"client": "bearer:6257d6aab6a6", "case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "correlation_id": "88983f59-d99a-4c1a-957d-8957d06729e2", "event": "mcp.tool.confirm", "level": "info", "timestamp": "2026-09-15T16:34:48.562584Z"}
+Terminating session: None
+simulator.order.changed event_id=cbcded42-fe21-44e3-a30a-b26be22bb1a7 external_order_id=EXT-A external_version=2 operation=operator_change
+HTTP Request: POST http://order-system.test/ui/orders/EXT-A/lines/ol-a "HTTP/1.1 303 See Other"
+{"event_id": "cbcded42-fe21-44e3-a30a-b26be22bb1a7", "inbox_id": "a68674f3-7c7b-4373-aa7e-dd48fcca5022", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "46cd40bc-37bc-4d2d-8474-db411881d10e", "level": "info", "timestamp": "2026-09-15T16:34:48.966421Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=cbcded42-fe21-44e3-a30a-b26be22bb1a7 webhook_result=delivered
+{"inbox_id": "a68674f3-7c7b-4373-aa7e-dd48fcca5022", "external_order_id": "EXT-A", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:581bb10b", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:34:49.161489Z"}
+{"step_id": "6179055f-6c5c-4eed-903c-b0e84146a55d", "step_key": "approval:d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "kind": "REQUEST_APPROVAL", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:49.426058Z"}
+{"effect_id": "983b447c-2d7f-436d-ab95-30d98b6ca640", "kind": "MESSAGE_SEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:34:49.474057Z"}
+{"step_id": "a4756819-7a43-4a2e-bb92-15d3f6716712", "step_key": "apply:08e6845d-4d03-5675-964b-64251084b99d", "kind": "APPLY_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:49.720560Z"}
+{"request_id": "9b4d35a7-77ff-5f36-8ca9-dde5713475ca", "track_id": "d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "attempts": 1, "case_state": "WAITING", "event": "approval.sent", "level": "info", "timestamp": "2026-09-15T16:34:49.832095Z"}
+{"step_id": "5dfbea71-a4cb-4350-8537-52682fb56909", "step_key": "approval-sent:d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "kind": "MARK_APPROVAL_SENT", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:49.864098Z"}
+{"inbox_id": "af146297-f0b0-443d-97d0-4a294ac11124", "source": "customer-reply", "state": "PROCESSED", "step_key": "inbox:af146297-f0b0-443d-97d0-4a294ac11124", "worker": "DESKTOP-OKFJLHE:8260:12f58922", "event": "worker.inbox.processed", "level": "info", "timestamp": "2026-09-15T16:34:50.289436Z"}
+{"request_id": "9b4d35a7-77ff-5f36-8ca9-dde5713475ca", "track_id": "d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "decision": "APPROVE", "parser": "LITERAL", "case_state": "REVALIDATING", "event": "approval.decided", "level": "info", "timestamp": "2026-09-15T16:34:50.426783Z"}
+{"step_id": "39c25b62-b19a-44f2-893c-a3e0e02fa2e1", "step_key": "inbox:af146297-f0b0-443d-97d0-4a294ac11124", "kind": "RECEIVE_CUSTOMER_REPLY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:50.465781Z"}
+{"case_id": "077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "track_id": "d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "request_id": "9b4d35a7-77ff-5f36-8ca9-dde5713475ca", "as_of": 36461, "event": "revalidation.passed", "level": "info", "timestamp": "2026-09-15T16:34:50.926105Z"}
+{"step_id": "3608ba85-46df-478c-8733-f23dcd449080", "step_key": "revalidate:d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "kind": "REVALIDATE_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:50.960103Z"}
+{"step_id": "a58befee-0ceb-4594-8dca-5aa8f1483e60", "step_key": "reconcile:077f6b0c-9885-5647-ad7e-d58d23b0ddf5", "kind": "RECONCILE_CASE", "attempt": 1, "result": "SKIPPED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:51.054102Z"}
+{"step_id": "d9ed1e59-1d2a-4f50-aa36-4ad8b4329067", "step_key": "apply:d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "kind": "APPLY_RECOVERY", "attempt": 1, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:51.248103Z"}
+simulator.order.amended event_id=fbab674f-59f2-4772-a563-a22cdb2597bc external_order_id=EXT-B external_version=2 idempotency_key=pp:amend:d0e517fb-7683-5ca8-8ef7-1e9e652dde69:8f6b62d8-b6c1-5ec5-aeca-e9a353d70960:1 operation=amendment replayed=False
+HTTP Request: POST http://order-system.test/orders/EXT-B/amendments "HTTP/1.1 200 OK"
+{"external_order_id": "EXT-B", "expected_version": 1, "idempotency_key": "pp:amend:d0e517fb-7683-5ca8-8ef7-1e9e652dde69:8f6b62d8-b6c1-5ec5-aeca-e9a353d70960:1", "status": "DELIVERED", "external_version": 2, "event": "worker.order_system.amended", "level": "info", "timestamp": "2026-09-15T16:34:51.324351Z"}
+{"effect_id": "3c0c9f7b-a895-463c-81c8-423ac63bbcbf", "kind": "ORDER_AMEND", "attempt": 1, "status": "DELIVERED", "event": "worker.effect.dispatched", "level": "info", "timestamp": "2026-09-15T16:34:51.343348Z"}
+{"step_id": "9ccd74da-9f78-4e4d-bf09-fc4724ba7035", "step_key": "finalize:d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "kind": "FINALIZE_RECOVERY", "attempt": 1, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:51.426348Z"}
+{"event_id": "fbab674f-59f2-4772-a563-a22cdb2597bc", "inbox_id": "5cb07d47-1052-4473-98c3-b910c8d0eee9", "duplicate": false, "event": "api.order_system.ingested", "correlation_id": "b89f493b-283d-412d-90a5-e6bada8ee1c5", "level": "info", "timestamp": "2026-09-15T16:34:51.591632Z"}
+HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+simulator.webhook.delivered delivery_attempt=1 event_id=fbab674f-59f2-4772-a563-a22cdb2597bc webhook_result=delivered
+{"step_id": "9ccd74da-9f78-4e4d-bf09-fc4724ba7035", "step_key": "finalize:d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "kind": "FINALIZE_RECOVERY", "attempt": 2, "result": "RETRY_SCHEDULED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:51.964646Z"}
+{"inbox_id": "5cb07d47-1052-4473-98c3-b910c8d0eee9", "external_order_id": "EXT-B", "external_version": 2, "disposition": "APPLY", "worker": "DESKTOP-OKFJLHE:8260:12f58922", "event": "worker.order_mirror.processed", "level": "info", "timestamp": "2026-09-15T16:34:52.052974Z"}
+{"step_id": "9ccd74da-9f78-4e4d-bf09-fc4724ba7035", "step_key": "finalize:d0e517fb-7683-5ca8-8ef7-1e9e652dde69", "kind": "FINALIZE_RECOVERY", "attempt": 3, "result": "COMPLETED", "event": "worker.step.executed", "level": "info", "timestamp": "2026-09-15T16:34:52.229789Z"}
+------------------------------ Captured log call ------------------------------
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55921/internal/intents/report "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55921/internal/intents/clarify "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 202 Accepted"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55921/internal/intents/status "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55925/mcp "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://127.0.0.1:55921/internal/intents/confirm "HTTP/1.1 202 Accepted"
+INFO     mcp.server.streamable_http:streamable_http.py:855 Terminating session: None
+INFO     order_simulator.app:observability.py:27 simulator.order.changed event_id=cbcded42-fe21-44e3-a30a-b26be22bb1a7 external_order_id=EXT-A external_version=2 operation=operator_change
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/ui/orders/EXT-A/lines/ol-a "HTTP/1.1 303 See Other"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=cbcded42-fe21-44e3-a30a-b26be22bb1a7 webhook_result=delivered
+INFO     order_simulator.app:observability.py:27 simulator.order.amended event_id=fbab674f-59f2-4772-a563-a22cdb2597bc external_order_id=EXT-B external_version=2 idempotency_key=pp:amend:d0e517fb-7683-5ca8-8ef7-1e9e652dde69:8f6b62d8-b6c1-5ec5-aeca-e9a353d70960:1 operation=amendment replayed=False
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://order-system.test/orders/EXT-B/amendments "HTTP/1.1 200 OK"
+INFO     httpx2:_client.py:1923 HTTP Request: POST http://promisepatch.test/api/integrations/order-system/events "HTTP/1.1 202 Accepted"
+INFO     order_simulator.webhooks:observability.py:27 simulator.webhook.delivered delivery_attempt=1 event_id=fbab674f-59f2-4772-a563-a22cdb2597bc webhook_result=delivered
+-------------------------- Captured stdout teardown ---------------------------
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:34:52.847837Z"}
+{"boot_id": "a5a3d844-3d60-4041-8697-619d5bc28ae6", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:34:52.852840Z"}
+simulator.stop 
+StreamableHTTP session manager shutting down
+{"channel": "promisepatch_events", "event": "events.listener_stopped", "level": "info", "timestamp": "2026-09-15T16:34:53.270340Z"}
+{"boot_id": "dc077c36-02dc-408b-aefc-6b0e96db9d62", "event": "api.stop", "level": "info", "timestamp": "2026-09-15T16:34:53.276833Z"}
+---------------------------- Captured log teardown ----------------------------
+INFO     order_simulator.app:observability.py:27 simulator.stop 
+INFO     mcp.server.streamable_http_manager:streamable_http_manager.py:166 StreamableHTTP session manager shutting down
+=========================== short test summary info ===========================
+FAILED apps/backend/tests/test_effect_sets.py::test_s12_external_edit_adds_dependency_before
+FAILED apps/backend/tests/test_effect_sets.py::test_s06_stale_approved_order_version
+FAILED apps/backend/tests/test_effect_sets.py::test_s07_stale_approved_stock_state
+FAILED apps/backend/tests/test_effect_sets.py::test_s08_foreign_sender - Asse...
+FAILED apps/backend/tests/test_effect_sets.py::test_s13_related_external_edit_after_exception
+
+manifest      promisepatch-effect-sets v1.0.0
+manifest_sha  d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc
+runner        1.0.0
+kind          scored
+
+  S01  PASS
+  S02  PASS
+  S03  PASS
+  S04  PASS
+  S05  PASS
+  S06  FAIL
+      CONSENT_SETTLED/effects ord-b/customer_message: expected 2, observed 1
+      SETTLED/effects ord-b/customer_message: expected 2, observed 1
+      SETTLED/effects ord-b/owner_escalation: expected 1, observed 0
+      SETTLED/effects ord-b/task_hold: expected 1, observed 0
+  S07  FAIL
+      SETTLED/effects ord-b/owner_escalation: expected 1, observed 0
+      SETTLED/effects ord-b/task_hold: expected 1, observed 0
+  S08  FAIL
+      SETTLED/effects ord-b/task_hold: expected 1, observed 0
+  S09  PASS
+  S10  PASS
+  S11  PASS
+  S12  FAIL
+      CONFIRMED/effects ord-e/task_hold: expected 1, observed 0
+      CONSENT_SETTLED/effects ord-e/task_hold: expected 1, observed 0
+      SETTLED/effects ord-e/task_hold: expected 1, observed 0
+  S13  FAIL
+      CONFIRMED/effects ord-a/owner_escalation: expected 1, observed 0
+      CONFIRMED/effects ord-a/task_hold: expected 1, observed 0
+      CONSENT_SETTLED/effects ord-a/owner_escalation: expected 1, observed 0
+      CONSENT_SETTLED/effects ord-a/task_hold: expected 1, observed 0
+      SETTLED/effects ord-a/owner_escalation: expected 1, observed 0
+      SETTLED/effects ord-a/task_hold: expected 1, observed 0
+  S14  PASS
+  S15  PASS
+  S16  PASS
+
+capture       D:\PromisePatch\docs\effect-sets\runs\20260915T163255509125+0000-scored.json
+EXITCODE=1
+
+[exited with code 0]
