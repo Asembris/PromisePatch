@@ -281,6 +281,34 @@ The frozen effect-set manifest's identity and coherence are checked with nothing
 uv run pytest scripts/tests/test_effect_set_manifest.py
 ```
 
+The effect-set harness executes scenarios from that manifest against the real system. From a
+fresh clone it verifies its own prerequisites with no database, no container and no credential —
+this is the command to run first, because it proves the clone is complete and the frozen
+identity intact before anything heavier is attempted:
+
+```bash
+uv run python scripts/run_effect_sets.py --check
+```
+
+With the local stack up and the worker stopped, it runs the scenarios that are wired. Three of
+the sixteen are; the other thirteen are named as unwired in the output, and a scored run is
+refused while any of them is:
+
+```bash
+uv run python scripts/with_local_env.py -- uv run python scripts/run_effect_sets.py
+```
+
+The judge and the runner's own suites need nothing at all:
+
+```bash
+uv run pytest apps/backend/tests/test_effect_set_judge.py scripts/tests/test_run_effect_sets.py
+```
+
+[docs/effect-set-run-protocol.md](docs/effect-set-run-protocol.md) fixes, in advance, what counts
+as a scored run and what may never happen to its result;
+[docs/effect-set-harness.md](docs/effect-set-harness.md) describes the machinery, the three wired
+scenarios and the one disagreement building it surfaced.
+
 The frontend gates:
 
 ```bash
