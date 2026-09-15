@@ -18,6 +18,12 @@ on:
   # A run skipped this way reports no check at all rather than a green one. Branch protection
   # that requires these jobs by name must stop requiring them, or a documentation-only pull
   # request waits for a status that will never arrive.
+  #
+  # `workflow_dispatch` is the escape hatch from exactly that, and it is why it exists: a SHA
+  # that has to pass CI before it is released may touch no code at all. Neither trigger below
+  # fires on a documentation-only commit, and a run that never started cannot be waited for,
+  # re-requested or read -- so the manual trigger is the only way to produce one on that SHA.
+  workflow_dispatch:
   pull_request:
     paths-ignore:
       - '**.md'

@@ -24,6 +24,12 @@ this list has to be extended for a file to be *skipped*. `docs/effect-sets/scena
 is the case that names the reason -- it lives under `docs/` and is frozen published evidence,
 so a filter that ignored `docs/**` would have stopped testing the one file nobody may change
 quietly.
+
+A fourth thing is asserted beside them, for the same reason in the opposite direction: the
+manual trigger. Because a documentation-only commit matches the filter, it produces no check at
+all -- not a red one to re-run, not a green one to read -- and `workflow_dispatch` is the only
+way to produce a run on a release SHA that touches no code. It is pinned here so that tidying
+the `on:` block cannot silently remove it.
 """
 
 from __future__ import annotations
@@ -53,6 +59,19 @@ def _on_block(text: str) -> list[str]:
             break
         block.append(line)
     return block
+
+
+def _triggers(block: list[str]) -> list[str]:
+    """The trigger names of the ``on:`` mapping: its keys, ignoring comments and nesting."""
+    names: list[str] = []
+    for line in block:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if len(line) - len(line.lstrip()) != 2:
+            continue
+        names.append(stripped.split(":", 1)[0])
+    return names
 
 
 def _path_filters(block: list[str], key: str) -> list[tuple[str, ...]]:
@@ -130,6 +149,11 @@ def test_both_triggers_ignore_the_same_documentation_list(workflow: str) -> None
 def test_no_trigger_uses_an_allowlist(workflow: str) -> None:
     """`paths` is not merely a different style here. GitHub rejects it beside `paths-ignore`."""
     assert _path_filters(_on_block(workflow), "paths") == []
+
+
+def test_the_manual_trigger_exists(workflow: str) -> None:
+    """The only way to produce a run on a release SHA that changed no code."""
+    assert "workflow_dispatch" in _triggers(_on_block(workflow))
 
 
 def test_documentation_only_changes_skip_ci() -> None:
