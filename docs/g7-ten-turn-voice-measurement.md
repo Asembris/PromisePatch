@@ -1,7 +1,11 @@
 # The G7 ten-turn voice measurement
 
+**Run 2: `K = 9/10`. The gate is `K >= 9`. It PASSES, by exactly one turn, and the G7 voice
+obligation is DISCHARGED under the conditions §7 fixes and R2.2 publishes.**
+
 **This document holds two runs. Run 1 is VOID and is published here in full, unedited. Run 2 is
-the second run it is.**
+the second run it is.** Run 1's `K = 1/10`, its three records and its every sentence stay below
+exactly as written.
 
 ## The void declaration
 
@@ -462,3 +466,399 @@ four worlds can physically be taken, and getting either wrong would have destroy
    state -- neither does a full navigation, and a search finds no `location.reload` and no
    assignment to `location.href` anywhere in `apps/frontend/src`. The page is therefore loaded
    **once**, reloaded **once** after the unscored warm-up to empty the recorder, and never again.
+
+## R2.5 A warm-up happened, and nothing from it is counted
+
+One unscored warm-up turn was taken in W1 -- `report`, *today's raspberry delivery didn't arrive*
+-- purely to confirm the microphone, the recogniser, the stack and the synthesiser on this machine.
+It produced a case at `CLARIFYING` with the `SCOPE` question and a spoken reply. **Nothing from it
+is recorded, published or counted here.** W1 was then reseeded, destroying that case, and the page
+was reloaded, which empties the module-level record array. The ten records below are therefore the
+ten scored turns and nothing else, which the raw JSON confirms: exactly ten entries, the first
+opened at `12:41:16.916Z`, after the reseed.
+
+## R2.6 The ten turns
+
+`S` is `speech_end_final_result`, the anchor §5 chose; `end` is `speech_end_recogniser_end`,
+published beside it so the distance is visible; `A` is the first `reply` or `refusal` utterance;
+`P` is the first `acknowledgement`. All instants are `performance.now()` milliseconds. **Every one
+of the ten was `origin: "spoken"` and `outcome: "accepted"`. There were no refusals and no typed
+turns.**
+
+| # | world | verb | declared words | S | end | end - S | sent | received | A | delta_answer | <=4000 | overall |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | W1 | `report` | today's raspberry delivery didn't arrive | 40068.4 | 40193.6 | 125.2 | 43202.9 | 43244.4 | 43383.7 | **3315.3** | yes | **PASS** |
+| 2 | W1 | `clarify` | just the raspberries | 107688.2 | 107848.5 | 160.3 | 110689.8 | 110736.9 | 110807.8 | **3119.6** | yes | **PASS** |
+| 3 | W1 | `confirm` | yes | 172182.6 | 172278.1 | 95.5 | 174242.7 | 174344.6 | 174397.0 | **2214.4** | yes | **PASS** |
+| 4 | W2 | `report` | today's raspberry delivery didn't arrive | 270993.9 | 271117.6 | 123.7 | 273287.3 | 273333.3 | 273416.5 | **2422.6** | yes | **PASS** |
+| 5 | W2 | `clarify` | the whole Valley Produce delivery | 328561.0 | 328661.3 | 100.3 | 329237.4 | 329289.8 | 329394.7 | **833.7** | yes | **PASS** |
+| 6 | W2 | `confirm` | go ahead | 374911.1 | 374996.0 | 84.9 | 377204.1 | 377286.9 | 377368.3 | **2457.2** | yes | **PASS** |
+| 7 | W3 | `report` | today's raspberry delivery didn't arrive | 439535.0 | 439710.1 | 175.1 | 444261.8 | 444300.9 | 444342.8 | **4807.8** | **no** | **NONPASS** |
+| 8 | W3 | `clarify` | just the raspberries | 468147.8 | 468341.7 | 193.9 | 470933.0 | 470983.2 | 471096.3 | **2948.5** | yes | **PASS** |
+| 9 | W3 | `confirm` | do it | 498624.6 | 498768.3 | 143.7 | 499489.8 | 499548.9 | 499654.6 | **1030.0** | yes | **PASS** |
+| 10 | W4 | `report` | the mascarpone in the walk-in went off | 676565.0 | 676565.5 | 0.5 | 679848.5 | 679886.4 | 679942.3 | **3377.3** | yes | **PASS** |
+
+### The progress utterance, published separately as `new_roadmap.md:358` requires
+
+| # | P (`acknowledgement`) | delta_progress | <=4000 |
+|---|---|---|---|
+| 1 | -- never started | -- | no |
+| 2 | 110733.2 | 3045.0 | yes |
+| 3 | 174287.7 | 2105.1 | yes |
+| 4 | -- never started | -- | no |
+| 5 | 329281.3 | 720.3 | yes |
+| 6 | 377248.2 | 2337.1 | yes |
+| 7 | -- never started | -- | no |
+| 8 | 470978.6 | 2830.8 | yes |
+| 9 | 499532.2 | 907.6 | yes |
+| 10 | -- never started | -- | no |
+
+**Four turns produced no `acknowledgement` at all, and they are exactly the four `report` turns.**
+This is the behaviour run 1 already identified and it is not a new defect: on a fast turn the reply
+calls `speechSynthesis.cancel()` and the queued acknowledgement is discarded before it makes a
+sound, so no `onstart` fires and no entry is written. It is systematic on `report` here because the
+report turns were the fastest to answer -- 37.9 to 46.0 ms of backend on all four. `K_progress` is
+therefore legitimately **below** `K`, which is why §9 computes them separately rather than letting
+one stand for the other.
+
+### One `replay` utterance was produced, and §6 excluded it
+
+Turn 1's record carries a second audio entry, `replay` at `89095.7` -- the read-aloud control
+being pressed some 46 seconds after that turn's reply. §6 excludes `replay` from every count
+because it is not a response to anything a worker just said, and the arithmetic below does exclude
+it: turn 1's `A` is the `reply` at `43383.7`, not the replay. Recorded because it happened and
+because a reader can see it in the raw JSON.
+
+## R2.7 The arithmetic, computed exactly as §9 defines it
+
+```
+turn  1  delta_answer=   3315.3  delta_progress=       --  pass_answer=1  pass_progress=0
+turn  2  delta_answer=   3119.6  delta_progress=   3045.0  pass_answer=1  pass_progress=1
+turn  3  delta_answer=   2214.4  delta_progress=   2105.1  pass_answer=1  pass_progress=1
+turn  4  delta_answer=   2422.6  delta_progress=       --  pass_answer=1  pass_progress=0
+turn  5  delta_answer=    833.7  delta_progress=    720.3  pass_answer=1  pass_progress=1
+turn  6  delta_answer=   2457.2  delta_progress=   2337.1  pass_answer=1  pass_progress=1
+turn  7  delta_answer=   4807.8  delta_progress=       --  pass_answer=0  pass_progress=0
+turn  8  delta_answer=   2948.5  delta_progress=   2830.8  pass_answer=1  pass_progress=1
+turn  9  delta_answer=   1030.0  delta_progress=    907.6  pass_answer=1  pass_progress=1
+turn 10  delta_answer=   3377.3  delta_progress=       --  pass_answer=1  pass_progress=0
+```
+
+**`K = 9/10`.** **`K_progress = 6/10`**, published beside it and not gated. **Refusals: 0.**
+
+**The measured interval carries no public-internet round trip to `us-east-1`, so every interval
+published here is shorter than the same turn taken against the deployed host would be.**
+
+## R2.8 The acceptance result
+
+**The gate is `K >= 9`. `K = 9`. The gate PASSES.**
+
+**VOICE MEASUREMENT CLOSED.** The G7 obligation at `new_roadmap.md:354` and `:358` -- ten real
+predeclared voice turns, recorded with failures and timings, at least nine starting a truthful
+spoken response within four seconds of speech ending -- is **discharged**, under the conditions
+§7 fixes and this document publishes.
+
+**It passes by exactly one turn.** `K = 9` is the minimum that passes, and turn 7 missed by 807.8
+ms. Nothing about this result is comfortable margin, and no artifact carrying `K` may present it
+as one.
+
+## R2.9 Where the time actually went
+
+Computed from the same records. This is the finding worth publishing beside `K`.
+
+| # | speech end -> sent (the mandatory transcript review) | backend | synthesiser start after the response | **product total** |
+|---|---|---|---|---|
+| 1 | 3134.5 | 41.5 | 139.3 | 180.8 |
+| 2 | 3001.6 | 47.1 | 70.9 | 118.0 |
+| 3 | 2060.1 | 101.9 | 52.4 | 154.3 |
+| 4 | 2293.4 | 46.0 | 83.2 | 129.2 |
+| 5 | 676.4 | 52.4 | 104.9 | 157.3 |
+| 6 | 2293.0 | 82.8 | 81.4 | 164.2 |
+| 7 | **4726.8** | 39.1 | 41.9 | 81.0 |
+| 8 | 2785.2 | 50.2 | 113.1 | 163.3 |
+| 9 | 865.2 | 59.1 | 105.7 | 164.8 |
+| 10 | 3283.5 | 37.9 | 55.9 | 93.8 |
+
+| | min | max | mean |
+|---|---|---|---|
+| `delta_answer` | 833.7 | 4807.8 | 2652.6 |
+| operator review | 676.4 | 4726.8 | 2512.0 |
+| backend | 37.9 | 101.9 | 55.8 |
+| synthesiser start | 41.9 | 139.3 | 84.9 |
+| **product total** | **81.0** | **180.8** | **140.7** |
+
+**The product's own contribution never exceeded 181 ms on any of the ten turns, and averaged 141
+ms.** Against a 4000 ms budget that is 3.5% of it. **94.7% of the mean measured interval is the
+operator reading the transcript**, which P7.3 §7 D makes mandatory and §5 anchors before.
+
+**The one nonpass is the review step, not the product.** Turn 7 spent **4726.8 ms** between the
+recogniser's final result and the send press -- more than the whole 4000 ms budget -- while the
+backend answered in 39.1 ms and the synthesiser began 41.9 ms later, the *fastest* product
+response of all ten turns. Turn 7 failed while the product was at its quickest. §6 fixes the
+operator's conduct in advance -- *"Send as soon as the transcript is legible and correct"* -- and
+that is not argued away here: the operator was slow on that turn, it cost the turn, and the turn is
+published as a nonpass.
+
+Predeclaration §12 gap 4 named this in advance: *"the published interval is a property of the
+product's honesty requirement as much as of its latency."* Run 2 is a second body of evidence for
+that sentence. It also sharpens it: a gate anchored at speech end with mandatory review before send
+is, at these latencies, **a measurement of the reviewer with a 141 ms product term added.**
+
+### The anchor choice did not decide this result
+
+§5 chose `speech_end_final_result`, the **earlier** of the two recorded instants, deliberately
+lengthening every window. The distance between the anchors ranged from **0.5 ms** (turn 10) to
+**193.9 ms** (turn 8), mean 120.3 ms.
+
+**Recomputed at `speech_end_recogniser_end` instead, `K` is still 9/10.** Turn 7 measured 4632.7 ms
+from that anchor and still fails. The stricter anchor cost nothing here, which is worth saying
+plainly: this `K` is not an artefact of the anchor choice in either direction.
+
+## R2.10 Two transcript deviations, neither of which is why anything passed or failed
+
+§4 fixes that a turn is judged by §9's clock *"never by how closely the transcript matched these
+characters"*. Both deviations are recorded as deviations.
+
+1. **Turn 10** -- declared *the mascarpone in the walk-in went off*; the recogniser produced **"the
+   mascarpone in the working went off"** and it was sent uncorrected. It resolved anyway, to
+   `S03`'s expected shape: **0 threatened, 6 untouched**, read back from the live case. *Walk-in*
+   is a location and carries no part of the physical claim -- the resource is the mascarpone -- so
+   the mishearing changed nothing the domain acted on. Turn 10 passed at 3377.3 ms.
+2. **The three clarification answers were heard correctly**, and each was verified against the
+   durable row rather than the screen: turn 2 `just the raspberries`, turn 5 `the whole Valley
+   Produce delivery`, turn 8 `just the raspberries`. Run 1's reproducible mishearing of *just the
+   raspberries* as *"just say raspberries"* did **not** recur on either of the two turns that said
+   it.
+
+## R2.11 What the worlds did, recorded because it happened and not because it is scored
+
+Not part of the gate. Each precondition §8 requires was read back from the durable state before the
+turn that depended on it, rather than inferred from the screen:
+
+| world | precondition read back | what the case did |
+|---|---|---|
+| W1 | 0 cases; six orders v1 `ACCEPTED`; then slot `SCOPE`; then `permitted_verbs` holding `confirm` with `plan_id` `d03c852c...` and `awaiting_confirmation` | reached `PLANNED`, then `WAITING` on the spoken *yes* |
+| W2 | 0 cases; six orders v1 `ACCEPTED`; slot `SCOPE`; `plan_id` `62a80456...`; **4 threatened, 2 untouched** | reached `PLANNED`, then `EXECUTING` on the spoken *go ahead* |
+| W3 | `S11`'s edit applied in the order system's own screen action, `EXT-D` v1 -> **v2 `AMENDED`** `rv-lemon-curd-1`, the signed event crossed and **PromisePatch's mirror agreed** before turn 7; then slot `SCOPE`; `plan_id` `465be0ed...`; **3 threatened, 3 untouched** | reached `PLANNED`, then `WAITING` on the spoken *do it* |
+| W4 | 0 cases; `EXT-D` back at v1 `ACCEPTED` `rv-raspberry-lemon-2`, `S11`'s edit gone | reached `PLANNED` with **0 clarifications asked** -- `S03` resolves without a question, as §4 verified in advance -- and **0 threatened, 6 untouched** |
+
+**W3 is one promise less threatened than W1 on the identical branch** -- 3 rather than 4 -- because
+Lena's own external edit moved `EXT-D` off the raspberry version before anything was reported.
+That is `S11` being `S11`. **No partition, effect or refusal from the frozen manifest is asserted
+by this measurement**; these are observations of what the seeded worlds did, exactly as §4's *What
+this measurement does not claim* requires.
+
+## R2.12 The raw records, verbatim
+
+Exactly what `window.promisepatchVoiceTimings.json()` returned after turn 10, read **once**, after
+all ten turns.
+
+```json
+[
+  {
+    "id": "c1fc3de9-52ce-401f-ab75-d08dbf2c70e3",
+    "verb": "report",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:41:16.916Z",
+    "speech_end_final_result": 40068.39999999851,
+    "speech_end_recogniser_end": 40193.59999999963,
+    "sent": 43202.89999999851,
+    "received": 43244.39999999851,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "reply", "at": 43383.699999999255 },
+      { "utterance": "replay", "at": 89095.69999999925 }
+    ]
+  },
+  {
+    "id": "907aa87e-af99-4702-bcdf-5da49375878e",
+    "verb": "clarify",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:42:24.403Z",
+    "speech_end_final_result": 107688.19999999925,
+    "speech_end_recogniser_end": 107848.5,
+    "sent": 110689.79999999888,
+    "received": 110736.89999999851,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "acknowledgement", "at": 110733.19999999925 },
+      { "utterance": "reply", "at": 110807.79999999888 }
+    ]
+  },
+  {
+    "id": "beb3715e-8bf2-4d9d-9cfe-94cf42923874",
+    "verb": "confirm",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:43:27.956Z",
+    "speech_end_final_result": 172182.59999999963,
+    "speech_end_recogniser_end": 172278.09999999963,
+    "sent": 174242.69999999925,
+    "received": 174344.59999999963,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "acknowledgement", "at": 174287.69999999925 },
+      { "utterance": "reply", "at": 174397 }
+    ]
+  },
+  {
+    "id": "825f3938-6664-4c74-928c-1546ff1cb8b6",
+    "verb": "report",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:45:07.001Z",
+    "speech_end_final_result": 270993.8999999985,
+    "speech_end_recogniser_end": 271117.5999999996,
+    "sent": 273287.2999999989,
+    "received": 273333.2999999989,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "reply", "at": 273416.5 }
+    ]
+  },
+  {
+    "id": "8be8d59e-49ff-4653-b702-952e448945eb",
+    "verb": "clarify",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:46:02.951Z",
+    "speech_end_final_result": 328561,
+    "speech_end_recogniser_end": 328661.2999999989,
+    "sent": 329237.3999999985,
+    "received": 329289.7999999989,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "acknowledgement", "at": 329281.2999999989 },
+      { "utterance": "reply", "at": 329394.69999999925 }
+    ]
+  },
+  {
+    "id": "bbc0e394-d59f-4512-80e7-6a833f9645a6",
+    "verb": "confirm",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:46:50.917Z",
+    "speech_end_final_result": 374911.0999999996,
+    "speech_end_recogniser_end": 374996,
+    "sent": 377204.0999999996,
+    "received": 377286.8999999985,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "acknowledgement", "at": 377248.19999999925 },
+      { "utterance": "reply", "at": 377368.2999999989 }
+    ]
+  },
+  {
+    "id": "b3f790f9-7af2-4ffb-ae3b-626e9c4147ad",
+    "verb": "report",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:47:57.975Z",
+    "speech_end_final_result": 439535,
+    "speech_end_recogniser_end": 439710.0999999996,
+    "sent": 444261.7999999989,
+    "received": 444300.8999999985,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "reply", "at": 444342.7999999989 }
+    ]
+  },
+  {
+    "id": "179fbca8-1541-4493-b410-450d2d288339",
+    "verb": "clarify",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:48:24.646Z",
+    "speech_end_final_result": 468147.7999999989,
+    "speech_end_recogniser_end": 468341.69999999925,
+    "sent": 470933,
+    "received": 470983.19999999925,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "acknowledgement", "at": 470978.5999999996 },
+      { "utterance": "reply", "at": 471096.2999999989 }
+    ]
+  },
+  {
+    "id": "16bceb83-7f7a-44b7-ac3b-e4e7b5875254",
+    "verb": "confirm",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:48:53.203Z",
+    "speech_end_final_result": 498624.5999999996,
+    "speech_end_recogniser_end": 498768.2999999989,
+    "sent": 499489.7999999989,
+    "received": 499548.8999999985,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "acknowledgement", "at": 499532.19999999925 },
+      { "utterance": "reply", "at": 499654.5999999996 }
+    ]
+  },
+  {
+    "id": "9c784dd8-11ed-4c1e-a236-fc57a6d5af4d",
+    "verb": "report",
+    "origin": "spoken",
+    "opened": "2026-09-15T12:51:53.562Z",
+    "speech_end_final_result": 676565,
+    "speech_end_recogniser_end": 676565.5,
+    "sent": 679848.5,
+    "received": 679886.3999999985,
+    "outcome": "accepted",
+    "audio": [
+      { "utterance": "reply", "at": 679942.2999999989 }
+    ]
+  }
+]
+```
+
+### How the arithmetic was computed, and how the method was checked
+
+Not by hand. A small scratchpad script implements §9's formulas and its four edge rules literally
+-- `4000.0` passes and `4000.1` does not, no rounding before the comparison, a turn with no `S`, no
+`A`, no record or `origin != "spoken"` scores 0, a refusal is measured, and the denominator is 10
+and never changes.
+
+**It was validated before it was used, against a result computed independently and published
+earlier:** run it on run 1's raw records and it reproduces run 1's published table line for line --
+`16806.2`, `16689.6`, `4903.6`, the absent `delta_progress`, `1285.5`, `1146.8`, `K = 1`,
+`K_progress = 1`, `0` refusals. A scorer that reproduces a previously hand-computed published
+result is a scorer whose agreement with this run's numbers means something.
+
+## R2.13 Limitations and failures, in full
+
+1. **`K = 9` passes by one turn.** The gate is `K >= 9` and `K = 9`. One more slow review anywhere
+   in the ten and this document would read `K = 8` and **OPEN**. This is not a margin.
+2. **Turn 7 is a real nonpass and is published as one**, at 4807.8 ms. It was not rerun, replaced
+   or discarded, and there is no turn 11.
+3. **Nine of the ten intervals are mostly the operator.** The product contributed 81--181 ms; the
+   review step contributed 676--4727 ms. `K = 9` is therefore only weakly a statement about
+   PromisePatch's latency, and a reader who wants that number should read R2.9's product column,
+   not `K`.
+4. **`K_progress = 6/10` is lower than `K` and that is not a failure of honest progress.** The
+   four missing `acknowledgement` entries are Chrome discarding a queued utterance the reply
+   cancelled before it made a sound. The progress utterance was *issued* on all ten turns;
+   `announceTurnSent()` fires unconditionally.
+5. **No public-internet round trip is in any of these numbers** (§7, §12 gap 3). Against the
+   deployed host every interval would be longer, and with a 807.8 ms margin on one turn and a
+   one-turn margin on `K`, it cannot be claimed that this gate would pass there. **It is not
+   claimed.**
+6. **The network was a USB-tethered phone with 35--224 ms round trips** (R2.2). That variance sits
+   before the anchor and so outside the published intervals, but it is the path Chrome's recogniser
+   used, and a different connection could change how often a final result arrives at all.
+7. **`withdraw` and `status` were not exercised**, per §12 gap 1: neither has a speech path. The
+   ten turns cover three of the five frozen verbs -- `report` x4, `clarify` x3, `confirm` x3.
+8. **Seven distinct sentences across ten turns**, which is the frozen manifest's ceiling (§4), not
+   a design choice. Four turns said the same report sentence.
+9. **This is one operator, one machine, one session, one browser.** Ten turns is the gate's
+   number, not a sample size, and no distributional claim is made from it.
+10. **Run 2 was taken by an operator who already knew run 1's failure mode.** The void declaration
+    discloses this at length and does not explain it away.
+11. **Turn 10's transcript was wrong and was sent wrong** (R2.10). It happened not to matter. A
+    mishearing that fell on a word the domain *did* act on would have been a different outcome, and
+    this run provides no evidence about how often that happens.
+12. **The reload that reset the recorder was not verified by reading the record count**, because
+    the conduct rule fixed for this run permits reading the recorder exactly once, after turn 10.
+    Emptiness is structural rather than observed -- the array is module-level and a reload discards
+    it -- and the returned JSON holding exactly ten records, the first opened after the reseed,
+    is the evidence that it worked.
+
+## R2.14 What this measurement did not claim
+
+It scored no effect set, asserted no partition, effect or refusal from the frozen manifest, and
+opened neither holdout. No product code, test, fixture or acceptance criterion was changed by this
+work, no AWS resource was touched, nothing was deployed, and no model was called. It measured one
+interval per turn, on ten turns, and published all ten.
