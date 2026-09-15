@@ -106,6 +106,12 @@ def _order_row(
             </select>
             <button type="submit">Change item</button>
           </form>
+          <form method="post" action="/ui/orders/{escape(order.external_id)}/lines/{escape(line.external_line_id)}">
+            <input type="hidden" name="to_item_id" value="{escape(line.external_item_id)}">
+            <input type="number" name="quantity" min="1" value="{line.quantity}"
+              aria-label="quantity for {escape(order.external_id)}">
+            <button type="submit">Change quantity</button>
+          </form>
         </td>
       </tr>
     """

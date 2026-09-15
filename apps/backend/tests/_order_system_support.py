@@ -184,6 +184,23 @@ class Boundary:
         assert response.status_code == 303, response.text
         return self.simulator.read_order(order)
 
+    async def operator_changes_quantity(self, *, order: str, quantity: int) -> Any:
+        """A customer changes how many of a thing they bought, in the order system's screen.
+
+        The line keeps the item it already carries, so the only thing that moves is the size of
+        the order and the version that comes with it. Three of the frozen effect-set scenarios
+        stipulate exactly this edit, and it is never something a recovery amendment does: an
+        amendment re-points a line to another authored version and leaves the count alone.
+        """
+        line = self.simulator.read_order(order).lines[0]
+        response = await self.simulator_http.post(
+            f"{SIMULATOR_ORIGIN}/ui/orders/{order}/lines/{line.external_line_id}",
+            data={"to_item_id": line.external_item_id, "quantity": str(quantity)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text
+        return self.simulator.read_order(order)
+
     def external_order(self, external_id: str = LENA_ORDER) -> OrderSnapshot:
         """What the order system itself says, read from its own storage."""
         return self.simulator.read_order(external_id)

@@ -139,6 +139,50 @@ def test_two_changes_produce_two_versions_and_two_events(store: OrderStore) -> N
     assert store.event_count(LENA_ORDER) == 2
 
 
+def test_an_operator_changes_how_many_of_a_thing_a_customer_bought(store: OrderStore) -> None:
+    """A quantity edit is an operator edit, and it moves the version like any other change.
+
+    Three of the frozen effect-set scenarios turn on a customer changing the size of their own
+    order -- one cake becoming two, twenty-four pastries becoming thirty -- which is a thing a
+    person does in their own order system and never a thing a recovery amendment does.
+    """
+    mutation = store.operator_change(
+        external_order_id=LENA_ORDER,
+        external_line_id=LENA_LINE,
+        to_item_id=RASPBERRY_LEMON,
+        quantity=2,
+    )
+
+    order = store.read_order(LENA_ORDER)
+    assert (order.version, order.lines[0].quantity) == (2, 2)
+    assert order.lines[0].external_item_id == RASPBERRY_LEMON
+    assert mutation.event.order.lines[0].quantity == 2
+
+
+def test_a_quantity_edit_leaves_the_quantity_alone_when_it_is_not_given(store: OrderStore) -> None:
+    before = store.read_order(LENA_ORDER).lines[0].quantity
+
+    store.operator_change(
+        external_order_id=LENA_ORDER, external_line_id=LENA_LINE, to_item_id=LEMON_CURD
+    )
+
+    assert store.read_order(LENA_ORDER).lines[0].quantity == before
+
+
+def test_a_quantity_of_zero_is_refused_and_changes_nothing(store: OrderStore) -> None:
+    """Deleting a line is not an edit this screen can make, and nor is a negative cake."""
+    with pytest.raises(ValueError):
+        store.operator_change(
+            external_order_id=LENA_ORDER,
+            external_line_id=LENA_LINE,
+            to_item_id=RASPBERRY_LEMON,
+            quantity=0,
+        )
+
+    order = store.read_order(LENA_ORDER)
+    assert (order.version, order.lines[0].quantity) == (1, 1)
+
+
 def test_an_item_outside_the_catalogue_is_refused(store: OrderStore) -> None:
     """Nothing at runtime invents a product variant, here or on the other side."""
     with pytest.raises(SimulatorError) as refusal:

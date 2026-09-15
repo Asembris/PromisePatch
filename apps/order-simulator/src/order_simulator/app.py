@@ -105,12 +105,18 @@ def create_app(settings: Settings | None = None, *, deliver: bool = True) -> Fas
 
     @app.post("/ui/orders/{external_id}/lines/{line_id}", include_in_schema=False)
     async def operator_change(
-        external_id: str, line_id: str, to_item_id: Annotated[str, Form()]
+        external_id: str,
+        line_id: str,
+        to_item_id: Annotated[str, Form()],
+        quantity: Annotated[int | None, Form(gt=0)] = None,
     ) -> Response:
         """One operator edit. The change is this system's own; nobody asked its permission."""
         try:
             mutation = store.operator_change(
-                external_order_id=external_id, external_line_id=line_id, to_item_id=to_item_id
+                external_order_id=external_id,
+                external_line_id=line_id,
+                to_item_id=to_item_id,
+                quantity=quantity,
             )
         except SimulatorError as error:
             return _error(error)

@@ -126,6 +126,32 @@ def test_one_operator_action_moves_lena_to_the_lemon_curd_variant(client: TestCl
     assert order.lines[0].external_item_id == LEMON_CURD
 
 
+def test_the_screen_carries_a_quantity_edit_of_its_own(client: TestClient) -> None:
+    """The second operator control: how many, rather than which."""
+    response = client.post(
+        f"/ui/orders/{LENA_ORDER}/lines/{LENA_LINE}",
+        data={"to_item_id": RASPBERRY_LEMON, "quantity": "2"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    order = OrderSnapshot.model_validate(client.get(f"/orders/{LENA_ORDER}").json())
+    assert (order.version, order.lines[0].quantity) == (2, 2)
+    assert order.lines[0].external_item_id == RASPBERRY_LEMON
+
+
+def test_the_screen_refuses_a_quantity_below_one(client: TestClient) -> None:
+    response = client.post(
+        f"/ui/orders/{LENA_ORDER}/lines/{LENA_LINE}",
+        data={"to_item_id": RASPBERRY_LEMON, "quantity": "0"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 422
+    order = OrderSnapshot.model_validate(client.get(f"/orders/{LENA_ORDER}").json())
+    assert (order.version, order.lines[0].quantity) == (1, 1)
+
+
 def test_the_screen_shows_the_event_the_change_raised(client: TestClient) -> None:
     client.post(
         f"/ui/orders/{LENA_ORDER}/lines/{LENA_LINE}",

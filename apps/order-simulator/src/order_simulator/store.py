@@ -480,6 +480,7 @@ class OrderStore:
         external_order_id: str,
         external_line_id: str,
         to_item_id: str,
+        quantity: int | None = None,
         now: datetime | None = None,
     ) -> Mutation:
         """An operator edits an order in this system's own screen. No expected version.
@@ -487,7 +488,15 @@ class OrderStore:
         A person looking at the current state is the authority for their own edit; optimistic
         concurrency is what an *integration* needs, because a program planned against a version
         it may no longer be looking at.
+
+        ``quantity`` is the operator screen's own capability and is deliberately absent from
+        the amendment contract: a governed recovery amendment re-points a line to another
+        authored version and never changes how many of a thing a customer bought. A customer
+        who wants two cakes instead of one says so to their own order system, and this is that
+        edit. ``None`` leaves the quantity exactly where it is.
         """
+        if quantity is not None and quantity <= 0:
+            raise ValueError("an order line quantity is a positive whole number")
         moment = now or datetime.now(UTC)
         with self._write() as connection:
             return self._apply(
@@ -501,6 +510,7 @@ class OrderStore:
                 source=SOURCE_OPERATOR,
                 command=None,
                 now=moment,
+                quantity=quantity,
             )
 
     def amend(
@@ -600,6 +610,7 @@ class OrderStore:
         command: CommandRef | None,
         now: datetime,
         provider_ref: str | None = None,
+        quantity: int | None = None,
     ) -> Mutation:
         """Re-point one line, move the version, and record the event. One transaction.
 
@@ -666,6 +677,11 @@ class OrderStore:
             "UPDATE order_lines SET external_item_id = ?, note = ? WHERE external_line_id = ?",
             (to_item_id, note or "", external_line_id),
         )
+        if quantity is not None:
+            connection.execute(
+                "UPDATE order_lines SET quantity = ? WHERE external_line_id = ?",
+                (quantity, external_line_id),
+            )
         connection.execute(
             "UPDATE orders SET version = ?, state = ?, updated_at = ? WHERE external_id = ?",
             (version, seed.ORDER_STATE_AMENDED, _iso(now), external_order_id),
