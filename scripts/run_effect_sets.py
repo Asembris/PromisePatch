@@ -64,12 +64,32 @@ RUNNER_VERSION: Final = "1.0.0"
 PUBLISHED_SHA: Final = "d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc"
 """The identity published in `docs/effect-set-manifest.md` and frozen at commit 9a7f4a8."""
 
-WIRED: Final[tuple[str, ...]] = ("S02", "S11", "S12")
-"""The scenarios that have an executable path today.
+WIRED: Final[tuple[str, ...]] = (
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10",
+    "S11",
+    "S12",
+    "S13",
+    "S14",
+    "S15",
+    "S16",
+)
+"""The scenarios that have an executable path.
 
-Three, deliberately: the ones that already had partial coverage, wired to prove the harness end
-to end rather than to raise a count. The other thirteen are unwired, are named as such in the
-runner's output and in every capture, and make ``--scored`` impossible until they are built.
+All sixteen. Each one performs its own stipulated facts against the real system and reads every
+checkpoint it declares, so ``--scored`` is no longer refused for want of an executable path --
+which is the only thing that refusal was ever about. It says nothing whatever about whether the
+scenarios agree with their frozen labels, and several committed here do not; see
+`docs/effect-set-run-protocol.md` for what may and may not be done about that before the first
+scored run exists.
 """
 
 SCENARIO_SUITE: Final = "apps/backend/tests/test_effect_sets.py"

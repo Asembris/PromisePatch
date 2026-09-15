@@ -15,7 +15,7 @@ and ``demo_state`` re-checks and reloads when it finds one it did not ask for.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -38,6 +38,7 @@ from promise_graph.snapshot import GraphSnapshot, reservations_for_line
 from promisepatch.config import Settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db import events as ledger
+from promisepatch.db.base import SCHEMA, metadata
 from promisepatch.db.models import (
     ApprovalDecision,
     ApprovalRequest,
@@ -49,6 +50,7 @@ from promisepatch.db.models import (
     DomainEvent,
     ExceptionClarification,
     ExceptionFact,
+    FixtureState,
     InboundReply,
     InventoryLedgerEntry,
     Order,
@@ -75,6 +77,7 @@ from promisepatch.domain.identity import WorkerIdentity
 from promisepatch.domain.observation import INTAKE_STEP_KINDS
 from promisepatch.domain.outbox import EffectAdapter
 from promisepatch.fixtures import demo
+from promisepatch.fixtures.projection import TableRows
 from promisepatch.fixtures.reset import reset_demo_state
 from promisepatch.semantic import FakeSemanticProvider, SemanticProvider
 from promisepatch.worker import Worker
@@ -874,6 +877,41 @@ class Intake:
                             state="AMENDED",
                             updated_at=datetime.now(UTC),
                         )
+                    )
+
+    async def fixture_anchor(self) -> datetime:
+        """The instant this database's fixture was loaded at, read from the fixture's own row.
+
+        Anything that wants to extend the seeded graph has to build its addition at the same
+        anchor the rest of it was built at, and the anchor is a per-run value rather than a
+        constant. Recomputing it would be a second guess at something the database already
+        knows.
+        """
+        async with self.database.connect() as connection:
+            return (await connection.execute(select(FixtureState.anchor_at))).scalar_one()
+
+    async def author(self, tables: Sequence[TableRows]) -> None:
+        """Add authored rows to the graph, the way an owner authoring a variant beforehand does.
+
+        A governed write like every other fixture mutation, so a recipe version that exists
+        because a person authored it carries provenance. This is emphatically not a runtime
+        creation: nothing in PromisePatch ever derives or synthesises a version, and the whole
+        recovery model rests on every one of them having been authored in advance. This helper
+        *is* that advance.
+        """
+        async with self.database.begin() as connection:
+            unit_of_work = UnitOfWork(connection)
+            async with unit_of_work.governed(
+                event_type="AUTHORING_TEST_SETUP",
+                actor=Actor(kind="SYSTEM", id="authoring-tests"),
+                authority="NONE",
+            ) as write:
+                for table_rows in tables:
+                    if not table_rows.rows:
+                        continue
+                    table = metadata.tables[f"{SCHEMA}.{table_rows.table}"]
+                    await write.execute(
+                        insert(table).values([dict(row) for row in table_rows.rows])
                     )
 
     async def set_constraint_kind(self, constraint_id: str, kind: str) -> None:

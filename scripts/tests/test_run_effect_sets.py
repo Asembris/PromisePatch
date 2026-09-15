@@ -4,8 +4,11 @@ Two claims are under test here, and they are the two the predeclared protocol re
 
 **A scored run over a subset cannot be produced.** ``--scored`` is the intent-to-record flag, and
 while any of the sixteen scenarios is unwired it exits non-zero, names the unwired ones, executes
-nothing and writes no capture. That is asserted against the real wiring rather than a stub, so
-the day the thirteenth scenario is wired the refusal stops on its own and not a moment earlier.
+nothing and writes no capture. Every scenario is wired now, so the precondition has to be
+constructed to be proved: the wiring is narrowed for the length of the test and the refusal is
+asserted exactly as it always was. Nothing about the assertion is softened -- what changed is the
+world it is asserted against, and a guarantee that can only be demonstrated while it happens to
+bind is not one anybody should rely on afterwards.
 
 **A run's record is complete and is assembled before a repair.** The denominator is the
 manifest's sixteen and never the number of scenarios that reported; a wired scenario that reached
@@ -66,13 +69,25 @@ def test_every_wired_scenario_is_a_scenario_the_manifest_holds(manifest: Manifes
     assert len(set(WIRED)) == len(WIRED)
 
 
-def test_thirteen_scenarios_are_unwired_and_the_runner_knows_which(manifest: Manifest) -> None:
-    """Stated rather than implied. The gap is a fact the tooling reports, not a silence."""
+def test_the_wiring_partitions_the_sixteen_and_the_runner_knows_which_side(
+    manifest: Manifest,
+) -> None:
+    """Stated rather than implied. A gap, whenever there is one, is reported and not a silence."""
     unwired = [
         str(scenario["id"]) for scenario in manifest.scenarios if scenario["id"] not in WIRED
     ]
     assert len(WIRED) + len(unwired) == EXPECTED_SCENARIOS
     assert set(unwired).isdisjoint(WIRED)
+
+
+def test_every_scenario_of_the_manifest_has_an_executable_path(manifest: Manifest) -> None:
+    """All sixteen are wired, which is what makes a scored run possible at all.
+
+    Possible, and not taken: what this asserts is that no scenario is missing an executable
+    path. Whether the sixteen agree with their frozen labels is a different question, and it is
+    answered by the first scored run rather than here.
+    """
+    assert set(WIRED) == {str(scenario["id"]) for scenario in manifest.scenarios}
 
 
 # -------------------------------------------------------------------- the refusal that matters
@@ -81,7 +96,13 @@ def test_thirteen_scenarios_are_unwired_and_the_runner_knows_which(manifest: Man
 def test_a_scored_run_is_refused_while_any_scenario_is_unwired(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The protocol's central guarantee, and the reason no headline exists yet."""
+    """The protocol's central guarantee: a scored run over a subset is not producible.
+
+    The wiring is narrowed for the length of this test because every scenario now has an
+    executable path, which is the one state in which this guarantee cannot demonstrate itself.
+    What is asserted is unchanged: non-zero, the unwired ones named, nothing executed and no
+    capture written.
+    """
     executed: list[Any] = []
 
     def refuse_to_run(*args: Any, **kwargs: Any) -> int:
@@ -89,6 +110,7 @@ def test_a_scored_run_is_refused_while_any_scenario_is_unwired(
         return 0
 
     monkeypatch.setattr("scripts.run_effect_sets.execute", refuse_to_run)
+    monkeypatch.setattr("scripts.run_effect_sets.WIRED", tuple(sorted(set(WIRED) - {"S07"})))
 
     code = main(["--scored", "--capture-directory", str(tmp_path)])
 
@@ -97,7 +119,7 @@ def test_a_scored_run_is_refused_while_any_scenario_is_unwired(
     assert list(tmp_path.iterdir()) == [], "a refused scored run must write no capture"
     printed = capsys.readouterr().out
     assert "REFUSED" in printed
-    assert "S01" in printed and "S16" in printed
+    assert "S07" in printed
 
 
 def test_the_check_mode_needs_no_database_and_reports_the_wiring(
@@ -181,7 +203,11 @@ def test_the_denominator_is_the_manifest_and_never_what_reported(manifest: Manif
     assert all(outcome.outcome == HARNESS_FAILURE for outcome in outcomes)
 
 
-def test_an_unwired_scenario_is_a_nonpass_that_says_why(manifest: Manifest) -> None:
+def test_an_unwired_scenario_is_a_nonpass_that_says_why(
+    monkeypatch: pytest.MonkeyPatch, manifest: Manifest
+) -> None:
+    """Narrowed wiring again, for the same reason and with the same assertion."""
+    monkeypatch.setattr("scripts.run_effect_sets.WIRED", tuple(sorted(set(WIRED) - {"S07"})))
     outcomes = {outcome.scenario: outcome for outcome in reconcile(manifest, {})}
 
     assert outcomes["S07"].outcome == HARNESS_FAILURE
@@ -229,7 +255,7 @@ def test_a_development_capture_carries_no_score_at_all(manifest: Manifest) -> No
     assert development_capture(manifest)["score"] is None
 
 
-def test_a_capture_names_every_scenario_including_the_unwired_ones(manifest: Manifest) -> None:
+def test_a_capture_names_every_scenario_whether_or_not_it_is_wired(manifest: Manifest) -> None:
     document = development_capture(manifest)
 
     assert len(document["outcomes"]) == EXPECTED_SCENARIOS
