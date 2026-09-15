@@ -7,8 +7,8 @@
 | Fixes | how the sixteen frozen scenarios are executed, scored, captured and published |
 | Manifest it scores | `promisepatch-effect-sets` v1.0.0, SHA `d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc` |
 | Runner version at predeclaration | `1.0.0` |
-| Scored runs so far | **none** |
-| First-run headline so far | **none exists** |
+| Scored runs so far | **one**, taken 15 September 2026 at `e81b5aa` |
+| First-run headline so far | **11/16** — see [`effect-set-first-scored-run.md`](effect-set-first-scored-run.md) |
 
 ## Why a protocol, and why now
 
@@ -279,3 +279,9 @@ thing that refusal was ever about. Several of the sixteen disagree with their fr
 are committed failing, under the rule above. The two sentences that matter are unchanged: no
 scored run has happened, and no X/16 exists. See
 [`effect-set-harness.md`](effect-set-harness.md).
+
+*Since then:* the first scored run has been taken, in a session that wrote no harness code, and
+its headline is **11/16** with every diff published and nothing repaired. It supersedes the two
+sentences immediately above and nothing else in this document — no rule here is relaxed, and
+none may be. See [`effect-set-first-scored-run.md`](effect-set-first-scored-run.md) and the
+capture at `docs/effect-sets/runs/20260915T163255509125+0000-scored.json`.

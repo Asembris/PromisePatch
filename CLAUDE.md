@@ -339,6 +339,20 @@ deterministic attestation with a number, and the divergence cannot reach any lab
 stay sealed, nothing was deployed and no model was called. See `docs/effect-set-harness.md` and
 `docs/effect-set-run-protocol.md`.
 
+**The first scored run has since been taken, and it is 11/16.** One invocation of the protocol's
+exact scored command, in a session that wrote no harness code and repaired nothing, at
+implementation SHA `e81b5aa` against manifest SHA
+`d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`. Eleven scenarios matched
+their frozen labels exactly; **S06, S07, S08, S12 and S13 failed** and stay committed failing.
+No scenario reached `HARNESS_FAILURE` -- all sixteen executed to a verdict. Every difference is
+an effect count lower than its label; no order is misclassified anywhere in the sixteen, and no
+extra, unauthorized or duplicate effect appeared. **That headline is immutable**: it is never
+replaced by a repaired score, the denominator is permanently sixteen, no failing scenario is
+removed or weakened, and 16/16 remains a separate release condition published beside it. The
+capture is committed unedited at
+`docs/effect-sets/runs/20260915T163255509125+0000-scored.json`; resolving the five is later work
+under G8's correction process. See `docs/effect-set-first-scored-run.md`.
+
 **G7 is CLOSED, with one criterion deliberately not performed.** Four requirements that had only
 ever been asserted in prose were verified against the implementation and their tests run: a
 blocked promise carries an owner, a next action and a reason; an approval names the exact change

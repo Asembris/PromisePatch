@@ -59,10 +59,15 @@ uv run python scripts/verify_effect_set_manifest.py
 
 The labels are **not** derived from PromisePatch's own output, and the verifier is structural
 only — it never asks the engine what it would classify. All sixteen scenarios are now wired to
-an executable runner that performs their stipulated facts against the real system, and five
-effect disagreements are published unrepaired
-([`docs/effect-set-harness.md`](docs/effect-set-harness.md)). **No scored run has happened and
-there is no X/16**; the first complete scored run will be published whatever it says. Read
+an executable runner that performs their stipulated facts against the real system.
+
+**The first scored run is 11/16**, taken at implementation SHA
+`e81b5aa3af101847fdceb0f0af6cb515909d40b2` against that manifest SHA, with every diff published
+and nothing repaired: [`docs/effect-set-first-scored-run.md`](docs/effect-set-first-scored-run.md).
+Five scenarios failed — S06, S07, S08, S12, S13 — every difference an effect count lower than the
+label, with no order misclassified anywhere in the sixteen and no extra, unauthorized or
+duplicate effect. That headline is immutable: a later repaired run is published beside it, never
+over it, and 16/16 is a separate release condition. Read
 [`docs/effect-set-manifest.md`](docs/effect-set-manifest.md) for the method, the partition
 algebra, the pass rule and the disclosure that these labels are developer-authored and finite.
 
@@ -321,9 +326,9 @@ identity intact before anything heavier is attempted:
 uv run python scripts/run_effect_sets.py --check
 ```
 
-With the local stack up and the worker stopped, it runs the scenarios that are wired. Three of
-the sixteen are; the other thirteen are named as unwired in the output, and a scored run is
-refused while any of them is:
+With the local stack up and the worker stopped, it runs the scenarios. All sixteen are wired, so
+this form is a harness-development run that computes no score, and adding `--scored` reproduces
+the measurement:
 
 ```bash
 uv run python scripts/with_local_env.py -- uv run python scripts/run_effect_sets.py
@@ -337,8 +342,10 @@ uv run pytest apps/backend/tests/test_effect_set_judge.py scripts/tests/test_run
 
 [docs/effect-set-run-protocol.md](docs/effect-set-run-protocol.md) fixes, in advance, what counts
 as a scored run and what may never happen to its result;
-[docs/effect-set-harness.md](docs/effect-set-harness.md) describes the machinery, the three wired
-scenarios and the one disagreement building it surfaced.
+[docs/effect-set-harness.md](docs/effect-set-harness.md) describes the machinery and the
+disagreements building it surfaced;
+[docs/effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) publishes the first
+scored run, its per-scenario table and every diff.
 
 The frontend gates:
 
