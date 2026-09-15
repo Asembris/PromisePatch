@@ -1,5 +1,82 @@
 # The G7 ten-turn voice measurement
 
+**This document holds two runs. Run 1 is VOID and is published here in full, unedited. Run 2 is
+the second run it is.**
+
+## The void declaration
+
+**Run 1 is void under predeclaration §10 condition 3.** The condition, quoted:
+
+> 3. `window.promisepatchVoiceTimings` is unreadable, or **holds fewer than ten turn records**.
+
+The recorder held **three**. Seven of the declared ten were never attempted, so there were seven
+turns for which no record existed to be trustworthy or untrustworthy. That is the condition, met
+on its face.
+
+Five things about this void are disclosed rather than left to be found, because each of them is a
+reason a reader might distrust it.
+
+**1. The void was declared LATE, and §10 requires the opposite order.** §10 permits a void *"only
+when that condition is identified and announced **before any interval has been computed or
+read**."* That is not what happened. Run 1's intervals were computed, `K = 1/10` was computed, and
+both were published in this document -- and only afterwards was the void declared. The breach is
+permanent and cannot be repaired by declaring it now. It is stated here because the rule it breaks
+exists to stop a run being voided *because of* the number it produced, and a reader is entitled to
+weigh that against this void without having to discover the sequence themselves.
+
+What can be said in the void's favour, and it is not a defence of the ordering: the condition is
+structural rather than numeric. "Fewer than ten records" is visible in the record count and is not
+one of §10's *"not grounds for voiding, ever"* items, which name a slow turn, a refused turn, a
+misheard turn, an unlucky recogniser, a noisy room, *"a `K` below 9, or any reason discovered by
+looking at the numbers."* Nothing about the three intervals produced this condition.
+
+**2. When the operator stopped, turns 1 and 2 had already failed.** Turn 1 measured 16806.2 ms and
+turn 2 measured 4903.6 ms, both against a 4000 ms threshold. Two nonpasses out of the first three
+had already made `K >= 9` arithmetically unreachable. The decision to stop was therefore taken with
+two failures in hand, and the void that followed is a void of a run the operator already knew could
+not pass.
+
+**3. The operator's reason for stopping, in his own terms.** He judged the exercise low-value at
+that moment and wanted to move on. It was not a technical abort, not a stack failure, and not a
+condition in §10. The run was abandoned by choice.
+
+**4. Run 1 did not meet its own declared setup.** §7 fixes that *"every field is recorded from the
+actual machine before turn one and published with the result."* Four fields were never captured:
+the exact Chrome build (only the reduced UA string `Chrome/152.0.0.0` was recorded, and §7
+specifically says *"the exact version at run time is read from `chrome://version` and published,
+because Chrome updates itself"*), the microphone device name, the exact machine model, and the
+network. Run 1's own §11 records the first two as limitations; the machine model and the network
+are added here. A run whose environment was not recorded as its protocol required is a run whose
+conditions cannot be reproduced.
+
+**5. Run 2 is taken with knowledge of why run 1 failed, and that is a hazard this document will not
+hide.** Run 1 established that the product answered in 55--69 ms on every turn and that both
+measured failures were the operator's transcript-review step. Run 2's operator therefore knows the
+failure mode before turn one. §6's conduct rules -- *"Send as soon as the transcript is legible and
+correct. No deliberation, no re-reading, no waiting for a better moment"* -- were fixed in the
+predeclaration before any turn existed and were **violated** on run 1 turn 1, where the operator
+opened the browser console and captured the page between speech end and send. Run 2 conforms to a
+rule that already existed; it does not invent one against a number. That is the distinction this
+document rests on, and a reader who does not accept it should read run 2 as a second attempt by an
+informed operator and weigh it accordingly.
+
+**Nothing is deleted.** Run 1's three records, its intervals, its `K = 1/10`, its limitations and
+every sentence it published stay below exactly as they were written, under their own heading. §10:
+*"A voided run is still published, in full, with its records, the condition that voided it, and the
+run that replaced it."*
+
+**What the void does not do.** It does not discharge anything, does not make `K = 1` go away, and
+does not license a third run. G7 at `new_roadmap.md:354` and `:358` asks for **ten real turns
+recorded**; run 1 recorded three, so the obligation was undischarged with or without this void, and
+the only thing that can discharge it is ten recorded turns. Run 2 is that ten, attempted once each
+under §10's own failure rule. If run 2 fails, it fails and nothing is fixed.
+
+---
+
+# Run 1 -- VOID
+
+*Everything from here to the Run 2 divider is run 1 as it was published, unedited.*
+
 **`K = 1/10`. The gate is `K >= 9`. It was not met, and the G7 voice obligation stays OPEN.**
 
 **Three of the declared ten turns were taken. Seven were never attempted** -- the run was stopped
