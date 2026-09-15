@@ -352,3 +352,113 @@ discharged. Nothing was fixed, changed or tuned in response to this result, and 
 It scored no effect set, asserted no partition, effect or refusal from the frozen manifest, and
 opened neither holdout. It measured one interval per turn on three turns, and reported that
 nothing was measured on seven.
+
+---
+
+# Run 2
+
+**The second run, published as the second run it is.** Run 1 above is void; nothing of it was
+deleted to make room for this.
+
+Everything in this section down to *The ten turns* was written and committed **before turn one was
+taken**, so that its pre-run status is checkable by commit order rather than asserted afterwards.
+
+## R2.1 The measured commit, and how the stack was verified to serve it
+
+| | |
+|---|---|
+| branch | `main` |
+| commit | `bd7d5d05` -- `docs(voice): run 1 is void under condition 3, and the void was declared late` |
+| working tree | clean -- `git status --porcelain` empty before turn one |
+| images | `promisepatch-backend:local`, `promisepatch-frontend:local` and `promisepatch-order-simulator:local`, all three rebuilt from this tree |
+
+Verified rather than assumed, in both halves, by the same method run 1 used:
+
+* **Backend.** A SHA-256 over the 129 `.py` files of the installed `promisepatch` package inside
+  the running `api` container equals the same hash over `apps/backend/src/promisepatch` in the
+  working tree: `ee6e5b584eac604752fd0c5ccc13b698a7828c52a858b3e7cfb43ba653b15c0e`. This is the
+  same hash run 1 recorded, which is the expected result and is itself a check: `bd7d5d05` and run
+  1's `0523b793` differ only in `docs/`, so the backend source **must** hash identically or
+  something other than documentation changed.
+* **Frontend.** All 39 files under `/app/src` in the running `frontend` container are
+  byte-identical to `apps/frontend/src`, compared file by file. Vite serves those files directly,
+  so the SPA under test is that commit's source.
+
+Schema `0008_observer_worker_role`, reported at head by `/readyz`. Fixture `hollow-oak`, digest
+`8a7e397f28142a4e3d1e3b812cfd3ecbea225b3fd9f6eee0a2a21a335015a576` at boot.
+
+**One qualification, stated rather than buried.** The three images were built from the tree at
+`926c1cb1`, and `bd7d5d05` -- this section's own commit -- lands on top of it changing only
+`docs/g7-ten-turn-voice-measurement.md`. No file under `apps/` differs between the two, which is
+exactly what the backend hash identity above demonstrates. The served *source* is that of
+`bd7d5d05`; the images were not rebuilt a second time to rename them.
+
+## R2.2 The environment, read from the machine before turn one
+
+Every field §7 fixes, including the four run 1 never captured.
+
+| | |
+|---|---|
+| stack | local `docker compose`; frontend served by Vite on `http://127.0.0.1:55173` |
+| transport | `/api/conversation/*`, session cookie plus CSRF (predeclaration §3) |
+| published ports | api `127.0.0.1:48000`, mcp `48001`, order simulator `48100`, postgres `55432`, frontend `55173`. The 48xxx values are this machine's overrides: Windows reserves a moving block around 58000 for Hyper-V/WinNAT and the compose defaults cannot bind here |
+| **machine** | custom desktop -- MSI `A320M-A PRO MAX (MS-7C52)`, reported by Windows as manufacturer *Micro-Star International Co., Ltd.*, model *MS-7C52*; AMD Ryzen 5 3600 6-core; 15.95 GiB RAM |
+| **operating system** | Windows 10 Pro, version 10.0.19045, build **19045.6466** (22H2). Read from the machine as `Microsoft Windows 10 Professionnel`, `10.0.19045` -- the shell is French-localised, which is recorded because it is visible in the raw command output and is not a product setting |
+| **browser** | Google Chrome **`152.0.7977.84`** (official build, 64-bit), revision `4334922f44c77b1208072c4deac29db3af39bbea-refs/branch-heads/7977@{#2324}`, V8 `15.2.124.21` |
+| **browser launch flags** | launched with the non-default flag **`--enable-features=WebMCP`**. It is **recorded, not removed.** It is unrelated to this surface -- the ten turns go through `/api/conversation/*` and touch no MCP path (§3) -- but a non-default browser flag is part of the environment whether or not it is believed to matter, and removing it to make the environment tidier would be changing the setup after reading the protocol |
+| recogniser / synthesiser | the browser's own `SpeechRecognition` and `speechSynthesis`. No Amazon Transcribe, no Polly, no Alexa skill, no wake word |
+| **microphone** | **Razer Kraken V3 headset input**; the synthesiser's output is the same headset. Push-to-talk, not continuous |
+| **network** | the machine's default route runs over a **USB-tethered phone** -- Windows adapter `Ethernet 7`, hardware *Remote NDIS based Internet Sharing Device #3*, link speed 425,984,000 bps, address `192.168.251.195` via gateway `192.168.251.175`. Measured before turn one: `ping www.google.com`, 10 packets, **0% loss, min 35 ms, mean 80 ms, max 224 ms** |
+| other load | no other application driven on the machine during the run |
+
+**Why the network field is not a formality here.** §7 already notes that *"Chrome's speech
+recognition is a network service, so the recogniser's own round trip is inside the capture and
+**before** the anchor."* This run's connection is a tethered mobile link whose measured round trip
+varied by a factor of six -- 35 ms to 224 ms -- across ten packets taken seconds apart. That
+variance sits *before* `speech_end_final_result` and therefore **outside** every interval published
+below, so it does not inflate `delta_answer`; what it can do is delay or corrupt the recogniser's
+final result, which is a turn's `S(i)` and a §10 nonpass if it never arrives. Recorded in advance,
+in the direction it actually cuts.
+
+**The measured interval carries no public-internet round trip to `us-east-1`, so every interval
+published here is shorter than the same turn taken against the deployed host would be.**
+Predeclaration §7 requires that sentence beside any published `K`, and §12 gap 3 records why the
+deployed host could not be used: it has no documented on-demand reseed.
+
+## R2.3 The starting world, read back rather than assumed
+
+W1 was seeded exactly as §8 requires -- `docker compose run --rm seed`, which is `pp
+reset-demo-state` with the anchor **deliberately omitted**, then the External Order System reset --
+and both systems were read back into agreement before turn one:
+
+| what | read back |
+|---|---|
+| cases | **0** |
+| order system, all six orders | `EXT-A` .. `EXT-F` each at **version 1, `ACCEPTED`** |
+| order system, `EXT-D` | version 1, `ACCEPTED`, `rv-raspberry-lemon-2` -- **no `S11` edit** |
+| PromisePatch's mirror, all six | identical to the above, order for order |
+| seeded anchor | `2026-09-15T13:32:16+01:00` Africa/Tunis -- a working hour, so the SCOPE question is the one asked |
+
+**Run 1's starting-state defect is closed structurally rather than by hand.** Run 1 found the order
+system still carrying a previous session's `S11` edit, because `docker compose up` does not reset
+it -- it holds its own Docker volume. This run brought the stack down with `docker compose down
+-v`, which **removed both volumes**, so the order simulator reseeded from its own hand-authored
+order book on boot. The base state above is therefore what the simulator itself produces, not a
+state somebody corrected back into place.
+
+## R2.4 Two operating facts established before turn one, by reading the code and testing it
+
+Neither is a protocol change; both are properties of the surface that decide how ten turns across
+four worlds can physically be taken, and getting either wrong would have destroyed the run.
+
+1. **A reseed signs the operator out.** `resettable_tables()` is derived as *every table minus the
+   ledgers of record*, so `sessions` is truncated by `pp reset-demo-state`. Tested rather than
+   inferred: a session cookie that returned `200` from `/api/cases` returned **`401`** immediately
+   after a reseed. The operator therefore signs in again before W2, W3 and W4.
+2. **Signing in again must not reload the page, and does not.** The recorder is a module-level
+   array in [turnTiming.ts](../apps/frontend/src/instrumentation/turnTiming.ts); a page reload
+   empties it and would destroy every turn already taken. `useLogin` is a react-query mutation and
+   the `401` path *"removes the protected queries"* and returns to the login screen through React
+   state -- neither does a full navigation, and a search finds no `location.reload` and no
+   assignment to `location.href` anywhere in `apps/frontend/src`. The page is therefore loaded
+   **once**, reloaded **once** after the unscored warm-up to empty the recorder, and never again.
