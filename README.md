@@ -15,8 +15,27 @@ An active hackathon build. What exists today is the deterministic engine
 case engine, the Live Operations screen, the external order-system integration — a separate
 order system that owns order state, a signed event ingress, and governed recovery amendments
 pushed back at it — the semantic boundary an Amazon Bedrock model answers through, now wired
-into exception intake, and an authenticated **MCP Streamable HTTP endpoint** carrying four of
-the five intent tools -- report, clarify, confirm and status. There is no deployment.
+into exception intake, an authenticated **MCP Streamable HTTP endpoint** carrying all five
+intent tools -- report, clarify, confirm, withdraw and status -- and the case workspace a
+worker and a judge read a case on.
+
+**It is deployed.** `https://184.194.40.87.sslip.io` serves the single-page application and the
+same API, event stream and MCP endpoint over TLS on one `t4g.small` in `us-east-1b`, against a
+private encrypted RDS PostgreSQL. Twelve deployment smoke checks pass, five of them asserting a
+refusal. See [`docs/p6.2-first-deployment.md`](docs/p6.2-first-deployment.md) and
+[`docs/p7.3-deployed-judge-surface.md`](docs/p7.3-deployed-judge-surface.md). The Telegram
+customer channel is **not built**; the customer channel in this build is simulated.
+
+**The measured voice number.** Ten predeclared voice turns were recorded, and **9 of 10 started a
+truthful spoken response within four seconds of speech ending** — the gate is 9, so it passes by
+exactly one turn, with the failing turn missing the threshold by 807.8 ms. A first run is
+published void, in full, with its `K = 1/10`. Both runs, every timing, the failures and the
+conditions — including that the measurement ran on the local stack and so carries no
+public-internet round trip — are in
+[`docs/g7-ten-turn-voice-measurement.md`](docs/g7-ten-turn-voice-measurement.md), against the
+setup fixed beforehand in
+[`docs/g7-ten-turn-voice-predeclaration.md`](docs/g7-ten-turn-voice-predeclaration.md). This is a
+usability gate, not a production latency SLA.
 
 ## The frozen effect-set manifest
 
@@ -39,8 +58,11 @@ uv run python scripts/verify_effect_set_manifest.py
 ```
 
 The labels are **not** derived from PromisePatch's own output, and the verifier is structural
-only — it never asks the engine what it would classify. The suite has not been executed yet;
-there is no score to report, and the first complete run will be published whatever it says. Read
+only — it never asks the engine what it would classify. All sixteen scenarios are now wired to
+an executable runner that performs their stipulated facts against the real system, and five
+effect disagreements are published unrepaired
+([`docs/effect-set-harness.md`](docs/effect-set-harness.md)). **No scored run has happened and
+there is no X/16**; the first complete scored run will be published whatever it says. Read
 [`docs/effect-set-manifest.md`](docs/effect-set-manifest.md) for the method, the partition
 algebra, the pass rule and the disclosure that these labels are developer-authored and finite.
 
