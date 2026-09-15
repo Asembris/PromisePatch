@@ -272,3 +272,10 @@ to end against scenarios that already had partial coverage. The other thirteen a
 and declared as such**, by name, in the runner's own output and in every capture.
 
 `--scored` is refused while that is true. No scored run has happened, and no X/16 exists.
+
+*Since predeclaration:* the remaining thirteen have been wired, in a session that scored nothing,
+and `--scored` is therefore no longer refused for want of an executable path — which is the only
+thing that refusal was ever about. Several of the sixteen disagree with their frozen labels and
+are committed failing, under the rule above. The two sentences that matter are unchanged: no
+scored run has happened, and no X/16 exists. See
+[`effect-set-harness.md`](effect-set-harness.md).

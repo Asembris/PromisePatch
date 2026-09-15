@@ -312,6 +312,33 @@ the ten-turn voice measurement, the comprehension check and the sixteen-scenario
 untouched by this. Nothing here reopens the locked roadmap. See
 `docs/case-workspace-closeout.md`.
 
+**All sixteen effect-set scenarios are wired, and no scored run has happened.** Before a single
+one was built, the run protocol was amended to bound what a development run may repair: a harness
+defect may be diagnosed and fixed, and a disagreement between a frozen label and the
+implementation's behaviour may not -- it is recorded, published, and left unresolved until the
+first scored run has been taken and its X/16 captured. That rule is what keeps G8's "whatever the
+result" from being theatre, and it binds this session: **no X/16 was computed, printed or held
+privately**, `--scored` was not invoked, and the building session is not the scoring session.
+Every one of the sixteen now performs its own stipulated facts against the real system -- real
+MCP calls, a real worker, the real External Order System, real signed webhooks -- and reads every
+checkpoint it declares. Four fault injections are explicit named operator actions rather than
+timing accidents: a reply carrying another customer's channel, one delivery replayed under its own
+provider identity, a process killed at `crash.AFTER_EXTERNAL_SUCCESS` once the order system's own
+event count proves it already acted, and a second worker with a different boot identity taking over
+durable state. Two orderings the manifest stipulates are held deliberate the same way. **Every
+scenario agrees on all four partitions at every declared checkpoint** -- not one order is
+misclassified anywhere in the manifest -- and five disagree on effects, every one of them a missing
+`task_hold`, `owner_escalation` or second `customer_message`, never an extra, unauthorised or
+duplicated effect. All five are committed **failing**, unrepaired, with their exact diffs
+published. Two things had to be added: the order system gained an operator quantity edit, because
+three frozen scenarios stipulate a customer resizing their own order and the screen could only
+re-point an item; and the census now attributes a reservation change to whoever *commanded* it
+rather than to the window it fell in, which is a harness defect the manifest's own S14 rationale
+predicted. One stipulated fact is disclosed as unreachable: S04's partial spoilage has no
+deterministic attestation with a number, and the divergence cannot reach any label. Both holdouts
+stay sealed, nothing was deployed and no model was called. See `docs/effect-set-harness.md` and
+`docs/effect-set-run-protocol.md`.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
