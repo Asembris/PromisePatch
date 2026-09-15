@@ -81,7 +81,7 @@ Instead, one change set against the deployed template, changing one parameter:
 aws cloudformation create-change-set --stack-name promisepatch-prod \
   --change-set-name align-image-tag-acfdd975dd4d --change-set-type UPDATE \
   --use-previous-template --capabilities CAPABILITY_NAMED_IAM \
-  --role-arn arn:aws:iam::265243686715:role/PromisePatchDeploymentRole \
+  --role-arn arn:aws:iam::<ACCOUNT_ID>:role/PromisePatchDeploymentRole \
   --parameters ImageTag=acfdd975dd4d, every other parameter UsePreviousValue=true
 ```
 

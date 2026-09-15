@@ -412,7 +412,7 @@ Every field §7 fixes, including the four run 1 never captured.
 | **browser launch flags** | launched with the non-default flag **`--enable-features=WebMCP`**. It is **recorded, not removed.** It is unrelated to this surface -- the ten turns go through `/api/conversation/*` and touch no MCP path (§3) -- but a non-default browser flag is part of the environment whether or not it is believed to matter, and removing it to make the environment tidier would be changing the setup after reading the protocol |
 | recogniser / synthesiser | the browser's own `SpeechRecognition` and `speechSynthesis`. No Amazon Transcribe, no Polly, no Alexa skill, no wake word |
 | **microphone** | **Razer Kraken V3 headset input**; the synthesiser's output is the same headset. Push-to-talk, not continuous |
-| **network** | the machine's default route runs over a **USB-tethered phone** -- Windows adapter `Ethernet 7`, hardware *Remote NDIS based Internet Sharing Device #3*, link speed 425,984,000 bps, address `192.168.251.195` via gateway `192.168.251.175`. Measured before turn one: `ping www.google.com`, 10 packets, **0% loss, min 35 ms, mean 80 ms, max 224 ms** |
+| **network** | the machine's default route runs over a **USB-tethered phone** -- Windows adapter `Ethernet 7`, hardware *Remote NDIS based Internet Sharing Device #3*, link speed 425,984,000 bps. Measured before turn one: `ping www.google.com`, 10 packets, **0% loss, min 35 ms, mean 80 ms, max 224 ms** |
 | other load | no other application driven on the machine during the run |
 
 **Why the network field is not a formality here.** §7 already notes that *"Chrome's speech
