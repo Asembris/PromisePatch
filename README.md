@@ -39,8 +39,8 @@ usability gate, not a production latency SLA.
 
 ## The frozen effect-set manifest
 
-Sixteen scenarios, hand-labelled from stipulated facts, committed before the runner that will
-execute them exists. Each declares the orders it expects in each partition at each ordered
+Sixteen scenarios, hand-labelled from stipulated facts, committed before the runner that
+executes them existed. Each declares the orders it expects in each partition at each ordered
 checkpoint, and the exact operational effects and refusals it expects — including the zeros.
 
 | | |
