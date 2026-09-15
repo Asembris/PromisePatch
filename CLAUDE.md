@@ -339,6 +339,25 @@ deterministic attestation with a number, and the divergence cannot reach any lab
 stay sealed, nothing was deployed and no model was called. See `docs/effect-set-harness.md` and
 `docs/effect-set-run-protocol.md`.
 
+**G7 is CLOSED, with one criterion deliberately not performed.** Four requirements that had only
+ever been asserted in prose were verified against the implementation and their tests run: a
+blocked promise carries an owner, a next action and a reason; an approval names the exact change
+and its deadline; stale consent explains why the previous plan cannot execute; and a reload or
+restart cannot falsely reset state. G7 closes **with** every one of these stated rather than
+softened. The spoken word budget is met with two exceptions -- the 104-word withdrawal reply, kept
+long because compressing four reversal kinds into a count deletes the distinction the withdrawal
+record protects, and budgets unproved for a case holding many distinct postures at once. The voice
+gate passed at **`K = 9/10`** -- the minimum that passes, by one turn, with turn 7 missing four
+seconds by 807.8 ms -- on the local stack with no public-internet round trip, after a first run
+that was voided late and is published in full with its `K = 1/10`. The sixteen-scenario runner is
+**authored**, all sixteen wired, five effect disagreements published and deliberately unresolved;
+**no scored run has happened and no `X/16` exists**. The Telegram customer channel is **unbuilt and
+deferred to P6.3** -- a G6 requirement, recorded rather than deleted. Correcting a physical fact
+remains CLI-only, as P7.1 records. And the **demo-narrative comprehension check was declined by the
+project owner**, who judged it low value relative to its cost: it is a G7 criterion, so G7 closes
+with one criterion deliberately not performed, not with it met. Both holdouts stay sealed, nothing
+was deployed, no model was called and no product code was changed. See `docs/g7-closeout.md`.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
