@@ -96,6 +96,47 @@ the runner refuses to print one for it.
 or changed harness code does not go on to take the measurement, because by then it has seen
 outcomes and the choice of when to stop building is contaminated by them.
 
+## What a development run may repair, and what it may not
+
+Unlimited development runs are the right rule for a harness and the wrong rule for a label. A
+harness that nobody may run is a harness nobody can debug, so the freedom to run and fix has to
+exist. But that same freedom, pointed at a disagreement between a frozen label and what the
+system does, quietly empties the headline: if every disagreement found while building is
+resolved before the first scored run, that run is trivially sixteen out of sixteen, and G8's
+"whatever the result" is theatre performed by somebody who already knew the result.
+
+So the freedom is bounded, here, in advance:
+
+> A harness defect may be diagnosed and fixed during development. A disagreement between a
+> frozen label and the implementation's behaviour may not. It is recorded, published, and left
+> unresolved until the first scored run has been taken and its X/16 captured. Resolution then
+> follows G8's correction process.
+
+The line between the two is not a matter of taste. A **harness defect** is a fault in the
+machinery that observes: a fixture that will not build, a census that counts the wrong thing, a
+checkpoint read before the system was quiescent, a drive that performs a different fact from
+the one the scenario stipulates. It is a reason the harness cannot yet ask the question. A
+**disagreement** is the harness asking the question correctly and getting an answer that
+differs from the frozen label. It is the measurement, arriving early.
+
+A disagreement is therefore not a bug report to be closed before the run. It is the finding,
+and it is left where it is: the manifest untouched, the harness's expectation untouched, and
+the failing scenario committed **failing**, never weakened, skipped, marked expected-to-fail or
+removed. Whichever way it is eventually resolved -- a corrected label under a separately
+versioned manifest, or a change to the implementation -- that resolution happens after the
+first scored run has been taken and its number captured, under
+[If a frozen label turns out to be wrong](#if-a-frozen-label-turns-out-to-be-wrong) and G8's
+correction process, and is published beside the headline rather than over it.
+
+**S12's `ord-e task_hold` is the first case, and it stays failing under this rule.** S12
+declares `ord-e task_hold 1` at three checkpoints and the system produces `0`, because
+`hold_tasks` holds only a `SCHEDULED` task and S12 stipulates a task already `STARTED`. The
+harness is not at fault -- the same census counts held tasks correctly in S02 and S11 -- so
+this is a disagreement and not a defect, and the two readings of it are both real. Neither is
+chosen here. `test_s12_external_edit_adds_dependency_before` stays committed failing, the
+diff stays published in `docs/effect-set-harness.md`, and nothing about either side of it is
+repaired before the first scored run.
+
 ## The immutable capture
 
 Every run, of either kind, writes one JSON capture file before anything may be repaired. A
@@ -172,6 +213,10 @@ labels and the original headline are immutable and stay exactly where they are.
 
 A correction whose only argument is that the implementation disagreed is not a correction. It is
 the precise failure the freeze exists to prevent, and it is refused.
+
+And it happens *after* the first scored run, never before it. A disagreement found while the
+harness is being built is recorded and left unresolved until the headline exists; see
+[What a development run may repair, and what it may not](#what-a-development-run-may-repair-and-what-it-may-not).
 
 ## What a run may not do
 
