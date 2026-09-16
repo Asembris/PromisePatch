@@ -311,3 +311,5 @@ answers it.
   every capture.
 * **No test was weakened, skipped, xfailed or deselected.** `scripts/tests/test_run_head_of_line.py`
   gained three tests and two assertions with Amendment 1, and lost none.
+
+**The owner's decision on that conditional is recorded separately, and this document is not edited by it:** [g8-head-of-line-disposition.md](g8-head-of-line-disposition.md) — the correction is declined.
