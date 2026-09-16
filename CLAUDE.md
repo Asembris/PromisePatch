@@ -393,6 +393,36 @@ relative to its cost: it is a G7 criterion, so G7 closes with one criterion deli
 performed, not with it met. Both holdouts stay sealed, nothing was deployed, no model was called and
 no product code was changed. See `docs/g7-closeout.md`.
 
+**A judge principal stays read-only, and a deployment now comes up with a case already open.**
+The decision the observer role never had a record for is written: **ADR-0016** states that
+`report` is a physical attestation, so by the core invariant a judge turn is authority over the
+one shared bakery rather than over the speaker's own case -- established by measurement, not
+preference, because the second visitor through the canonical journey attested that a delivery
+*which has not happened yet* failed, on a screen identical to the first visitor's, and the third
+dead-ended. The only design that survives that is a per-visitor universe, and every read above
+the projection is whole-table and unscoped, which makes it tenancy. It supersedes nothing;
+ADR-0013 is unchanged. The defect that made read-only intolerable is fixed separately:
+`pp reset-demo-state` seeds orders, promises and staff and **no case**, so the judge entry had
+landed on an empty list since it shipped. `promisepatch.provisioning.ensure_demo_case` now runs
+at the start of the `worker` process -- not the reset, which is destructive, and not a compose
+service, because the deployed composition has 44 bytes of headroom -- gated on the judge entry's
+own `PP_DEMO_SESSION_ENABLED` so the two cannot drift apart again, and needing no configuration
+change in either stack. It is **additive only**: four guards in order -- the setting, a
+`pg_try_advisory_lock` that skips rather than waits, an emptiness check over *any* case, and
+fixed command identities -- and it never truncates, deletes or updates a pre-existing row, which
+is P6.2's re-seeding defect refused rather than reasoned about. `maya` says the canonical
+sentence and answers the canonical question; the case reaches **`PLANNED`**, the one state where
+all four judge-journey bands are populated and **zero operational effects** exist, and the last
+one reachable without a human saying yes. It carries `S01`'s labels rather than P7.1 §3's `S11`,
+stated rather than glossed: `S11` is the same incident plus Lena's own external edit, which
+provisioning deliberately does not perform, because doing so would couple the boot path to two
+more services and would stage the one contingency `S11` exists to prove is not staged. A
+provisioning failure cannot stop the worker starting, does not gate the API, and leaves the case
+on its open question rather than guessing; what a judge then sees is the product's own sentence,
+already pinned by `judgeEntry.test.tsx`. Twelve tests against real PostgreSQL. Nothing was
+deployed, no AWS resource was touched, no principal gained write authority, and no model was
+called. See `docs/adr/0016-a-judge-principal-stays-read-only.md` and `docs/seeded-demo-case.md`.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
