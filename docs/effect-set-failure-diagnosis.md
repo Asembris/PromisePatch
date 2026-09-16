@@ -682,6 +682,8 @@ Either way it happens under
 [the correction process](effect-set-run-protocol.md#if-a-frozen-label-turns-out-to-be-wrong), beside
 the 11/16 headline and never over it.
 
+**Answered on 2026-09-17, on the release path rather than on §13.5:** [ADR-0017](adr/0017-a-blocked-promise-does-not-hold-a-started-task.md) declines the repair and leaves the label unchanged, so S12 stays failing.
+
 ## What was not done
 
 No product code, test, fixture, label, expectation or manifest was changed. The scored run was not
