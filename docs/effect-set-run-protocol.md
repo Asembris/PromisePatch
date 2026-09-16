@@ -207,19 +207,27 @@ The scenarios cannot pass CI until the disagreements are resolved, and this prot
 every way of making them look as though they had. So the workflow separates the two questions
 rather than letting one of them answer the other.
 
-`.github/workflows/pr.yml` runs the scenarios in a job of their own, **`effect sets (expected
-red until 16/16)`**, and the product suite -- `backend + postgres` -- excludes them with
-`--ignore`. Nothing is skipped, weakened, deselected, removed or marked expected-to-fail: the
-scenarios run whole, in CI, on every trigger, under the same command and against the same
-disposable database as before, and they fail with exactly the diffs the published capture
-records. Only which job their red colours has changed.
+`.github/workflows/effect-sets.yml` runs the scenarios in a workflow of its own, in a job of its
+own named **`effect sets (expected red until 16/16)`**, and the product gate --
+`.github/workflows/pr.yml`, whose backend job is `backend + postgres` -- excludes them with
+`--ignore`. Both workflows carry the same triggers and the same `paths-ignore` list, and their
+`concurrency` groups are distinct so neither can cancel the other. Nothing is skipped, weakened,
+deselected, removed or marked expected-to-fail: the scenarios run whole, in CI, on every trigger,
+under the same command and against the same disposable database as before, and they fail with
+exactly the diffs the published capture records. Only which job, and now which workflow, their red
+colours has changed.
 
 The reason is that a permanently red product job cannot report anything. A real regression
 anywhere in the backend looked exactly like the failure that was already there, so the red that
-was supposed to be informative was spoken for in advance.
+was supposed to be informative was spoken for in advance. The move from one job to one file
+finishes that separation at the place a reader actually looks: a status badge is per workflow
+rather than per job, so while the benchmark sat beside the product jobs the repository advertised
+a single red badge and a reader saw "broken" where the truth is "publishes its failures". There
+are now two badges, and `README.md` says what the benchmark's red means before anybody has to
+wonder.
 
-**"The release SHA passes required CI" means the product gate**: every job except the effect-set
-job. Branch protection requires those and not this one.
+**"The release SHA passes required CI" means the product gate**: every job in
+`.github/workflows/pr.yml`. Branch protection requires those and not the effect-set workflow.
 
 **G8's 16/16 on the benchmark remains a separate and still-required release condition.** It is
 not satisfied by a green product gate, not waived by this separation, and reported as its own
