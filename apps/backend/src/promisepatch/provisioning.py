@@ -5,8 +5,8 @@ case had to have been built by hand: ``pp reset-demo-state`` seeds orders, promi
 and staff and **no case at all**, so the entry landed on an empty list unless an operator had
 run the CLI recipe and nothing had reset the deployment since. That is the defect this module
 closes, and closing it is a provisioning question rather than an authority one --
-:doc:`ADR-0016 <../../../docs/adr/0016-a-judge-principal-stays-read-only>` is why a visitor is
-never the one who opens it.
+``docs/adr/0016-a-judge-principal-stays-read-only.md`` is why a visitor is never the one who
+opens it.
 
 **This is additive, and the distinction is the whole safety argument.** ``reset_demo_state``
 replaces every domain row it owns and is therefore something an operator asks for; this runs at
@@ -20,8 +20,9 @@ truncates, deletes or updates a row that was already there:
 * both statements it makes carry a **fixed command id**, so the case id is derived
   (:func:`~promisepatch.domain.physical.case_id_for`) and a redelivered command is recognised
   by intake rather than opening a second case;
-* the whole thing is serialised by a session-level advisory lock taken with ``pg_try_advisory_
-  lock``, so a second process that finds it held skips rather than queueing behind it.
+* the whole thing is serialised by a session-level advisory lock taken with
+  ``pg_try_advisory_lock``, so a second process that finds it held skips rather than
+  queueing behind it.
 
 **It speaks; it does not conclude.** The case is opened by ``maya`` saying the canonical
 sentence and answered by ``maya`` answering the one open question, through
