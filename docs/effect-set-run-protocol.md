@@ -201,6 +201,37 @@ A release candidate is separately required to reach 16/16. That is a release con
 reported as a release condition. It is a different sentence from the headline and appears next
 to it, never over it.
 
+## What passing CI means
+
+The scenarios cannot pass CI until the disagreements are resolved, and this protocol forbids
+every way of making them look as though they had. So the workflow separates the two questions
+rather than letting one of them answer the other.
+
+`.github/workflows/pr.yml` runs the scenarios in a job of their own, **`effect sets (expected
+red until 16/16)`**, and the product suite -- `backend + postgres` -- excludes them with
+`--ignore`. Nothing is skipped, weakened, deselected, removed or marked expected-to-fail: the
+scenarios run whole, in CI, on every trigger, under the same command and against the same
+disposable database as before, and they fail with exactly the diffs the published capture
+records. Only which job their red colours has changed.
+
+The reason is that a permanently red product job cannot report anything. A real regression
+anywhere in the backend looked exactly like the failure that was already there, so the red that
+was supposed to be informative was spoken for in advance.
+
+**"The release SHA passes required CI" means the product gate**: every job except the effect-set
+job. Branch protection requires those and not this one.
+
+**G8's 16/16 on the benchmark remains a separate and still-required release condition.** It is
+not satisfied by a green product gate, not waived by this separation, and reported as its own
+sentence beside the headline exactly as
+[The headline](#the-headline-and-what-may-never-happen-to-it) requires. A release needs both: the
+product gate green, and the benchmark at sixteen out of sixteen.
+
+The separation is asserted rather than trusted. `scripts/tests/test_ci_effect_set_job.py` fails
+if the scenarios are put back into the product job, if their own job disappears, if its command
+is narrowed with `-k` or `--deselect`, if it is allowed to pass with `continue-on-error`, or if
+the scenario file acquires a skip or an xfail.
+
 ## If a frozen label turns out to be wrong
 
 Stop. Do not edit the manifest, do not adjust the harness's expectation, and do not "correct" a

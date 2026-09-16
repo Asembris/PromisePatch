@@ -353,6 +353,26 @@ capture is committed unedited at
 `docs/effect-sets/runs/20260915T163255509125+0000-scored.json`; resolving the five is later work
 under G8's correction process. See `docs/effect-set-first-scored-run.md`.
 
+**The first of the five is repaired, and CI now separates the product gate from the benchmark.**
+Cause A is fixed: `_close_request` escalated an approval that could no longer be answered and
+never held the kitchen work, so §23's "EXPIRED -> ESCALATED; task HELD" was performed by halves
+and a bakery could finish a cake the case had already concluded it could not ask about. The hold
+is a required argument rather than a defaulted one, because that function also serves
+undeliverable transport, which §23 does not answer with a hold -- expiry holds, a message that
+failed inside a still-open window does not, and both halves are pinned by a test. **S08 now
+matches its frozen labels.** S06, S07, S12 and S13 stay committed failing with byte-identical
+diffs, unweakened; **cause B stays UNDECIDED**, and causes C, D and E are untouched -- C changes
+every case that reaches `PLANNED`, including the canonical demo case, and does not move until the
+demo narrative is settled. **The published 11/16 headline is unchanged and immutable**; no scored
+run was taken, and a pytest invocation of the scenario suite is a harness-development run that
+publishes no X/16. In CI the sixteen now run in their own job, `effect sets (expected red until
+16/16)`, and `backend + postgres` excludes them with `--ignore`, so a permanently red benchmark
+stops standing in front of a real backend regression. Nothing is skipped, weakened, deselected or
+marked expected-to-fail -- the scenarios run whole and fail identically; only which job their red
+colours changed. **"The release SHA passes required CI" means the product gate**, and G8's 16/16
+on the benchmark stays a separate, still-required release condition. See
+`docs/effect-set-run-protocol.md`, *What passing CI means*.
+
 **G7 is CLOSED, with one criterion deliberately not performed.** Four requirements that had only
 ever been asserted in prose were verified against the implementation and their tests run: a blocked
 promise carries an owner, a next action and a reason; an approval names the exact change and its
