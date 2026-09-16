@@ -73,14 +73,21 @@ cd promisepatch/packages/promise-graph
 uv venv --python 3.12
 uv pip install --requirement requirements-standalone.txt
 uv pip install --no-deps .
-uv run python examples/one_missing_delivery.py
-uv run pytest tests -q
+uv run --no-project python examples/one_missing_delivery.py
+uv run --no-project pytest tests -q
 ```
 
 `requirements-standalone.txt` is a fully resolved, transitively pinned set — `pydantic`, plus
 `pytest` and `hypothesis` for the suite — at the versions this repository itself resolves and
 tests against. `--no-deps` on the package install is what makes the pins authoritative rather
 than advisory: nothing is re-resolved.
+
+**`--no-project` is load-bearing, not decoration.** A clone carries the whole monorepo, whose
+root `pyproject.toml` declares this package a workspace member. Without the flag, `uv run`
+discovers that root, builds a *second* environment beside it and resolves afresh — so the two
+pinned commands above would be silently ignored and the suite would fail on a missing `pytest`.
+With it, `uv` uses the `.venv` you just pinned and nothing is resolved at all. If you prefer,
+activate the environment and run `python` and `pytest` directly; the effect is the same.
 
 The example prints the four partitions for one missing delivery, counted, with the rule that
 decided each one:
@@ -108,7 +115,7 @@ uv run pytest packages/promise-graph
 From a standalone clone, as above:
 
 ```bash
-uv run pytest tests -q
+uv run --no-project pytest tests -q
 ```
 
 ## License
