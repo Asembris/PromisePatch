@@ -14,6 +14,11 @@ the constructor field the product already exposes. Nothing under ``apps/backend/
 and the number of milliseconds is an explicit operator argument rather than a condition anything
 fell into. The control arm runs the identical class with the number set to zero.
 
+There are **three** arms since Amendment 1 (§4.2, §14): ``control`` at 0 ms establishes the
+baseline, ``representative`` at 1 500 ms holds the call for as long as the repository has recorded
+the real model holding it, and ``treatment`` at 8 000 ms isolates whether delay propagates one for
+one. They differ in one integer and in nothing else.
+
 It **captures**: one JSON file per run, holding every raw instant the database recorded, the
 arrangement it asserted, the provider's own hold, the implementation SHA and the environment.
 
@@ -71,7 +76,7 @@ from promisepatch.worker import Worker
 
 ROOT: Final = Path(__file__).resolve().parents[1]
 
-RUNNER_VERSION: Final = "1.0.0"
+RUNNER_VERSION: Final = "1.1.0"
 """Bumped whenever the harness changes how it arranges or observes. Recorded in every capture."""
 
 PREDECLARATION: Final = "docs/g8-head-of-line-predeclaration.md"
@@ -80,8 +85,13 @@ CAPTURE_DIR: Final = ROOT / "docs" / "head-of-line" / "runs"
 DELAY_MS: Final = 8000
 """§4.2. Well inside ``steps.LEASE_DURATION`` and eight times §8's threshold."""
 
+REPRESENTATIVE_DELAY_MS: Final = 1500
+"""§4.2 as amended, derived in §14: the two recorded ``interpret_utterance`` calls Nova 2 Lite
+answered on the deployed host --- 1 487 ms and 1 444 ms --- rounded up to the nearest hundred.
+Not a percentile, not an average, and not a number this harness measured."""
+
 REPETITIONS: Final = 3
-"""§4.5. Three runs per arm, alternating, so drift falls on both arms equally."""
+"""§4.5. Three runs per arm, alternating, so drift falls on every arm equally."""
 
 SMOKE_DELAY_MS: Final = 500
 SMOKE_REPETITIONS: Final = 1
@@ -590,12 +600,21 @@ def write_capture(capture: dict[str, Any], *, directory: Path) -> Path:
     return path
 
 
-def sequence(*, repetitions: int, delay_ms: int) -> tuple[Arm, ...]:
-    """``C T C T C T``: alternating, so drift over the invocation falls on both arms equally."""
+def sequence(*, repetitions: int, delay_ms: int, representative_delay_ms: int) -> tuple[Arm, ...]:
+    """``C R T C R T C R T``: alternating, so drift falls on every arm equally.
+
+    Three arms since Amendment 1. The order within a repetition is fixed --- control, then the
+    representative delay, then the long one --- because a run's position in the invocation is part
+    of what the alternation is controlling for.
+    """
     arms: list[Arm] = []
     ordinal = 0
     for repetition in range(1, repetitions + 1):
-        for name, delay in (("control", 0), ("treatment", delay_ms)):
+        for name, delay in (
+            ("control", 0),
+            ("representative", representative_delay_ms),
+            ("treatment", delay_ms),
+        ):
             ordinal += 1
             arms.append(Arm(arm=name, repetition=repetition, ordinal=ordinal, delay_ms=delay))
     return tuple(arms)
@@ -658,15 +677,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"predeclaration {PREDECLARATION}")
         print(f"delayed sentence {DELAYED_SENTENCE!r}")
         print(f"unrelated sentences {len(UNRELATED_SENTENCES)}")
-        print(f"measurement: delay {DELAY_MS}ms, {REPETITIONS} runs per arm")
+        print(
+            f"measurement: delays 0 / {REPRESENTATIVE_DELAY_MS} / {DELAY_MS}ms, "
+            f"{REPETITIONS} runs per arm"
+        )
         print(f"smoke: delay {SMOKE_DELAY_MS}ms, {SMOKE_REPETITIONS} run per arm")
         print("imports resolved; no database was opened and no container was required")
         return 0
 
     label = "smoke" if arguments.smoke else "measurement"
+    smoke = arguments.smoke
     arms = sequence(
-        repetitions=SMOKE_REPETITIONS if arguments.smoke else REPETITIONS,
-        delay_ms=SMOKE_DELAY_MS if arguments.smoke else DELAY_MS,
+        repetitions=SMOKE_REPETITIONS if smoke else REPETITIONS,
+        delay_ms=SMOKE_DELAY_MS if smoke else DELAY_MS,
+        representative_delay_ms=SMOKE_DELAY_MS if smoke else REPRESENTATIVE_DELAY_MS,
     )
     try:
         return asyncio.run(_run_all(arms, label=label, directory=Path(arguments.out)))

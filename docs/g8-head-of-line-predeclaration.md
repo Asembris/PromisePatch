@@ -16,7 +16,18 @@ document and computes the verdict from the capture it wrote.
 
 **A predeclaration may be amended while no measured run exists, and never afterwards.** Any
 amendment carries its date, its commit and its reason, and leaves the superseded text in place.
-There are no amendments.
+
+**Amendment 1 — 2026-09-16, written against `54c79ac`, while no measured run existed.** A **third
+arm** is added, at a latency this repository has actually recorded from the real model. §14 holds
+the whole of it: what the arm is for, the evidence the figure rests on and what it does not rest
+on, the arithmetic generalised from two arms to three, and §8's prediction restated for each arm
+before any number exists. §3, §4.2, §4.5, §7, §9, §10 and §12 carry its consequences, each with
+its superseded text kept verbatim beside the replacement. **§8 is untouched.** The threshold is
+`H ≤ 1000.0 ms`, it was not moved in either direction, and it applies to every arm identically.
+§1, §2, §5, §6, §11 and §13 are unamended. The control arm and the 8 000 ms arm are unchanged in
+every respect.
+
+*Superseded on 2026-09-16, kept verbatim: "There are no amendments."*
 
 ---
 
@@ -110,10 +121,18 @@ This settles the first NON-GO condition: the delay can be injected without a pro
 
 ### What the delay may not exceed
 
+*Amended 2026-09-16 by Amendment 1. The superseded paragraph is kept verbatim below it.*
+
 `steps.LEASE_DURATION` is `timedelta(seconds=60)`. A held call longer than the lease would let the
 step be reclaimed mid-call, which would measure lease recovery rather than scheduling. **The
-injected delay must be well inside 60 seconds**; §4 fixes it at 8, which is inside it by a factor
-of seven and a half.
+injected delay must be well inside 60 seconds**; §4 fixes the longer of the two delayed arms at 8,
+which is inside it by a factor of seven and a half, and the representative arm at 1.5, which is
+inside it by a factor of forty.
+
+> **Superseded 2026-09-16, verbatim:** `steps.LEASE_DURATION` is `timedelta(seconds=60)`. A held
+> call longer than the lease would let the step be reclaimed mid-call, which would measure lease
+> recovery rather than scheduling. **The injected delay must be well inside 60 seconds**; §4 fixes
+> it at 8, which is inside it by a factor of seven and a half.
 
 ---
 
@@ -145,23 +164,57 @@ reach them.
 
 ### 4.2 The delay, and how it is injected
 
+*Amended 2026-09-16 by Amendment 1: a third arm at 1 500 ms. The 8 000 ms arm and the control arm
+are unchanged, and the superseded text is kept verbatim at the end of this subsection. §14 derives
+the new figure.*
+
 | | fixed |
 |---|---|
-| **delay `D`** | **8 000 ms** in the treatment arm, **0 ms** in the control arm |
+| **delay `D`** | **0 ms** in the `control` arm, **1 500 ms** in the `representative` arm, **8 000 ms** in the `treatment` arm |
 | **where** | `StructuredSemanticProvider.invoke`, in a harness subclass of `FakeSemanticProvider` |
 | **how** | `await asyncio.sleep(D / 1000)` before delegating to `super().invoke(...)` |
 | **how many** | exactly one call per run (§4.1) |
 
-**Why 8 000 ms.** Two constraints and one choice. It must be comfortably inside
-`LEASE_DURATION = 60 s` (§3). It must be large enough that no plausible variation on a development
-machine could be mistaken for it: 8 000 ms is **eight times** §8's threshold, so a signal at the
-threshold's scale and a signal at the delay's scale cannot be confused for one another. And it
-must be small enough that six runs are cheap. Nothing about the number was chosen by looking at a
-measurement, because none exists.
+**What each arm is for, one sentence each.** The **control** arm establishes the baseline — what
+the eight unrelated items wait when nothing is held at the head of the queue. The
+**representative** arm answers whether this matters in operation, by holding the call for as long
+as this repository has actually recorded the real model holding it. The **treatment** arm isolates
+whether delay propagates one for one, by holding it far longer than any recorded call so that a
+proportional effect and a fixed overhead cannot be confused for one another.
+
+**Why 8 000 ms.** Unchanged, and reproduced here because the arm is unchanged: two constraints and
+one choice. It must be comfortably inside `LEASE_DURATION = 60 s` (§3). It must be large enough
+that no plausible variation on a development machine could be mistaken for it: 8 000 ms is **eight
+times** §8's threshold, so a signal at the threshold's scale and a signal at the delay's scale
+cannot be confused for one another. And it must be small enough that nine runs are cheap. Nothing
+about the number was chosen by looking at a measurement, because none exists.
+
+**Why 1 500 ms.** §14, in full, with the recorded calls it rests on named, and the derivation it
+was *not* given stated beside it.
 
 **The control arm runs the identical code path** — the same harness provider class, the same
-`await asyncio.sleep`, the same delegation — with the number set to zero. The two arms differ in
+`await asyncio.sleep`, the same delegation — with the number set to zero. The three arms differ in
 one integer and in nothing else.
+
+> **Superseded 2026-09-16, verbatim:**
+>
+> | | fixed |
+> |---|---|
+> | **delay `D`** | **8 000 ms** in the treatment arm, **0 ms** in the control arm |
+> | **where** | `StructuredSemanticProvider.invoke`, in a harness subclass of `FakeSemanticProvider` |
+> | **how** | `await asyncio.sleep(D / 1000)` before delegating to `super().invoke(...)` |
+> | **how many** | exactly one call per run (§4.1) |
+>
+> **Why 8 000 ms.** Two constraints and one choice. It must be comfortably inside
+> `LEASE_DURATION = 60 s` (§3). It must be large enough that no plausible variation on a
+> development machine could be mistaken for it: 8 000 ms is **eight times** §8's threshold, so a
+> signal at the threshold's scale and a signal at the delay's scale cannot be confused for one
+> another. And it must be small enough that six runs are cheap. Nothing about the number was
+> chosen by looking at a measurement, because none exists.
+>
+> **The control arm runs the identical code path** — the same harness provider class, the same
+> `await asyncio.sleep`, the same delegation — with the number set to zero. The two arms differ in
+> one integer and in nothing else.
 
 ### 4.3 The unrelated ready work
 
@@ -225,10 +278,19 @@ ask about.
 
 ### 4.5 Repetitions
 
-**Three runs per arm, six in all, alternating `C T C T C T`.** Alternating rather than blocked so
-that any drift in the machine over the ten minutes falls on both arms equally. Each run is preceded
-by its own `pp reset-demo-state`, so no run inherits another's state, and the eight sentences never
-collide with an attestation a previous run already made.
+*Amended 2026-09-16 by Amendment 1: three arms rather than two, so nine runs rather than six.
+Three runs per arm is unchanged. Superseded text verbatim below.*
+
+**Three runs per arm, nine in all, alternating `C R T C R T C R T`.** Alternating rather than
+blocked so that any drift in the machine over the run falls on all three arms equally. Each run is
+preceded by its own `pp reset-demo-state`, so no run inherits another's state, and the eight
+sentences never collide with an attestation a previous run already made.
+
+> **Superseded 2026-09-16, verbatim:** **Three runs per arm, six in all, alternating
+> `C T C T C T`.** Alternating rather than blocked so that any drift in the machine over the ten
+> minutes falls on both arms equally. Each run is preceded by its own `pp reset-demo-state`, so no
+> run inherits another's state, and the eight sentences never collide with an attestation a
+> previous run already made.
 
 Items are identified across runs **by their sentence**, which is stable, and never by step id or
 case id, which are new every run.
@@ -303,9 +365,17 @@ containers down:
 uv run python scripts/with_local_env.py -- uv run python scripts/run_head_of_line.py
 ```
 
-That is the whole measurement: six runs, `C T C T C T`, each with its own fixture reset, writing one
-capture file per run under `docs/head-of-line/runs/`. `--smoke` runs the shortened shape of §12
-instead, and writes captures labelled `smoke` that no arithmetic may read.
+*Amended 2026-09-16 by Amendment 1. The command is unchanged; the number of runs it performs is
+not. Superseded sentence verbatim below.*
+
+That is the whole measurement: nine runs, `C R T C R T C R T`, each with its own fixture reset,
+writing one capture file per run under `docs/head-of-line/runs/`. `--smoke` runs the shortened
+shape of §12 instead, and writes captures labelled `smoke` that no arithmetic may read.
+
+> **Superseded 2026-09-16, verbatim:** That is the whole measurement: six runs, `C T C T C T`,
+> each with its own fixture reset, writing one capture file per run under
+> `docs/head-of-line/runs/`. `--smoke` runs the shortened shape of §12 instead, and writes
+> captures labelled `smoke` that no arithmetic may read.
 
 The harness **refuses to start** rather than producing a record it cannot vouch for:
 
@@ -365,20 +435,53 @@ Every number in this section is **invented**. None of it was measured, none of i
 smoke run of §12, and it exists only so that no arithmetic decision is made after real numbers
 exist.
 
+*Amended 2026-09-16 by Amendment 1: the same arithmetic, applied once per delayed arm rather than
+once. Nothing about how a wait, a median or an `H` is computed changed, and the threshold it is
+compared against did not move. Superseded block verbatim at the end of this section.*
+
 For each run `r` and each tracked item `i` in 1..8 (§4.3), from the capture:
 
 ```
 wait_ms(r, i)    = (started_at(r, i) - created_at(r, i)) in milliseconds
 service_ms(r, i) = (done_at(r, i)    - started_at(r, i)) in milliseconds
 
-W_control(i)   = median{ wait_ms(r, i) : r in the 3 control runs }
-W_treatment(i) = median{ wait_ms(r, i) : r in the 3 treatment runs }
+W_control(i)        = median{ wait_ms(r, i) : r in the 3 control runs }
+W_representative(i) = median{ wait_ms(r, i) : r in the 3 representative runs }
+W_treatment(i)      = median{ wait_ms(r, i) : r in the 3 treatment runs }
 
-added_ms(i)    = W_treatment(i) - W_control(i)
-H              = max{ added_ms(i) : i in 1..8 }
+added_ms_representative(i) = W_representative(i) - W_control(i)
+added_ms_treatment(i)      = W_treatment(i)      - W_control(i)
+
+H_representative = max{ added_ms_representative(i) : i in 1..8 }
+H_treatment      = max{ added_ms_treatment(i)      : i in 1..8 }
 ```
 
-`H` is compared against §8's 1000.0 ms. That is the entire verdict.
+**The control arm has no `H` of its own.** It is the baseline both delayed arms are subtracted
+from, which is what it was before this amendment; there is no third subtraction and the two
+delayed arms are never subtracted from each other.
+
+`H_representative` and `H_treatment` are each compared against §8's 1000.0 ms, separately, and
+**each arm carries its own verdict**. §8's two edges apply to both unchanged: 1000.0 passes,
+1000.1 does not, no rounding is applied before the comparison, and a negative `H` passes. Worked
+examples A, B and C below are unamended and read as the arithmetic for one delayed arm; with two,
+the same work is done twice against the same control column.
+
+> **Superseded 2026-09-16, verbatim:**
+>
+> For each run `r` and each tracked item `i` in 1..8 (§4.3), from the capture:
+>
+> ```
+> wait_ms(r, i)    = (started_at(r, i) - created_at(r, i)) in milliseconds
+> service_ms(r, i) = (done_at(r, i)    - started_at(r, i)) in milliseconds
+>
+> W_control(i)   = median{ wait_ms(r, i) : r in the 3 control runs }
+> W_treatment(i) = median{ wait_ms(r, i) : r in the 3 treatment runs }
+>
+> added_ms(i)    = W_treatment(i) - W_control(i)
+> H              = max{ added_ms(i) : i in 1..8 }
+> ```
+>
+> `H` is compared against §8's 1000.0 ms. That is the entire verdict.
 
 ### Worked example A — fabricated, fails
 
@@ -464,7 +567,10 @@ read**:
 3. The arrangement of §4.4 step 5 did not hold — the semantic step was not `PENDING`, or was not
    the oldest claimable row, or a tracked row was not `PENDING`.
 4. The injecting provider recorded any number of calls other than exactly one in a run, or recorded
-   a nonzero hold in a control run, or a hold materially shorter than `D` in a treatment run.
+   a nonzero hold in a control run, or a hold materially shorter than `D` in a delayed run.
+   *Amended 2026-09-16 by Amendment 1: "in a treatment run" becomes "in a delayed run", so that
+   the condition covers the representative arm on the same terms. Superseded verbatim: "or a hold
+   materially shorter than `D` in a treatment run."*
 5. A capture is internally inconsistent: a row reported terminal that carries no `started_at` or no
    `done_at`, or a `started_at` before its own `created_at`.
 
@@ -542,9 +648,21 @@ delayed case's first step untouched after its two quiet seconds, the injecting p
 every step of all nine cases was executed by **one** worker identity. No interval was computed from
 them, here or anywhere.
 
+*Amended 2026-09-16 by Amendment 1. Superseded sentence verbatim below.*
+
 **The next session's job**, and the whole of it: run §7's command once from a clean tree, publish
-the six captures, apply §9's arithmetic to them, and publish `H` with its verdict against §8 —
-whatever it is.
+the nine captures, apply §9's arithmetic to them, and publish `H_representative` and
+`H_treatment`, each with its own verdict against §8 — whatever they are.
+
+> **Superseded 2026-09-16, verbatim:** **The next session's job**, and the whole of it: run §7's
+> command once from a clean tree, publish the six captures, apply §9's arithmetic to them, and
+> publish `H` with its verdict against §8 — whatever it is.
+
+**Amendment 1 changed none of this paragraph's other claims.** No measurement run has been taken
+at the moment this amendment is written, no wait, median, `added_ms` or `H` has been computed,
+printed or held privately, and the smoke run's two captures remain the only thing the harness has
+ever produced. The amendment was written from committed documents and one local evaluation
+capture, all of which predate it; no run of any kind was taken to decide it.
 
 ---
 
@@ -569,3 +687,157 @@ work behind it to measure. The requirement names *"delayed semantic calls alongs
 work"*, and the worker's step loop is the only place in this build where both halves of that
 phrase exist at once. Recorded so that the scope is read as a finding about the architecture rather
 than as a convenience.
+
+---
+
+## 14. Amendment 1 — the representative arm
+
+*Written 2026-09-16, against `54c79ac`, while no measured run existed, no wait had been computed
+and no `H` of any kind had been read. Everything in this section was decided from committed
+documents and one local evaluation capture, every one of which predates it.*
+
+### 14.1 Why the two declared arms are not enough
+
+§4.2 declares one delayed arm, at 8 000 ms. §8 predicts that the worker serialises and that `H`
+lands near it, which would be a fail by a factor of eight.
+
+The difficulty is what that published number would then mean. **8 000 ms is not a latency this
+product has ever exhibited.** It was chosen, and §4.2 says so in as many words: it is eight times
+the threshold so that the two scales cannot be confused, and small enough that the runs are cheap.
+A fail at 8 000 ms is therefore a true statement about the worker's scheduling *given an 8-second
+call*, and the only thing a reader can safely take from it is the shape — that delay propagates —
+not the magnitude. If the magnitude is the published headline, the headline is a property of the
+injection.
+
+The requirement itself is what makes this matter. `new_roadmap.md:367` conditions the correction
+on *"observed responsiveness"* — an operational word. A number produced by holding a call eight
+times longer than the model has ever held one does not observe responsiveness; it observes the
+injection.
+
+**A third arm fixes it without weakening anything.** The control arm and the 8 000 ms arm are
+untouched, the threshold is untouched, and the 8 000 ms arm's verdict will be published in full
+whatever it is. The representative arm is an addition, not a replacement.
+
+### 14.2 The figure, and exactly what it rests on
+
+> **`D_representative` = 1 500 ms.**
+
+**What it rests on: two recorded Bedrock calls, of the same job this measurement delays, on the
+deployed host.** [p6.2-first-deployment.md](p6.2-first-deployment.md) §7.1 publishes the first
+real model call PromisePatch ever made from inside a container on the deployed host:
+
+| | |
+|---|---|
+| job | `interpret_utterance` — **the same job §3 names as the one delayed call on the durable path** |
+| model | `us.amazon.nova-2-lite-v1:0` |
+| attempts | 1, no retry |
+| first call | `input_tokens: 1931, output_tokens: 104, latency_ms: 1487` |
+| repeated after a further reboot | `input_tokens: 1855, output_tokens: 71, latency_ms: 1444` |
+
+That document calls the repetition *"a durable property of the deployment and not a one-off"*.
+
+**1 500 ms is those two readings rounded up to the nearest hundred.** 1 487 and 1 444 both sit
+under it. It is not an average, not a percentile of anything, and not a number that required a
+model of the distribution: it is the smallest round figure at or above every recorded reading of
+this job on the deployed host. Rounding up rather than down is the fail-closed direction, which is
+the direction §5 already takes for `ready(i)` and §10 already takes for a missing control reading.
+
+**What the figure is short of, stated rather than left to be found.** `latency_ms` on that event
+is Bedrock's own `metrics.latencyMs`, read by `bedrock.read_usage` — **server-side model latency
+only**. The worker also holds the network round trip, the client and the response parsing, for the
+whole of `provider.run`. [semantic-benchmark-rerun.md](semantic-benchmark-rerun.md) measures that
+gap on the operator's machine at *"~190 ms"* at p50. So 1 500 ms is, if anything, **short of** what
+the deployed worker actually holds, and the arm is lenient by that much rather than strict.
+
+### 14.3 The derivation that was available and was not taken
+
+There is a second body of evidence, it is larger, and it points lower. It is named here because a
+figure whose alternatives are hidden is a figure chosen rather than derived.
+
+[semantic-benchmark-rerun.md](semantic-benchmark-rerun.md), run `36c1f008de80`, 50 Nova calls
+against `us.amazon.nova-2-lite-v1:0`, publishes model latency p50 / p95 / max of
+**628 / 912 / 1161 ms** and end-to-end semantic latency p50 / p95 / max of **818 / 1294 / 6079 ms**
+— the maximum being the run's first call, which pays for the credential chain and the TLS
+handshake. [semantic-benchmark.md](semantic-benchmark.md), the earlier run, publishes 746 / 1052 /
+1052 ms and 919 / 6351 / 6351 ms on 14 calls.
+
+That run's own capture — `.eval-results/development-us.amazon.nova-2-lite-v1_0.jsonl`, which is
+gitignored and local rather than committed, and is named here as what it is — carries the per-call
+rows behind those aggregates. Of its 20 `interpret_utterance` calls, on prompts of 1 989 to 2 007
+input tokens, the model latencies run 451 to 1 161 ms with a median of **711.5 ms**, and the
+end-to-end latencies run 646 to 6 079 ms with a median of **903.5 ms**.
+
+**Taking that instead would have given roughly 900 ms**, and under §8's serialisation prediction
+900 ms would have predicted a *pass* where 1 500 ms predicts a fail. It was not taken, for three
+reasons, all of them settled before any number of this measurement exists:
+
+1. **It is the wrong environment for the question the arm asks.** The arm exists to answer whether
+   this matters *in operation*. Operation is the deployed host. The benchmark ran from the
+   operator's laptop.
+2. **It disagrees with the deployed evidence in a direction that cannot be dismissed.** The two
+   deployed readings, 1 444 and 1 487 ms, are **larger than every one of the 20 local model
+   latencies**, whose maximum is 1 161 ms — on prompts of the same size (1 855–1 931 input tokens
+   deployed against 1 989–2 007 local). Two bodies of evidence disagree; the one from the product's
+   own operating environment is taken.
+3. **Where evidence is ambiguous this repository fails closed.** Choosing the lower figure because
+   it is the one that passes is exactly the move every rule in this document exists to prevent.
+
+**This is stated plainly because it is uncomfortable.** §8 predicts one-for-one serialisation. If
+that prediction holds, the representative arm's verdict is decided by whether `D_representative`
+exceeds 1 000 ms, and 1 500 does. So the arm as declared is **predicted to fail**, and a figure
+this repository could also have defended would have been predicted to pass. Both are written down
+here, before the run, so that whichever verdict arrives, nobody has to take on trust that the
+number was not tuned to produce it.
+
+### 14.4 §8's prediction, restated per arm, before any number exists
+
+§8 is unedited. Its prediction reads, verbatim:
+
+> Reading `Worker.run_once` (§3), the five awaits are sequential and `_execute_one_step` holds the
+> provider call inside the second of them. Nothing in that loop is concurrent, and nothing claims a
+> second step while the first is in the provider. **The expected outcome of this measurement is
+> therefore a fail**, with `H` near 8 000 ms.
+
+Applied to each arm, with no new reasoning and no new threshold:
+
+| arm | `D` | what the arm is for | **predicted** |
+|---|---|---|---|
+| `control` | 0 ms | establishes the baseline the other two are subtracted from | no `H`; it is the baseline, not a result |
+| `representative` | 1 500 ms | answers whether this matters at a latency the real model has been recorded at | **fail**, with `H_representative` near 1 500 ms — above 1 000.0 |
+| `treatment` | 8 000 ms | isolates whether delay propagates one for one, at a scale nothing could be mistaken for noise | **fail**, with `H_treatment` near 8 000 ms |
+
+**A prediction is not a measurement**, carries no number, and settles nothing. **The threshold does
+not move when the result arrives**, in either direction, for either arm. If either arm's `H` comes
+back below 1 000.0 ms, that arm passes and the prediction was simply wrong, which is the only
+reason to have written it down in advance.
+
+### 14.5 What Amendment 1 does not do
+
+* **It does not move the threshold.** §8 is not edited. `H ≤ 1000.0 ms` applies to both delayed
+  arms on identical terms.
+* **It does not change the control arm or the 8 000 ms arm**, their delays, their repetitions,
+  their sentences, their arrangement, their instants or their void conditions.
+* **It does not make this a model-latency measurement.** §11.1 stands unamended: the provider is
+  still the fake plus a sleep, and no Bedrock call, credential or network egress occurs in any run.
+  The arm is named *representative* because its number was taken from recorded calls, not because
+  the run makes one.
+* **It does not measure the deployed host.** §11.2 stands. The figure comes from the deployed host;
+  the run does not. A deployed run would carry the network between the worker and the database
+  too, and this one does not.
+* **It does not repair, supersede or soften anything.** §11.8 stands: the UNPROVEN verdict in
+  [g8-adversarial-proof-map.md](g8-adversarial-proof-map.md) §4 holds until a measurement exists,
+  and the immutable 11/16 effect-set headline is untouched.
+* **It designs no scheduling correction.** §11.6 stands. Whether a fail on either arm obliges the
+  requirement's *"smallest scheduling correction"* is a decision for the owner after reading the
+  result, and nothing here makes it.
+
+### 14.6 What the harness had to change, and what it did not
+
+`scripts/run_head_of_line.py` gains one constant and one row in `sequence()`. `RUNNER_VERSION` goes
+to `1.1.0`, which is what that constant is for.
+
+**Nothing in `apps/backend/src/` is touched by this amendment**, exactly as §3 requires: the delay
+is still an argument to a constructor field the product already exposes, and the new arm is still
+one integer. The harness still computes no wait, no median, no `H`, no threshold and no verdict,
+and `scripts/tests/test_run_head_of_line.py` still asserts that it does not — including that the
+string `1000.0` appears nowhere in it.

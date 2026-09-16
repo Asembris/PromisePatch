@@ -16,6 +16,10 @@ whatever the harness felt like publishing.
 a constructor field and ``StructuredSemanticProvider`` already exists to be subclassed; the
 harness uses both, and the control arm runs the same class with the number set to zero.
 
+Amendment 1 added a third arm, and the drift assertions cover it on the same terms: the
+representative delay must be the number §14 derived, it must be named in the predeclaration, and
+it must sit inside the lease like every other arm.
+
 Nothing here opens a database, starts a worker or reaches a provider --- the directory's own
 guard refuses anything that is not loopback, and no test in this file needs even that.
 """
@@ -36,6 +40,7 @@ from scripts.run_head_of_line import (
     PREDECLARATION,
     PREFLIGHT_QUIET_SECONDS,
     REPETITIONS,
+    REPRESENTATIVE_DELAY_MS,
     RUNNER_VERSION,
     SMOKE_DELAY_MS,
     SMOKE_REPETITIONS,
@@ -76,6 +81,7 @@ def test_the_predeclaration_this_harness_names_exists(predeclaration: str) -> No
     ("declared", "phrase"),
     [
         (DELAY_MS, "**8 000 ms**"),
+        (REPRESENTATIVE_DELAY_MS, "**1 500 ms**"),
         (REPETITIONS, "**Three runs per arm"),
         (BOUND_SECONDS, "120-second bound"),
         (PREFLIGHT_QUIET_SECONDS, "waits two seconds"),
@@ -102,7 +108,27 @@ def test_the_eight_unrelated_sentences_are_the_eight_the_protocol_declared(
 def test_the_delay_stays_inside_the_lease_it_would_otherwise_lose() -> None:
     """A call held past ``LEASE_DURATION`` would measure lease recovery, not scheduling."""
     assert LEASE_DURATION.total_seconds() > DELAY_MS / 1000
+    assert LEASE_DURATION.total_seconds() > REPRESENTATIVE_DELAY_MS / 1000
     assert LEASE_DURATION.total_seconds() > SMOKE_DELAY_MS / 1000
+
+
+def test_the_representative_delay_is_the_one_the_amendment_derived(predeclaration: str) -> None:
+    """§14 derives it from two recorded deployed calls. Both must still be named in the document.
+
+    A figure edited in the harness and not in the prose --- or a prose figure whose evidence quietly
+    left --- fails here rather than producing a capture that measured a number nobody justified.
+    """
+    assert REPRESENTATIVE_DELAY_MS == 1500
+    assert "`D_representative` = 1 500 ms" in predeclaration
+    for reading in ("latency_ms: 1487", "latency_ms: 1444"):
+        assert reading in predeclaration, reading
+    assert REPRESENTATIVE_DELAY_MS >= 1487
+    assert REPRESENTATIVE_DELAY_MS >= 1444
+
+
+def test_the_three_arms_are_three_distinct_delays() -> None:
+    """A representative arm equal to either neighbour would answer nothing the others do not."""
+    assert 0 < REPRESENTATIVE_DELAY_MS < DELAY_MS
 
 
 def test_the_smoke_shape_cannot_be_mistaken_for_the_measurement(predeclaration: str) -> None:
@@ -115,16 +141,35 @@ def test_the_smoke_shape_cannot_be_mistaken_for_the_measurement(predeclaration: 
 # ---------------------------------------------------------------------------- the run sequence
 
 
-def test_the_arms_alternate_so_drift_falls_on_both_of_them() -> None:
-    arms = sequence(repetitions=REPETITIONS, delay_ms=DELAY_MS)
-    assert [arm.arm for arm in arms] == ["control", "treatment"] * REPETITIONS
-    assert [arm.ordinal for arm in arms] == list(range(1, 2 * REPETITIONS + 1))
+def _measurement_arms() -> tuple[Any, ...]:
+    return sequence(
+        repetitions=REPETITIONS,
+        delay_ms=DELAY_MS,
+        representative_delay_ms=REPRESENTATIVE_DELAY_MS,
+    )
+
+
+def test_the_arms_alternate_so_drift_falls_on_every_one_of_them() -> None:
+    arms = _measurement_arms()
+    assert [arm.arm for arm in arms] == ["control", "representative", "treatment"] * REPETITIONS
+    assert [arm.ordinal for arm in arms] == list(range(1, 3 * REPETITIONS + 1))
 
 
 def test_a_control_run_is_the_same_run_with_one_integer_changed() -> None:
-    arms = sequence(repetitions=REPETITIONS, delay_ms=DELAY_MS)
+    arms = _measurement_arms()
     assert {arm.delay_ms for arm in arms if arm.arm == "control"} == {0}
+    assert {arm.delay_ms for arm in arms if arm.arm == "representative"} == {
+        REPRESENTATIVE_DELAY_MS
+    }
     assert {arm.delay_ms for arm in arms if arm.arm == "treatment"} == {DELAY_MS}
+
+
+def test_every_arm_runs_the_declared_number_of_times() -> None:
+    """Three per arm, nine in all. A dropped run is a missing median, not a smaller denominator."""
+    arms = _measurement_arms()
+    assert len(arms) == 3 * REPETITIONS
+    for name in ("control", "representative", "treatment"):
+        assert len([arm for arm in arms if arm.arm == name]) == REPETITIONS
 
 
 # ------------------------------------------------------------------------------ the injection
