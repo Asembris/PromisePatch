@@ -423,6 +423,30 @@ already pinned by `judgeEntry.test.tsx`. Twelve tests against real PostgreSQL. N
 deployed, no AWS resource was touched, no principal gained write authority, and no model was
 called. See `docs/adr/0016-a-judge-principal-stays-read-only.md` and `docs/seeded-demo-case.md`.
 
+**G8's adversarial faults are mapped to their proofs, and one of them is unproven.** Four of G8's
+bullets name fifteen distinct claims between them -- eleven faults plus the stale-plan refusal,
+the whole-delivery branch, the unrelated-external-change branch and the protected-order zero.
+Every one was audited against the implementation by reading assertions rather than test names,
+and fourteen came back **PROVEN**: lost MCP response and replay, foreign identity, model
+self-confirmation, stale plan and stale callback, wrong customer, duplicate webhook, timeout,
+crash before and after external acceptance, browser disconnect, external convergence, the
+approved stale plan refusing mutation after both an order and a stock change -- including the
+roadmap's stricter *"ten green checks alone are insufficient"*, answered by the commit-time
+fingerprint guard that leaves `amendments_for(track) == []` after a **passing** checklist -- and
+the whole-delivery pair with its zero protected-order effects attributed by idempotency key
+rather than by a time window. **Bullet four is UNPROVEN**: the head-of-line measurement, delayed
+semantic calls timed alongside unrelated ready work, has never been taken. The phrase occurs
+once in the whole tree, in the requirement itself; the two nearby artifacts are the
+no-held-transaction probe, which is the evidence the roadmap explicitly names as insufficient,
+and a waiting-case continuation test that carries no timing at all. Two PROVEN rows carry a
+stated precision rather than a downgrade: no e2e severs a browser connection mid-mutation, and no
+test names a read timeout on the MCP-to-intent-API hop, which shares its one `except` clause with
+the connect failure that is tested. Two things outside those bullets are recorded rather than
+repaired -- no backend test names `PromiseState.STALE`, and S06/S07/S12/S13 stay committed
+failing, neither of which this audit caused. Audit only: nothing was built, repaired, run beyond
+three cheap invocations, or deployed, and the immutable 11/16 headline is unchanged. See
+`docs/g8-adversarial-proof-map.md`.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
