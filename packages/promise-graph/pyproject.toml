@@ -18,3 +18,18 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/promise_graph"]
+
+# The package carries its own pytest configuration so that `pytest tests` works from this
+# directory on its own terms. A clean clone holds the whole monorepo, whose root configuration
+# declares `pytest-asyncio` settings under `--strict-config`; a standalone environment has no
+# such plugin and the run would abort on an unknown option before collecting anything. Declaring
+# the section here makes this directory pytest's rootdir, so the engine's suite depends on
+# nothing outside the package.
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers --strict-config --import-mode=importlib"
+markers = [
+    "property: Hypothesis property-based invariant tests",
+]
