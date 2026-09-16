@@ -1,5 +1,24 @@
 # PromisePatch
 
+[![product gate](https://github.com/Asembris/PromisePatch/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/Asembris/PromisePatch/actions/workflows/pr.yml)
+[![effect sets: 11/16, red on purpose](https://github.com/Asembris/PromisePatch/actions/workflows/effect-sets.yml/badge.svg?branch=main)](docs/effect-set-first-scored-run.md)
+
+Two badges, because they answer two different questions, and the second one needs reading before
+it is wondered about.
+
+The **first** is the product gate: thirteen jobs, ruff through the whole-stack browser suite.
+Its red means a regression, and that is the only thing it means.
+
+The **second is red on purpose and is meant to stay red.** It runs the sixteen frozen effect-set
+scenarios, whose [first scored run](docs/effect-set-first-scored-run.md) is published at
+**11/16**. Five of the sixteen disagreed with labels written by hand before the runner existed;
+one of those five, S08, has since been repaired, and the other four stay committed *failing* with
+their exact diffs published. `docs/effect-set-run-protocol.md` forbids weakening, skipping,
+deselecting, removing or marking any of them expected-to-fail — so this badge goes green only
+when the remaining disagreements are repaired, and a green tick before then would mean a scenario
+had been quietly weakened. **11/16 is the permanent headline**: it is never replaced by a
+repaired score, and the denominator is never smaller than sixteen.
+
 When a delivery does not arrive, the expensive problem is not the inventory — it is the
 customer promises somebody already made. PromisePatch lets a frontline bakery worker report
 one physical-world exception by voice, then identifies every accepted customer promise that
