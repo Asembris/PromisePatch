@@ -143,9 +143,13 @@ The only designs that would close it require per-visitor isolation of the *physi
 the case:
 
 - **A namespaced universe per visitor.** The projection is id-driven and could emit prefixed rows,
-  but the interpreter resolves "today's raspberry delivery" by searching commitments, so two
-  visitors' identically-worded reports would cross. Scoping that is tenancy across the domain, in a
-  system frozen as one bakery with one store.
+  but every read above it is whole-table and unscoped: `graph/loader.py` builds the snapshot with
+  `select(table)` per table, and the interpreter's own commitment read is
+  `select(CommitmentLine).order_by(CommitmentLine.id)` with no filter
+  ([`physical.py`](../apps/backend/src/promisepatch/domain/physical.py)). A second universe in the
+  same tables would be loaded into the same snapshot, two visitors' identically-worded reports
+  would cross, and every classification would run over a doubled graph. Scoping that is tenancy
+  across the domain, in a system frozen as one bakery with one store.
 - **A reset on session issue.** Destroys a concurrent visitor's live case, or, if guarded on "no
   live session", degrades to a probabilistic guarantee. The measurement above says the shared
   fixture tolerates exactly two journeys, and two is an accident of this dataset, not a bound.
