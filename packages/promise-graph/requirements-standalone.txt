@@ -1,0 +1,40 @@
+# Pinned dependencies for a standalone install of the engine, its example and its tests.
+#
+# The three direct pins are the versions the PromisePatch workspace itself resolves and tests
+# against; everything else is their transitive closure, resolved once and frozen here so a clean
+# clone installs the same tree the repository does. No cloud SDK, no credentials, no service.
+#
+# Regenerate by writing the three direct pins below into `direct.txt` and running:
+#
+#     uv pip compile --universal --python-version 3.12 direct.txt -o requirements-standalone.txt
+#
+# direct: pydantic==2.13.5, pytest==8.4.2, hypothesis==6.167.1
+annotated-types==0.8.0
+    # via pydantic
+colorama==0.4.6 ; sys_platform == 'win32'
+    # via pytest
+hypothesis==6.167.1
+    # via direct pin
+iniconfig==2.3.0
+    # via pytest
+packaging==26.3
+    # via pytest
+pluggy==1.6.0
+    # via pytest
+pydantic==2.13.5
+    # via direct pin
+pydantic-core==2.46.5
+    # via pydantic
+pygments==2.21.0
+    # via pytest
+pytest==8.4.2
+    # via direct pin
+sortedcontainers==2.4.0
+    # via hypothesis
+typing-extensions==4.16.0
+    # via
+    #   pydantic
+    #   pydantic-core
+    #   typing-inspection
+typing-inspection==0.4.4
+    # via pydantic

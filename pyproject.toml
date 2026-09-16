@@ -91,6 +91,8 @@ ignore = ["RUF012"]
 "apps/backend/alembic/versions/**" = ["E501"]
 # Operator scripts talk to a terminal: printing is their interface, not a stray debug line.
 "scripts/**" = ["T20"]
+# The engine's runnable example prints its reading; that output is the thing it exists to show.
+"packages/promise-graph/examples/**" = ["T20"]
 # Evaluation fixtures build hand-written cases and assert on them; a scorer test that could
 # not name a variable `S` or shadow a builtin-ish label would be harder to read, not safer.
 "evals/tests/**" = ["N802", "N803", "N806"]
