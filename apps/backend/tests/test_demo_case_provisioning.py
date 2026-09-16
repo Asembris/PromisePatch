@@ -31,6 +31,7 @@ from _intake_support import physical as physical
 from sqlalchemy import func, select, text
 
 from promise_graph.examples import hollow_oak as ho
+from promisepatch import cli as cli_module
 from promisepatch import provisioning
 from promisepatch import worker as worker_module
 from promisepatch.api.routers import auth as login_router
@@ -109,6 +110,7 @@ async def test_the_provisioned_case_carries_the_bands_a_judge_is_shown(
     assert classified[ho.PROMISE_A] == "AUTO_RECOVERABLE"
     assert classified[ho.PROMISE_B] == "APPROVAL_REQUIRED"
     assert classified[ho.PROMISE_C] == "BLOCKED"
+    assert classified[ho.PROMISE_D] == "BLOCKED"
     assert {ho.PROMISE_E, ho.PROMISE_F} <= {
         track.promise_id for track in status.tracks if track.classification == "UNAFFECTED"
     }
@@ -137,12 +139,25 @@ async def test_the_worker_says_the_words_rather_than_writing_the_case(
     assert spoken == [provisioning.REPORTED, provisioning.ANSWERED]
 
 
+async def test_the_operator_command_provisions_through_the_deployed_wiring(
+    physical: Intake, serving: Settings
+) -> None:
+    """``pp ensure-demo-case`` reaches the same case, built by ``worker.built``.
+
+    It is the boot path's own wiring rather than a second copy of it, which is what stops the
+    command an operator runs from quietly reaching a different provider than the deployed worker
+    does. The database handle here is the command's, not the fixture's.
+    """
+    outcome = await cli_module._run_ensure_demo_case(serving)
+
+    assert outcome.action is Provisioned.OPENED
+    assert await cases(physical) == [(outcome.case_id, CASE_PLANNED, ho.BAKER)]
+
+
 # ---------------------------------------------------------------- restarting, twice and over
 
 
-async def test_a_restart_does_not_open_a_second_case(
-    physical: Intake, serving: Settings
-) -> None:
+async def test_a_restart_does_not_open_a_second_case(physical: Intake, serving: Settings) -> None:
     """The boot path runs at every start, so running it again must add nothing."""
     first = await provision(physical, serving)
     before = await cases(physical)
@@ -277,9 +292,10 @@ async def visitor(serving: Settings, physical: Intake) -> AsyncIterator[httpx2.A
     login_router._limiter.reset()
     origin = serving.cors_origins.split(",")[0].strip()
     app = create_app(serving)
-    async with app.router.lifespan_context(app), httpx2.AsyncClient(
-        transport=httpx2.ASGITransport(app=app), base_url=origin
-    ) as client:
+    async with (
+        app.router.lifespan_context(app),
+        httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url=origin) as client,
+    ):
         response = await client.post("/api/auth/demo-session", headers={"Origin": origin})
         assert response.status_code == 200, response.text
         client.headers["Origin"] = origin
