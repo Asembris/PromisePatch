@@ -254,6 +254,7 @@ layers = [
     "promisepatch.orchestrator",
     "promisepatch.mcp",
     "promisepatch.integrations",
+    "promisepatch.provisioning",
     "promisepatch.domain",
     "promisepatch.semantic",
     "promisepatch.fixtures",

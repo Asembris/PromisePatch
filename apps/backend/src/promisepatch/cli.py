@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import typer
 
 from promise_graph.model import ApprovalRequestState
+from promisepatch import provisioning
 from promisepatch.config import LlmProvider, Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
@@ -257,6 +258,28 @@ def resolve_anchor(given: str, settings: Settings) -> datetime:
 #
 # Nothing here interprets anything either. These commands only make a statement durable; the
 # worker reads it, and until a worker runs, the case sits exactly where the command left it.
+
+
+@app.command(name="ensure-demo-case")
+def ensure_demo_case_command() -> None:
+    """Make sure there is one case open to look at, without replacing one that already is.
+
+    The same call the worker makes when it starts, exposed so an operator can run it against a
+    database seeded before this existed. It is additive: a database already holding any case is
+    left exactly as it is, and nothing here truncates, deletes or overwrites a row.
+    """
+    settings = get_settings()
+    try:
+        outcome = asyncio.run(_run_ensure_demo_case(settings))
+    except (RuntimeError, ValueError) as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+    typer.echo(f"action:   {outcome.action.value}")
+    typer.echo(f"case:     {outcome.case_id or '-'}")
+    typer.echo(f"state:    {outcome.state or '-'}")
+    if outcome.detail:
+        typer.echo(f"detail:   {outcome.detail}")
 
 
 @app.command(name="report-exception")
@@ -717,6 +740,20 @@ async def _with_database(
         return await operation(database)
     finally:
         await database.dispose()
+
+
+async def _run_ensure_demo_case(settings: Settings) -> provisioning.ProvisionOutcome:
+    """The same call the worker makes at start, with a worker of its own to drive the case.
+
+    ``built`` rather than a hand-rolled :class:`~promisepatch.worker.Worker`, so this reaches
+    exactly the providers the deployed worker reaches and cannot drift into a second wiring.
+    """
+    from promisepatch import worker as worker_module
+
+    async with worker_module.built(settings) as runner:
+        return await provisioning.ensure_demo_case(
+            runner.database, cycles=runner, settings=settings
+        )
 
 
 async def _run_reset(settings: Settings, anchor: datetime) -> ResetOutcome:

@@ -24,11 +24,14 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Final
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from promisepatch import provisioning
 from promisepatch.config import Settings
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor
@@ -207,12 +210,9 @@ def _install_signal_handlers(stop: asyncio.Event) -> None:
             signal.signal(signal_number, lambda *_: stop.set())
 
 
-async def run(settings: Settings, adapter: EffectAdapter | None = None) -> None:
-    """Build a worker from settings and run it until it is asked to stop.
-
-    The connection is ``PP_DATABASE_URL`` -- ``promisepatch_app``, the same least-privileged
-    role the API uses. A worker holds no migration credential and can no more disable a trigger
-    or rewrite a ledger than a request handler can.
+@asynccontextmanager
+async def built(settings: Settings, adapter: EffectAdapter | None = None) -> AsyncIterator[Worker]:
+    """A worker wired from settings, and the order-system client it owns, closed on the way out.
 
     Which provider each kind of effect reaches is a deployment question, answered once here and
     nowhere else. With an order system configured, amendments go to it and the mirror is
@@ -221,12 +221,12 @@ async def run(settings: Settings, adapter: EffectAdapter | None = None) -> None:
     customer message, whose real channel is a later slice -- goes to the fake provider either
     way. The recovery saga is identical in every case: it reads what the row says the provider
     did, and does not know which one answered.
-    """
-    configure_logging(settings)
-    database = RuntimeDatabase.from_settings(settings)
-    stop = asyncio.Event()
-    _install_signal_handlers(stop)
 
+    Extracted from :func:`run` so that anything else needing worker cycles -- today, ``pp
+    ensure-demo-case`` -- drives *this* wiring rather than a second copy of it that could
+    quietly reach a different provider.
+    """
+    database = RuntimeDatabase.from_settings(settings)
     client = (
         OrderSystemClient(
             base_url=settings.require_order_system_base_url(),
@@ -244,18 +244,61 @@ async def run(settings: Settings, adapter: EffectAdapter | None = None) -> None:
             if client is not None
             else FakeEffectAdapter()
         )
-
-    worker = Worker(
-        database=database,
-        adapter=adapter,
-        # One place reads `PP_LLM_PROVIDER`, and it is not here: the worker asks for whatever
-        # this deployment configured and cannot behave differently depending on the answer.
-        semantic=build_semantic_provider(settings),
-        fetch_order=None if client is None else client.fetch_order,
-    )
     try:
-        await worker.run_forever(stop)
+        yield Worker(
+            database=database,
+            adapter=adapter,
+            # One place reads `PP_LLM_PROVIDER`, and it is not here: the worker asks for whatever
+            # this deployment configured and cannot behave differently depending on the answer.
+            semantic=build_semantic_provider(settings),
+            fetch_order=None if client is None else client.fetch_order,
+        )
     finally:
         if client is not None:
             await client.aclose()
         await database.dispose()
+
+
+async def run(settings: Settings, adapter: EffectAdapter | None = None) -> None:
+    """Build a worker from settings and run it until it is asked to stop.
+
+    The connection is ``PP_DATABASE_URL`` -- ``promisepatch_app``, the same least-privileged
+    role the API uses. A worker holds no migration credential and can no more disable a trigger
+    or rewrite a ledger than a request handler can.
+    """
+    configure_logging(settings)
+    stop = asyncio.Event()
+    _install_signal_handlers(stop)
+
+    async with built(settings, adapter) as worker:
+        await _provision_demo_case(worker, settings)
+        await worker.run_forever(stop)
+
+
+async def _provision_demo_case(worker: Worker, settings: Settings) -> None:
+    """Make sure a deployment that offers the judge entry has a case for it to land on.
+
+    Here rather than in a compose service because the deployed composition has 44 bytes of
+    headroom against its SSM cap, and here rather than in the seed because the seed is the
+    destructive path: this one only ever adds, and only to a database holding no case at all.
+    It runs before the loop so the case is there by the time anything can look at it.
+
+    **Nothing it can do may stop the worker starting.** A provisioning failure costs a judge a
+    case to read, which the screen already has a truthful sentence for; a worker that failed to
+    start costs the deployment every case anybody opens afterwards. So the exception handler is
+    deliberately as broad as the difference between those two outcomes.
+    """
+    try:
+        outcome = await provisioning.ensure_demo_case(
+            worker.database, cycles=worker, settings=settings
+        )
+    except Exception:
+        logger.exception("worker.demo_case.failed")
+        return
+    logger.info(
+        "worker.demo_case",
+        action=outcome.action.value,
+        case_id=None if outcome.case_id is None else str(outcome.case_id),
+        state=outcome.state,
+        detail=outcome.detail,
+    )
