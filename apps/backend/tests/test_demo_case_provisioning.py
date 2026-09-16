@@ -165,7 +165,10 @@ async def test_a_restart_does_not_open_a_second_case(physical: Intake, serving: 
     second = await provision(physical, serving)
 
     assert second.action is Provisioned.PRESENT
-    assert second.case_id is None
+    # It names the case it found rather than saying nothing: the identity is derived from the
+    # world, so recognising it *is* the reason nothing was opened, and a caller reading the log
+    # should be able to see which case that was.
+    assert second.case_id == first.case_id
     assert await cases(physical) == before
     assert len(before) == 1 and before[0][0] == first.case_id
 
@@ -278,7 +281,7 @@ async def test_a_provisioning_failure_never_stops_the_worker_starting(
 
     monkeypatch.setattr(provisioning, "ensure_demo_case", explode)
 
-    await worker_module._provision_demo_case(physical.worker(), serving)
+    await worker_module._DemoCaseKeeper(physical.worker(), serving).check()
 
     assert await cases(physical) == []
 

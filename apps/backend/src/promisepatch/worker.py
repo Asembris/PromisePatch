@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Final
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -49,10 +50,14 @@ from promisepatch.domain.model import EFFECT_ORDER_AMEND
 from promisepatch.domain.observation import STEP_INTERPRET_SEMANTICALLY
 from promisepatch.domain.order_mirror import AuthoritativeFetch
 from promisepatch.domain.outbox import EffectAdapter
+from promisepatch.domain.physical import bakery_day
 from promisepatch.integrations import build_semantic_provider
 from promisepatch.integrations.order_system import OrderSystemAdapter, OrderSystemClient
 from promisepatch.observability import configure_logging, get_logger
 from promisepatch.semantic import FakeSemanticProvider, SemanticProvider
+
+type IdleHook = Callable[[], Awaitable[None]]
+"""Work the loop offers a cycle that found nothing to do. Never a second task."""
 
 logger = get_logger(__name__)
 
@@ -156,12 +161,17 @@ class Worker:
         )
         return result.value
 
-    async def run_forever(self, stop: asyncio.Event) -> None:
+    async def run_forever(self, stop: asyncio.Event, *, when_idle: IdleHook | None = None) -> None:
         """Cycle until ``stop`` is set, backing off when the database is unreachable.
 
         Only :class:`~sqlalchemy.exc.SQLAlchemyError` and ``OSError`` are treated as transient.
         Anything else is a bug in a transition, and a loop that swallowed those would keep
         running while getting the same thing wrong every second.
+
+        ``when_idle`` is awaited on a cycle that found nothing to do, before the wait. Awaited
+        from this task rather than from one beside it, so whatever it does cannot run a cycle
+        concurrently with this loop -- there is only ever one cycle in flight, which is the
+        property every lease and every claim in the step path is written against.
         """
         backoff = INITIAL_BACKOFF
         logger.info("worker.start", worker=self.identity.value)
@@ -182,6 +192,8 @@ class Worker:
 
                 backoff = INITIAL_BACKOFF
                 if not busy:
+                    if when_idle is not None:
+                        await when_idle()
                     await _wait(stop, self.idle_interval)
         finally:
             logger.info("worker.stop", worker=self.identity.value)
@@ -271,34 +283,61 @@ async def run(settings: Settings, adapter: EffectAdapter | None = None) -> None:
     _install_signal_handlers(stop)
 
     async with built(settings, adapter) as worker:
-        await _provision_demo_case(worker, settings)
-        await worker.run_forever(stop)
+        keeper = _DemoCaseKeeper(worker, settings)
+        await keeper.check()
+        await worker.run_forever(stop, when_idle=keeper.check_if_the_day_turned)
 
 
-async def _provision_demo_case(worker: Worker, settings: Settings) -> None:
-    """Make sure a deployment that offers the judge entry has a case for it to land on.
+@dataclass(slots=True)
+class _DemoCaseKeeper:
+    """Keeps a deployment that offers the judge entry pointed at a case worth landing on.
 
     Here rather than in a compose service because the deployed composition has 44 bytes of
     headroom against its SSM cap, and here rather than in the seed because the seed is the
-    destructive path: this one only ever adds, and only to a database holding no case at all.
-    It runs before the loop so the case is there by the time anything can look at it.
+    destructive path. It runs before the loop so the case is there by the time anything can look
+    at it, **and once more on the first idle cycle of each new bakery day**, which is the half
+    that makes this more than a boot-time convenience: a seed is good for the rest of its own
+    bakery day and no longer, and a host that is never restarted would otherwise serve the
+    bootstrap day's world for ever.
 
-    **Nothing it can do may stop the worker starting.** A provisioning failure costs a judge a
-    case to read, which the screen already has a truthful sentence for; a worker that failed to
-    start costs the deployment every case anybody opens afterwards. So the exception handler is
-    deliberately as broad as the difference between those two outcomes.
+    The day is the gate, not a timer, for two reasons. It is the same notion of *today* the
+    interpreter narrows the canonical report against, so the check happens exactly when the
+    thing it checks for can have changed; and it is free, because reading the clock costs
+    nothing and the database is not touched at all on the other ninety-nine per cent of idle
+    cycles.
     """
-    try:
-        outcome = await provisioning.ensure_demo_case(
-            worker.database, cycles=worker, settings=settings
+
+    worker: Worker
+    settings: Settings
+    checked_day: datetime | None = None
+
+    async def check_if_the_day_turned(self) -> None:
+        if self.checked_day == bakery_day(datetime.now(UTC))[0]:
+            return
+        await self.check()
+
+    async def check(self) -> None:
+        """**Nothing it can do may stop the worker starting, or keep it from cycling.**
+
+        A provisioning failure costs a judge a case to read, which the screen already has a
+        truthful sentence for; a worker that failed to start costs the deployment every case
+        anybody opens afterwards. So the exception handler is deliberately as broad as the
+        difference between those two outcomes, and the day is marked as checked either way --
+        a failure that repeated every idle cycle would be the worse of the two failures again.
+        """
+        self.checked_day = bakery_day(datetime.now(UTC))[0]
+        try:
+            outcome = await provisioning.ensure_demo_case(
+                self.worker.database, cycles=self.worker, settings=self.settings
+            )
+        except Exception:
+            logger.exception("worker.demo_case.failed")
+            return
+        logger.info(
+            "worker.demo_case",
+            action=outcome.action.value,
+            case_id=None if outcome.case_id is None else str(outcome.case_id),
+            state=outcome.state,
+            detail=outcome.detail,
+            rolled=outcome.rolled,
         )
-    except Exception:
-        logger.exception("worker.demo_case.failed")
-        return
-    logger.info(
-        "worker.demo_case",
-        action=outcome.action.value,
-        case_id=None if outcome.case_id is None else str(outcome.case_id),
-        state=outcome.state,
-        detail=outcome.detail,
-    )
