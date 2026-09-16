@@ -874,6 +874,50 @@ async def test_an_expired_request_hands_the_case_on_as_well(physical: Intake) ->
     assert (await physical.case(case_id)).state == cases.CASE_RESOLVED
 
 
+async def test_an_expired_request_holds_the_kitchen_work(physical: Intake) -> None:
+    """§23 answers "customer does not reply" with "EXPIRED -> ESCALATED; task HELD".
+
+    The escalation is only half of that row. A customer who was asked and let the deadline pass
+    and a customer who could not be asked at all are in the same position -- nobody is coming,
+    and no answer that arrives later can authorise anything -- so the kitchen stops either way.
+    Without the hold the bakery may finish a raspberry cake the case has already concluded it
+    cannot make correctly and cannot get permission to change.
+    """
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+    before = await physical.tasks()
+    await physical.close_window(request.id)
+
+    await physical.drain(worker=physical.worker(identity="worker-after-the-deadline"), limit=30)
+
+    after = await physical.tasks()
+    moved = {task: after[task] for task in after if before[task] != after[task]}
+    assert moved.get(f"task-{ho.LINE_B}") == ("HELD", case_id)
+
+
+async def test_an_undeliverable_message_inside_an_open_window_holds_nothing(
+    physical: Intake,
+) -> None:
+    """The other half of the same decision, pinned so it cannot drift into the hold.
+
+    Expiry and undeliverable transport share one ending, and §23 states the hold for the first
+    of them only. A window that is still open has not reached the spec's row: the deadline has
+    not passed, so this escalation is not the one §23 answers with a held task, and it takes no
+    write on the kitchen.
+    """
+    case_id = await confirmed_case(physical)
+    before = await physical.tasks()
+    adapter = FakeEffectAdapter(
+        fail_with=DeliveryOutcome(status=DeliveryStatus.TERMINAL, error="the provider refused it")
+    )
+
+    await physical.drain(worker=physical.worker(adapter=adapter), limit=60)
+
+    assert (await track_of(physical, case_id, B)).state == recovery.TRACK_ESCALATED
+    after = await physical.tasks()
+    assert after[f"task-{ho.LINE_B}"] == before[f"task-{ho.LINE_B}"]
+
+
 async def test_a_decision_that_committed_first_makes_the_timer_a_no_op(physical: Intake) -> None:
     """Scenario A of the reply/timer race: the answer wins, and the deadline changes nothing."""
     case_id = await waiting_case(physical)

@@ -752,6 +752,7 @@ async def _mark_sent(
             reason=ESCALATION_APPROVAL_EXPIRED,
             audit_type=AUDIT_APPROVAL_EXPIRED,
             event_type=EVENT_APPROVAL_EXPIRED,
+            hold=True,
         )
 
     unit_of_work = UnitOfWork(connection)
@@ -857,6 +858,10 @@ async def _abandon(
         reason=ESCALATION_APPROVAL_EXPIRED if expired else ESCALATION_MESSAGE_UNDELIVERABLE,
         audit_type=AUDIT_APPROVAL_DELIVERY_FAILED,
         event_type=EVENT_APPROVAL_DELIVERY_FAILED,
+        # The same discriminant the reason above uses, so the two can never drift apart: a
+        # deadline that has passed is §23's expiry row and holds, while a message that failed
+        # to send inside a window still open is not a row §23 answers with a hold.
+        hold=expired,
         detail=request.provider_ref,
     )
 
@@ -902,6 +907,7 @@ async def _expire(
         reason=ESCALATION_APPROVAL_EXPIRED,
         audit_type=AUDIT_APPROVAL_EXPIRED,
         event_type=EVENT_APPROVAL_EXPIRED,
+        hold=True,
     )
 
 
@@ -1423,6 +1429,7 @@ async def _close_request(
     reason: str,
     audit_type: str,
     event_type: str,
+    hold: bool,
     detail: str | None = None,
 ) -> StepOutcome:
     """Shut a request that can no longer be answered, and hand its track to the owner.
@@ -1431,6 +1438,16 @@ async def _close_request(
     identical in both: they were never going to be able to answer, so nothing they might say
     later could authorise anything, and the promise belongs on somebody's desk rather than in a
     queue. No decision is written, and none is implied.
+
+    ``hold`` is the other half of §23's answer. Its failure-semantics table meets "customer does
+    not reply" with "EXPIRED -> ESCALATED; task HELD", so an escalation this path reaches after
+    the deadline stops the kitchen too: nobody should bake a cake the case has just concluded it
+    can no longer ask about. Escalating without it leaves the promise on a desk and the oven on.
+
+    It has no default on purpose. The two endings are not the same fact -- a deadline that has
+    passed is the spec's row, transport that failed inside a window still open is not -- and §23
+    states the hold for one of them only, so each caller says which it is rather than inheriting
+    an answer from the function they happen to share.
     """
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
@@ -1459,6 +1476,7 @@ async def _close_request(
             .values(state=ApprovalRequestState.EXPIRED.value)
         )
         await set_track(write, track=track, state=TRACK_ESCALATED)
+        held = await hold_tasks(write, track=track, case_id=case.id) if hold else ()
         moved_to = await settled_case_state(connection, case=case)
     successors = await case_successors(connection, moved_to, case_id=case.id)
 
@@ -1470,7 +1488,7 @@ async def _close_request(
         events=(
             AppendEvent(
                 type=event_type,
-                payload={"reason": reason},
+                payload={"reason": reason, "tasks_held": len(held)},
                 entity_refs=(
                     {"kind": "track", "id": str(track.id)},
                     {"kind": "approval_request", "id": str(request.id)},
@@ -1483,6 +1501,7 @@ async def _close_request(
             "track_id": str(track.id),
             "request_id": str(request.id),
             "reason": reason,
+            "tasks_held": len(held),
         },
     )
 
