@@ -1,0 +1,371 @@
+{
+  "arm": "control",
+  "arrangement": {
+    "oldest_claimable_step_id": "bfc17ac2-c4a8-49a2-9533-50b0f4a7f092",
+    "semantic_step_id": "bfc17ac2-c4a8-49a2-9533-50b0f4a7f092",
+    "semantic_step_is_oldest_claimable": true,
+    "semantic_step_state": "PENDING",
+    "tracked_all_pending": true,
+    "tracked_states": [
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "PENDING",
+      "PENDING"
+    ]
+  },
+  "computed": "nothing. This harness records instants. Every wait, median, added delay and verdict belongs to \u00a79 of docs/g8-head-of-line-predeclaration.md.",
+  "delay_ms": 0,
+  "delayed_case": {
+    "case_id": "2a053288-57eb-5935-a6a8-d3263e21a23e",
+    "semantic_step": {
+      "attempts": 1,
+      "case_id": "2a053288-57eb-5935-a6a8-d3263e21a23e",
+      "created_at": "2026-09-16T18:34:33.805742+00:00",
+      "done_at": "2026-09-16T18:34:34.468731+00:00",
+      "kind": "INTERPRET_SEMANTICALLY",
+      "started_at": "2026-09-16T18:34:34.408781+00:00",
+      "state": "DONE",
+      "step_id": "bfc17ac2-c4a8-49a2-9533-50b0f4a7f092",
+      "step_key": "semantic:d0eb424a-a861-449b-8626-6a6c239a9d51"
+    },
+    "sentence": "the delivery situation is weird"
+  },
+  "environment": {
+    "aws_calls": 0,
+    "database_endpoint": "127.0.0.1:55432/promisepatch",
+    "log_level": "WARNING",
+    "model_calls": 0,
+    "order_system_used": false,
+    "platform": "Windows-10-10.0.19045-SP0",
+    "postgres": "PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+    "python": "3.12.0",
+    "worker_processes": 1
+  },
+  "failures": [],
+  "fixture_reset": {
+    "exit_code": 0,
+    "stdout_lines": [
+      "fixture:  hollow-oak",
+      "anchor:   2026-09-16T18:34:30.369028+00:00 (2026-09-16T19:34:30.369028+01:00 Africa/Tunis)",
+      "digest:   0a7fd375c890854a757bd64df61fcebb23eb02d63fd45710cfdb67a87b56f27c",
+      "rows:     160",
+      "audit:    seq 30313",
+      "event:    seq 77726"
+    ]
+  },
+  "implementation_sha": "7cb188c4ded0ade34b1c766d3fb6cb0905b65c5a",
+  "invocation_id": "d98a80eb-96f9-4098-9623-ea66ae5843e8",
+  "items": [
+    {
+      "case_id": "4bd06071-e6ee-569d-902d-1e869ce2c8ee",
+      "ordinal": 1,
+      "sentence": "the deck oven is down",
+      "step": {
+        "attempts": 1,
+        "case_id": "4bd06071-e6ee-569d-902d-1e869ce2c8ee",
+        "created_at": "2026-09-16T18:34:33.924930+00:00",
+        "done_at": "2026-09-16T18:34:34.602424+00:00",
+        "kind": "BEGIN_INTERPRETATION",
+        "started_at": "2026-09-16T18:34:34.584502+00:00",
+        "state": "DONE",
+        "step_id": "72f80cd2-b16e-4646-a7d8-13e529deecb5",
+        "step_key": "interpret:5bef1192-eeb6-43ba-ad65-23c85fb226d8"
+      },
+      "tracked": true
+    },
+    {
+      "case_id": "5d5e9a76-b55b-56b8-9530-ded4892e8afb",
+      "ordinal": 2,
+      "sentence": "the convection oven is down",
+      "step": {
+        "attempts": 1,
+        "case_id": "5d5e9a76-b55b-56b8-9530-ded4892e8afb",
+        "created_at": "2026-09-16T18:34:33.985533+00:00",
+        "done_at": "2026-09-16T18:34:34.687659+00:00",
+        "kind": "BEGIN_INTERPRETATION",
+        "started_at": "2026-09-16T18:34:34.673472+00:00",
+        "state": "DONE",
+        "step_id": "3256a7e1-16eb-47f7-bece-c500a5a78eaf",
+        "step_key": "interpret:c0dcac1a-a9fb-480d-ac29-22cfd9df71e8"
+      },
+      "tracked": true
+    },
+    {
+      "case_id": "66591d24-a683-5cff-9753-0b8178319fd2",
+      "ordinal": 3,
+      "sentence": "the butter spoiled",
+      "step": {
+        "attempts": 1,
+        "case_id": "66591d24-a683-5cff-9753-0b8178319fd2",
+        "created_at": "2026-09-16T18:34:34.039540+00:00",
+        "done_at": "2026-09-16T18:34:34.776770+00:00",
+        "kind": "BEGIN_INTERPRETATION",
+        "started_at": "2026-09-16T18:34:34.760400+00:00",
+        "state": "DONE",
+        "step_id": "69e43de4-51dc-4373-8b9d-51db3c167252",
+        "step_key": "interpret:b6f78337-3f2d-43e4-b2c1-a83ee1ec976e"
+      },
+      "tracked": true
+    },
+    {
+      "case_id": "a1e999ba-09c9-5fde-a234-583fa00f1aa2",
+      "ordinal": 4,
+      "sentence": "the mascarpone spoiled",
+      "step": {
+        "attempts": 1,
+        "case_id": "a1e999ba-09c9-5fde-a234-583fa00f1aa2",
+        "created_at": "2026-09-16T18:34:34.104559+00:00",
+        "done_at": "2026-09-16T18:34:34.853009+00:00",
+        "kind": "BEGIN_INTERPRETATION",
+        "started_at": "2026-09-16T18:34:34.841219+00:00",
+        "state": "DONE",
+        "step_id": "229c2fc4-39d6-474c-81cc-83e0243758bb",
+        "step_key": "interpret:c17c6662-40b0-4bd3-a8b5-086313880b11"
+      },
+      "tracked": true
+    },
+    {
+      "case_id": "ecba49ad-1263-5401-95f2-e2a967afa7e5",
+      "ordinal": 5,
+      "sentence": "the lemon curd spoiled",
+      "step": {
+        "attempts": 1,
+        "case_id": "ecba49ad-1263-5401-95f2-e2a967afa7e5",
+        "created_at": "2026-09-16T18:34:34.156557+00:00",
+        "done_at": "2026-09-16T18:34:34.943348+00:00",
+        "kind": "BEGIN_INTERPRETATION",
+        "started_at": "2026-09-16T18:34:34.923858+00:00",
+        "state": "DONE",
+        "step_id": "0478eaba-4064-4e0c-927c-8bff2aff209f",
+        "step_key": "interpret:b9c3bfef-b42e-4abb-8353-9066e8ce2a63"
+      },
+      "tracked": true
+    },
+    {
+      "case_id": "f6f8c699-3816-5895-83a7-5c99a69e26ae",
+      "ordinal": 6,
+      "sentence": "the dark chocolate spoiled",
+      "step": {
+        "attempts": 1,
+        "case_id": "f6f8c699-3816-5895-83a7-5c99a69e26ae",
+        "created_at": "2026-09-16T18:34:34.199812+00:00",
+        "done_at": "2026-09-16T18:34:35.072318+00:00",
+        "kind": "BEGIN_INTERPRETATION",
+        "started_at": "2026-09-16T18:34:35.046287+00:00",
+        "state": "DONE",
+        "step_id": "41b284c7-b290-49ac-bad0-a86de5bd4e8d",
+        "step_key": "interpret:3e2bfbe5-6b1e-46ce-acd1-0439ddbb45c2"
+      },
+      "tracked": true
+    },
+    {
+      "case_id": "084b844e-4bf5-5751-9700-cf0e1a616322",
+      "ordinal": 7,
+      "sentence": "the ladyfingers spoiled",
+      "step": {
+        "attempts": 1,
+        "case_id": "084b844e-4bf5-5751-9700-cf0e1a616322",
+        "created_at": "2026-09-16T18:34:34.242209+00:00",
+        "done_at": "2026-09-16T18:34:35.166231+00:00",
+        "kind": "BEGIN_INTERPRETATION",
+        "started_at": "2026-09-16T18:34:35.145837+00:00",
+        "state": "DONE",
+        "step_id": "33fbe251-ec22-43d6-9f55-1e9ea748ebd5",
+        "step_key": "interpret:bc870138-b6ca-48ac-a726-015017763281"
+      },
+      "tracked": true
+    },
+    {
+      "case_id": "bd0e0656-5ea1-57ba-929e-c506876b7919",
+      "ordinal": 8,
+      "sentence": "the cream in the walk-in went off",
+      "step": {
+        "attempts": 1,
+        "case_id": "bd0e0656-5ea1-57ba-929e-c506876b7919",
+        "created_at": "2026-09-16T18:34:34.285033+00:00",
+        "done_at": "2026-09-16T18:34:35.259488+00:00",
+        "kind": "BEGIN_INTERPRETATION",
+        "started_at": "2026-09-16T18:34:35.245431+00:00",
+        "state": "DONE",
+        "step_id": "ab9a0dc4-1fa7-40b9-8206-0d94be4c7966",
+        "step_key": "interpret:cbe0a2d4-cb6e-4a01-9cb7-511196c060fc"
+      },
+      "tracked": true
+    }
+  ],
+  "label": "measurement",
+  "ordinal": 4,
+  "predeclaration": "docs/g8-head-of-line-predeclaration.md",
+  "preflight": {
+    "attempts": 0,
+    "quiet_seconds": 2.0,
+    "state": "PENDING"
+  },
+  "protocol": "the measurement predeclared in docs/g8-head-of-line-predeclaration.md",
+  "provider": {
+    "calls": 1,
+    "holds_ms": [
+      0.0
+    ],
+    "name": "head-of-line-harness",
+    "requested_delay_ms": 0
+  },
+  "repetition": 2,
+  "runner_version": "1.1.0",
+  "step_executed_actor_ids": [
+    "DESKTOP-OKFJLHE:40496:a96e11bf"
+  ],
+  "untracked_steps": [
+    {
+      "sentence": "the deck oven is down",
+      "step": {
+        "attempts": 1,
+        "case_id": "4bd06071-e6ee-569d-902d-1e869ce2c8ee",
+        "created_at": "2026-09-16T18:34:34.602424+00:00",
+        "done_at": "2026-09-16T18:34:35.367286+00:00",
+        "kind": "RESOLVE_OBSERVATION",
+        "started_at": "2026-09-16T18:34:35.349153+00:00",
+        "state": "DONE",
+        "step_id": "5ee3696e-349b-44ba-b656-c40bf7816da7",
+        "step_key": "resolve:5bef1192-eeb6-43ba-ad65-23c85fb226d8"
+      },
+      "tracked": false
+    },
+    {
+      "sentence": "the deck oven is down",
+      "step": {
+        "attempts": 0,
+        "case_id": "4bd06071-e6ee-569d-902d-1e869ce2c8ee",
+        "created_at": "2026-09-16T18:34:35.367286+00:00",
+        "done_at": null,
+        "kind": "ANALYZE_IMPACT",
+        "started_at": null,
+        "state": "PENDING",
+        "step_id": "7f89fe48-60a7-41ea-9cc0-73becd7be0fe",
+        "step_key": "analyze:5bef1192-eeb6-43ba-ad65-23c85fb226d8"
+      },
+      "tracked": false
+    },
+    {
+      "sentence": "the convection oven is down",
+      "step": {
+        "attempts": 0,
+        "case_id": "5d5e9a76-b55b-56b8-9530-ded4892e8afb",
+        "created_at": "2026-09-16T18:34:34.687659+00:00",
+        "done_at": null,
+        "kind": "RESOLVE_OBSERVATION",
+        "started_at": null,
+        "state": "PENDING",
+        "step_id": "1ca33210-3f7f-460a-919b-b4ca006ce1bc",
+        "step_key": "resolve:c0dcac1a-a9fb-480d-ac29-22cfd9df71e8"
+      },
+      "tracked": false
+    },
+    {
+      "sentence": "the butter spoiled",
+      "step": {
+        "attempts": 0,
+        "case_id": "66591d24-a683-5cff-9753-0b8178319fd2",
+        "created_at": "2026-09-16T18:34:34.776770+00:00",
+        "done_at": null,
+        "kind": "RESOLVE_OBSERVATION",
+        "started_at": null,
+        "state": "PENDING",
+        "step_id": "3db94188-9379-4964-b622-e210aa26e42b",
+        "step_key": "resolve:b6f78337-3f2d-43e4-b2c1-a83ee1ec976e"
+      },
+      "tracked": false
+    },
+    {
+      "sentence": "the mascarpone spoiled",
+      "step": {
+        "attempts": 0,
+        "case_id": "a1e999ba-09c9-5fde-a234-583fa00f1aa2",
+        "created_at": "2026-09-16T18:34:34.853009+00:00",
+        "done_at": null,
+        "kind": "RESOLVE_OBSERVATION",
+        "started_at": null,
+        "state": "PENDING",
+        "step_id": "2a5c4999-514a-4df6-970e-e72b6e1ede7f",
+        "step_key": "resolve:c17c6662-40b0-4bd3-a8b5-086313880b11"
+      },
+      "tracked": false
+    },
+    {
+      "sentence": "the lemon curd spoiled",
+      "step": {
+        "attempts": 0,
+        "case_id": "ecba49ad-1263-5401-95f2-e2a967afa7e5",
+        "created_at": "2026-09-16T18:34:34.943348+00:00",
+        "done_at": null,
+        "kind": "RESOLVE_OBSERVATION",
+        "started_at": null,
+        "state": "PENDING",
+        "step_id": "1a4fd955-6c80-4763-872c-86dff00f2e57",
+        "step_key": "resolve:b9c3bfef-b42e-4abb-8353-9066e8ce2a63"
+      },
+      "tracked": false
+    },
+    {
+      "sentence": "the dark chocolate spoiled",
+      "step": {
+        "attempts": 0,
+        "case_id": "f6f8c699-3816-5895-83a7-5c99a69e26ae",
+        "created_at": "2026-09-16T18:34:35.072318+00:00",
+        "done_at": null,
+        "kind": "RESOLVE_OBSERVATION",
+        "started_at": null,
+        "state": "PENDING",
+        "step_id": "9a678937-9fd0-43aa-9855-e037e082fe1d",
+        "step_key": "resolve:3e2bfbe5-6b1e-46ce-acd1-0439ddbb45c2"
+      },
+      "tracked": false
+    },
+    {
+      "sentence": "the ladyfingers spoiled",
+      "step": {
+        "attempts": 0,
+        "case_id": "084b844e-4bf5-5751-9700-cf0e1a616322",
+        "created_at": "2026-09-16T18:34:35.166231+00:00",
+        "done_at": null,
+        "kind": "RESOLVE_OBSERVATION",
+        "started_at": null,
+        "state": "PENDING",
+        "step_id": "2d888406-493b-431e-b2be-eb65301f4295",
+        "step_key": "resolve:bc870138-b6ca-48ac-a726-015017763281"
+      },
+      "tracked": false
+    },
+    {
+      "sentence": "the cream in the walk-in went off",
+      "step": {
+        "attempts": 0,
+        "case_id": "bd0e0656-5ea1-57ba-929e-c506876b7919",
+        "created_at": "2026-09-16T18:34:35.259488+00:00",
+        "done_at": null,
+        "kind": "RESOLVE_OBSERVATION",
+        "started_at": null,
+        "state": "PENDING",
+        "step_id": "85afcc4a-7da1-4591-82ad-a4597f7f9b17",
+        "step_key": "resolve:cbe0a2d4-cb6e-4a01-9cb7-511196c060fc"
+      },
+      "tracked": false
+    }
+  ],
+  "window": {
+    "bound_seconds": 120.0,
+    "stop_reason": "all-tracked-settled",
+    "stopped_database": "2026-09-16T18:34:35.696342+00:00",
+    "stopped_monotonic_ns": 23113410587500,
+    "t0_database": "2026-09-16T18:34:34.391761+00:00",
+    "t0_monotonic_ns": 23112115450900
+  },
+  "worker_identity": "DESKTOP-OKFJLHE:40496:a96e11bf",
+  "working_tree_clean": true,
+  "working_tree_dirty": [],
+  "written_at": "2026-09-16T18:34:35.743498+00:00"
+}
