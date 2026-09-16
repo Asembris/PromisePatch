@@ -86,6 +86,22 @@ def test_the_local_stack_offers_the_way_in_that_needs_no_credentials() -> None:
     assert _setting(API_TEMPLATE, "PP_DEMO_SESSION_ENABLED") == "true"
 
 
+def test_the_worker_reads_the_setting_that_provisions_the_case_the_entry_lands_on() -> None:
+    """The judge entry and the case it opens are enabled by one switch, in one file.
+
+    `promisepatch.provisioning.ensure_demo_case` runs at the worker's start and is gated on
+    `PP_DEMO_SESSION_ENABLED`, which is the same setting that serves the entry. A worker given a
+    different environment file would serve the button and provision nothing -- which is exactly
+    the drift that left the entry landing on an empty list -- so what is pinned here is that the
+    two processes read the same file.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    services = compose["services"]
+
+    assert services["worker"]["env_file"] == services["api"]["env_file"]
+    assert "PP_DEMO_SESSION_ENABLED" in API_TEMPLATE.read_text(encoding="utf-8")
+
+
 def test_the_local_stack_still_refuses_a_fixture_reset_over_http() -> None:
     """The API container holds no reset authority, and the new flag did not quietly add one.
 

@@ -337,6 +337,20 @@ def test_the_deployment_offers_the_one_action_way_in_and_the_repository_does_not
     )
 
 
+def test_the_deployed_worker_reads_the_setting_that_provisions_the_case(
+    compose: dict[str, Any], template: dict[str, Any]
+) -> None:
+    """The entry and the case a judge lands on cannot be configured apart on the deployed host.
+
+    Provisioning runs at the worker's start rather than in a service of its own -- the composition
+    is uploaded to a 4096-byte SSM parameter and has no room for one -- and it is gated on the
+    same `PP_DEMO_SESSION_ENABLED` that serves the entry. So the worker must read the file that
+    carries it, and no new service may appear to carry it instead.
+    """
+    assert compose["services"]["worker"]["env_file"] == compose["services"]["api"]["env_file"]
+    assert "PP_DEMO_SESSION_ENABLED=true" in _env_file_block(template, "api.env", "mcp.env")
+
+
 def test_the_deployment_serves_the_page_from_the_image_rather_than_from_configuration(
     template: dict[str, Any],
 ) -> None:
