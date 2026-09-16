@@ -1,0 +1,145 @@
+# THIS WORKFLOW IS EXPECTED TO BE RED, AND ITS BADGE IS EXPECTED TO SAY SO.
+#
+# It runs the sixteen frozen scenarios of `promisepatch-effect-sets` v1.0.0, manifest SHA
+# d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc. The first scored run of that
+# manifest is published at **11/16**, captured immutably at
+# `docs/effect-sets/runs/20260915T163255509125+0000-scored.json`. Five scenarios -- S06, S07, S12
+# and S13, with S08 since repaired -- disagree with their frozen labels and stay committed
+# failing. That headline is never replaced by a repaired score, and the denominator is
+# permanently sixteen.
+#
+# It lives in a file of its own rather than as one job beside the product gate because a badge is
+# per *workflow*, not per job. Sharing a workflow with the product jobs meant one permanently red
+# badge on a repository whose product suite passes, so a reader saw "broken" where the truth is
+# "publishes its failures". Two workflows, two badges, two answers -- and the product gate's red
+# goes back to meaning a regression.
+#
+# `docs/effect-set-run-protocol.md` forbids weakening, skipping, deselecting, removing or marking
+# these scenarios expected-to-fail, so this workflow cannot be turned green by anything except the
+# repairs themselves. It goes green when the remaining disagreements are resolved under G8's
+# correction process; S08 is the first that has landed.
+#
+# Branch protection therefore requires the product jobs in `pr.yml` and not this one. See
+# `docs/effect-set-run-protocol.md`, "What passing CI means".
+name: effect sets (expected red until 16/16)
+
+on:
+  # The same filter, the same list and the same direction as `pr.yml`, whose `on:` block carries
+  # the full reasoning: documentation is excluded rather than code being included, `docs/` is
+  # deliberately not excluded wholesale because the frozen manifest lives under it, and
+  # `workflow_dispatch` is the only way to produce a run on a SHA that touches no code.
+  #
+  # `docs/effect-sets/scenarios.v1.json` matters more here than anywhere: it is the manifest this
+  # workflow measures against. A filter that ignored `docs/**` would have stopped running the
+  # scenarios on the one change that redefines what they mean.
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+
+permissions:
+  contents: read
+
+# Distinct from `pr.yml`'s `pr-${{ github.ref }}`. Two workflows sharing one concurrency group
+# cancel each other's runs on the same ref, so the product gate and the benchmark would take
+# turns reporting nothing.
+concurrency:
+  group: effect-sets-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.9.18"
+
+jobs:
+  effect-sets:
+    # THIS JOB IS EXPECTED TO BE RED. It is separated from the product suite so that its
+    # red means one thing and the product suite's red means another.
+    #
+    # It runs the sixteen frozen scenarios of `promisepatch-effect-sets` v1.0.0, manifest SHA
+    # d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc. The first scored run of
+    # that manifest is published at **11/16**, captured immutably at
+    # `docs/effect-sets/runs/20260915T163255509125+0000-scored.json`. That headline is never
+    # replaced by a repaired score, and the denominator is permanently sixteen.
+    #
+    # The scenarios that disagree with their frozen labels stay committed failing.
+    # `docs/effect-set-run-protocol.md` forbids weakening, skipping, deselecting, removing or
+    # marking them expected-to-fail, so this job cannot be turned green by anything except the
+    # repairs themselves. It goes green when the remaining disagreements are resolved under
+    # G8's correction process; S08 is the first that has landed.
+    #
+    # Nothing here is weakened to achieve that. The tests run whole, with the same command and
+    # the same disposable database as the product job, and they fail with exactly the diffs the
+    # published capture records. A green tick on this job before those repairs land would mean
+    # a scenario had been quietly weakened, which is the one thing the protocol forbids -- so
+    # this job's red is the honest signal rather than a broken build.
+    #
+    # Branch protection therefore requires the product jobs and not this one. See
+    # `docs/effect-set-run-protocol.md`, "What passing CI means".
+    name: effect sets (expected red until 16/16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+
+      - name: Start a disposable PostgreSQL 16
+        # The same disposable database the product job builds, for the same reason: a password
+        # written into this file would be a password in the repository.
+        run: |
+          set -euo pipefail
+          superuser_password="$(openssl rand -hex 24)"
+          app_password="$(openssl rand -hex 24)"
+          session_secret="$(openssl rand -hex 32)"
+          worker_password="$(openssl rand -hex 12)"
+          owner_password="$(openssl rand -hex 12)"
+          for secret in "$superuser_password" "$app_password" "$session_secret" \
+                        "$worker_password" "$owner_password"; do
+            echo "::add-mask::$secret"
+          done
+
+          docker run --detach --name pp-postgres \
+            --env POSTGRES_PASSWORD="$superuser_password" \
+            --env POSTGRES_DB=promisepatch \
+            --volume "$PWD/docker/postgres/init:/docker-entrypoint-initdb.d:ro" \
+            --publish 127.0.0.1:5432:5432 \
+            postgres:16-alpine
+
+          for _ in $(seq 1 60); do
+            if docker exec pp-postgres pg_isready -U postgres -d promisepatch; then break; fi
+            sleep 1
+          done
+          docker exec pp-postgres pg_isready -U postgres -d promisepatch
+
+          address="127.0.0.1:5432/promisepatch"
+          {
+            echo "PP_ENV=local"
+            echo "PP_MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:$superuser_password@$address"
+            echo "PP_DATABASE_URL=postgresql+asyncpg://promisepatch_app:$app_password@$address"
+            echo "PP_DB_APP_PASSWORD=$app_password"
+            echo "PP_SESSION_SECRET=$session_secret"
+            echo "PP_DEMO_WORKER_PASSWORD=$worker_password"
+            echo "PP_DEMO_OWNER_PASSWORD=$owner_password"
+            echo "PP_ALLOW_FIXTURE_RESET=true"
+          } >> "$GITHUB_ENV"
+
+      - name: Migrate an empty database to head
+        run: uv run alembic -c apps/backend/alembic.ini upgrade head
+
+      # Whole and unmodified. This is a pytest invocation of the scenario suite, which
+      # `docs/effect-set-run-protocol.md` classifies as a harness-development run: it is never
+      # scored, and the X/16 it would imply is never published from here. The published number
+      # comes only from `scripts/run_effect_sets.py --scored`.
+      - name: The sixteen frozen scenarios
+        run: uv run pytest apps/backend/tests/test_effect_sets.py
+
+      - name: PostgreSQL logs
+        if: failure()
+        run: docker logs pp-postgres

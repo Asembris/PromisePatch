@@ -1,13 +1,22 @@
-"""The pull-request workflow skips documentation, and skips nothing else.
+"""Every workflow skips documentation, and skips nothing else.
 
-`.github/workflows/pr.yml` carries a `paths-ignore` filter so that a change touching only
-Markdown does not spend a runner on fourteen jobs that would test the same code twice. A path
-filter is a piece of logic that decides whether the rest of the repository's correctness gates
-run at all, and it fails silently in the one direction that matters: if it ever excludes real
-code, nothing goes red -- CI simply says nothing, and a pull request merges having been tested
-by no one. So it is tested here rather than trusted.
+This repository has two workflows, and both carry the same `paths-ignore` filter so that a change
+touching only Markdown does not spend a runner on jobs that would test the same code twice.
+`.github/workflows/pr.yml` is the product gate; `.github/workflows/effect-sets.yml` is the frozen
+sixteen-scenario benchmark, which lives in a file of its own because a badge is per workflow
+rather than per job and that one is expected to be red. A path filter is a piece of logic that
+decides whether the rest of the repository's correctness gates run at all, and it fails silently
+in the one direction that matters: if it ever excludes real code, nothing goes red -- CI simply
+says nothing, and a pull request merges having been tested by no one. So it is tested here rather
+than trusted.
 
-Three things are asserted, and they are not the same thing.
+Every assertion below runs against *both* files, and a fifth one pins the set of files itself:
+adding a third workflow whose filter nobody checked fails here rather than shipping a gate that
+skips real code. The two workflows are not allowed to drift apart -- a benchmark that ran on a
+changeset the product gate skipped, or the reverse, would be measuring and gating different
+repositories.
+
+Three things are asserted of each file, and they are not the same thing.
 
 The first is the **shape of the filter**: both triggers carry it, both carry the same list, and
 neither uses `paths`, which GitHub refuses to accept alongside `paths-ignore`.
@@ -28,8 +37,8 @@ quietly.
 A fourth thing is asserted beside them, for the same reason in the opposite direction: the
 manual trigger. Because a documentation-only commit matches the filter, it produces no check at
 all -- not a red one to re-run, not a green one to read -- and `workflow_dispatch` is the only
-way to produce a run on a release SHA that touches no code. It is pinned here so that tidying
-the `on:` block cannot silently remove it.
+way to produce a run on a release SHA that touches no code. It is pinned on both files so that
+tidying either `on:` block cannot silently remove it.
 """
 
 from __future__ import annotations
@@ -40,7 +49,11 @@ from pathlib import Path
 
 import pytest
 
-WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr.yml"
+ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW_DIR = ROOT / ".github" / "workflows"
+
+WORKFLOWS = (WORKFLOW_DIR / "pr.yml", WORKFLOW_DIR / "effect-sets.yml")
+"""Every workflow in this repository. The product gate, and the benchmark that is expected red."""
 
 EXPECTED_PATTERNS = ("**.md",)
 """The frozen filter. Widening it means skipping something that is not documentation."""
@@ -128,7 +141,7 @@ def ci_runs(changed: tuple[str, ...], patterns: tuple[str, ...] = EXPECTED_PATTE
 def tracked_files() -> tuple[str, ...]:
     listing = subprocess.run(
         ["git", "ls-files", "-z"],
-        cwd=WORKFLOW.parents[2],
+        cwd=ROOT,
         capture_output=True,
         check=True,
         text=True,
@@ -136,9 +149,16 @@ def tracked_files() -> tuple[str, ...]:
     return tuple(path for path in listing.stdout.split("\0") if path)
 
 
-@pytest.fixture
-def workflow() -> str:
-    return WORKFLOW.read_text(encoding="utf-8")
+@pytest.fixture(params=WORKFLOWS, ids=lambda path: path.name)
+def workflow(request: pytest.FixtureRequest) -> str:
+    """Each shape assertion below, run once per workflow file rather than once in total."""
+    return str(request.param.read_text(encoding="utf-8"))
+
+
+def test_every_workflow_file_is_covered_by_these_assertions() -> None:
+    """A third workflow whose filter nobody checked is a gate that can skip real code."""
+    present = sorted(path.name for path in WORKFLOW_DIR.glob("*.y*ml"))
+    assert present == sorted(path.name for path in WORKFLOWS)
 
 
 def test_both_triggers_ignore_the_same_documentation_list(workflow: str) -> None:
@@ -180,6 +200,7 @@ def test_frontend_changes_run_ci() -> None:
 
 def test_build_dependency_and_config_changes_run_ci() -> None:
     assert ci_runs((".github/workflows/pr.yml",))
+    assert ci_runs((".github/workflows/effect-sets.yml",))
     assert ci_runs(("pyproject.toml",))
     assert ci_runs(("uv.lock",))
     assert ci_runs(("apps/frontend/package-lock.json",))
