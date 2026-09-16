@@ -85,6 +85,53 @@ Any one of them and the run is `REFUSED`: the world stays exactly where it is an
 the log. A stale demo is a bad demo; a demo that ate somebody's work is a broken product, and P6.2
 records what that costs.
 
+## The precondition this rests on, stated rather than assumed
+
+**The first three of those four questions are asked of the whole database, unscoped by case and
+unscoped by time.** `_what_would_be_lost` calls `_any`, which is
+`select(func.count()).select_from(model)` with no `WHERE` at all: not "on this case", not "since
+the anchor", not "in the last day". One row in `outbox_messages`, one in `inbound_replies`, one in
+`approval_requests` or one in `approval_decisions` — anywhere, from any case, of any age — and the
+answer is `REFUSED`. Only the fourth question, the live-case one, is scoped to an identity.
+
+**And no ordinary operation ever deletes those rows.** There is no `delete()` against any of the
+four anywhere under `apps/backend/src/`. The only statement that removes them is `reset.py`'s
+`TRUNCATE`, which is the destructive repair an operator chooses, not something the system does to
+itself. `outbox_messages` in particular is a ledger of what went out; emptying it on a schedule
+would be the wrong fix and is not one anybody should reach for on the strength of this paragraph.
+
+Put together, the refusal is **monotone and permanent**. The four questions are not a check that a
+world is currently busy; they are a check that it has *never* been used. The first customer
+message, the first reply, the first approval asked for, and the roll stops for ever — not for a
+day, not until the case concludes, not until the case is withdrawn. A withdrawal concludes a case
+and leaves every one of those rows exactly where they are.
+
+**The roll therefore survives only because the judge principal cannot write.** A judge arrives
+holding `observer`, which [ADR-0013](adr/0013-read-only-observer-principal.md) admits to reads and
+to nothing else, seeded with a password hash Argon2 cannot parse so no login can ever produce it,
+and which [ADR-0016](adr/0016-a-judge-principal-stays-read-only.md) re-establishes on the stronger
+ground that a `report` is a physical attestation about the one shared bakery. A read leaves no
+outbox message, no reply and no approval. That, and only that, is why a world can be read by
+visitor after visitor and still roll cleanly the next morning.
+
+Two consequences follow, and neither is hypothetical:
+
+* **Granting judges write authority would end this.** Not degrade it — end it. The first visitor
+  who confirms a plan queues a customer message, and from that moment every roll on that host
+  reports `REFUSED` for ever, and the world resumes decaying exactly as it did before this was
+  built. Whatever else a per-visitor write principal would need, it would also need this
+  mechanism replaced: an emptiness check over the whole database cannot coexist with visitors who
+  fill it. That is a second reason to keep the principal read-only, and it is a *consequence* of
+  ADR-0016 rather than an argument for it — the authority argument stands on its own and does not
+  need this one.
+* **Recording a demo against the deployed host with worker credentials freezes the world.** Signing
+  in as `maya` or `jo` and driving the canonical conversation is exactly the thing the four
+  questions refuse to move under, and it must be: those effects reached the External Order System
+  and a customer. One recorded take, and the deployed world is pinned to whatever day it was on,
+  until somebody runs the four-step repair below. This is not a defect to be fixed by loosening
+  the check — it is the check working. Plan a recording session on the understanding that the
+  repair follows it, and that the repair destroys the cases on the host.
+
 **The case identity is derived from the world, not from the clock.** `report_command_id` and
 `answer_command_id` are `uuid5` of the world's anchor, so two boots against one world produce one
 case and a rolled world produces a new one. This is not the first thing that was written — keying
