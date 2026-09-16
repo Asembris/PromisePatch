@@ -3,6 +3,11 @@
 Date: 2026-09-16
 Status: **NON-GO.** No code was written. No ADR was recorded. Nothing was deployed.
 
+*The decision this assessment recommends is now recorded as
+[ADR-0016](adr/0016-a-judge-principal-stays-read-only.md), which cites §3's measurement as its
+evidence. The provisioning defect named in §5 is fixed in [the seeded demo case](seeded-demo-case.md).
+Nothing below is edited: it is what that session found, in the words it found it in.*
+
 The complaint this assessment was opened on is real and is stated accurately: the demo session
 route mints an observer principal, an observer may read and may say nothing, and so a judge who
 follows the judge entry cannot take a single one of the turns
