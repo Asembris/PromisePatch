@@ -17,7 +17,7 @@ immutable **11/16** headline from the first scored run stands exactly as publish
 
 `promisepatch.domain.recovery.hold_tasks` holds only tasks in `SCHEDULED`:
 
-```python
+```text
 ProductionTask.state == "SCHEDULED",
 ```
 
