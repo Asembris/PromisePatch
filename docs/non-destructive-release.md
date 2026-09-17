@@ -57,8 +57,8 @@ The audit found four protections already in place. None of them was touched.
 - **The `seed` service is profiled** and nothing `depends_on` it, so `compose up -d` cannot
   reach it.
 - **RDS carries `DeletionPolicy: Snapshot` and `UpdateReplacePolicy: Snapshot`.** The first was
-  asserted; the second was not, and now is — it is the half a release could actually have
-  reached.
+  asserted; the second was not, and now is, added to the existing durability test — it is the
+  half a release could actually have reached.
 - **The three image declarations are compared before a rollout.** `require_image_declarations_agree`
   is unchanged.
 
@@ -118,9 +118,15 @@ The three operations are now separate by construction rather than by care:
 
 ## 5. How the guards were checked
 
-Nine tests were added to `scripts/tests/test_deployment_definition.py`. Each was checked by
-**mutation**: the protection was put back the way it was, the test was run, and the file was
-restored. All nine mutations were caught.
+Twelve tests were added to `scripts/tests/test_deployment_definition.py` — nine that read the
+definition and three that **run** it. The three source the script's function definitions without
+its dispatch, put a stub `aws` on `PATH` that answers from a scenario and logs every call, and
+call `stage_stack` and `stage_host_image` directly. No AWS call leaves the machine. They exist
+because a static assertion can say the refusal is spelled correctly and cannot say the refusal
+fires.
+
+Each was checked by **mutation**: the protection was put back the way it was, the test was run,
+and the file was restored from git. All twelve mutations were caught.
 
 | mutation | caught by |
 |---|---|
@@ -130,6 +136,9 @@ restored. All nine mutations were caught.
 | a release never reads or refuses what its plan would replace | `test_a_release_refuses_a_change_set_that_would_replace_anything` |
 | `all` replaces the host | `test_replacing_the_host_is_never_reached_by_a_release` |
 | the confirmation need not name the instance | `test_replacing_the_host_requires_naming_the_instance_it_destroys` |
+| *(run)* a release resolves the newest AMI again | `test_a_release_that_replaces_nothing_executes_the_plan_it_read` |
+| *(run)* a release executes a plan that replaces the host | `test_a_release_whose_plan_replaces_the_host_is_actually_refused` |
+| *(run)* the host is replaced with no confirmation | `test_replacing_the_host_without_the_confirmation_mutates_nothing` |
 | the seed's own permission is unconditional again | `test_the_first_boot_seed_is_gated_on_the_parameter` |
 | the first-boot seed is unconditional again | `test_the_first_boot_seed_is_gated_on_the_parameter` |
 | a new instance seeds by default | `test_the_first_boot_seed_is_gated_on_the_parameter` |
