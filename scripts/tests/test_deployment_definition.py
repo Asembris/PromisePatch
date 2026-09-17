@@ -1124,7 +1124,9 @@ def _run_stage(stage: str, scenario: dict[str, str]) -> subprocess.CompletedProc
         **scenario,
     }
     environment.pop("PP_DEPLOY_REPLACE_HOST", None)
+    environment.pop("PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE", None)
     environment.pop("PP_DEPLOY_SEED_ON_FIRST_BOOT", None)
+    environment.pop("PP_DEPLOY_HOST_AMI_ID", None)
     environment.update(scenario)
     result = subprocess.run(
         [executable, str(root / "harness.sh")],
@@ -1410,6 +1412,366 @@ def test_the_deployment_publishes_what_it_would_do_to_the_host_and_the_data(
     outputs = template["Outputs"]
     assert outputs["DeclaredHostAmiId"]["Value"] == {"Ref": "HostAmiId"}
     assert outputs["DemoFixtureSeededOnFirstBoot"]["Value"] == {"Ref": "SeedDemoFixtureOnFirstBoot"}
+
+
+# --------------------------------------------- changing what the deployment is made of, on purpose
+#
+# `stage_stack` refuses any plan CloudFormation says may replace or remove a resource, and that
+# refusal is correct. It also means the template in this checkout cannot reach the deployed stack
+# through a release at all: applying it edits ``Host.UserData`` -- the seed gate itself -- and the
+# live service answered ``Replacement: Conditional`` on the ``Host`` with the association's
+# ``InstanceId`` at ``Always``. See docs/non-destructive-release.md section 9.3.
+#
+# So there has to be an operation that can carry a template change, and everything about it has to
+# be the opposite of accidental. ``stage_infrastructure`` is that operation: it preserves the live
+# release and the live host image, forces the seed off, inherits every infrastructure parameter
+# off the stack, prints every resource the plan may destroy, and executes nothing until the
+# operator types back the id of the instance being risked.
+#
+# What these tests hold is that it cannot be reached by a release, cannot be made to move release
+# state, and cannot execute a destructive plan on its own.
+
+# The three answers ``Replacement`` has, plus the rename that carries no replacement flag at all.
+# The release guard has to refuse every one of them, and the deliberate stages read the same
+# guard, so this is asserted against the query taken out of the script rather than against a stub
+# that answers with the query's own result.
+REPLACEMENT_ANSWERS_THAT_MUST_REFUSE: dict[str, dict[str, Any]] = {
+    "certain": {"Action": "Modify", "LogicalResourceId": "Host", "Replacement": "True"},
+    "conditional": {"Action": "Modify", "LogicalResourceId": "Host", "Replacement": "Conditional"},
+    "renamed": {"Action": "Remove", "LogicalResourceId": "Host"},
+}
+
+
+@pytest.mark.parametrize("answer", sorted(REPLACEMENT_ANSWERS_THAT_MUST_REFUSE))
+def test_a_release_refuses_every_answer_that_is_not_a_flat_no(answer: str) -> None:
+    """``True``, ``Conditional`` and a bare ``Remove`` all mean the host may not survive.
+
+    Only ``False`` means nothing will be replaced. The guard is one query and both deliberate
+    stages read it too, so this is the one place the discrimination is checked.
+    """
+    change = {"Changes": [{"ResourceChange": REPLACEMENT_ANSWERS_THAT_MUST_REFUSE[answer]}]}
+    assert jmespath.search(_replacement_query(), change) == ["Host"], (
+        f"a change set whose replacement is {answer!r} reads as replacing nothing, so a release "
+        "would execute it"
+    )
+
+
+def test_every_stage_that_submits_the_template_reads_the_same_replacement_guard() -> None:
+    """One detector. A second one would be a second opinion about what destroys the deployment."""
+    for stage in ("stack", "infrastructure", "host_image"):
+        assert "replaced_by_change_set" in _stage(stage), (
+            f"stage_{stage} submits the template without reading what its plan would do"
+        )
+    script = _without_comments(_deploy_script())
+    guard = _without_comments(_function("replaced_by_change_set"))
+    matched = "ResourceChange.Replacement"
+    assert script.count(matched) == guard.count(matched), (
+        "the replacement answers are matched outside the one guard, so two stages can disagree "
+        "about what counts as destructive"
+    )
+
+
+def test_an_infrastructure_upgrade_is_never_reached_by_a_release() -> None:
+    """A named stage that `all` does not name, and that no release stage calls."""
+    script = _deploy_script()
+    assert "stage_infrastructure () {" in script, (
+        "there is no deliberate way to change the template"
+    )
+    assert "infrastructure) stage_preflight; stage_infrastructure ;;" in script, (
+        "the infrastructure stage is not reachable from the command line"
+    )
+    chain = script[script.index("  all)") : script.index("\n  *) die")]
+    assert "stage_infrastructure" not in chain, (
+        "`all` changes the infrastructure, so an ordinary release run can carry a template change"
+    )
+    for stage in ("stack", "rollout", "images", "config", "host_image"):
+        assert "stage_infrastructure" not in _stage(stage), f"stage_{stage} upgrades infrastructure"
+
+
+def test_an_infrastructure_upgrade_cannot_move_the_release_or_arm_the_seed() -> None:
+    """The two things it is structurally unable to do, asserted where they have to hold."""
+    infrastructure = _stage("infrastructure")
+    assert 'tag="$(declared_image_tag)"' in infrastructure, (
+        "the upgrade does not read the release back off the stack, so it can move it"
+    )
+    assert "image_tag)" not in infrastructure.replace("declared_image_tag)", ""), (
+        "the upgrade computes this checkout's tag, so it deploys a commit it never pushed"
+    )
+    assert 'create_stack_change_set "$ami" "false" "$tag"' in infrastructure, (
+        "the upgrade does not pass a literal false for the seed"
+    )
+    assert "PP_DEPLOY_SEED_ON_FIRST_BOOT" not in infrastructure, (
+        "the upgrade reads the seed variable, so an infrastructure change can reseed after all"
+    )
+
+
+def test_an_infrastructure_upgrade_resolves_no_image_of_its_own() -> None:
+    """Preserving the AMI by default is not a policy here; the resolver is out of reach.
+
+    ``test_only_a_first_create_and_a_deliberate_upgrade_resolve_the_newest_image`` pins the
+    callers of ``latest_host_ami_id`` to two, and this stage is not one of them. Unset,
+    ``PP_DEPLOY_HOST_AMI_ID`` means the value the stack declares.
+    """
+    infrastructure = _stage("infrastructure")
+    assert "latest_host_ami_id" not in infrastructure, (
+        "the upgrade can resolve a newer host image, which makes it a quieter host-image"
+    )
+    assert 'ami="${PP_DEPLOY_HOST_AMI_ID:-$declared}"' in infrastructure, (
+        "the upgrade does not default the host image to the one the stack declares"
+    )
+
+
+def test_the_two_deliberate_confirmations_are_not_the_same_confirmation() -> None:
+    """A shell holding one operation's confirmation may not spend it on the other.
+
+    Both name the same instance id, so a single variable would mean an abandoned `host-image`
+    attempt silently authorizes an infrastructure upgrade that may replace the host -- and the
+    reverse. They are distinct variables, each read by exactly one stage.
+    """
+    infrastructure = _stage("infrastructure")
+    host_image = _stage("host_image")
+    assert '"${PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE:-}" != "$instance"' in infrastructure, (
+        "the upgrade's confirmation does not have to name the instance being risked"
+    )
+    assert "PP_DEPLOY_REPLACE_HOST" not in infrastructure, (
+        "the upgrade accepts the host-image confirmation, so one leftover variable spends on both"
+    )
+    assert "PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE" not in host_image, (
+        "host-image accepts the upgrade's confirmation, so one leftover variable spends on both"
+    )
+    assert infrastructure.index("replaced_by_change_set") < infrastructure.index(
+        "PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE:-"
+    ), "the confirmation is asked for before what it confirms has been read"
+    # Only the destructive branch asks for a confirmation -- a plan that replaces nothing runs
+    # without one, which is the whole point of reading the plan first -- so the ordering is
+    # asserted from the print that opens that branch rather than from the top of the stage.
+    destructive = infrastructure[infrastructure.index("THIS PLAN MAY REPLACE OR REMOVE") :]
+    assert destructive.index("PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE:-") < destructive.index(
+        "execute_stack_change_set"
+    ), "a plan that may replace the host executes before the confirmation is checked"
+
+
+def test_the_confirmation_cannot_authorize_what_it_does_not_name() -> None:
+    """The id names the host. It is not allowed to stand in for the database."""
+    script = _deploy_script()
+    found = re.search(r'INFRASTRUCTURE_MAY_REPLACE="([^"]*)"', script)
+    assert found is not None, "nothing bounds what the upgrade's confirmation may authorize"
+    assert sorted(found.group(1).split()) == ["ElasticIpAssociation", "Host"], (
+        "the upgrade may confirm the replacement of something its confirmation does not name; "
+        f"the list is {found.group(1)!r}"
+    )
+
+
+# The stubbed runs. Everything above says the stage is spelled correctly; these say it behaves.
+
+
+def test_an_infrastructure_upgrade_preserves_the_release_and_the_host_image() -> None:
+    """The stack declares `b62779d6e975` and `ami-0fa4996c14e7d501e`; both are what is submitted.
+
+    The harness's `image_tag` returns `aaaabbbbcccc`, which is what a release would submit and
+    what an upgrade may not, and the stub logs any call to `describe-images`.
+    """
+    result = _run_stage("stage_infrastructure", {"PP_FAKE_REPLACED": ""})
+    assert result.returncode == 0, result.stderr
+    assert "EXECUTED" in result.stdout, "a non-destructive upgrade executed nothing"
+    assert "DELETED" not in result.stdout, "a non-destructive upgrade deleted its own change set"
+    assert "ImageTag=b62779d6e975" in result.stdout, (
+        "the upgrade moved the release to this checkout's commit"
+    )
+    assert "ImageTag=aaaabbbbcccc" not in result.stdout, (
+        "the upgrade deployed a commit it never pushed an image for"
+    )
+    assert "HostAmiId=ami-0fa4996c14e7d501e" in result.stdout, (
+        "the upgrade submitted an AMI other than the one the stack declared"
+    )
+    assert "describe-images" not in result.stdout, (
+        "the upgrade asked EC2 for an image, so it can pick up a newer one and replace the host"
+    )
+    assert "SeedDemoFixtureOnFirstBoot=false" in result.stdout
+
+
+def test_an_infrastructure_upgrade_cannot_be_made_to_seed() -> None:
+    """The one variable that erases every case is set, and reaches nothing."""
+    result = _run_stage(
+        "stage_infrastructure",
+        {"PP_FAKE_REPLACED": "", "PP_DEPLOY_SEED_ON_FIRST_BOOT": "true"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "SeedDemoFixtureOnFirstBoot=false" in result.stdout, (
+        "the upgrade did not submit a false seed"
+    )
+    assert "SeedDemoFixtureOnFirstBoot=true" not in result.stdout, (
+        "an infrastructure upgrade armed the first-boot seed from a leftover variable"
+    )
+
+
+def test_an_infrastructure_upgrade_leaves_unrelated_infrastructure_where_it_is() -> None:
+    """It changes the template. It does not change what the stack says the deployment is.
+
+    The stub's shell disagrees with the live stack about every infrastructure value there is, and
+    an upgrade is exactly the operation where "well, it is an infrastructure change" would be the
+    excuse for letting one through.
+    """
+    result = _run_stage("stage_infrastructure", {"PP_FAKE_REPLACED": ""})
+    assert result.returncode == 0, result.stderr
+    for live in (
+        "VpcId=vpc-live",
+        "HostSubnetId=subnet-live-host",
+        "DatabaseSubnetIds=subnet-live-a,subnet-live-b",
+        "AllowedIngressCidr=203.0.113.4/32",
+        "DatabaseBackupRetentionDays=7",
+        "InstanceType=t4g.small",
+        "DatabaseInstanceClass=db.t4g.micro",
+        "DatabaseStorageGiB=20",
+        "Environment=prod",
+        "TlsHostname=",
+    ):
+        assert live in result.stdout, f"the upgrade did not submit {live} as the stack declares it"
+    for drifted in DRIFTED_SHELL_VALUES:
+        assert drifted not in result.stdout, (
+            f"this shell's {drifted} reached an infrastructure upgrade, so local drift still "
+            "changes the deployed infrastructure"
+        )
+
+
+def test_an_infrastructure_upgrade_whose_plan_may_replace_the_host_refuses_unconfirmed() -> None:
+    """The live 2026-09-18 plan, unconfirmed: print what may die, refuse, delete, mutate nothing."""
+    result = _run_stage("stage_infrastructure", {"PP_FAKE_REPLACED": "ElasticIpAssociation\tHost"})
+    assert result.returncode != 0, "a plan that may replace the host executed unconfirmed"
+    assert "THIS PLAN MAY REPLACE OR REMOVE" in result.stdout
+    assert "ElasticIpAssociation" in result.stdout and "Host" in result.stdout, (
+        "the refusal does not print what the plan may replace"
+    )
+    assert "PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE=i-087c742587f83d61d" in result.stderr, (
+        "the refusal does not name the instance whose id would confirm it"
+    )
+    assert "EXECUTED" not in result.stdout, "the plan was executed anyway"
+    assert "DELETED" in result.stdout, "the refused change set was left behind"
+
+
+def test_the_host_image_confirmation_does_not_authorize_an_infrastructure_upgrade() -> None:
+    """The right id in the wrong variable is not a confirmation of this operation."""
+    result = _run_stage(
+        "stage_infrastructure",
+        {
+            "PP_FAKE_REPLACED": "ElasticIpAssociation\tHost",
+            "PP_DEPLOY_REPLACE_HOST": "i-087c742587f83d61d",
+        },
+    )
+    assert result.returncode != 0, "a host-image confirmation executed an infrastructure upgrade"
+    assert "EXECUTED" not in result.stdout
+    assert "DELETED" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "confirmation",
+    ["", "i-0000000000000dead", "yes", "true", "i-087c742587f83d61", "I-087C742587F83D61D"],
+)
+def test_only_the_exact_instance_id_confirms_a_destructive_upgrade(confirmation: str) -> None:
+    """Not a yes, not a truncation, not a different instance, not the same id in another case."""
+    result = _run_stage(
+        "stage_infrastructure",
+        {
+            "PP_FAKE_REPLACED": "ElasticIpAssociation\tHost",
+            "PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE": confirmation,
+        },
+    )
+    assert result.returncode != 0, f"{confirmation!r} executed a plan that may replace the host"
+    assert "EXECUTED" not in result.stdout, f"{confirmation!r} executed the plan"
+    assert "DELETED" in result.stdout, f"{confirmation!r} left its change set behind"
+
+
+def test_a_confirmed_infrastructure_upgrade_executes_the_plan_it_read() -> None:
+    """The deliberate path works, and still moves nothing but the template."""
+    result = _run_stage(
+        "stage_infrastructure",
+        {
+            "PP_FAKE_REPLACED": "ElasticIpAssociation\tHost",
+            "PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE": "i-087c742587f83d61d",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "EXECUTED" in result.stdout, "a confirmed upgrade executed nothing"
+    assert "DELETED" not in result.stdout, "a confirmed upgrade deleted its own change set"
+    assert "ImageTag=b62779d6e975" in result.stdout
+    assert "HostAmiId=ami-0fa4996c14e7d501e" in result.stdout
+    assert "SeedDemoFixtureOnFirstBoot=false" in result.stdout
+
+
+def test_an_infrastructure_upgrade_refuses_to_replace_what_no_id_here_names() -> None:
+    """Confirmed, correctly, and still refused: the id names the host, not the database.
+
+    The confirmation is the strongest thing this operation can ask for, and it is still only an
+    answer about one instance. A plan that proposes to replace the database is refused whatever
+    is typed, because every case in the deployment is in it and nothing here names it.
+    """
+    result = _run_stage(
+        "stage_infrastructure",
+        {
+            "PP_FAKE_REPLACED": "Database",
+            "PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE": "i-087c742587f83d61d",
+        },
+    )
+    assert result.returncode != 0, "a confirmed upgrade replaced the database"
+    assert "Database" in result.stderr, "the refusal does not say what it would not replace"
+    assert "EXECUTED" not in result.stdout, "the database was replaced anyway"
+    assert "DELETED" in result.stdout, "the refused change set was left behind"
+
+
+def test_an_infrastructure_upgrade_has_a_stack_to_upgrade_or_refuses() -> None:
+    """It is an upgrade of an existing deployment; creating one is still `stack`."""
+    result = _run_stage("stage_infrastructure", {"PP_FAKE_STACK_MISSING": "1"})
+    assert result.returncode != 0, "an upgrade with no stack submitted anyway"
+    assert "cloudformation deploy" not in result.stdout, "the submission was made before refusing"
+    assert "EXECUTED" not in result.stdout
+
+
+def test_an_explicitly_named_host_image_still_passes_through_the_confirmation() -> None:
+    """The one thing an operator may change besides the template, and it is not a back door.
+
+    Naming a different AMI is an explicit request, so the stage honours it -- and moving
+    ``ImageId`` is what replaces the instance, so it arrives at the same confirmation as any
+    other possible replacement rather than beside it.
+    """
+    result = _run_stage(
+        "stage_infrastructure",
+        {
+            "PP_FAKE_REPLACED": "ElasticIpAssociation\tHost",
+            "PP_DEPLOY_HOST_AMI_ID": "ami-07b9559027f889918",
+        },
+    )
+    assert result.returncode != 0, "a host image change executed without confirmation"
+    assert "HostAmiId=ami-07b9559027f889918" in result.stdout, (
+        "the upgrade did not submit the image it was explicitly given"
+    )
+    assert "ami-0fa4996c14e7d501e -> ami-07b9559027f889918" in result.stdout, (
+        "the upgrade does not print that it is moving the host image"
+    )
+    assert "EXECUTED" not in result.stdout
+    assert "DELETED" in result.stdout
+
+
+def test_replacing_the_host_is_still_exactly_what_it_was() -> None:
+    """The new stage is beside `host-image`, not layered over it.
+
+    ``host-image`` still resolves the newest image when given none, still asks for its own
+    confirmation, still refuses without it, and still inherits the live infrastructure. The
+    behavioural tests above this section assert the rest; this one holds the boundary.
+    """
+    host_image = _stage("host_image")
+    assert 'ami="${PP_DEPLOY_HOST_AMI_ID:-$(latest_host_ami_id)}"' in host_image, (
+        "host-image no longer resolves the newest image, so its semantics moved"
+    )
+    assert 'seed="${PP_DEPLOY_SEED_ON_FIRST_BOOT:-false}"' in host_image, (
+        "host-image is no longer the stage that can seed, so the only reseed path moved"
+    )
+    assert "EVERY CASE IS ERASED" in host_image
+    assert "stage_infrastructure" not in host_image, "host-image delegates to the upgrade stage"
+    result = _run_stage("stage_host_image", {"PP_FAKE_REPLACED": "Host"})
+    assert result.returncode != 0, "the host was replaced with no confirmation at all"
+    assert "i-087c742587f83d61d" in result.stderr
+    assert "EXECUTED" not in result.stdout
+    assert "DELETED" in result.stdout
 
 
 # ------------------------------------------------------------------ what the TLS proxy serves
