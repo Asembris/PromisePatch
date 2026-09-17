@@ -276,6 +276,7 @@ ESCALATION_BLOCKED: Final = "BLOCKED"
 ESCALATION_NO_CHOSEN_OPTION: Final = "NO_CHOSEN_OPTION"
 ESCALATION_DOWNSTREAM_UNAVAILABLE: Final = "DOWNSTREAM_UNAVAILABLE"
 ESCALATION_MIRROR_NOT_RECONCILED: Final = "MIRROR_NOT_RECONCILED"
+ESCALATION_PLAN_STALE: Final = "PLAN_STALE"
 """Why a track was handed to the owner.
 
 Recorded on the audit row and the domain event rather than on ``tracks.reason_detail``, which
@@ -1059,12 +1060,27 @@ async def mark_stale(
     detail: str,
     step_key: str | None = None,
 ) -> StepOutcome:
-    """The plan no longer describes the world. Write that down, and send nothing.
+    """The plan no longer describes the world. Send nothing, and hand the promise to a person.
 
     §23: a recovery that has become invalid before execution goes ``STALE`` and nothing is
-    written. Re-planning it is a separate transition with its own authority and its own
-    revalidation, and inventing one here would replace a plan a worker confirmed with a plan
-    nobody has seen.
+    written. Nothing is: no amendment reaches the order system, no message reaches a customer,
+    and the finding itself is recorded as ``track.stale`` with the two fingerprints that
+    disagreed. That is the clause this function has always honoured and still does.
+
+    What §23 puts *after* the arrow -- a re-plan -- belongs to the one path that has the
+    machinery for it. ``revalidation`` marks a track ``STALE`` and enqueues ``REPLAN_TRACK`` in
+    the same transaction, so it leaves the track in a state something is already coming to carry
+    off again. These callers are the confirmation-driven ones, where no such successor exists
+    and where deriving one would replace a plan a worker confirmed with a plan nobody has seen,
+    applied on a confirmation given for a different one.
+
+    Leaving the track ``STALE`` regardless is what this used to do, and ``STALE`` is not
+    terminal: the case could not reconcile, could not resolve, and no timer, step or sweep could
+    ever move either of them again, while the screen pointed the owner at a re-planned outcome
+    that was never going to exist. So the promise goes to the owner instead, with its kitchen
+    work held -- §13.5's answer for a promise the system cannot carry any further on its own,
+    and the one write that answer performs. The customer's order is untouched, which is what
+    §23's "nothing written" is protecting.
     """
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
@@ -1074,18 +1090,19 @@ async def mark_stale(
         case_id=case.id,
         track_id=track.id,
         before={"track_state": track.state, "fingerprint": track.fingerprint},
-        after={"track_state": TRACK_STALE},
+        after={"track_state": TRACK_ESCALATED, "reason": ESCALATION_PLAN_STALE},
         provenance={"worker": worker, "detail": detail},
         occurred_at=now,
     ) as write:
-        await set_track(write, track=track, state=TRACK_STALE)
+        await set_track(write, track=track, state=TRACK_ESCALATED)
+        held = await hold_tasks(write, track=track, case_id=case.id)
         moved_to = await settled_case_state(connection, case=case, except_step_key=step_key)
     successors = await case_successors(connection, moved_to, case_id=case.id)
 
     return StepOutcome(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
-        case_change=CaseChange(state=moved_to),
+        case_change=CaseChange(state=moved_to, needs_owner_attention=True),
         successors=successors,
         events=(
             AppendEvent(
@@ -1093,9 +1110,20 @@ async def mark_stale(
                 payload={"detail": detail},
                 entity_refs=({"kind": "track", "id": str(track.id)},),
             ),
+            AppendEvent(
+                type=EVENT_TRACK_ESCALATED,
+                payload={"reason": ESCALATION_PLAN_STALE, "tasks_held": len(held)},
+                entity_refs=({"kind": "track", "id": str(track.id)},),
+            ),
             *case_events(moved_to, case_id=case.id),
         ),
-        result={"outcome": "STALE", "track_id": str(track.id), "detail": detail},
+        result={
+            "outcome": "ESCALATED",
+            "track_id": str(track.id),
+            "detail": detail,
+            "reason": ESCALATION_PLAN_STALE,
+            "tasks_held": len(held),
+        },
     )
 
 

@@ -42,6 +42,7 @@ from promisepatch.db.models import (
     OutboxMessage,
     RecipeVersion,
 )
+from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor
 from promisepatch.domain import cases, crash, intake, outbox, recovery, steps
 from promisepatch.domain.adapters import FakeEffectAdapter, ProviderBehaviour
@@ -918,11 +919,15 @@ async def test_only_one_worker_can_own_an_execution_step(physical: Intake) -> No
 
 
 async def test_a_plan_whose_inputs_moved_produces_no_external_effect(physical: Intake) -> None:
-    """§23: a recovery invalid before execution goes ``STALE``, and nothing is written.
+    """§23: a recovery invalid before execution writes nothing, and the promise goes to a person.
 
     The mutation is one watched fingerprint input and nothing else, so what is being proved is
     that the recomputed fingerprint is compared and acted on -- not that a large change happens
     to break something.
+
+    The stale finding is recorded and the order is untouched, which is §23's "nothing written".
+    What follows it is an escalation rather than a resting ``STALE``: this path has no re-plan
+    to enqueue, and a non-terminal track nothing can ever move is a promise silently abandoned.
     """
     case_id = await confirmed_case(physical)
     planned = (await track_of(physical, case_id, A)).fingerprint
@@ -932,11 +937,34 @@ async def test_a_plan_whose_inputs_moved_produces_no_external_effect(physical: I
     await physical.drain(worker=physical.worker(adapter=adapter), limit=30)
 
     track_a = await track_of(physical, case_id, A)
-    assert track_a.state == recovery.TRACK_STALE
+    assert track_a.state == recovery.TRACK_ESCALATED
     assert track_a.fingerprint == planned
     assert await physical.effects() == []
     assert adapter.call_count == 0
-    assert recovery.EVENT_TRACK_STALE in await physical.events(case_id)
+    events = await physical.events(case_id)
+    assert recovery.EVENT_TRACK_STALE in events
+    assert recovery.EVENT_TRACK_ESCALATED in events
+
+
+async def test_a_stale_plan_holds_the_kitchen_work_and_lets_the_case_finish(
+    physical: Intake,
+) -> None:
+    """The route onward a stale plan had none of: the owner's desk, and an ending.
+
+    A track left ``STALE`` is non-terminal, so its case could not reconcile and could not
+    resolve, and nothing in the system swept it. Both halves are asserted here rather than the
+    escalation alone, because the state change is only half the repair -- the other half is that
+    the case reaches an ending at all.
+    """
+    case_id = await confirmed_case(physical)
+    track_a = await track_of(physical, case_id, A)
+
+    await physical.bump_order_version(ho.ORDER_A)
+    await physical.drain(limit=30)
+
+    assert (await physical.tasks())[f"task-{ho.LINE_A}"] == ("HELD", case_id)
+    assert (await track_of(physical, case_id, A)).id == track_a.id
+    assert (await track_of(physical, case_id, A)).state in TERMINAL_TRACK_STATES
 
 
 async def test_a_stale_plan_is_not_quietly_replaced_by_another_one(physical: Intake) -> None:
