@@ -654,6 +654,210 @@ def test_a_release_is_a_parameter_write_and_a_reboot_rather_than_a_new_instance(
     )
 
 
+# ------------------------------------------- what a release may not do to the host or the data
+#
+# The defect these were written after, and the one thing about this deployment that could still
+# destroy everything in it. `deploy.sh stack` resolved the newest Amazon Linux 2023 arm64 image
+# at every run so that no AMI id lived in git. ``ImageId`` is a replacement property on
+# ``AWS::EC2::Instance``; an instance's first boot ends in ``compose run seed``; and ``pp
+# reset-demo-state`` replaces every domain row in a database that deliberately outlives the host.
+# So the first ordinary release after Amazon published a new image would have replaced the host
+# and erased every case on it -- while reporting ``UPDATE_COMPLETE``.
+#
+# It was proved rather than argued: a change set built that way reported ``Replacement: True`` on
+# the Host and on the EIPAssociation, and was deleted unexecuted. See
+# docs/head-redeploy-2026-09-16.md section 7, and docs/non-destructive-release.md.
+
+
+def test_a_release_passes_back_the_host_image_the_stack_already_declares() -> None:
+    """A release may not choose an AMI, because choosing one replaces the instance.
+
+    Not "should not": the release stage cannot reach the function that resolves a newer image.
+    The value it passes is read back off the stack, so the only AMI an application release can
+    name is the one the host is already running.
+    """
+    stack = _stage("stack")
+    assert 'ami="$(release_host_ami_id)"' in stack, (
+        "the release stage resolves its own host image again"
+    )
+    assert "latest_host_ami_id" not in stack, (
+        "the release stage can still resolve the newest image, which replaces the instance"
+    )
+    resolver = _function("release_host_ami_id")
+    assert "declared_host_ami_id" in resolver, (
+        "the released AMI is not read back from the stack, so a release can still move it"
+    )
+    declared = _function("declared_host_ami_id")
+    assert "ParameterKey=='HostAmiId'" in declared, (
+        "declared_host_ami_id reads something other than the stack's own HostAmiId"
+    )
+
+
+def test_only_a_first_create_and_a_deliberate_upgrade_resolve_the_newest_image() -> None:
+    """Three callers would be two too many.
+
+    ``release_host_ami_id`` resolves the newest image on the branch where no stack exists -- a
+    first create has nothing to preserve and no cases to lose -- and ``stage_host_image`` does
+    it because that is what it is for. Anything else calling it is a path by which a release
+    could pick up an AMI again.
+    """
+    script = _deploy_script()
+    callers = {
+        name
+        for name in re.findall(r"^([a-z_]+) \(\) \{", script, flags=re.MULTILINE)
+        if name != "latest_host_ami_id" and "latest_host_ami_id" in _function(name)
+    }
+    assert callers == {"release_host_ami_id", "stage_host_image"}, (
+        f"the newest host image is resolved by {sorted(callers)}; only a first create and a "
+        "deliberate host replacement may do that"
+    )
+
+
+def test_a_release_cannot_ask_for_a_seed_at_all() -> None:
+    """The demo seed is a literal on the release path, not a variable.
+
+    ``SeedDemoFixtureOnFirstBoot`` is what decides whether a new instance's first boot erases
+    every case in the database. A release passes ``false`` written out in full, so there is no
+    environment variable, no default and no leftover value by which a release could arm it.
+    """
+    stack = _stage("stack")
+    assert 'create_stack_change_set "$ami" "false" "$tag"' in stack, (
+        "the release stage does not pass a literal false for the seed"
+    )
+    assert "PP_DEPLOY_SEED_ON_FIRST_BOOT" not in stack, (
+        "the release stage reads the seed variable, so a release can reseed after all"
+    )
+    assert '"SeedDemoFixtureOnFirstBoot=${seed}"' in _function("create_stack_change_set"), (
+        "the submission never tells the stack whether to seed, so it keeps the previous value"
+    )
+
+
+def test_every_submission_builds_a_change_set_it_does_not_execute() -> None:
+    """Nothing in this script may mutate the stack without a readable plan first.
+
+    ``aws cloudformation deploy`` executes its change set by default, and that is the shape of
+    the defect: the replacement was decided and applied in one call, with the only record of it
+    arriving afterwards. There is one submission left in the script and it is preview-only.
+    """
+    script = _without_comments(_deploy_script())
+    assert script.count("aws cloudformation deploy") == 1, (
+        "there is more than one submission, so one of them may execute without a preview"
+    )
+    # Comment-stripped, because this function explains `--no-execute-changeset` in a comment
+    # inside its own body and the flag being *described* is not the flag being passed.
+    submit = _without_comments(_function("create_stack_change_set"))
+    assert "--no-execute-changeset" in submit, (
+        "the submission executes its own change set, so nothing can read it first"
+    )
+
+
+def test_a_release_refuses_a_change_set_that_would_replace_anything() -> None:
+    """Read the plan, refuse the plan, delete the plan -- in that order and before executing.
+
+    ``Remove`` counts with ``Replacement``: renaming a logical resource is reported as an Add
+    and a Remove with no replacement flag, and that is a new instance too.
+    """
+    detector = _function("replaced_by_change_set")
+    assert "ResourceChange.Replacement=='True'" in detector
+    assert "ResourceChange.Action=='Remove'" in detector, (
+        "a renamed resource is an Add and a Remove and would go unnoticed"
+    )
+    stack = _stage("stack")
+    assert "replaced_by_change_set" in stack, "the release never reads what its plan would do"
+    assert "discard_change_set" in stack, "a refused release leaves its change set behind"
+    assert stack.index("replaced_by_change_set") < stack.index("execute_stack_change_set"), (
+        "the release executes its change set before reading what it would replace"
+    )
+    refusal = stack[stack.index("replaced_by_change_set") : stack.index("execute_stack_change_set")]
+    assert "|| die" in refusal or "die " in refusal, "a replacement is read and not refused"
+
+
+def test_replacing_the_host_is_never_reached_by_a_release() -> None:
+    """It is a named stage, and `all` does not name it."""
+    script = _deploy_script()
+    assert "stage_host_image () {" in script, "there is no deliberate way to replace the host"
+    assert "host-image) stage_preflight; stage_host_image ;;" in script, (
+        "the host-image stage is not reachable from the command line"
+    )
+    chain = script[script.index("  all)") : script.index("\n  *) die")]
+    assert "stage_host_image" not in chain, (
+        "`all` replaces the host, so an ordinary release run still destroys the instance"
+    )
+    for stage in ("stack", "rollout", "images", "config"):
+        assert "stage_host_image" not in _stage(stage), f"stage_{stage} replaces the host"
+
+
+def test_replacing_the_host_requires_naming_the_instance_it_destroys() -> None:
+    """Visible before execution, and confirmed with something that cannot be left lying around.
+
+    The confirmation is the id of the instance about to be destroyed. It cannot be guessed, it
+    cannot survive from a previous run against a different instance, and it cannot be typed
+    without having read the stack -- which is the point, because what is printed above it is
+    the list of what dies.
+    """
+    host_image = _stage("host_image")
+    assert "PP_DEPLOY_REPLACE_HOST" in host_image, "the replacement asks for no confirmation"
+    assert '"${PP_DEPLOY_REPLACE_HOST:-}" != "$instance"' in host_image, (
+        "the confirmation does not have to name the instance being destroyed"
+    )
+    assert host_image.index("replaced_by_change_set") < host_image.index(
+        "PP_DEPLOY_REPLACE_HOST:-"
+    ), "the confirmation is asked for before what it confirms has been read"
+    assert host_image.index("PP_DEPLOY_REPLACE_HOST:-") < host_image.index(
+        "execute_stack_change_set"
+    ), "the instance is replaced before the confirmation is checked"
+    assert "EVERY CASE IS ERASED" in host_image, (
+        "a replacement that reseeds does not say that it erases the database"
+    )
+    assert 'tag="$(declared_image_tag)"' in host_image, (
+        "replacing the host also moves the release, so the two are not separate operations"
+    )
+
+
+def test_the_first_boot_seed_is_gated_on_the_parameter(template: dict[str, Any]) -> None:
+    """Two layers, because the database outlives the host.
+
+    The bootstrap runs once per instance -- so on a *replacement* instance it runs against a
+    database full of real cases. The invocation is inside a conditional, and the flag the
+    application itself requires is written from the same parameter, so a hand-run
+    ``compose run seed`` on a host provisioned without a seed is refused by the application
+    rather than only by the bootstrap.
+    """
+    assert "SeedDemoFixtureOnFirstBoot" in template["Parameters"], (
+        "nothing decides whether a new instance seeds"
+    )
+    spec = template["Parameters"]["SeedDemoFixtureOnFirstBoot"]
+    assert spec["Default"] == "false", "a new instance seeds unless somebody says not to"
+    assert sorted(spec["AllowedValues"]) == ["false", "true"]
+
+    script = _user_data(template)
+    assert "PP_ALLOW_FIXTURE_RESET=${SeedDemoFixtureOnFirstBoot}" in script, (
+        "the seed's own permission is unconditional, so only the bootstrap gates the reset"
+    )
+    assert "PP_ALLOW_FIXTURE_RESET=true" not in script, (
+        "the flag is still written true somewhere, which undoes the second layer"
+    )
+    guard = 'if [ "${SeedDemoFixtureOnFirstBoot}" = "true" ]; then'
+    assert guard in script, "the first-boot seed runs unconditionally"
+    assert script.index(guard) < script.index("run --rm -T seed"), (
+        "the seed runs before the gate that is supposed to decide whether it runs"
+    )
+
+
+def test_the_deployment_publishes_what_it_would_do_to_the_host_and_the_data(
+    template: dict[str, Any],
+) -> None:
+    """Both non-release parameters are readable without describing the instance.
+
+    ``DeclaredHostAmiId`` is what makes the release able to pass the AMI back rather than
+    resolve one, and ``DemoFixtureSeededOnFirstBoot`` answers, before a host is replaced,
+    whether the replacement's first boot would erase the database the old host leaves behind.
+    """
+    outputs = template["Outputs"]
+    assert outputs["DeclaredHostAmiId"]["Value"] == {"Ref": "HostAmiId"}
+    assert outputs["DemoFixtureSeededOnFirstBoot"]["Value"] == {"Ref": "SeedDemoFixtureOnFirstBoot"}
+
+
 # ------------------------------------------------------------------ what the TLS proxy serves
 
 
