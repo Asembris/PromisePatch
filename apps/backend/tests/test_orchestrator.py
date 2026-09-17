@@ -21,13 +21,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
 from promisepatch.mcp.envelope import ToolCode
 from promisepatch.orchestrator import Blocked, Conversation, Orchestrator, refusal_code
 from promisepatch.orchestrator.policy import (
+    AFFIRMATIONS,
     BLOCKED_SENTENCES,
     EFFECTING,
     MAX_TOOL_CALLS_PER_TURN,
@@ -286,6 +287,113 @@ def test_a_confirmation_the_worker_did_not_give_is_refused_before_the_surface() 
         plan(ConversationTool.CONFIRM, conversation, "that plan looks right to me")
         is Blocked.NEEDS_THE_WORKERS_YES
     )
+
+
+NOT_A_YES: Final[tuple[str, ...]] = (
+    # Negation the punctuation stripper takes apart. `don't` normalises to `don t`, so a parser
+    # looking for the word `dont` never sees one and reads a refusal as an approval.
+    "Yes, don't proceed.",
+    "yes, that won't work",
+    "yes, I can't do that",
+    # Negation the stripper leaves whole. The old blacklist caught these and only these.
+    "Yes, do not proceed.",
+    "Yes, but wait.",
+    "yes but not the strawberries",
+    # Conditions: assent to something that has not happened, which is not assent.
+    "Yes, if the customer agrees.",
+    "Yes, once the oven is fixed.",
+    "yes unless Tomas objects",
+    "yes provided we tell Lena first",
+    "yes when the delivery is confirmed",
+    # Quoted and reported assent: somebody else's word, or a description of one.
+    "yes is what she said",
+    'She said "yes, go ahead" earlier',
+    "Tomas said yes",
+    # Explanation and mixed intent, opening with a perfectly good affirmation.
+    "OK so the plan is to substitute the raspberries",
+    "yes and also hold the wedding cake",
+    "correct, the strawberries came instead",
+    # Hedging.
+    "yes maybe",
+    "yes I think so",
+    "probably yes",
+)
+"""Turns that must never authorise a plan, each one an opening affirmation with a tail.
+
+Every one of these was accepted before the whole-utterance grammar; the first three were accepted
+*because* normalisation had removed the negation they turn on. They are listed by the shape of the
+thing that made them dangerous rather than alphabetically, because the shapes are the point: a
+blacklist can be extended to cover any row here and still not cover the next one.
+"""
+
+
+@pytest.mark.parametrize("said", NOT_A_YES)
+def test_an_opening_affirmation_with_a_tail_is_not_a_yes(said: str) -> None:
+    """A yes spans the whole turn or it is not one.
+
+    The rule is not "an affirmation and no disqualifier". It is: every word, in order, belongs to
+    :data:`AFFIRMATIONS`. That is what makes the list above finite -- there is no sentence that
+    has to be added to it, because nothing outside the set may appear anywhere.
+    """
+    assert reads_as_worker_confirmation(said) is False
+
+
+@pytest.mark.parametrize("said", NOT_A_YES)
+def test_the_orchestrator_will_not_call_confirm_for_any_of_them(said: str) -> None:
+    """Proved at the boundary that decides, not only at the predicate it consults.
+
+    A phase that permits a confirmation and an identity the worker really was read are both
+    present here, so the only thing refusing is the worker's own words.
+    """
+    conversation = Conversation(case_id=CASE, phase=ConversationPhase.PLANNED, plan_id=PLAN)
+    assert plan(ConversationTool.CONFIRM, conversation, said) is Blocked.NEEDS_THE_WORKERS_YES
+
+
+@pytest.mark.parametrize(
+    "said", ["yes", "Yes.", "OK", "do it", "go ahead", "yes please", "yeah, go ahead"]
+)
+def test_the_supported_direct_affirmatives_still_confirm_the_plan_that_was_read(
+    said: str,
+) -> None:
+    """The narrowing removed tails, not the forms a worker actually uses.
+
+    Each of these is spanned entirely by :data:`AFFIRMATIONS` -- *yeah go ahead* by two of its
+    phrases in a row -- and each still reaches ``confirm`` carrying the identity ``status``
+    handed over and nothing the turn could have invented.
+    """
+    conversation = Conversation().with_reading(
+        CaseReading(case_id=CASE, headline="PLANNED", plan_id=PLAN, awaiting_confirmation=True)
+    )
+    decided = plan(ConversationTool.CONFIRM, conversation, said)
+    assert isinstance(decided, Action)
+    assert decided.arguments == {"case_id": CASE, "plan_id": PLAN}
+
+
+def test_no_affirmation_can_be_spelled_out_of_the_others_into_a_refusal() -> None:
+    """Why concatenation is safe: the set has nothing in it that reverses another member.
+
+    The grammar accepts any run of affirmations, so this is the property that keeps that from
+    being a hole. It is asserted rather than assumed, so a member added later that carries a
+    negation fails here instead of in a bakery.
+    """
+    reversing = {
+        "but",
+        "cancel",
+        "dont",
+        "except",
+        "hold",
+        "if",
+        "instead",
+        "maybe",
+        "never",
+        "no",
+        "not",
+        "stop",
+        "unless",
+        "wait",
+    }
+    for phrase in AFFIRMATIONS:
+        assert not set(phrase.split()) & reversing, phrase
 
 
 def test_a_verb_the_phase_does_not_permit_is_refused_a_second_time_here() -> None:

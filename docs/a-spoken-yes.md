@@ -28,8 +28,11 @@ no way to tell a spoken yes from a control press from a bug.
 The rule is the one that already existed —
 `promisepatch.orchestrator.policy.reads_as_worker_confirmation`, imported rather than rewritten,
 so the browser and the conversational orchestrator cannot drift into disagreeing about what a yes
-is. *yes*, *yep*, *go ahead*, *do it* confirm. *yes but not the strawberries* does not, because
-`but` disqualifies a yes wherever it appears.
+is. *yes*, *yep*, *go ahead*, *do it*, *yeah go ahead* confirm, because every word of each is one
+of a closed set of affirmations. Anything else, anywhere in the turn, fails the whole turn: *yes
+but not the strawberries*, *yes if the customer agrees*, *yes once the oven is fixed* and *yes,
+don't proceed* are all refused, and none of them needed a list of forbidden words to be refused
+(ADR-0015, *The rule, exactly*).
 
 A sentence that is not a plain yes is refused with `NOT_A_PLAIN_YES`, before the domain is called,
 and **nothing else happens to it**: it is not stored as a clarification, not read as a withdrawal

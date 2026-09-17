@@ -38,10 +38,17 @@ in TypeScript before sending, for two reasons that are not about tidiness:
 **2. It is the rule that already exists, imported, not re-implemented.**
 
 `promisepatch.orchestrator.policy.reads_as_worker_confirmation` — the same closed `AFFIRMATIONS`
-opening set and the same `NEGATIONS` disqualifiers the conversational orchestrator has used since
+set the conversational orchestrator has used since
 [ADR-0011](0011-conversational-orchestrator-authority.md). *yes*, *go ahead*, *do it* confirm;
-*yes but not the strawberries* does not, because `but` is a negation wherever it appears. One
-implementation, one word list, one behaviour, and a change to it moves both surfaces at once.
+*yes but not the strawberries* does not. One implementation, one word list, one behaviour, and a
+change to it moves both surfaces at once.
+
+> **Amended 2026-09-17.** At the time of this decision the rule was an opening affirmation plus a
+> closed `NEGATIONS` blacklist of words that disqualify a yes anywhere in the turn. That rule was
+> unsound and is gone; `AFFIRMATIONS` must now span the **whole** turn, and `NEGATIONS` no longer
+> exists. Nothing in this decision changes — the same function, on the server, on the route,
+> shared with the orchestrator — and the amendment only narrows what it accepts. It is recorded
+> here because this section stated the old rule as fact. See *The rule, exactly* below.
 
 `promisepatch.api` already sits **above** `promisepatch.orchestrator` in the layers contract, so
 this import is one the architecture already permits. `policy` is the module whose own contract
@@ -113,6 +120,30 @@ and neither gains a spoken path here.
 * **The two confirmation affordances give one act.** Pressing the control and saying yes are two
   ways to give the same single explicit confirmation to the same single plan. Neither is a second
   authority.
+
+## The rule, exactly
+
+*(added 2026-09-17, superseding the `AFFIRMATIONS` + `NEGATIONS` description above)*
+
+A turn is a yes when, after case-folding and replacing every non-alphanumeric run with a space,
+**every word of it, in order, is spanned by phrases drawn from `AFFIRMATIONS` and nothing else.**
+Concatenation is allowed, which is what makes *yeah go ahead* a yes; anything the set does not
+contain, appearing anywhere, fails the whole turn.
+
+Two defects made the previous rule unsafe, and an allowlist closes both by construction rather
+than by enumeration:
+
+* **A blacklist is only as complete as the last sentence somebody thought of.** *"yes, if the
+  customer agrees"* and *"yes, once the oven is fixed"* contained no blacklisted word and
+  authorised a plan nobody had authorised.
+* **Normalisation destroys the very negations a blacklist looks for.** `don't` becomes `don t`,
+  so the blacklisted `dont` was never present to be found and *"yes, don't proceed"* executed
+  the plan. Under the allowlist it cannot matter what normalisation makes of an apostrophe:
+  whatever tokens come out are not affirmations, so the turn fails as a whole.
+
+The accepted set itself is unchanged and was deliberately **not** widened. *that's right* remains
+unreachable for the same normalisation reason and is left that way, so the measurement recorded in
+`docs/claims-audit.md` still reproduces.
 
 ## Revisit if
 

@@ -369,37 +369,24 @@ AFFIRMATIONS: Final[frozenset[str]] = frozenset(
         "yup",
     }
 )
-"""The forms a worker's yes may take. Closed, and matched only at the start of what they said.
+"""The forms a worker's yes may take. Closed, and the *whole* of what they said must be one.
 
 Not a sentiment reading and not a classifier. It is a short list of the things a person
-actually says when they mean yes, and a turn that opens with one of them is a yes. Anything
-else -- a question about the plan, agreement with the reasoning, an instruction to change
-something first -- is not, and the worker is asked plainly to say so.
+actually says when they mean yes, and a turn made of nothing but these is a yes. Anything
+else -- a question about the plan, agreement with the reasoning, a condition, an instruction to
+change something first -- is not, and the worker is asked plainly to say so.
+
+The set is unchanged from the one this module has always held. What changed is that it is now
+read as an allowlist over the entire turn rather than as an opening token with a free tail.
 """
 
-NEGATIONS: Final[frozenset[str]] = frozenset(
-    {
-        "but",
-        "cancel",
-        "dont",
-        "except",
-        "hold",
-        "instead",
-        "isnt",
-        "never",
-        "no",
-        "not",
-        "stop",
-        "unless",
-        "wait",
-    }
+_AFFIRMATION_PHRASES: Final[frozenset[tuple[str, ...]]] = frozenset(
+    tuple(phrase.split()) for phrase in AFFIRMATIONS
 )
-"""Words that stop a turn being a plain yes, wherever in it they appear.
+"""``AFFIRMATIONS`` as word tuples, which is the only form the grammar compares against."""
 
-"Yes but not the strawberries" opens with a yes and is not one: it is a worker asking for a
-different plan. The check is crude on purpose -- it fails towards asking again, which costs a
-turn, rather than towards confirming something nobody agreed to, which costs an order.
-"""
+_LONGEST_AFFIRMATION: Final[int] = max(len(phrase) for phrase in _AFFIRMATION_PHRASES)
+"""How far ahead the grammar ever has to look. Derived, so the set stays the single source."""
 
 WITHDRAWALS: Final[frozenset[str]] = frozenset(
     {
@@ -443,6 +430,11 @@ def normalise(text: str) -> str:
     Only ever used to *decline* to act. The words that reach the case engine are never this
     value: ``report`` and ``clarify`` forward the original string, because what was said is
     evidence and the first thing anything does to evidence must be nothing.
+
+    It is lossy, deliberately and irreparably: ``don't`` becomes ``don t`` and ``that's right``
+    becomes ``that s right``. Neither caller may rely on a negation surviving it.
+    :func:`reads_as_worker_confirmation` does not -- it requires every word to be an affirmation,
+    so a turn this mangles fails rather than passing with its meaning removed.
     """
     return " ".join(_WORD_SEPARATORS.sub(" ", text.lower()).split())
 
@@ -450,21 +442,44 @@ def normalise(text: str) -> str:
 def reads_as_worker_confirmation(text: str) -> bool:
     """Whether the worker themselves said yes to the plan in this turn.
 
-    Two conditions, and a yes needs both: the turn opens with one of a closed set of
-    affirmations, and it contains none of the words that turn a yes into a qualification. A
+    One condition, and it is about the **whole** turn: every word of it, in order, must be
+    spanned by phrases from the closed :data:`AFFIRMATIONS` set and nothing else. *yes*, *ok*,
+    *do it*, *yes please* and *yeah go ahead* are confirmations; a turn carrying one single word
+    that is not an affirmation is not one, whatever that word is and wherever it sits. A
     confirmation additionally needs a plan identity the worker was actually read, which
     :func:`plan` checks separately -- so a yes to nothing in particular confirms nothing.
+
+    **Why an allowlist and not a list of disqualifiers.** This check used to accept an opening
+    affirmation followed by anything, minus a short blacklist of words that qualify a yes. That
+    is unsound in two ways at once, and both were live. A blacklist can only ever be as complete
+    as the last sentence somebody thought of, so *"yes, if the customer agrees"* and *"yes, once
+    the oven is fixed"* authorised a plan nobody had authorised. And :func:`normalise` turns
+    punctuation into spaces, so *"yes, don't proceed"* became ``yes don t proceed`` -- the
+    blacklisted ``dont`` was never there to be found, and a refusal was read as approval.
+
+    Spanning the whole turn closes both holes structurally rather than by enumeration.
+    Normalisation can no longer convert a refusal into an approval, because whatever it makes of
+    *don't* -- ``don t``, ``dont``, anything at all -- those words are not affirmations, so the
+    turn fails as a whole. Nothing outside the set can appear anywhere, which is why the set does
+    not have to grow to stay safe. It fails towards asking again, which costs a turn, rather than
+    towards confirming something nobody agreed to, which costs an order.
 
     Not the customer consent parser, not reachable from it, and not a substitute for it. A
     customer's agreement is a literal reply on that order's own channel, checked by
     :mod:`promisepatch.domain.consent`, which this module cannot import and does not resemble.
     """
-    words = normalise(text).split()
+    words = tuple(normalise(text).split())
     if not words:
         return False
-    if set(words) & NEGATIONS:
-        return False
-    return any(words[: len(parts)] == parts for parts in (p.split() for p in AFFIRMATIONS))
+    reached = [False] * (len(words) + 1)
+    reached[0] = True
+    for start in range(len(words)):
+        if not reached[start]:
+            continue
+        for length in range(1, min(_LONGEST_AFFIRMATION, len(words) - start) + 1):
+            if words[start : start + length] in _AFFIRMATION_PHRASES:
+                reached[start + length] = True
+    return reached[len(words)]
 
 
 def reads_as_worker_withdrawal(text: str) -> bool:
@@ -493,7 +508,6 @@ __all__ = [
     "EFFECTING",
     "HEADLINE_PHASES",
     "MAX_TOOL_CALLS_PER_TURN",
-    "NEGATIONS",
     "PERMITTED",
     "REFUSAL_SENTENCES",
     "TOOL_NAMES",

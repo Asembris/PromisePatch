@@ -635,6 +635,36 @@ async def test_a_spoken_plain_yes_confirms_the_plan_that_was_read_out(
     assert (await physical.case(case_id)).state == "EXECUTING"
 
 
+async def test_the_same_spoken_yes_arriving_twice_confirms_one_plan_once(
+    worker: Browser, physical: Intake
+) -> None:
+    """Replay safety is the command's, and reading the words again does not weaken it.
+
+    The literal check runs on both deliveries and passes both times, because it is a function of
+    the sentence and nothing else. What makes the second delivery harmless is the command
+    identity underneath it, so the narrowing of the grammar can be shown not to have moved that:
+    one confirmation, one state, and the second answer says so.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+    body = {
+        "command_id": str(uuid4()),
+        "case_id": str(case_id),
+        "plan_id": view.plan_id,
+        "text": "yes, go ahead",
+    }
+
+    first = await worker.say("confirm", body)
+    again = await worker.say("confirm", body)
+
+    assert first.status_code == 202, first.text
+    assert again.status_code == 202, again.text
+    assert first.json()["created"] is True
+    assert again.json()["created"] is False
+    assert first.json()["statement_id"] == again.json()["statement_id"]
+    assert (await physical.case(case_id)).state == "EXECUTING"
+
+
 @pytest.mark.parametrize(
     "said",
     [
@@ -644,6 +674,27 @@ async def test_a_spoken_plain_yes_confirms_the_plan_that_was_read_out(
         "no",
         "cancel that",
         "the strawberries came",
+        # Negation the punctuation stripper takes apart: `don't` normalises to `don t`, so no
+        # amount of looking for the word `dont` finds one. These confirmed the plan before the
+        # whole-utterance grammar, which is the worst shape this route could have had -- a
+        # refusal spoken out loud and answered by executing.
+        "Yes, don't proceed.",
+        "yes, that won't work",
+        # Negation left whole, and a qualification. These were already refused; they are here so
+        # the two halves of the same sentence shape are asserted side by side.
+        "Yes, do not proceed.",
+        "Yes, but wait.",
+        # Conditions. Assent to something that has not happened yet is not assent now.
+        "Yes, if the customer agrees.",
+        "Yes, once the oven is fixed.",
+        # Quoted and reported assent: somebody else's word, or a description of one.
+        "yes is what she said",
+        'She said "yes, go ahead" earlier',
+        # Explanation and mixed intent behind a perfectly good opening affirmation.
+        "OK so the plan is to substitute the raspberries",
+        "yes and also hold the wedding cake",
+        # Hedging.
+        "yes maybe",
     ],
 )
 async def test_a_spoken_sentence_that_is_not_a_plain_yes_confirms_nothing(
@@ -654,6 +705,11 @@ async def test_a_spoken_sentence_that_is_not_a_plain_yes_confirms_nothing(
     None of them is re-routed anywhere. The case is not clarified, not withdrawn and not asked a
     question -- doing something else with words nobody could read as agreement would be the
     surface guessing at what a worker meant.
+
+    Asserted here, through the route, rather than only against the predicate: what matters is not
+    that a function returned ``False`` but that a real case holding a real plan is still
+    ``PLANNED`` afterwards, with the worker's session, CSRF token and a valid plan identity all
+    present and only the words refusing.
     """
     case_id = await planned(physical)
     view = await worker.workspace(case_id)
