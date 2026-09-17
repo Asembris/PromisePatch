@@ -40,6 +40,10 @@ These are load-bearing. Never weaken one to make something work; amend the ADR f
 - **Physical facts** (received / not received / spoiled / equipment out) are authoritative
   independently of recovery authorization. Declining a plan never un-spoils anything; only an
   explicit correcting attestation reverses a fact.
+- **Work that has started is never reported as stopped.** Scheduled work on a blocked promise is
+  held so it cannot begin; started work is escalated to its owner and never held, because release
+  restores the literal `SCHEDULED` and would assert that begun work never began. See ADR-0017 and
+  [started-work-contract.md](docs/started-work-contract.md).
 - A commitment line is open (`EXPECTED`) or settled. Settlement posts its physical outcome to
   the ledger exactly once; a settled line contributes zero to expected supply. Received supply
   is never also counted as expected.
@@ -208,6 +212,7 @@ read the source document rather than a paraphrase of it.
 | Judge-facing UX | [p7.1-judge-ux-contract.md](docs/p7.1-judge-ux-contract.md), [p7.1-design-handoff.md](docs/p7.1-design-handoff.md), [p7.3-deployed-judge-surface.md](docs/p7.3-deployed-judge-surface.md) |
 | Effect sets | [effect-set-manifest.md](docs/effect-set-manifest.md), [effect-set-harness.md](docs/effect-set-harness.md), [effect-set-run-protocol.md](docs/effect-set-run-protocol.md), [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md), [effect-set-failure-diagnosis.md](docs/effect-set-failure-diagnosis.md) |
 | G7 and G8 | [g7-closeout.md](docs/g7-closeout.md), [g8-adversarial-proof-map.md](docs/g8-adversarial-proof-map.md), [g8-head-of-line-measurement.md](docs/g8-head-of-line-measurement.md), [g8-head-of-line-disposition.md](docs/g8-head-of-line-disposition.md) |
+| Started work and the hold contract | [started-work-contract.md](docs/started-work-contract.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Order system | [order-system.md](docs/order-system.md) |
