@@ -66,3 +66,7 @@ playwright-report/
 blob-report/
 .playwright/
 playwright/.cache/
+
+# Claude Code's native isolated worktrees. Each is a throwaway checkout of this repository
+# created for one agent; it is never part of the repository's own history.
+.claude/worktrees/

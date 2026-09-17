@@ -1,0 +1,16 @@
+# Gitignored files copied into every Claude Code worktree under `.claude/worktrees/`.
+#
+# A worktree is a fresh checkout, so it gets only what git tracks. The three documents below
+# are authoritative whenever present and are deliberately never committed, which means an
+# agent working in a worktree would decide without them. They are copied in so that it does
+# not. Gitignore syntax; only gitignored files are ever copied.
+#
+# Deliberately absent: `.env`, `docker/env/*.env` and `.mcp.json`. They carry real
+# credentials, and nothing an isolated agent is asked to do needs them -- the database-backed
+# tests skip themselves cleanly when `PP_DATABASE_URL` and `PP_MIGRATION_DATABASE_URL` are
+# unset rather than failing, and the shared Docker stack, the shared PostgreSQL and AWS are
+# mutually exclusive resources that no parallel agent may hold.
+
+new_roadmap.md
+PROMISEPATCH_PRODUCT_SPEC.md
+ARCHITECTURE_PLAN.md
