@@ -447,6 +447,30 @@ failing, neither of which this audit caused. Audit only: nothing was built, repa
 three cheap invocations, or deployed, and the immutable 11/16 headline is unchanged. See
 `docs/g8-adversarial-proof-map.md`.
 
+**The MCP human-confirmation trust boundary is closed.** A plan confirmation used to be minted
+by whichever service called it: over the browser that caller was a signed-in person and the
+`HUMAN_APPROVAL` audit row was true, and over MCP it was a process holding a shared service token
+with the actor read from `PP_SURFACE_WORKER_ID` -- so an authenticated host, and therefore a model
+driving one, could produce durable evidence that a named baker had approved a plan they never
+heard. A confirmation now **spends** a durable, plan-bound approval it cannot write: `plan_approvals`
+is governed and append-only, unique on `(case_id, plan_id)`, and its `ApprovalChannel` has exactly
+two members -- `BROWSER_SESSION` and `OPERATOR_CONSOLE` -- with **no member a service surface could
+name**, checked by the database. `recovery.confirm_plan` lost `worker_id` and gained `approval_id`,
+so there is no parameter anywhere on any transport through which a caller can name the person whose
+yes it is, and the intent API calls `find` and never `record`. Refusals are ordered so a caller
+learns the case, the state and the plan are wrong before it learns anything about authority. The
+MCP `confirm` contract changed rather than being preserved misleadingly: same three arguments, and
+its description, the server `INSTRUCTIONS` and `ConfirmResult` all now say it spends a worker's
+agreement and can never create one, with `approved_via` beside `confirmed_by`. The browser is
+unchanged from a caller's view -- same `202`, counts, speech and ADR-0015 parsing -- and gained
+`POST /api/conversation/approve`, which records a yes without carrying it out so a conversation on
+another transport can. Proved by 17 targeted tests against real PostgreSQL plus additions to the
+browser, orchestrator, intent-API and protocol suites, including the defect reproduced exactly as
+it was reachable and the orchestrator's own literal gate removed with the case still not moving.
+No live model call, nothing deployed; a redeploy needs migration `0009_human_plan_approval`. The
+`g8-adversarial-proof-map` §1.3 **PROVEN** was client-side only and carries an amendment saying so.
+See `docs/mcp-human-confirmation-boundary.md` and ADR-0018.
+
 ## Authoritative documents
 
 `PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,

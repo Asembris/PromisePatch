@@ -368,3 +368,38 @@ on**, because this page is scoped to four bullets and forbidden production chang
 G8's own bullets that are out of scope — the demo-contract runner, the five deployed rehearsals, the
 curated DEVELOPMENT evidence, the licence and standalone-engine check, and the release-SHA CI freeze
 — are untouched by this audit and remain open.
+
+---
+
+## Amendment, 2026-09-17 — §1.3 was proven of the orchestrator and not of the surface
+
+**This page is left as it was written, and this section says what a later trace found.** The audit
+above was honest about the artifacts it read; what it did not ask was whether those artifacts
+covered every client. They did not.
+
+Every test cited under **1.3 Model self-confirmation** lives in `test_orchestrator.py` and asserts
+the behaviour of *our* loop: that `reads_as_worker_confirmation` refuses an agreeable turn, that
+the `plan_id` reaching the tool is the one copied out of `status`, and that `ToolSelection` has no
+field a fabricated identity could travel in. All four still pass and all four still matter.
+
+None of them is a property of the MCP surface. In the MCP architecture the model *is* the client,
+and a different host — or a direct authenticated call with `curl` — runs none of that code. On the
+surface itself, `confirm(case_id, plan_id)` over a valid service token moved the case to
+`EXECUTING` and wrote an audit row reading `authority = HUMAN_APPROVAL, actor = maya`, with
+nothing anywhere in the chain having established that a human was present. Host authentication is
+not human consent, and the record said it was.
+
+**§1.3 is now PROVEN of the surface as well as of the loop**, and by server-side evidence rather
+than client-side: a confirmation spends a durable, plan-bound approval that only a channel where
+this system authenticates a person can write, and the MCP path has no channel it could name. The
+sharpest of the new tests is the one that removes the loop's own gate and shows the case not
+moving anyway —
+`apps/backend/tests/test_orchestrated_conversation.py::test_the_model_choosing_confirm_on_an_unapproved_plan_changes_nothing`
+— beside
+`apps/backend/tests/test_human_confirmation_boundary.py::test_a_direct_confirm_over_the_service_surface_cannot_manufacture_a_yes`,
+which is the defect reproduced exactly as it was reachable and then refused.
+
+See [`mcp-human-confirmation-boundary.md`](mcp-human-confirmation-boundary.md) and
+[ADR-0018](adr/0018-a-plan-confirmation-spends-a-human-approval.md). **Nothing else on this page
+changes**: the other fourteen rows are unaffected, bullet four's head-of-line measurement remains
+**UNPROVEN**, and the immutable 11/16 headline is untouched.
