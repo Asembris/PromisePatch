@@ -404,9 +404,19 @@ create_stack_change_set () {
 #
 # A `Remove` counts as well as a `Replacement`, because renaming a logical resource is reported
 # as an Add and a Remove with no replacement flag at all, and that is also a new instance.
+#
+# `Conditional` counts too, and that one was found against the live stack on 2026-09-18 rather
+# than by reading the script. `Replacement` is not a boolean: CloudFormation answers `True`,
+# `False` or `Conditional`, the last meaning it cannot decide in advance and the resource may be
+# replaced when the change set runs. A release submitting a template whose `UserData` differs
+# from the deployed one gets exactly that -- `Host` with `RequiresRecreation: Conditionally` and
+# `ElasticIpAssociation` with `Always` on its `InstanceId` -- and a detector matching only `True`
+# returned nothing, so `stage_stack` printed "replaces and removes nothing" and would have
+# executed a plan that may destroy the instance. Unknown fails closed: a maybe is refused, and
+# replacing the host on purpose is still `host-image`.
 replaced_by_change_set () {
   aws cloudformation describe-change-set --region "$REGION" --change-set-name "$1" \
-    --query "Changes[?ResourceChange.Replacement=='True' || ResourceChange.Action=='Remove'].ResourceChange.LogicalResourceId" \
+    --query "Changes[?ResourceChange.Replacement=='True' || ResourceChange.Replacement=='Conditional' || ResourceChange.Action=='Remove'].ResourceChange.LogicalResourceId" \
     --output text
 }
 

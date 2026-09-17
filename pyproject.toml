@@ -39,6 +39,13 @@ dev = [
     # that had nothing to do with it.
     "pyyaml>=6.0",
     "types-PyYAML>=6.0",
+    # The release guard refuses a change set by running one JMESPath expression over what
+    # `describe-change-set` returned, and the test that holds it runs that same expression --
+    # read out of `deploy.sh` -- over a payload AWS actually sent. Anything less exercises the
+    # stub's answer instead of the filter, which is how `Replacement: Conditional` went unseen.
+    # Declared for the same reason as PyYAML above: botocore requires it today, and a test that
+    # leaned on that would break for a reason that had nothing to do with it.
+    "jmespath>=1.0",
 ]
 
 # Evaluation only, and deliberately its own group rather than part of `dev`. It is not a default
@@ -127,6 +134,13 @@ disallow_untyped_decorators = false
 # import wide rather than spread through the application.
 [[tool.mypy.overrides]]
 module = ["boto3.*", "botocore.*"]
+ignore_missing_imports = true
+
+# jmespath ships no py.typed marker either. It is imported by exactly one test, which runs the
+# release guard's own query over a recorded change set, and the value it returns is compared
+# against a list of logical resource ids -- so the untyped surface is one call wide.
+[[tool.mypy.overrides]]
+module = ["jmespath.*"]
 ignore_missing_imports = true
 
 # The OpenAI SDK does ship `py.typed`, and this override is not about its types: it is an

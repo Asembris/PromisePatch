@@ -34,6 +34,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import jmespath
 import pytest
 import yaml
 from botocore.exceptions import ClientError
@@ -831,6 +832,107 @@ def test_a_release_refuses_a_change_set_that_would_replace_anything() -> None:
     )
     refusal = stack[stack.index("replaced_by_change_set") : stack.index("execute_stack_change_set")]
     assert "|| die" in refusal or "die " in refusal, "a replacement is read and not refused"
+
+
+# Exactly what `describe-change-set` returned for the change set built against `promisepatch-prod`
+# on 2026-09-18: a release submitting this repository's template, with the AMI the stack already
+# declares and `SeedDemoFixtureOnFirstBoot=false`. It was created, read, and deleted unexecuted.
+#
+# `Replacement` is not a boolean. The detector matched `True` alone, this payload says
+# `Conditional`, and so the guard returned nothing and `stage_stack` would have executed a plan
+# that may destroy the host. The stub two hundred lines below cannot find that, because it
+# answers `describe-change-set` with the *result* of the query rather than with a payload the
+# query runs against -- so the filter expression itself was never executed by any test. This one
+# runs the script's own query, taken out of the script, against what AWS actually said.
+LIVE_CHANGE_SET_THAT_MAY_REPLACE_THE_HOST: dict[str, Any] = {
+    "Changes": [
+        {
+            "Type": "Resource",
+            "ResourceChange": {
+                "Action": "Modify",
+                "LogicalResourceId": "ElasticIpAssociation",
+                "ResourceType": "AWS::EC2::EIPAssociation",
+                "Replacement": "Conditional",
+                "Scope": ["Properties"],
+                "Details": [
+                    {
+                        "Target": {
+                            "Attribute": "Properties",
+                            "Name": "InstanceId",
+                            "RequiresRecreation": "Always",
+                        },
+                        "Evaluation": "Dynamic",
+                        "ChangeSource": "ResourceReference",
+                    }
+                ],
+            },
+        },
+        {
+            "Type": "Resource",
+            "ResourceChange": {
+                "Action": "Modify",
+                "LogicalResourceId": "Host",
+                "ResourceType": "AWS::EC2::Instance",
+                "Replacement": "Conditional",
+                "Scope": ["Properties"],
+                "Details": [
+                    {
+                        "Target": {
+                            "Attribute": "Properties",
+                            "Name": "UserData",
+                            "RequiresRecreation": "Conditionally",
+                        },
+                        "Evaluation": "Dynamic",
+                        "ChangeSource": "DirectModification",
+                    }
+                ],
+            },
+        },
+    ]
+}
+
+# The same shape for a plan that genuinely replaces nothing, so the assertion below is that the
+# query *discriminates* rather than that it matches everything it is shown.
+LIVE_CHANGE_SET_THAT_REPLACES_NOTHING: dict[str, Any] = {
+    "Changes": [
+        {
+            "Type": "Resource",
+            "ResourceChange": {
+                "Action": "Modify",
+                "LogicalResourceId": "Host",
+                "ResourceType": "AWS::EC2::Instance",
+                "Replacement": "False",
+                "Scope": ["Properties"],
+                "Details": [],
+            },
+        }
+    ]
+}
+
+
+def _replacement_query() -> str:
+    """The `--query` the release guard actually sends, read out of the script."""
+    found = re.search(r'--query "([^"]+)"', _function("replaced_by_change_set"))
+    assert found is not None, "the replacement guard sends no --query"
+    return found.group(1)
+
+
+def test_a_conditional_replacement_is_refused_like_a_certain_one() -> None:
+    """`Replacement` has three values and only one of them means "nothing will be replaced".
+
+    `Conditional` is CloudFormation saying it cannot decide in advance -- the resource may be
+    replaced when the plan runs. A release that treats a maybe as a no executes it, and for an
+    `AWS::EC2::Instance` that maybe is the host. Unknown fails closed.
+    """
+    query = _replacement_query()
+    replaced = jmespath.search(query, LIVE_CHANGE_SET_THAT_MAY_REPLACE_THE_HOST)
+    assert replaced == ["ElasticIpAssociation", "Host"], (
+        "a change set AWS says may replace the host reads as replacing nothing, "
+        f"so a release would execute it; the guard returned {replaced!r}"
+    )
+    assert jmespath.search(query, LIVE_CHANGE_SET_THAT_REPLACES_NOTHING) == [], (
+        "the guard refuses a plan that replaces nothing, so no release can ever run"
+    )
 
 
 def test_replacing_the_host_is_never_reached_by_a_release() -> None:
