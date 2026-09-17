@@ -70,7 +70,7 @@ from promisepatch.db.models import (
 )
 from promisepatch.db.models import Worker as WorkerRow
 from promisepatch.db.uow import Actor, UnitOfWork
-from promisepatch.domain import analysis, approvals, crash, handlers, intake, recovery
+from promisepatch.domain import analysis, approvals, cases, crash, handlers, intake, recovery
 from promisepatch.domain import inbox as inbox_ledger
 from promisepatch.domain.adapters import FakeEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
@@ -764,6 +764,27 @@ class Intake:
                     .where(Track.id == track_id)
                     .values(deadline_at=text("now() - interval '1 second'"))
                 )
+
+    async def close_plan_window(self, case_id: UUID) -> bool:
+        """Let §14.1's ten minutes pass on a plan nobody has confirmed, and say whether one was.
+
+        Deterministic where sleeping is not, exactly as :meth:`close_window` is for an approval
+        deadline: the timer is compared against the database's own clock, so moving the row
+        backwards is precisely equivalent to the window having elapsed. Returns ``False`` where
+        there was no live deadline, because a case that is not waiting for a confirmation cannot
+        be made to have waited too long for one.
+        """
+        async with self.database.begin() as connection:
+            result = await connection.execute(
+                sa_update(Timer)
+                .where(
+                    Timer.kind == cases.TIMER_PLAN_AUTO_ESCALATION,
+                    Timer.subject_id == str(case_id),
+                    Timer.fired_at.is_(None),
+                )
+                .values(due_at=text("now() - interval '1 second'"))
+            )
+        return bool(result.rowcount)
 
     async def expire_effect_lease(self, effect_id: UUID) -> None:
         """Age an outbox claim out without waiting: leases compare against the DB clock."""

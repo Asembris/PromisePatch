@@ -268,6 +268,130 @@ async def test_unaffected_tracks_are_untouched_by_a_confirmation(physical: Intak
         assert after[promise_id].version == before[promise_id].version
 
 
+# ------------------------------------------------- the plan window: a wait with a limit on it
+
+
+async def plan_deadline(intake_fixture: Intake, case_id: UUID) -> Any:
+    """This case's live plan deadline, or ``None`` if it is not waiting for a confirmation."""
+    live = [
+        timer
+        for timer in await intake_fixture.timers()
+        if timer.kind == cases.TIMER_PLAN_AUTO_ESCALATION
+        and timer.subject_id == str(case_id)
+        and timer.fired_at is None
+    ]
+    assert len(live) <= 1, "a case waits for one confirmation at a time"
+    return live[0] if live else None
+
+
+async def test_a_planned_case_arms_the_deadline_on_its_own_wait(physical: Intake) -> None:
+    """§14.1 bounds ``PLANNED`` at ten minutes, and the bound is a row rather than a promise."""
+    case_id = await planned_case(physical)
+
+    timer = await plan_deadline(physical, case_id)
+
+    assert timer is not None
+    assert timer.subject_type == "CASE"
+    assert timer.due_at > (await physical.case(case_id)).updated_at
+
+
+async def test_a_plan_deadline_that_has_not_passed_changes_nothing(physical: Intake) -> None:
+    """The wait is real. Running the worker is not what ends it -- the ten minutes are."""
+    case_id = await planned_case(physical)
+    before = await physical.tasks()
+
+    await physical.drain(limit=30)
+
+    assert (await physical.case(case_id)).state == cases.CASE_PLANNED
+    assert await physical.tasks() == before
+    assert await physical.effects() == []
+
+
+async def test_a_plan_nobody_confirms_reaches_the_owner_with_its_kitchen_work_held(
+    physical: Intake,
+) -> None:
+    """The ending §14.1 names, and the one an unbounded wait never arrived at.
+
+    Every live track goes, because what expired is the plan rather than any one track of it,
+    and each takes §13.5's hold with it: the kitchen is not left making a cake whose recovery
+    this case can no longer authorise.
+    """
+    case_id = await planned_case(physical)
+    live = {
+        track.promise_id for track in await physical.tracks(case_id) if track.state == "PENDING"
+    }
+
+    assert await physical.close_plan_window(case_id) is True
+    await physical.drain(limit=40)
+
+    after = await states(physical, case_id)
+    assert live == {A, B, C, D}
+    assert all(after[promise_id] == recovery.TRACK_ESCALATED for promise_id in live)
+    held = await physical.tasks()
+    for line in (ho.LINE_A, ho.LINE_B, ho.LINE_C, ho.LINE_D):
+        assert held[f"task-{line}"] == ("HELD", case_id)
+    case = await physical.case(case_id)
+    assert case.needs_owner_attention is True
+    assert case.state == cases.CASE_RESOLVED
+
+
+async def test_an_unconfirmed_plan_is_never_carried_out(physical: Intake) -> None:
+    """The gate is not what this removes. A plan nobody read is still never executed.
+
+    The escalation ends the waiting and authorises nothing: no order is amended, no customer is
+    asked anything, and the promises the exception never reached are not reconsidered.
+    """
+    case_id = await planned_case(physical)
+    before = {track.promise_id: track for track in await physical.tracks(case_id)}
+
+    await physical.close_plan_window(case_id)
+    await physical.drain(limit=40)
+
+    assert await physical.effects() == []
+    assert await physical.requests() == []
+    after = {track.promise_id: track for track in await physical.tracks(case_id)}
+    for promise_id in (E, F):
+        assert after[promise_id].state == "UNAFFECTED"
+        assert after[promise_id].version == before[promise_id].version
+
+
+async def test_a_confirmation_ends_the_deadline_it_is_the_answer_to(physical: Intake) -> None:
+    """A yes that arrives after the ten minutes have elapsed is still a yes.
+
+    The deadline is cancelled inside the confirming transaction, so a worker who answers a
+    moment too late gets their plan executed rather than an escalation of it -- and the case is
+    never escalated by a deadline for a wait that has ended.
+    """
+    case_id = await planned_case(physical)
+    assert await physical.close_plan_window(case_id) is True
+
+    await physical.confirm(case_id)
+    await physical.drain(limit=40)
+
+    assert await plan_deadline(physical, case_id) is None
+    assert (await states(physical, case_id))[A] == recovery.TRACK_RECOVERED
+
+
+async def test_an_auto_escalation_that_runs_twice_escalates_once(physical: Intake) -> None:
+    """A redelivered deadline is a deadline for a plan the case has already moved past."""
+    case_id = await planned_case(physical)
+    await physical.close_plan_window(case_id)
+    await physical.drain(limit=40)
+    escalation = next(
+        step for step in await physical.steps(case_id) if step.kind == recovery.STEP_ESCALATE_PLAN
+    )
+    held = await physical.tasks()
+    tracks = {track.promise_id: track.version for track in await physical.tracks(case_id)}
+
+    await physical.requeue(escalation.id)
+    await physical.drain(limit=40)
+
+    replayed = await physical.step_named(case_id, escalation.step_key)
+    assert replayed.result["outcome"] == "NOT_APPLICABLE"
+    assert await physical.tasks() == held
+    assert {track.promise_id: track.version for track in await physical.tracks(case_id)} == tracks
+
+
 async def test_confirming_a_case_that_is_not_planned_is_rejected(physical: Intake) -> None:
     """A yes is an answer to a question, and an unplanned case has not asked one."""
     opened = await physical.report()

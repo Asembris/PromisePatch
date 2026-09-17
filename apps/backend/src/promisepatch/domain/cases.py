@@ -19,7 +19,7 @@ rows from one place is what makes the answer independent of which of them happen
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Final
 from uuid import UUID
 
@@ -30,7 +30,13 @@ from promise_graph.model import ApprovalRequestState
 from promisepatch.db.models import ApprovalRequest, Case, CaseStep, Track
 from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import GovernedWrite
-from promisepatch.domain.model import AppendEvent, CaseChange, CreateStep
+from promisepatch.domain.model import (
+    CASE_SUBJECT,
+    AppendEvent,
+    ArmTimer,
+    CaseChange,
+    CreateStep,
+)
 
 CASE_PLANNED: Final = "PLANNED"
 CASE_EXECUTING: Final = "EXECUTING"
@@ -58,6 +64,18 @@ Declared beside the reconciliation step for the same reason: the transitions tha
 are spread across the engine, and several modules need to read a track's checklist back without
 importing the module that runs it.
 """
+
+
+TIMER_PLAN_AUTO_ESCALATION: Final = "PLAN_AUTO_ESCALATION"
+"""§14.1's deadline on a plan nobody has confirmed, named as ``ARCHITECTURE_PLAN`` names it.
+
+One of the four persisted deadline kinds, armed in the same transaction as the state it belongs
+to. A case in ``PLANNED`` is waiting for a person to say yes, which is right; waiting for one
+without limit is not, and an unbounded wait is the one resting state §14.1 does not allow.
+"""
+
+PLAN_CONFIRMATION_WINDOW: Final = timedelta(minutes=10)
+"""§14.1: "awaiting worker 'yes'. Auto-escalates to owner after 10 min.\""""
 
 
 def reconcile_step_key(case_id: UUID) -> str:
@@ -352,6 +370,30 @@ async def case_successors(
         from promisepatch.domain.revalidation import work_for_case
 
         return await work_for_case(connection, case_id)
+    return ()
+
+
+def case_timers(moved_to: str | None, *, case_id: UUID) -> tuple[ArmTimer, ...]:
+    """The deadline a case's own move starts, when the move starts one.
+
+    One state does. Entering ``PLANNED`` begins a wait on a human being, and §14.1 bounds that
+    wait at ten minutes. Armed by the transition that reached the state rather than by a sweep,
+    for the same reason its successors are: the wait and the limit on it commit together, so
+    there is no window in which a case is waiting and nothing is counting.
+
+    Idempotent by the database rather than by this function -- ``timers`` carries one live row
+    per subject -- so a transition retried after a crash re-arms harmlessly and does not move a
+    deadline that is already counting down.
+    """
+    if moved_to == CASE_PLANNED:
+        return (
+            ArmTimer(
+                kind=TIMER_PLAN_AUTO_ESCALATION,
+                subject_type=CASE_SUBJECT,
+                subject_id=str(case_id),
+                delay=PLAN_CONFIRMATION_WINDOW,
+            ),
+        )
     return ()
 
 

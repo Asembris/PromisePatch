@@ -258,6 +258,20 @@ async def expire_open_ask(intake: Intake, case_id: UUID, order: str) -> bool:
     return bool(open_now)
 
 
+async def plan_window_closes(intake: Intake, case_id: UUID) -> bool:
+    """Let the ten minutes pass on a plan nobody confirmed, and say whether there was one.
+
+    §14.1 bounds the wait a ``PLANNED`` case is in: it is awaiting a worker's yes, and after ten
+    minutes it goes to the owner instead. Two scenarios re-plan a track and reach that wait, and
+    a checkpoint that read them before the deadline would be reading a case with outstanding
+    work rather than a settled one -- so the deadline is made to have passed, deliberately and
+    by name, exactly as :func:`expire_open_ask` does for the approval window beside it.
+
+    Nothing here confirms anything. The plan is still never executed; what ends is the waiting.
+    """
+    return await intake.close_plan_window(case_id)
+
+
 async def customer_consents(intake: Intake, wired: Boundary, case_id: UUID) -> None:
     """Tomas replies ``YES`` on his own channel, and the workflow acts on it.
 
@@ -703,6 +717,7 @@ async def test_s06_stale_approved_order_version(
         observations["CONSENT_SETTLED"] = await observe(physical, case_id=case_id, since=since)
 
         await expire_open_ask(physical, case_id, TOMAS)
+        await plan_window_closes(physical, case_id)
         await settle(physical, wired)
         await quiescent(physical, case_id)
         observations["SETTLED"] = await observe(physical, case_id=case_id, since=since)
@@ -747,6 +762,7 @@ async def test_s07_stale_approved_stock_state(
         await quiescent(physical, case_id)
         observations["CONSENT_SETTLED"] = await observe(physical, case_id=case_id, since=since)
 
+        await plan_window_closes(physical, case_id)
         await settle(physical, wired)
         await quiescent(physical, case_id)
         observations["SETTLED"] = await observe(physical, case_id=case_id, since=since)

@@ -112,6 +112,7 @@ from promisepatch.domain.cases import (
     CASE_RECONCILING,
     CASE_REVALIDATING,
     STEP_RECONCILE_CASE,
+    TIMER_PLAN_AUTO_ESCALATION,
     TRACK_WAITING_FOR_CUSTOMER,
     LockedCase,
     apply_case_change,
@@ -124,9 +125,7 @@ from promisepatch.domain.cases import (
 )
 from promisepatch.domain.intake import actor_for, require_permitted, require_worker
 from promisepatch.domain.model import (
-    EFFECT_ORDER_AMEND as _EFFECT_ORDER_AMEND,
-)
-from promisepatch.domain.model import (
+    CASE_SUBJECT,
     EFFECT_TRACK_ID,
     EVENT_STEP_COMPLETED,
     EVENT_STEP_FAILED,
@@ -137,6 +136,10 @@ from promisepatch.domain.model import (
     EmitEffect,
     StepOutcome,
 )
+from promisepatch.domain.model import (
+    EFFECT_ORDER_AMEND as _EFFECT_ORDER_AMEND,
+)
+from promisepatch.domain.timers import cancel_timer
 from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
@@ -171,8 +174,17 @@ STEP_APPLY_RECOVERY: Final = "APPLY_RECOVERY"
 STEP_FINALIZE_RECOVERY: Final = "FINALIZE_RECOVERY"
 STEP_ABANDON_RECOVERY: Final = "ABANDON_RECOVERY"
 
+STEP_ESCALATE_PLAN: Final = "ESCALATE_PLAN"
+"""§14.1's ten minutes ran out and no worker said yes. The plan goes to the owner instead.
+
+Created by a ``timers`` row rather than by a sweep, so downtime delays it and never loses it,
+and it runs here because what it does to each promise -- hand it to the owner and hold its
+kitchen work -- is this module's own vocabulary. It authorises nothing: a plan nobody confirmed
+is never executed, and this is the ending that says so rather than a second way to act on one.
+"""
+
 RECOVERY_STEP_KINDS: Final[frozenset[str]] = frozenset(
-    {STEP_APPLY_RECOVERY, STEP_FINALIZE_RECOVERY, STEP_ABANDON_RECOVERY}
+    {STEP_APPLY_RECOVERY, STEP_FINALIZE_RECOVERY, STEP_ABANDON_RECOVERY, STEP_ESCALATE_PLAN}
 )
 
 _APPLICABLE_CASE_STATES: Final[frozenset[str]] = frozenset(
@@ -207,6 +219,17 @@ def finalize_step_key(track_id: UUID) -> str:
 def abandon_step_key(track_id: UUID) -> str:
     """The other ending, for a delivery that will not be retried again."""
     return f"abandon:{track_id}"
+
+
+def escalate_plan_step_key(timer_id: UUID) -> str:
+    """Derived from the deadline that fired, so firing one twice enqueues one step.
+
+    Keyed on the timer rather than on the case, because a case may legitimately enter
+    ``PLANNED`` more than once -- a re-planned track returns it there -- and each wait is its own
+    deadline with its own ending. A key derived from the case would let the first wait's step
+    silently swallow the second one's.
+    """
+    return f"plan-escalated:{timer_id}"
 
 
 def track_of(step_key: str) -> UUID:
@@ -269,6 +292,7 @@ AUDIT_RECOVERY_APPLIED: Final = "RECOVERY_APPLIED"
 AUDIT_RECOVERY_COMPLETED: Final = "RECOVERY_COMPLETED"
 AUDIT_RECOVERY_STALE: Final = "RECOVERY_STALE"
 AUDIT_RECOVERY_ABANDONED: Final = "RECOVERY_ABANDONED"
+AUDIT_PLAN_AUTO_ESCALATED: Final = "PLAN_AUTO_ESCALATED"
 
 # -------------------------------------------------------------------------- escalation reasons
 
@@ -277,6 +301,7 @@ ESCALATION_NO_CHOSEN_OPTION: Final = "NO_CHOSEN_OPTION"
 ESCALATION_DOWNSTREAM_UNAVAILABLE: Final = "DOWNSTREAM_UNAVAILABLE"
 ESCALATION_MIRROR_NOT_RECONCILED: Final = "MIRROR_NOT_RECONCILED"
 ESCALATION_PLAN_STALE: Final = "PLAN_STALE"
+ESCALATION_PLAN_UNCONFIRMED: Final = "PLAN_UNCONFIRMED"
 """Why a track was handed to the owner.
 
 Recorded on the audit row and the domain event rather than on ``tracks.reason_detail``, which
@@ -493,6 +518,17 @@ async def _confirm(
         for track, _ in plan.escalate:
             await _escalate_track(write, track=track)
             held[track.id] = await hold_tasks(write, track=track, case_id=case_id)
+
+        # §14.1's ten minutes were a limit on this wait, and the wait is over. Cancelled in the
+        # same transaction as the yes that ended it, so a deadline and the answer to it cannot
+        # be separated by a crash. The firing itself is guarded as well; this is what stops a
+        # case that returns to ``PLANNED`` later from inheriting the previous wait's clock.
+        await cancel_timer(
+            connection,
+            kind=TIMER_PLAN_AUTO_ESCALATION,
+            subject_type=CASE_SUBJECT,
+            subject_id=str(case_id),
+        )
 
         await _record_confirmation(
             connection,
@@ -762,6 +798,10 @@ async def execute(
         return await _apply(connection, case=case, step_key=step_key, now=now, worker=worker)
     if kind == STEP_FINALIZE_RECOVERY:
         return await _finalize(connection, case=case, step_key=step_key, now=now, worker=worker)
+    if kind == STEP_ESCALATE_PLAN:
+        return await _escalate_plan(
+            connection, case=case, step_key=step_key, now=now, worker=worker
+        )
     return await _abandon(connection, case=case, step_key=step_key, now=now, worker=worker)
 
 
@@ -1431,6 +1471,105 @@ async def _abandon(
             "outcome": "ESCALATED",
             "track_id": str(track.id),
             "reason": ESCALATION_DOWNSTREAM_UNAVAILABLE,
+        },
+    )
+
+
+# ------------------------------------------------------------------- the plan window closes
+
+
+async def _escalate_plan(
+    connection: AsyncConnection,
+    *,
+    case: LockedCase,
+    step_key: str,
+    now: datetime,
+    worker: str,
+) -> StepOutcome:
+    """§14.1's ten minutes passed and nobody confirmed the plan. It goes to the owner.
+
+    The confirmation gate is not being removed here and nothing is executed on the strength of
+    this: a plan no worker said yes to is never applied, no customer is asked anything, and no
+    order is touched. What ends is the *waiting*. §14.1 defines ``PLANNED`` as awaiting a
+    worker's yes and bounds that wait at ten minutes, and ``ARCHITECTURE_PLAN`` makes the bound
+    a persisted ``timers`` row rather than a nicety. Without it a case whose worker never
+    reopened it would wait for a person for ever, and the promises in it would stop moving with
+    no deadline, no escalation and nobody told.
+
+    Every live track goes, because the thing that expired is the plan rather than any one track
+    of it. Each takes §13.5's hold with it: the kitchen is not asked to carry on with work whose
+    recovery this case has just stopped being able to authorise, which is the same reason
+    §13.6's closed window and §23's unanswered deadline both hold.
+
+    ``TIMER_NOOP`` in §11.5's sense: a deadline for a plan somebody already confirmed, withdrew
+    or replaced changes nothing, and the case's own state is what says so.
+    """
+    if case.state != CASE_PLANNED:
+        return skipped(STEP_ESCALATE_PLAN, {"case_state": case.state})
+
+    tracks = (
+        await connection.execute(
+            select(Track)
+            .where(Track.case_id == case.id, Track.state == TRACK_PENDING)
+            .order_by(Track.id)
+            .with_for_update()
+        )
+    ).all()
+    if not tracks:
+        # A planned case with nothing live is a shape the planner does not produce. Refusing to
+        # invent an ending for it costs one branch; guessing would move a case on no evidence.
+        return skipped(STEP_ESCALATE_PLAN, {"live_tracks": 0})
+
+    unit_of_work = UnitOfWork(connection)
+    async with unit_of_work.governed(
+        event_type=AUDIT_PLAN_AUTO_ESCALATED,
+        # A deadline passing, authorised by nobody. In particular *not* by the worker whose yes
+        # this is the absence of: recording a human authority here would make a plan nobody read
+        # look like a plan somebody accepted.
+        actor=Actor(kind="SYSTEM", id=worker),
+        authority="NONE",
+        case_id=case.id,
+        before={"case_state": case.state, "live_tracks": [str(track.id) for track in tracks]},
+        after={
+            "case_state": CASE_RECONCILING,
+            "track_state": TRACK_ESCALATED,
+            "reason": ESCALATION_PLAN_UNCONFIRMED,
+        },
+        provenance={"step_key": step_key, "worker": worker},
+        occurred_at=now,
+    ) as write:
+        held: dict[UUID, tuple[str, ...]] = {}
+        for track in tracks:
+            await _escalate_track(write, track=track)
+            held[track.id] = await hold_tasks(write, track=track, case_id=case.id)
+    successors = await case_successors(connection, CASE_RECONCILING, case_id=case.id)
+
+    return StepOutcome(
+        disposition=Disposition.DONE,
+        event_type=EVENT_STEP_COMPLETED,
+        case_change=CaseChange(state=CASE_RECONCILING, needs_owner_attention=True),
+        successors=successors,
+        events=(
+            *(
+                AppendEvent(
+                    type=EVENT_TRACK_ESCALATED,
+                    payload={
+                        "reason": ESCALATION_PLAN_UNCONFIRMED,
+                        "rule_id": track.rule_id,
+                        "tasks_held": len(held[track.id]),
+                    },
+                    entity_refs=({"kind": "track", "id": str(track.id)},),
+                )
+                for track in tracks
+            ),
+            *case_events(CASE_RECONCILING, case_id=case.id),
+        ),
+        result={
+            "outcome": "ESCALATED",
+            "reason": ESCALATION_PLAN_UNCONFIRMED,
+            "tracks": [str(track.id) for track in tracks],
+            "tasks_held": sum(len(ids) for ids in held.values()),
+            "case_state": CASE_RECONCILING,
         },
     )
 

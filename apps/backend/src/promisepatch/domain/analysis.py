@@ -88,6 +88,7 @@ from promisepatch.domain.cases import (
     LockedCase,
     case_events,
     case_successors,
+    case_timers,
     revalidate_step_key,
 )
 from promisepatch.domain.model import (
@@ -582,6 +583,7 @@ async def _plan(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=CASE_PLANNED),
+        timers=case_timers(CASE_PLANNED, case_id=case.id),
         events=(
             AppendEvent(
                 type=EVENT_CASE_PLANNED,
@@ -729,6 +731,7 @@ async def _replan(
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to),
         successors=await case_successors(connection, moved_to, case_id=case.id),
+        timers=case_timers(moved_to, case_id=case.id),
         effects=() if notice is None else (notice,),
         events=(
             AppendEvent(

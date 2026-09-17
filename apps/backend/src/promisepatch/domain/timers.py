@@ -141,16 +141,24 @@ async def fire_due_timer(database: RuntimeDatabase, *, worker: str) -> FiredTime
             approval_timer_case,
             expire_step_key,
         )
+        from promisepatch.domain.cases import TIMER_PLAN_AUTO_ESCALATION
+        from promisepatch.domain.recovery import STEP_ESCALATE_PLAN, escalate_plan_step_key
         from promisepatch.domain.steps import enqueue_step
 
         step_key: str | None = None
         case_id: UUID | None = None
         if candidate.subject_type == CASE_SUBJECT:
             case_id = UUID(candidate.subject_id)
-            step_key = handlers.timer_step_key(candidate.id)
-            await enqueue_step(
-                connection, case_id=case_id, step_key=step_key, kind=StepKind.TIMER_WAKEUP
-            )
+            # A case deadline says which work it is a deadline *for*. The generic wake-up is the
+            # default because a timer armed against a case with nothing else to say is exactly
+            # that; §14.1's plan window is a particular ending and names its own step.
+            if candidate.kind == TIMER_PLAN_AUTO_ESCALATION:
+                step_key = escalate_plan_step_key(candidate.id)
+                kind: StepKind | str = STEP_ESCALATE_PLAN
+            else:
+                step_key = handlers.timer_step_key(candidate.id)
+                kind = StepKind.TIMER_WAKEUP
+            await enqueue_step(connection, case_id=case_id, step_key=step_key, kind=kind)
         elif candidate.subject_type == APPROVAL_SUBJECT:
             # A deadline armed against a request rather than a case, because one case may be
             # waiting on several customers. Firing it therefore has to find its way back to a

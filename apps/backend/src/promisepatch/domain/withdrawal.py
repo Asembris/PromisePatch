@@ -70,16 +70,19 @@ from promisepatch.db.uow import GovernedWrite, UnitOfWork
 from promisepatch.domain.cases import (
     CASE_RECONCILING,
     STEP_RECONCILE_CASE,
+    TIMER_PLAN_AUTO_ESCALATION,
     apply_case_change,
     lock_case,
     reconcile_step_key,
 )
 from promisepatch.domain.intake import actor_for, require_permitted, require_worker
 from promisepatch.domain.model import (
+    CASE_SUBJECT,
     EFFECT_ORDER_AMEND,
     TERMINAL_CASE_STATES,
     CaseChange,
 )
+from promisepatch.domain.timers import cancel_timer
 from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
@@ -371,6 +374,15 @@ async def _withdraw(
         released = await _release_holds(write, case_id=case_id, tasks=holds)
         stood_down = await _refuse_unsent(write, effects=unsent, worker_id=worker_id)
         planned = await _stand_down_steps(write, case_id=case_id, command_id=command_id)
+        # Nothing is waiting for a confirmation any more, so §14.1's limit on that wait
+        # goes with it: a case that stood down must not be escalated later by a deadline
+        # for a plan it withdrew.
+        await cancel_timer(
+            connection,
+            kind=TIMER_PLAN_AUTO_ESCALATION,
+            subject_type=CASE_SUBJECT,
+            subject_id=str(case_id),
+        )
 
         await _record_withdrawal(
             connection,
