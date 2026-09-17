@@ -146,17 +146,22 @@ async def record(
     async with database.begin() as connection:
         await require_worker(connection, worker_id)
         case = await lock_case(connection, case_id)
-        if case.state != CASE_PLANNED:
-            raise PlanNotConfirmableError(f"case {case_id} is {case.state}, not {CASE_PLANNED}")
         await require_permitted(connection, case_id=case_id, worker_id=worker_id)
 
-        current = await current_plan_id(connection, case_id=case_id, case_version=case.version)
-        if current != plan_id:
-            raise StalePlanError(f"case {case_id} is offering a different plan than the approved")
-
+        # Before the state and currency checks, and deliberately. Re-recording an approval that
+        # already exists is not a new decision, so it must answer the same way however long ago
+        # it was made and whatever the case has done since -- a redelivered yes on a case that is
+        # already executing is the same yes arriving twice, not a confirmation of the wrong
+        # state. The two checks below are what a *first* approval has to pass.
         existing = await _approval_for(connection, case_id=case_id, plan_id=plan_id)
         if existing is not None:
             return existing
+
+        if case.state != CASE_PLANNED:
+            raise PlanNotConfirmableError(f"case {case_id} is {case.state}, not {CASE_PLANNED}")
+        current = await current_plan_id(connection, case_id=case_id, case_version=case.version)
+        if current != plan_id:
+            raise StalePlanError(f"case {case_id} is offering a different plan than the approved")
 
         approval_id = uuid4()
         now = await database_now(connection)

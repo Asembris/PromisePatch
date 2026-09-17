@@ -999,10 +999,79 @@ async def test_a_withdrawn_case_cannot_be_withdrawn_again(
 # --------------------------------------------------------- the two transports say one thing
 
 
-async def test_both_transports_answer_a_stale_plan_with_the_same_code(
+async def test_both_transports_answer_a_plan_already_confirmed_with_the_same_code(
     worker: Browser, physical: Intake
 ) -> None:
-    """One shared mapping, so a client that learned one transport is right about the other."""
+    """One shared mapping, so a client that learned one transport is right about the other.
+
+    The condition is a case that has moved past its plan, reached the way the product reaches
+    it: a real approval, a real confirmation, and then the same yes again. Both transports have
+    everything they need to act and both refuse for the same reason, which is what makes the
+    comparison meaningful -- an asymmetry here would be a mapping that had drifted rather than
+    two surfaces with different authority.
+    """
+    browser_case = await planned(physical)
+    tool_case = await planned(physical)
+    assert worker.client is not None
+
+    browser_plan = (await worker.workspace(browser_case)).plan_id
+    assert (
+        await worker.say(
+            "confirm",
+            {
+                "command_id": str(uuid4()),
+                "case_id": str(browser_case),
+                "plan_id": browser_plan,
+            },
+        )
+    ).status_code == 202
+    tool_approval = await physical.approve(tool_case)
+    assert (
+        await worker.client.post(
+            "/internal/intents/confirm",
+            json={
+                "command_id": str(uuid4()),
+                "case_id": str(tool_case),
+                "plan_id": tool_approval.plan_id,
+            },
+            headers={intents_router.SERVICE_TOKEN_HEADER: SERVICE_TOKEN},
+        )
+    ).status_code == 202
+
+    over_the_browser = await worker.say(
+        "confirm",
+        {"command_id": str(uuid4()), "case_id": str(browser_case), "plan_id": browser_plan},
+    )
+    over_the_tools = await worker.client.post(
+        "/internal/intents/confirm",
+        json={
+            "command_id": str(uuid4()),
+            "case_id": str(tool_case),
+            "plan_id": tool_approval.plan_id,
+        },
+        headers={intents_router.SERVICE_TOKEN_HEADER: SERVICE_TOKEN},
+    )
+
+    assert over_the_browser.status_code == over_the_tools.status_code
+    assert over_the_browser.json()["error"]["code"] == over_the_tools.json()["error"]["code"]
+
+
+async def test_the_two_transports_refuse_an_unapproved_plan_for_different_reasons(
+    worker: Browser, physical: Intake
+) -> None:
+    """Where they differ, they differ about authority -- and that difference is the whole fix.
+
+    The same request on both: confirm a plan nobody has agreed to. The browser holds a person's
+    own session, so it may record that person's approval, and the only thing wrong with the call
+    is the identity it quoted -- ``PLAN_SUPERSEDED``. The intent API holds a shared service
+    token, which establishes which process is asking and nothing about whether a human was
+    present, so it cannot record anybody's approval and refuses for that reason instead --
+    ``HUMAN_APPROVAL_REQUIRED``.
+
+    This is the asymmetry the mapping is *not* supposed to hide. Two surfaces answering
+    identically here would mean either that the browser had stopped being able to take a
+    person's word, or that the service surface had started being able to invent one.
+    """
     browser_case = await planned(physical)
     tool_case = await planned(physical)
     assert worker.client is not None
@@ -1025,8 +1094,11 @@ async def test_both_transports_answer_a_stale_plan_with_the_same_code(
         headers={intents_router.SERVICE_TOKEN_HEADER: SERVICE_TOKEN},
     )
 
-    assert over_the_browser.status_code == over_the_tools.status_code
-    assert over_the_browser.json()["error"]["code"] == over_the_tools.json()["error"]["code"]
+    assert over_the_browser.json()["error"]["code"] == "PLAN_SUPERSEDED"
+    assert over_the_tools.json()["error"]["code"] == "HUMAN_APPROVAL_REQUIRED"
+    assert over_the_tools.status_code == 403
+    assert (await physical.case(browser_case)).state == "PLANNED"
+    assert (await physical.case(tool_case)).state == "PLANNED"
 
 
 async def test_both_transports_answer_a_closed_question_with_the_same_code(

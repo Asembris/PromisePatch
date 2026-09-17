@@ -15,11 +15,13 @@ a boundary that is only tested from the middle is a boundary nobody has stood at
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
 import httpx2
+import pytest
 import pytest_asyncio
 from _intake_support import (
     BAKER,
@@ -36,6 +38,7 @@ from sqlalchemy import func, select
 
 from promisepatch.config import Settings
 from promisepatch.db.models import Case, CaseReport
+from promisepatch.domain import cases, intake, recovery
 from promisepatch.domain.observation import AUDIT_CASE_OPENED
 from promisepatch.main import create_app
 
@@ -78,14 +81,44 @@ class Boundary:
         body.update(kwargs.pop("extra", {}))
         return await self.client.post(CLARIFY, json=body, headers=_service(**kwargs))
 
+    async def approve(self, case_id: UUID, *, plan_id: str | None = None) -> Any:
+        """The worker's own yes, recorded where this system authenticated them.
+
+        Not over this transport, and there is no way to make it be: the intent API holds a
+        service token and may spend an approval, never write one. A test that wants one writes
+        it the way the workspace does, through the domain, and then asks the surface to carry
+        it out.
+        """
+        return await self.physical.approve(case_id, plan_id=plan_id)
+
     async def confirm(
         self,
         case_id: UUID | str,
         plan_id: str,
         *,
         command_id: UUID | None = None,
+        approved: bool = True,
         **kwargs: Any,
     ) -> httpx2.Response:
+        """Ask the service surface to carry out a worker's approval of ``plan_id``.
+
+        ``approved`` records that approval first, which is what the product does: the person
+        agrees on their own screen and the conversation carries it out. It is best-effort --
+        a plan the case is not offering cannot be approved, and a test about that refusal wants
+        the request to reach the surface anyway rather than blow up in its arrangement.
+
+        ``approved=False`` is the boundary itself under test: the surface is asked to confirm a
+        plan nobody has agreed to, which is exactly what an authenticated host calling `confirm`
+        on its own initiative looks like.
+        """
+        if approved:
+            with suppress(
+                recovery.PlanNotConfirmableError,
+                recovery.StalePlanError,
+                cases.CaseMissingError,
+                intake.NotPermittedError,
+            ):
+                await self.approve(UUID(str(case_id)), plan_id=plan_id)
         body: dict[str, Any] = {
             "command_id": str(command_id or uuid4()),
             "case_id": str(case_id),
@@ -596,19 +629,37 @@ async def test_confirming_a_case_twice_under_new_identities_does_not_confirm_it_
     assert again.json()["error"]["code"] == "PLAN_NOT_CONFIRMABLE"
 
 
-async def test_confirming_a_case_this_surface_did_not_open_is_refused(
-    boundary: Boundary,
-) -> None:
-    """A case id is a value a model can put in an argument, so the domain answers."""
+async def test_a_worker_cannot_approve_a_case_that_is_not_theirs(boundary: Boundary) -> None:
+    """A case id is a value a model can put in an argument, so the domain answers.
+
+    It answers one step earlier than it used to. This surface has no standing on a case at all
+    now -- it names nobody, so there is nobody for the domain to refuse -- and the permission
+    question has moved to where the authority is: a baker recording an approval on an owner's
+    case is refused by ``require_permitted``, on the same function every other write passes
+    through, before anything exists for a conversation to spend.
+    """
     opened = await boundary.physical.report(worker_id=OWNER)
     await boundary.physical.drain()
     await boundary.physical.answer(opened.case_id, RASPBERRY_ONLY, worker_id=OWNER)
     await boundary.physical.drain()
     plan_id = await boundary.physical.plan_id(opened.case_id)
 
-    response = await boundary.confirm(opened.case_id, plan_id)
+    with pytest.raises(intake.NotPermittedError):
+        await boundary.physical.approve(opened.case_id, worker_id=BAKER, plan_id=plan_id)
+    assert (await boundary.physical.case(opened.case_id)).state == "PLANNED"
+
+
+async def test_confirming_a_case_nobody_has_approved_is_refused(boundary: Boundary) -> None:
+    """The surface holds a credential and no authority, and the answer says which is missing."""
+    opened = await boundary.physical.report(worker_id=OWNER)
+    await boundary.physical.drain()
+    await boundary.physical.answer(opened.case_id, RASPBERRY_ONLY, worker_id=OWNER)
+    await boundary.physical.drain()
+    plan_id = await boundary.physical.plan_id(opened.case_id)
+
+    response = await boundary.confirm(opened.case_id, plan_id, approved=False)
     assert response.status_code == 403
-    assert response.json()["error"]["code"] == "CASE_NOT_PERMITTED"
+    assert response.json()["error"]["code"] == "HUMAN_APPROVAL_REQUIRED"
     assert (await boundary.physical.case(opened.case_id)).state == "PLANNED"
 
 
@@ -957,6 +1008,17 @@ async def test_the_canonical_conversation_runs_over_the_real_protocol(
     for promise in planned.structured_content["threatened"]:
         assert promise["state"] in {"PLANNED", "AWAITING_PLAN"}, "nothing is done before a yes"
 
+    # The tool cannot be the yes. Asked to confirm a plan nobody has agreed to, the surface
+    # refuses -- so the worker approves it where this system authenticated them, and only then
+    # does the conversation carry it out.
+    async with chain.session() as session:
+        premature = await session.call_tool(
+            "confirm", {"case_id": str(case_id), "plan_id": plan_id}
+        )
+    assert premature.is_error is True, "an authenticated host must not be able to mint a yes"
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+    await physical.approve(case_id, plan_id=plan_id)
     async with chain.session() as session:
         confirmed = await session.call_tool(
             "confirm", {"case_id": str(case_id), "plan_id": plan_id}
@@ -965,6 +1027,7 @@ async def test_the_canonical_conversation_runs_over_the_real_protocol(
     assert confirmed.structured_content is not None
     assert confirmed.structured_content["state"] == "EXECUTING"
     assert confirmed.structured_content["confirmed_by"] == BAKER
+    assert confirmed.structured_content["approved_via"] == "BROWSER_SESSION"
     assert "Nothing has been changed yet" in confirmed.structured_content["speech"]
 
     # Authorised, and nothing carried out: the worker has still not run since the yes.
@@ -1000,6 +1063,9 @@ async def test_a_stale_plan_confirmed_over_the_transport_is_refused_and_changes_
         read = await session.call_tool("status", {"case_id": str(case_id)})
     assert read.structured_content is not None
     stale = read.structured_content["plan_id"]
+    # Approved for real, and for exactly the plan that is about to go stale. Without this the
+    # refusal would be about the missing approval and the binding would never be reached.
+    await physical.approve(case_id, plan_id=stale)
 
     await physical.correct(case_id, CORRECTION)
     await physical.drain()
@@ -1011,10 +1077,13 @@ async def test_a_stale_plan_confirmed_over_the_transport_is_refused_and_changes_
     assert "PLAN_SUPERSEDED" not in _tool_text(refused)
     assert (await physical.case(case_id)).state == "PLANNED"
 
-    # Re-read and confirm the plan that is actually on offer: the remedy is one turn.
+    # Re-read, have the worker approve the plan that is actually on offer, and carry it out.
+    # The remedy is one turn plus the one thing a conversation may never do for somebody.
     async with chain.session() as session:
         current = await session.call_tool("status", {"case_id": str(case_id)})
-        assert current.structured_content is not None
+    assert current.structured_content is not None
+    await physical.approve(case_id, plan_id=current.structured_content["plan_id"])
+    async with chain.session() as session:
         accepted = await session.call_tool(
             "confirm",
             {"case_id": str(case_id), "plan_id": current.structured_content["plan_id"]},
@@ -1043,6 +1112,7 @@ async def test_a_confirmation_survives_the_connection_that_gave_it(
     """Authority is a row. A client that vanishes after saying yes has still said it."""
     case_id = await physical.resolved_case()
     await physical.drain()
+    await physical.approve(case_id)
     async with chain.session() as first:
         read = await first.call_tool("status", {"case_id": str(case_id)})
         assert read.structured_content is not None

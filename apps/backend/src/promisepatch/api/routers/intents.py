@@ -317,15 +317,18 @@ async def confirm(
     # worker attests what a worker *said* -- a report, a clarification -- and may not approve a
     # plan on anybody's behalf, so the only identity that reaches the confirmation is the one on
     # the approval row a person already left.
+    # A read, and the only thing this surface may do about an approval. ``None`` is passed on
+    # rather than refused here, so the domain answers in its own order -- a case that does not
+    # exist is not found, a case with no plan on offer is not confirmable, a plan the case has
+    # moved past is superseded, and only a caller who got all of that right is told that nobody
+    # has agreed to what it is asking to carry out.
+    approval = await plan_approval.find(database, case_id=intent.case_id, plan_id=intent.plan_id)
     try:
-        approval = await plan_approval.require(
-            database, case_id=intent.case_id, plan_id=intent.plan_id
-        )
         result = await recovery.confirm_plan(
             database,
             case_id=intent.case_id,
             command_id=intent.command_id,
-            approval_id=approval.id,
+            approval_id=approval.id if approval is not None else None,
             plan_id=intent.plan_id,
             correlation_id=_correlation_id(request),
         )
@@ -346,16 +349,16 @@ async def confirm(
         "intents.confirm.accepted",
         case_id=str(result.case_id),
         created=result.created,
-        worker=approval.approved_by,
-        approved_via=approval.channel,
+        worker=result.confirmed_by,
+        approved_via=result.approved_via,
     )
     return ConfirmationAccepted(
         case_id=result.case_id,
         command_id=result.command_id,
         state=result.state,
         created=result.created,
-        confirmed_by=approval.approved_by,
-        approved_via=approval.channel,
+        confirmed_by=result.confirmed_by,
+        approved_via=result.approved_via,
         applying=len(result.applying),
         awaiting_approval=len(result.awaiting_approval),
         escalated=len(result.escalated),

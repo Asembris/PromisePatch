@@ -22,6 +22,7 @@ and the only differences permitted are the ones the frozen architecture names.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -44,7 +45,7 @@ from promisepatch.db.models import (
 )
 from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor
-from promisepatch.domain import cases, crash, intake, outbox, recovery, steps
+from promisepatch.domain import cases, crash, intake, outbox, recovery, steps, withdrawal
 from promisepatch.domain.adapters import FakeEffectAdapter, ProviderBehaviour
 from promisepatch.domain.model import StepResult
 
@@ -485,16 +486,43 @@ async def test_two_concurrent_deliveries_of_one_confirmation_produce_one_effect(
     assert len(await physical.rows_of(OutboxMessage)) == 2
 
 
+async def test_a_confirmation_cannot_name_who_approved_the_plan(physical: Intake) -> None:
+    """The old way two confirmations differed is gone, and gone is stronger than refused.
+
+    This used to be the same command id carrying two different *workers*, refused as a conflict.
+    It is no longer expressible: a confirmation carries out the approval a person recorded on a
+    channel this system authenticated them on, and there is no parameter through which a caller
+    states who that was. A conflict is a refusal, and a missing parameter is not a door.
+    """
+    assert "worker_id" not in inspect.signature(recovery.confirm_plan).parameters
+    assert "approval_id" in inspect.signature(recovery.confirm_plan).parameters
+
+
 async def test_the_same_command_id_carrying_a_different_request_is_a_conflict(
     physical: Intake,
 ) -> None:
-    """Two different statements claiming one identity. Refused, rather than one silently won."""
+    """Two different statements claiming one identity. Refused, rather than one silently won.
+
+    The two statements are a withdrawal and a confirmation, which is the sharpest pair available:
+    one stops this case's future work and the other authorises it, so silently treating the
+    second as a redelivery of the first would be the worst possible way to resolve a collision.
+    The approval is recorded first, so what the confirmation lacks is the command id and nothing
+    else.
+    """
     case_id = await planned_case(physical)
+    approval = await physical.approve(case_id)
     command_id = uuid4()
-    await physical.confirm(case_id, command_id=command_id, worker_id=BAKER)
+    await withdrawal.withdraw_exception(
+        physical.database, case_id=case_id, command_id=command_id, worker_id=BAKER
+    )
 
     with pytest.raises(recovery.ConfirmationConflictError):
-        await physical.confirm(case_id, command_id=command_id, worker_id=OWNER)
+        await physical.confirm(
+            case_id,
+            command_id=command_id,
+            plan_id=approval.plan_id,
+            approval_id=approval.id,
+        )
 
 
 async def test_the_confirmation_row_records_who_confirmed_and_what_it_authorised(

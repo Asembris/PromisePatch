@@ -70,7 +70,16 @@ from promisepatch.db.models import (
 )
 from promisepatch.db.models import Worker as WorkerRow
 from promisepatch.db.uow import Actor, UnitOfWork
-from promisepatch.domain import analysis, approvals, cases, crash, handlers, intake, recovery
+from promisepatch.domain import (
+    analysis,
+    approvals,
+    cases,
+    crash,
+    handlers,
+    intake,
+    plan_approval,
+    recovery,
+)
 from promisepatch.domain import inbox as inbox_ledger
 from promisepatch.domain.adapters import FakeEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
@@ -306,6 +315,29 @@ class Intake:
         status = await analysis.read_case_status(self.database, case_id=case_id)
         return status.plan_id
 
+    async def approve(
+        self,
+        case_id: UUID,
+        *,
+        worker_id: str = BAKER,
+        plan_id: str | None = None,
+        channel: plan_approval.ApprovalChannel = plan_approval.ApprovalChannel.BROWSER_SESSION,
+    ) -> plan_approval.HumanApproval:
+        """A worker agreeing, on a channel this system authenticated them on.
+
+        The durable half of a yes, and the half a service surface can never write for itself.
+        Defaulting to ``BROWSER_SESSION`` because that is what the product's own workspace does;
+        a test about the operator console names the other one.
+        """
+        return await plan_approval.record(
+            self.database,
+            case_id=case_id,
+            plan_id=plan_id if plan_id is not None else await self.plan_id(case_id),
+            worker_id=worker_id,
+            channel=channel,
+            evidence=plan_approval.CONTROL_PRESS,
+        )
+
     async def confirm(
         self,
         case_id: UUID,
@@ -313,19 +345,31 @@ class Intake:
         worker_id: str = BAKER,
         command_id: UUID | None = None,
         plan_id: str | None = None,
+        approval_id: UUID | None = None,
     ) -> recovery.ConfirmationResult:
-        """A worker's yes, through the same reusable command the CLI and the MCP tool call.
+        """A worker's yes, recorded and then carried out, exactly as the browser route does it.
+
+        Two steps now, because a confirmation no longer *is* the approval: the worker agrees on
+        an authenticated channel, and the confirmation spends that agreement. Tests that are
+        about the boundary itself call the halves separately -- one to approve without
+        confirming, one to confirm without approving.
 
         ``plan_id`` defaults to the plan the case is currently offering, which is what a
         worker confirming what they just read would quote. A test about staleness passes a
-        different one deliberately.
+        different one deliberately, or passes approval_id to spend an approval recorded
+        earlier against a plan the case has since moved past -- which is the real sequence a
+        stale confirmation has, and the only one that reaches the confirmation's own check.
         """
+        quoted = plan_id if plan_id is not None else await self.plan_id(case_id)
+        if approval_id is None:
+            approval = await self.approve(case_id, worker_id=worker_id, plan_id=quoted)
+            approval_id = approval.id
         return await recovery.confirm_plan(
             self.database,
             case_id=case_id,
             command_id=command_id or uuid4(),
-            worker_id=worker_id,
-            plan_id=plan_id if plan_id is not None else await self.plan_id(case_id),
+            approval_id=approval_id,
+            plan_id=quoted,
         )
 
     @asynccontextmanager

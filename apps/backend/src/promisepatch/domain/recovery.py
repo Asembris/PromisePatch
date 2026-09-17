@@ -370,6 +370,13 @@ class ConfirmationResult:
     command_id: UUID
     state: str
     created: bool
+    confirmed_by: str = ""
+    """The worker whose approval this carried out, and on a redelivery the worker the original
+    confirmation recorded. Never a caller's claim about who they are -- there is no such claim to
+    make, because nothing on the way in carries a person."""
+    approved_via: str = ""
+    """The channel that authenticated them. Empty only where a confirmation predates this
+    column, which is a row written before an approval was a separate thing at all."""
     applying: tuple[UUID, ...] = ()
     escalated: tuple[UUID, ...] = ()
     awaiting_approval: tuple[UUID, ...] = ()
@@ -387,7 +394,7 @@ async def confirm_plan(
     *,
     case_id: UUID,
     command_id: UUID,
-    approval_id: UUID,
+    approval_id: UUID | None,
     plan_id: str,
     correlation_id: UUID | None = None,
 ) -> ConfirmationResult:
@@ -400,6 +407,12 @@ async def confirm_plan(
     and can create none, so calling this function is carrying out somebody's decision rather
     than making one -- and there is no field anywhere on the path through which a conversation,
     a model or a compromised host could name the person whose yes it is.
+
+    ``approval_id`` is ``None`` when the caller looked and found no approval, and that is a
+    refusal rather than an argument error. It is also the *last* thing checked: a caller learns
+    that a case does not exist, is not offering a plan, or is offering a different one before it
+    learns anything about who has agreed to what, because those are facts about the case and
+    this is a fact about authority.
 
     ``plan_id`` is the identity of the plan the worker was shown -- see
     :mod:`promisepatch.domain.plan_identity` -- and it is checked twice: against the approval,
@@ -415,23 +428,16 @@ async def confirm_plan(
     leaves the case ``PLANNED`` with nothing enqueued; one that dies after leaves work another
     worker picks up.
     """
+    # The plan is part of the request, so two confirmations of *different* plans under one
+    # command id are a conflict rather than a retry -- the same rule intake applies to two
+    # different statements claiming one identity. So is the approval: one command id may carry
+    # out one person's decision, never two. The approver is not hashed separately because the
+    # approval already decides who they are.
+    fingerprint_of_request = request_hash(
+        case=str(case_id), approval=str(approval_id), plan=plan_id, confirmed=True
+    )
+
     async with database.begin() as connection:
-        # Cheap and early, so a surface with no approval to consume is refused before anything
-        # is locked. It is read again under the case lock below, because this one is advisory.
-        approval = await _approval(
-            connection, approval_id=approval_id, case_id=case_id, plan_id=plan_id
-        )
-        # The plan is part of the request, so two confirmations of *different* plans under one
-        # command id are a conflict rather than a retry -- the same rule intake applies to two
-        # different statements claiming one identity. So is the approval: one command id may
-        # carry out one person's decision, never two.
-        fingerprint_of_request = request_hash(
-            case=str(case_id),
-            worker=approval.approved_by,
-            approval=str(approval_id),
-            plan=plan_id,
-            confirmed=True,
-        )
         existing = await _existing_confirmation(connection, command_id, fingerprint_of_request)
         if existing is not None:
             return ConfirmationResult(
@@ -439,6 +445,8 @@ async def confirm_plan(
                 command_id=command_id,
                 state=existing.state,
                 created=False,
+                confirmed_by=existing.confirmed_by,
+                approved_via=existing.approved_via,
             )
 
     try:
@@ -461,7 +469,12 @@ async def confirm_plan(
         if existing is None:
             raise
         return ConfirmationResult(
-            case_id=existing.case_id, command_id=command_id, state=existing.state, created=False
+            case_id=existing.case_id,
+            command_id=command_id,
+            state=existing.state,
+            created=False,
+            confirmed_by=existing.confirmed_by,
+            approved_via=existing.approved_via,
         )
 
     crash.at(crash.AFTER_CONFIRMATION_COMMIT)
@@ -470,7 +483,7 @@ async def confirm_plan(
     logger.info(
         "recovery.plan.confirmed",
         case_id=str(case_id),
-        worker=approval.approved_by,
+        worker=outcome.confirmed_by,
         applying=len(outcome.applying),
         escalated=len(outcome.escalated),
         awaiting_approval=len(outcome.awaiting_approval),
@@ -483,21 +496,16 @@ async def _confirm(
     *,
     case_id: UUID,
     command_id: UUID,
-    approval_id: UUID,
+    approval_id: UUID | None,
     plan_id: str,
     fingerprint_of_request: str,
     correlation_id: UUID | None,
 ) -> ConfirmationResult:
-    """The confirming transaction. Lock order: worker, case, tracks, then everything derived.
+    """The confirming transaction. Lock order: case, tracks, then everything derived.
 
-    The approval is read again here, inside the transaction that acts on it, and the worker this
+    The approval is read here, inside the transaction that acts on it, and the worker this
     confirmation is attributed to is taken from that row and from nowhere else.
     """
-    approval = await _approval(
-        connection, approval_id=approval_id, case_id=case_id, plan_id=plan_id
-    )
-    worker_id = approval.approved_by
-    await require_worker(connection, worker_id)
     case = await lock_case(connection, case_id)
 
     # Under the lock, and only now. Two deliveries of one command can both pass the check
@@ -506,12 +514,16 @@ async def _confirm(
     settled = await _existing_confirmation(connection, command_id, fingerprint_of_request)
     if settled is not None:
         return ConfirmationResult(
-            case_id=settled.case_id, command_id=command_id, state=settled.state, created=False
+            case_id=settled.case_id,
+            command_id=command_id,
+            state=settled.state,
+            created=False,
+            confirmed_by=settled.confirmed_by,
+            approved_via=settled.approved_via,
         )
 
     if case.state != CASE_PLANNED:
         raise PlanNotConfirmableError(f"case {case_id} is {case.state}, not {CASE_PLANNED}")
-    await require_permitted(connection, case_id=case_id, worker_id=worker_id)
 
     tracks = (
         await connection.execute(
@@ -524,6 +536,18 @@ async def _confirm(
     current = await current_plan_id(connection, case_id=case_id, case_version=case.version)
     if current != plan_id:
         raise StalePlanError(f"case {case_id} is offering a different plan than the one confirmed")
+
+    # Last of the checks, and deliberately. Everything above is a fact about the case, which a
+    # caller is owed before it is told anything about who has agreed to what; this is the fact
+    # about authority, and it is the one a surface holding only a service credential cannot
+    # change by trying again. Read under the lock, so the approval that is spent is the approval
+    # that exists at the moment the work is enqueued.
+    approval = await _approval(
+        connection, approval_id=approval_id, case_id=case_id, plan_id=plan_id
+    )
+    worker_id = approval.approved_by
+    await require_worker(connection, worker_id)
+    await require_permitted(connection, case_id=case_id, worker_id=worker_id)
     plan = _partition(tracks)
     now = await database_now(connection)
 
@@ -584,6 +608,7 @@ async def _confirm(
             case_id=case_id,
             command_id=command_id,
             worker_id=worker_id,
+            approved_via=approval.channel,
             fingerprint_of_request=fingerprint_of_request,
             plan=plan,
             now=now,
@@ -659,6 +684,8 @@ async def _confirm(
         command_id=command_id,
         state=CASE_EXECUTING,
         created=True,
+        confirmed_by=worker_id,
+        approved_via=approval.channel,
         applying=tuple(track.id for track in plan.auto),
         escalated=tuple(track.id for track, _ in plan.escalate),
         awaiting_approval=tuple(track.id for track in plan.approval),
@@ -771,6 +798,7 @@ async def _record_confirmation(
     case_id: UUID,
     command_id: UUID,
     worker_id: str,
+    approved_via: str,
     fingerprint_of_request: str,
     plan: _Plan,
     now: datetime,
@@ -794,6 +822,7 @@ async def _record_confirmation(
             request_hash=fingerprint_of_request,
             result={
                 "confirmed_by": worker_id,
+                "approved_via": approved_via,
                 "applying": [str(track.id) for track in plan.auto],
                 "escalated": [str(track.id) for track, _ in plan.escalate],
                 "awaiting_approval": [str(track.id) for track in plan.approval],
@@ -814,15 +843,17 @@ class _Approval:
 
 
 async def _approval(
-    connection: AsyncConnection, *, approval_id: UUID, case_id: UUID, plan_id: str
+    connection: AsyncConnection, *, approval_id: UUID | None, case_id: UUID, plan_id: str
 ) -> _Approval:
     """The human approval this confirmation claims, checked against what it claims to be for.
 
     Three things have to agree before a yes is worth anything: the approval exists, it belongs
-    to *this* case, and it was given for *this* plan. The second and third are what stop an
-    approval being carried from one case to another, or from the plan somebody read to the plan
-    the case is offering now -- a caller holding a real approval id for a real case still cannot
-    spend it anywhere else.
+    to *this* case, and it was given for *this* plan. ``None`` means the caller looked and found
+    none, which reaches the same refusal as a mismatch -- there is nothing to tell apart, because
+    in both cases nobody has agreed to the plan being confirmed. The case and plan checks are
+    what stop an approval being carried from one case to another, or from the plan somebody read
+    to the plan the case is offering now -- a caller holding a real approval id for a real case
+    still cannot spend it anywhere else.
 
     Read with a plain ``SELECT`` rather than through
     :mod:`promisepatch.domain.plan_approval`, which depends on this module. The row is the
@@ -830,16 +861,20 @@ async def _approval(
     nothing, because there is no rule about an approval that is not stated by its columns.
     """
     row = (
-        await connection.execute(
-            select(
-                PlanApproval.id,
-                PlanApproval.case_id,
-                PlanApproval.plan_id,
-                PlanApproval.approved_by,
-                PlanApproval.channel,
-            ).where(PlanApproval.id == approval_id)
-        )
-    ).one_or_none()
+        None
+        if approval_id is None
+        else (
+            await connection.execute(
+                select(
+                    PlanApproval.id,
+                    PlanApproval.case_id,
+                    PlanApproval.plan_id,
+                    PlanApproval.approved_by,
+                    PlanApproval.channel,
+                ).where(PlanApproval.id == approval_id)
+            )
+        ).one_or_none()
+    )
     if row is None or row.case_id != case_id or row.plan_id != plan_id:
         raise HumanApprovalMissingError(
             f"approval {approval_id} does not record a human approving this plan on {case_id}"
@@ -851,6 +886,8 @@ async def _approval(
 class _Existing:
     case_id: UUID
     state: str
+    confirmed_by: str
+    approved_via: str
 
 
 async def _existing_confirmation(
@@ -859,7 +896,13 @@ async def _existing_confirmation(
     """Has this exact command already been accepted? Answered from the row it wrote."""
     row = (
         await connection.execute(
-            select(CaseStep.case_id, CaseStep.kind, CaseStep.request_hash, Case.state)
+            select(
+                CaseStep.case_id,
+                CaseStep.kind,
+                CaseStep.request_hash,
+                CaseStep.result,
+                Case.state,
+            )
             .join(Case, Case.id == CaseStep.case_id)
             .where(CaseStep.id == command_id)
         )
@@ -870,7 +913,16 @@ async def _existing_confirmation(
         raise ConfirmationConflictError(
             f"command {command_id} was already accepted carrying a different request"
         )
-    return _Existing(case_id=row.case_id, state=row.state)
+    # Read back from what the original confirmation wrote, rather than recomputed. A redelivery
+    # reports the decision that was actually carried out, including whose it was -- which is the
+    # only honest answer when the case has since moved on and the plan no longer exists.
+    recorded = row.result if isinstance(row.result, dict) else {}
+    return _Existing(
+        case_id=row.case_id,
+        state=row.state,
+        confirmed_by=str(recorded.get("confirmed_by", "")),
+        approved_via=str(recorded.get("approved_via", "")),
+    )
 
 
 # --------------------------------------------------------------------------------- executor
