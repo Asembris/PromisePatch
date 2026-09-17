@@ -546,9 +546,15 @@ Resources:
               # The one-action way in, for somebody being shown the product. Off in every copy of
               # the repository and turned on here, for this deployment, deliberately: it takes no
               # credential, publishes none, and issues a session naming the seeded observer, whom
-              # the domain admits to case reads and to no write at all. Setting it back to false
-              # removes the endpoint at the next boot with no code change, and revoking a session
-              # row ends an issued one immediately.
+              # the domain admits to case reads and to no write at all.
+              #
+              # **Turning it off is not a release.** This file is written by the bootstrap, which
+              # cloud-init runs once per instance, and `converge.sh` rewrites no `env/*.env` file
+              # -- so setting this to false takes effect only when a *new* instance boots, which
+              # means `host-image` and a replaced host. An earlier version of this comment claimed
+              # the next boot would do it; that contradicted the comment forty lines above and was
+              # found false against the deployment on 2026-09-16. What does end an issued session
+              # immediately, with no boot at all, is revoking its row.
               PP_DEMO_SESSION_ENABLED=true
               # The worker every statement arriving over the MCP surface is attributed to.
               # It must name a row the seed actually creates: intake refuses an unknown
