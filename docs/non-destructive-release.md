@@ -192,3 +192,114 @@ None of the following was done. It requires AWS credentials and the first two mu
 Until (1) has been run, the claim in this document is that the *definition* on disk cannot
 express the defect — proved by mutation against tests — and not that the deployed stack has been
 observed accepting it.
+
+---
+
+## 8. The same hole, one parameter wider
+
+Date: 2026-09-17. No AWS resource was read, created, updated or deleted while this was written.
+
+Sections 1–7 above are left exactly as they were written. This section records what they missed.
+
+### 8.1 What was still open
+
+The fix in section 4 stopped a release moving `HostAmiId`, because moving that one replaces the
+instance and the replacement's first boot erased the database. It did not stop a release moving
+any of the *other* parameters it submitted, and `create_stack_change_set` rebuilt all of them
+from the caller's shell on every run:
+
+```bash
+"VpcId=${PP_DEPLOY_VPC_ID}"
+"HostSubnetId=${PP_DEPLOY_HOST_SUBNET}"
+"DatabaseSubnetIds=${PP_DEPLOY_DB_SUBNETS}"
+"TlsHostname=${PP_DEPLOY_TLS_HOSTNAME:-}"
+"AllowedIngressCidr=${PP_DEPLOY_INGRESS_CIDR:-0.0.0.0/0}"
+"DatabaseBackupRetentionDays=${PP_DEPLOY_DB_BACKUP_DAYS:-7}"
+```
+
+So an ordinary `deploy.sh stack` against the existing stack submitted whatever those variables
+happened to hold in the shell that ran it. Three of them are optional and fall back to a
+default, which is the sharp edge:
+
+| the shell | what a release submitted | effect |
+|---|---|---|
+| `PP_DEPLOY_INGRESS_CIDR` unset | `AllowedIngressCidr=0.0.0.0/0` | a deliberately narrowed ingress is reopened to the internet |
+| `PP_DEPLOY_DB_BACKUP_DAYS=1` left over from a demo roll | `DatabaseBackupRetentionDays=1` | six days of point-in-time recovery discarded |
+| `PP_DEPLOY_TLS_HOSTNAME` set from another experiment | a different certificate name | the name clients verify changes |
+| a different VPC or subnets | new placement | the change set proposes to move the deployment |
+
+**None of these is a `Replacement` or a `Remove`**, so `replaced_by_change_set` — which looks for
+exactly those two and nothing else — would have passed every one of them through and executed
+them. The guard added in section 4 was real, and the hole was beside it, in the same function.
+
+This was found by reading the release path, not by an incident. Nothing in the table above is
+claimed to have happened to the deployed stack.
+
+### 8.2 The parameter-ownership model
+
+Every parameter a submission sends now has exactly one owner.
+
+| owner | parameters | where the value comes from |
+|---|---|---|
+| the submission | `ImageTag`, `HostAmiId`, `SeedDemoFixtureOnFirstBoot` | the three arguments to `create_stack_change_set`. A release passes the commit it pushed, the AMI the stack already declares, and a literal `false`. |
+| the live stack | everything else — `Environment`, `VpcId`, `HostSubnetId`, `DatabaseSubnetIds`, `TlsHostname`, `AllowedIngressCidr`, `InstanceType`, `DatabaseInstanceClass`, `DatabaseStorageGiB`, `DatabaseBackupRetentionDays` | read back by `inherited_stack_parameters`, one `describe-stacks` call, on every submission against an existing stack |
+| the caller's shell | the same infrastructure list — **and only on a first create** | `PP_DEPLOY_*`, which is now a provisioning input and not a release input |
+
+`PP_DEPLOY_VPC_ID`, `PP_DEPLOY_HOST_SUBNET`, `PP_DEPLOY_DB_SUBNETS`, `PP_DEPLOY_INGRESS_CIDR`,
+`PP_DEPLOY_TLS_HOSTNAME` and `PP_DEPLOY_DB_BACKUP_DAYS` appear exactly once each in the script,
+inside the first-create branch, and a test asserts they appear nowhere else in the submission. An
+existing-stack release does not read one of them, so there is nothing for a stale shell to move —
+and the `need` checks moved onto that branch with them, because a release no longer requires
+them to be set at all.
+
+Changing an infrastructure value on a deployed stack is therefore a deliberate act: the value has
+to be submitted through the template by a run that is not an ordinary release. That operation was
+not built in this session and is not claimed to exist.
+
+### 8.3 Two details that could have gone wrong quietly
+
+- **`List<AWS::EC2::Subnet::Id>`.** `describe-stacks` returns `DatabaseSubnetIds` already
+  comma-joined (`subnet-a,subnet-b`). It is passed back as one argv element with the comma
+  inside it — the same spelling a first create uses and the one CloudFormation splits — which is
+  why the overrides are built as a bash array and expanded quoted. A test asserts the joined form
+  is submitted and that the space-separated form is not.
+- **An empty inherited value.** The deployed stack derives its hostname from the address it
+  allocated, so its `TlsHostname` is the empty string. It is submitted as `TlsHostname=` rather
+  than skipped: an implementation that dropped empty values would hand that parameter to the
+  template's default instead of to the stack, which is the same drift from the other direction.
+
+An empty read is refused rather than treated as an empty stack. If the describe stops answering —
+a permission lost, a query that no longer matches — the submission would otherwise carry the
+three release parameters alone and let CloudFormation fall back for the rest, which is the defect
+arriving by a different door.
+
+### 8.4 One claim in section 4 that was not true when it was written
+
+The comment on `stage_stack` said *"every RDS parameter is carried forward or read back rather
+than recomputed here"*. `DatabaseBackupRetentionDays` was recomputed here, from
+`PP_DEPLOY_DB_BACKUP_DAYS`. The sentence is true now. It is recorded rather than quietly left
+correct, because the claim was made before the thing it claimed was so.
+
+### 8.5 How this was checked
+
+Ten tests were added and one was rewritten. Nine of the ten are behavioural: the stub's live
+stack and the stub's shell disagree about **every** infrastructure value, and the tests read the
+arguments `stage_stack` and `stage_host_image` actually submitted. No AWS call leaves the
+machine. The rewritten one is `test_the_stack_stage_supplies_every_parameter_that_has_no_default`,
+which asserted that a *release* names every parameter with no default; that is now the first
+create's job and the test is
+`test_a_first_create_supplies_every_parameter_that_has_no_default`.
+
+| mutation | result |
+|---|---|
+| the submission rebuilds infrastructure from the environment | caught by six tests |
+| the shell's values are appended over the inherited ones | caught by four tests |
+| the inherited query stops excluding the release tag | caught |
+| an empty parameter read is not refused | caught |
+| an empty inherited value is dropped | caught |
+| the inherited subnet list is split into separate arguments | **not expressible** — no value any of these parameters accepts may contain a space, so quoted and unquoted expansion are indistinguishable here. The joined form is asserted; the quoting is correct by construction and not proved by mutation. |
+
+`./deploy/deploy.sh stack` has **not** been run against the live stack. Section 7's list of what a
+live check would have to show is unchanged and still unperformed; a run of it would now also have
+to show `AllowedIngressCidr`, `DatabaseSubnetIds` and `DatabaseBackupRetentionDays` submitted as
+the stack declares them rather than as the shell holds them.
