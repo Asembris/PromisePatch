@@ -14,9 +14,20 @@
 #   ./deploy/deploy.sh smoke       # prove the deployed endpoints from outside
 #   ./deploy/deploy.sh all         # the above, in that order
 #
-# And one stage that is not a release and is never reached by one:
+# And two stages that are not releases and are never reached by one:
 #
-#   ./deploy/deploy.sh host-image  # replace the instance, on purpose, after showing what dies
+#   ./deploy/deploy.sh infrastructure  # submit this checkout's template, on purpose
+#   ./deploy/deploy.sh host-image      # replace the instance, on purpose, after showing what dies
+#
+# **A release changes release state; changing what the deployment is made of is a separate
+# operation somebody names.** `stack` submits the template too, but it may only submit one that
+# changes nothing structural: it refuses any plan CloudFormation says may replace or remove a
+# resource, and a template edit that touches `Host.UserData` -- the demo-seed gate is exactly
+# that -- is answered `Replacement: Conditional`. So the template in this checkout cannot reach
+# a deployed stack through a release, and must not be able to. It reaches it through
+# `infrastructure`, which preserves the live release and the live host image, forces the seed
+# off, prints every resource the plan may destroy, and executes nothing until the operator
+# types back the id of the instance being risked.
 #
 # **An application release moves the image tag and nothing else.** It passes back the host image
 # the stack already declares, passes a literal `false` for the demo seed, and refuses any change
@@ -58,14 +69,23 @@
 #   PP_DEPLOY_DB_BACKUP_DAYS  days of automated database backups, default 7. An account on the
 #                             AWS Free Tier plan cannot have 7 and RDS refuses the create; set
 #                             it to what the plan allows, and record that it was lowered.
-# Read only by `host-image`, and by nothing a release runs:
-#   PP_DEPLOY_HOST_AMI_ID     the image to move to. Unset, the newest AL2023 arm64 one.
+# Read only by `host-image` and `infrastructure`, and by nothing a release runs:
+#   PP_DEPLOY_HOST_AMI_ID     the image to move to. Unset, `host-image` takes the newest AL2023
+#                             arm64 one and `infrastructure` keeps the one the stack declares:
+#                             an upgrade resolves nothing implicitly, so it cannot pick up a
+#                             newer image the way a release once could.
 #   PP_DEPLOY_SEED_ON_FIRST_BOOT
 #                             `true` loads the demo fixture on the new instance's first boot,
 #                             which erases every case in the database. Default false. This is
 #                             the only way a deployment reseeds, and it is deliberately not
 #                             reachable from `stack`, `rollout` or `all`.
-#   PP_DEPLOY_REPLACE_HOST    the id of the instance being destroyed, typed back to confirm it.
+#   PP_DEPLOY_REPLACE_HOST    `host-image` only: the id of the instance being destroyed, typed
+#                             back to confirm it.
+#   PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE
+#                             `infrastructure` only: the id of the instance the upgrade's plan
+#                             may replace, typed back to confirm it. Deliberately not the same
+#                             variable as `PP_DEPLOY_REPLACE_HOST`, so a shell left holding one
+#                             confirmation cannot spend it on the other operation.
 #
 # TLS verification is never weakened anywhere in this script or anywhere in this repository:
 # a test enumerates every spelling of "trust whatever certificate turns up" and fails on any of
@@ -322,9 +342,10 @@ inherited_stack_parameters () {
     --output text
 }
 
-# Build the change set and do not execute it. One parameter list, filled in by both stages that
-# submit this template -- a release and a host replacement -- because two copies of the list
-# would drift out of step exactly where it is most expensive to be wrong.
+# Build the change set and do not execute it. One parameter list, filled in by every stage that
+# submits this template -- a release, an infrastructure upgrade and a host replacement --
+# because a second copy of the list would drift out of step with the first exactly where it is
+# most expensive to be wrong.
 #
 # The list has two halves and they have different owners:
 #
@@ -512,6 +533,100 @@ stage_host_image () {
   printf '  run smoke to check what it serves\n'
 }
 
+# Which resources a deliberate infrastructure upgrade is allowed to put at risk.
+#
+# The confirmation that stage asks for is the id of the host instance, so it can only ever
+# authorize the loss of that instance and of the association that points at it. A plan that
+# proposes to replace anything else -- the `Database` above all, whose replacement is every case
+# in the deployment -- is refused outright rather than confirmed, because nothing the operator
+# can type there names the thing that would be destroyed. Widening this list is a code change
+# somebody reads, which is the point of it being a list.
+INFRASTRUCTURE_MAY_REPLACE="Host ElasticIpAssociation"
+
+# A deliberate infrastructure upgrade of an existing stack. Not a release, and not reachable
+# from one.
+#
+# This exists because `stack` refuses to carry a template change, and must. Submitting the
+# template in this checkout against the stack deployed on 2026-09-13 edits `Host.UserData` --
+# the demo-seed gate from docs/non-destructive-release.md section 4 is exactly that edit -- and
+# real CloudFormation answered `Replacement: Conditional` on the `Host` with the association's
+# `InstanceId` at `Always`. An application release that may destroy the instance is the defect
+# this whole file is about, so the release path fails closed on a maybe and the template has no
+# way in through it. This is the way in: named by a person, and confirmed against the resource
+# it risks.
+#
+# What it preserves, and what no variable can make it move:
+#
+#   * **The release.** `ImageTag` is read back off the stack, so an upgrade run from any
+#     checkout at any commit deploys no image and moves no release. It never calls `image_tag`,
+#     so it neither requires a clean tree nor tags anything with this commit.
+#   * **The host image**, unless `PP_DEPLOY_HOST_AMI_ID` explicitly names another one. Unset
+#     means the value the stack already declares. This stage resolves nothing implicitly -- it
+#     cannot reach the function that finds a newer image -- which is what keeps it from being a
+#     second, quieter `host-image`. An explicitly named image that differs is printed as a
+#     transition, and lands in the confirmation below like any other possible replacement.
+#   * **The demo seed**, a literal `false` that no environment variable reaches. An upgrade
+#     never reseeds and never resets a fixture; `host-image` remains the only stage that can.
+#   * **Every infrastructure parameter**, read back off the live stack by
+#     `create_stack_change_set`. What this operation changes is the template; what a drifted
+#     shell holds is still not a vote.
+stage_infrastructure () {
+  say "infrastructure (submits this checkout's template)"
+  local declared ami instance tag change_set replaced resource unnameable
+  stack_exists || die "there is no stack to upgrade; run stack to create one"
+  declared="$(declared_host_ami_id)"
+  [[ "$declared" == ami-* ]] || die "the stack declares no HostAmiId; run host-image to set one"
+  ami="${PP_DEPLOY_HOST_AMI_ID:-$declared}"
+  [[ "$ami" == ami-* ]] || die "PP_DEPLOY_HOST_AMI_ID is ${ami}; it is an ami- id"
+  instance="$(stack_output HostInstanceId)"
+  [[ -n "$instance" && "$instance" != "None" ]] || die "the stack publishes no HostInstanceId"
+  # Not `image_tag`: this stage builds and pushes nothing, so it must not move the release to
+  # whatever commit this checkout happens to be sitting on.
+  tag="$(declared_image_tag)"
+  printf '  template    %s\n' "$TEMPLATE"
+  printf '  release     %s (unchanged)\n' "$tag"
+  if [[ "$ami" == "$declared" ]]; then
+    printf '  host image  %s (unchanged)\n' "$ami"
+  else
+    printf '  host image  %s -> %s, because PP_DEPLOY_HOST_AMI_ID names it\n' "$declared" "$ami"
+  fi
+  printf '  database    no fixture is loaded, no case is reset\n'
+  change_set="$(create_stack_change_set "$ami" "false" "$tag")"
+  if [[ -z "$change_set" ]]; then
+    printf '  the stack already declares this template and these parameters; nothing to change\n'
+    return
+  fi
+  replaced="$(replaced_by_change_set "$change_set")"
+  if [[ -z "$replaced" || "$replaced" == "None" ]]; then
+    printf '  the change set replaces and removes nothing; executing\n'
+    execute_stack_change_set "$change_set" "stack-update-complete"
+    printf '  upgraded; the instance is still %s\n' "$(stack_output HostInstanceId)"
+    return
+  fi
+  # Print the plan before judging it, so what was refused is readable in the same output as the
+  # refusal. `--output text` returns the logical ids tab separated on one line.
+  printf '  THIS PLAN MAY REPLACE OR REMOVE:\n'
+  unnameable=""
+  for resource in $replaced; do
+    printf '    %s\n' "$resource"
+    [[ " ${INFRASTRUCTURE_MAY_REPLACE} " == *" ${resource} "* ]] || unnameable+="${resource} "
+  done
+  if [[ -n "$unnameable" ]]; then
+    discard_change_set "$change_set"
+    die "this upgrade may replace or remove ${unnameable}, and no confirmation here authorizes that: the id this stage asks for names the host instance and nothing else. The change set was deleted unexecuted and nothing was mutated."
+  fi
+  printf '  instance    %s may be destroyed and replaced\n' "$instance"
+  printf '  certificate may be ordered again for this name\n'
+  printf '  database    still untouched; a replaced instance loads no fixture\n'
+  if [[ "${PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE:-}" != "$instance" ]]; then
+    discard_change_set "$change_set"
+    die "set PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE=${instance} to confirm the above. The change set was deleted unexecuted and nothing was mutated."
+  fi
+  execute_stack_change_set "$change_set" "stack-update-complete"
+  printf '  upgraded; the instance is now %s\n' "$(stack_output HostInstanceId)"
+  printf '  run smoke to check what it serves\n'
+}
+
 # A release, once the image is pushed and the parameters are written: reboot the host, which
 # runs `converge.sh`, which re-reads the composition, the TLS configuration and the image tag
 # and pulls what it finds. Then read the deployed `/healthz` until it names the commit that
@@ -576,9 +691,10 @@ case "$STAGE" in
   stack)     stage_preflight; stage_stack ;;
   rollout)   stage_preflight; stage_rollout ;;
   smoke)     stage_smoke ;;
-  # Deliberately absent from `all`. Replacing the host is not part of any release, and an
-  # operation that destroys an instance and can erase every case is one somebody asks for by
-  # name.
+  # Deliberately absent from `all`. Neither changing what the deployment is made of nor
+  # replacing the host is part of any release, and an operation that may destroy an instance --
+  # or, with a seed, erase every case -- is one somebody asks for by name.
+  infrastructure) stage_preflight; stage_infrastructure ;;
   host-image) stage_preflight; stage_host_image ;;
   all)
     stage_preflight
@@ -590,5 +706,5 @@ case "$STAGE" in
     stage_rollout
     stage_smoke
     ;;
-  *) die "usage: $0 {preflight|secrets|registry|images|config|stack|rollout|smoke|all|host-image}" ;;
+  *) die "usage: $0 {preflight|secrets|registry|images|config|stack|rollout|smoke|all|infrastructure|host-image}" ;;
 esac
