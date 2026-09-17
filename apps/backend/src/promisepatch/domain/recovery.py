@@ -95,6 +95,7 @@ from promisepatch.db.models import (
     Order,
     OrderLine,
     OutboxMessage,
+    PlanApproval,
     ProductionTask,
     RecoveryOption,
     Track,
@@ -335,6 +336,21 @@ class StalePlanError(RuntimeError):
     """
 
 
+class HumanApprovalMissingError(RuntimeError):
+    """Nothing establishes that a human approved this plan, so there is no yes to carry out.
+
+    Raised when a caller asks to confirm a plan that carries no approval row, or names an
+    approval belonging to a different case or a different plan. It is not "you got the arguments
+    wrong": it is the whole boundary. A surface this system authenticates a *service* on -- the
+    MCP tools' intent API -- can consume an approval a person left and can mint none, so for
+    that surface this refusal is the normal answer to a plan nobody has agreed to yet.
+
+    Declared here rather than in :mod:`promisepatch.domain.plan_approval` so every refusal a
+    confirmation can produce is readable in one place, and so that module can depend on this one
+    without this one depending back.
+    """
+
+
 class RecoveryStateError(RuntimeError):
     """A recovery step describes a shape of the world that cannot be true."""
 
@@ -371,33 +387,51 @@ async def confirm_plan(
     *,
     case_id: UUID,
     command_id: UUID,
-    worker_id: str,
+    approval_id: UUID,
     plan_id: str,
     correlation_id: UUID | None = None,
 ) -> ConfirmationResult:
-    """Record a worker's yes to **one specific plan**, and enqueue only what that yes authorises.
+    """Carry out a human's yes to **one specific plan**, and enqueue only what it authorises.
+
+    **There is no ``worker_id`` argument, and that is the point.** Who approved this plan is not
+    something a caller states; it is read from the durable approval row
+    :mod:`promisepatch.domain.plan_approval` wrote when a person agreed on a channel this system
+    authenticated them on. A surface that holds only a service credential can find such a row
+    and can create none, so calling this function is carrying out somebody's decision rather
+    than making one -- and there is no field anywhere on the path through which a conversation,
+    a model or a compromised host could name the person whose yes it is.
 
     ``plan_id`` is the identity of the plan the worker was shown -- see
-    :mod:`promisepatch.domain.plan_identity` -- and it is checked against the plan the case is
-    currently offering, under the same lock the confirmation is written with. A confirmation
-    that quotes a plan the case has moved past is refused rather than applied to whatever is
-    there now, because those are different sets of orders and only one of them was read out.
+    :mod:`promisepatch.domain.plan_identity` -- and it is checked twice: against the approval,
+    which is bound to one exact plan, and against the plan the case is currently offering, under
+    the same lock the confirmation is written with. A confirmation that quotes a plan the case
+    has moved past is refused rather than applied to whatever is there now, because those are
+    different sets of orders and only one of them was read out.
 
     One transaction, no network call and no outbound effect. What commits is: the case at
     ``EXECUTING``, every blocked track escalated with its production task held, one
     ``APPLY_RECOVERY`` step per automatically recoverable track, the confirmation itself, and
-    the audit row that says who confirmed it. A process that dies before the commit leaves the
-    case ``PLANNED`` with nothing enqueued; one that dies after leaves work another worker
-    picks up.
+    the audit row that says whose approval it carried out. A process that dies before the commit
+    leaves the case ``PLANNED`` with nothing enqueued; one that dies after leaves work another
+    worker picks up.
     """
-    # The plan is part of the request, so two confirmations of *different* plans under one
-    # command id are a conflict rather than a retry -- the same rule intake applies to two
-    # different statements claiming one identity.
-    fingerprint_of_request = request_hash(
-        case=str(case_id), worker=worker_id, plan=plan_id, confirmed=True
-    )
-
     async with database.begin() as connection:
+        # Cheap and early, so a surface with no approval to consume is refused before anything
+        # is locked. It is read again under the case lock below, because this one is advisory.
+        approval = await _approval(
+            connection, approval_id=approval_id, case_id=case_id, plan_id=plan_id
+        )
+        # The plan is part of the request, so two confirmations of *different* plans under one
+        # command id are a conflict rather than a retry -- the same rule intake applies to two
+        # different statements claiming one identity. So is the approval: one command id may
+        # carry out one person's decision, never two.
+        fingerprint_of_request = request_hash(
+            case=str(case_id),
+            worker=approval.approved_by,
+            approval=str(approval_id),
+            plan=plan_id,
+            confirmed=True,
+        )
         existing = await _existing_confirmation(connection, command_id, fingerprint_of_request)
         if existing is not None:
             return ConfirmationResult(
@@ -413,7 +447,7 @@ async def confirm_plan(
                 connection,
                 case_id=case_id,
                 command_id=command_id,
-                worker_id=worker_id,
+                approval_id=approval_id,
                 plan_id=plan_id,
                 fingerprint_of_request=fingerprint_of_request,
                 correlation_id=correlation_id,
@@ -436,7 +470,7 @@ async def confirm_plan(
     logger.info(
         "recovery.plan.confirmed",
         case_id=str(case_id),
-        worker=worker_id,
+        worker=approval.approved_by,
         applying=len(outcome.applying),
         escalated=len(outcome.escalated),
         awaiting_approval=len(outcome.awaiting_approval),
@@ -449,12 +483,20 @@ async def _confirm(
     *,
     case_id: UUID,
     command_id: UUID,
-    worker_id: str,
+    approval_id: UUID,
     plan_id: str,
     fingerprint_of_request: str,
     correlation_id: UUID | None,
 ) -> ConfirmationResult:
-    """The confirming transaction. Lock order: worker, case, tracks, then everything derived."""
+    """The confirming transaction. Lock order: worker, case, tracks, then everything derived.
+
+    The approval is read again here, inside the transaction that acts on it, and the worker this
+    confirmation is attributed to is taken from that row and from nowhere else.
+    """
+    approval = await _approval(
+        connection, approval_id=approval_id, case_id=case_id, plan_id=plan_id
+    )
+    worker_id = approval.approved_by
     await require_worker(connection, worker_id)
     case = await lock_case(connection, case_id)
 
@@ -501,7 +543,14 @@ async def _confirm(
             "escalated": {str(track.id): reason for track, reason in plan.escalate},
             "awaiting_approval": [str(track.id) for track in plan.approval],
         },
-        provenance={"confirmed_by": worker_id, "command_id": str(command_id)},
+        provenance={
+            "confirmed_by": worker_id,
+            "command_id": str(command_id),
+            # Whose decision this carried out, and where they were when they made it. Without
+            # these two the ledger would say a human approved and leave no way to check it.
+            "approval_id": str(approval_id),
+            "approved_via": approval.channel,
+        },
         correlation_id=correlation_id,
         occurred_at=now,
     ) as write:
@@ -753,6 +802,49 @@ async def _record_confirmation(
             done_at=now,
         )
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _Approval:
+    """The durable approval a confirmation is carrying out, as this module needs to read it."""
+
+    id: UUID
+    approved_by: str
+    channel: str
+
+
+async def _approval(
+    connection: AsyncConnection, *, approval_id: UUID, case_id: UUID, plan_id: str
+) -> _Approval:
+    """The human approval this confirmation claims, checked against what it claims to be for.
+
+    Three things have to agree before a yes is worth anything: the approval exists, it belongs
+    to *this* case, and it was given for *this* plan. The second and third are what stop an
+    approval being carried from one case to another, or from the plan somebody read to the plan
+    the case is offering now -- a caller holding a real approval id for a real case still cannot
+    spend it anywhere else.
+
+    Read with a plain ``SELECT`` rather than through
+    :mod:`promisepatch.domain.plan_approval`, which depends on this module. The row is the
+    authority; reaching it through the module that writes it would be a cycle and would add
+    nothing, because there is no rule about an approval that is not stated by its columns.
+    """
+    row = (
+        await connection.execute(
+            select(
+                PlanApproval.id,
+                PlanApproval.case_id,
+                PlanApproval.plan_id,
+                PlanApproval.approved_by,
+                PlanApproval.channel,
+            ).where(PlanApproval.id == approval_id)
+        )
+    ).one_or_none()
+    if row is None or row.case_id != case_id or row.plan_id != plan_id:
+        raise HumanApprovalMissingError(
+            f"approval {approval_id} does not record a human approving this plan on {case_id}"
+        )
+    return _Approval(id=row.id, approved_by=row.approved_by, channel=row.channel)
 
 
 @dataclass(frozen=True, slots=True)

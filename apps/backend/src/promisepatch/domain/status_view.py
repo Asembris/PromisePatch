@@ -897,6 +897,20 @@ def render_clarification_receipt() -> str:
     )
 
 
+def render_approval_recorded() -> str:
+    """What a recorded approval has done, which is put a decision on the record and no more.
+
+    Deliberately flat and short. An approval is not a confirmation: nothing is enqueued, no order
+    is being changed and nobody is being asked, and a sentence that sounded like progress would be
+    the exact failure every other rendering in this module is written to avoid. It says what was
+    written down and who may now act on it.
+    """
+    return (
+        "Noted - your approval of this plan is on the record. "
+        "Nothing has been carried out yet, and nothing will be until it is."
+    )
+
+
 def render_confirmation(
     *, applying: int, awaiting_approval: int, escalated: int, already_confirmed: bool
 ) -> str:
