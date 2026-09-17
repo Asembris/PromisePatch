@@ -1,530 +1,214 @@
 # CLAUDE.md — PromisePatch operating contract
 
+This file is the standing contract for every session. It holds what is true now and the rules
+that never change. It is **not** a project journal: completed work lives in `docs/`, and the
+links at the bottom are the authoritative record. Do not grow this file with narrative.
+
 ## Purpose
 
 PromisePatch turns one spoken physical-world exception ("today's raspberry delivery didn't
 arrive") into a correct, consent-respecting, selectively-applied set of customer-promise
 recoveries, with the reasoning visible. Made-to-order bakery vertical.
 
-## Current state
-
-Deterministic engine, backend foundation, and PostgreSQL baseline schema are complete. The
-P4.8 explanation quality gate is **closed**. Its two-run DEVELOPMENT allowance is spent, the one
-bounded production repair with it, and the repaired run (`7172c7c894ae`) established that Nova's
-verbalisation is safe -- every structural and semantic hard gate zero, faithfulness 5.00 -- and did
-not establish that it is complete: nine of twenty-one passages cite a required fact and never say
-it, and the judge scored causal completeness 5 on all nine.
-
-P4.8 therefore closes with a selection rather than a further measurement. **User-facing explanations
-are rendered deterministically by `promisepatch.domain.explanations.render`**, reached through
-`verbalisation.explain`, with `PP_EXPLANATION_VERBALISATION` off by default. The bounded Nova
-verbalisation path -- prompt, schema, validators, `prepare`, the dataset, the thresholds, the judge
-and both DEVELOPMENT result files -- is preserved intact as evaluated-but-not-selected capability,
-one variable away from a later phase with a repaired instrument or a different model. `prepare`
-stays ungoverned by that setting so the evaluation harness keeps measuring the model it is pointed
-at. Both holdouts -- explanation and customer-intent semantic -- remain sealed and unopened; the
-explanation one stays sealed permanently for P4.8, because DEVELOPMENT already answered the shipping
-question (see `docs/explanation-quality-gate.md`, *Closeout*).
-
-**P4.9 is closed, and with it Phase 4.** The semantic layer was audited against a bounded threat
-set -- injection, cross-kind contamination, adversarial structured output, invented entities and
-authority, bootstrap failure, outage, timeout, bounded retry, stale and duplicated results,
-replay, consent-authority attacks, late arrival, and both explanation paths. No authority or
-correctness defect was found: nothing a model says, fails to say or fails to answer can reach a
-write, a consent decision or a physical attestation. Four containment defects were found and
-fixed, all of the same shape -- an untyped exception escaping the boundary's two-kind failure
-vocabulary, past callers that catch only those two: an over-long worker statement, a Bedrock
-response envelope of the wrong shape, an order-system display label too long for one fact, and a
-persisted reading carrying none. Eight adversarial proofs were added, offline, zero model calls,
-$0. Both holdouts remain sealed. See `docs/p4.9-semantic-failure-hardening.md`.
-
-**P5 is open, and its G5 contract-locking work is done.** Before any P5 implementation, four
-things were fixed and committed. The **frozen 16-scenario effect-set manifest**
-(`docs/effect-sets/scenarios.v1.json`, `promisepatch-effect-sets` v1.0.0, manifest SHA
-`d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`) declares, per scenario, the
-expected order partitions at every ordered checkpoint plus the exact operational effects and
-refusals, hand-labelled from stipulated facts and never from engine output; it reuses the
-Hollow Oak fixture universe and is structurally verified by
-`scripts/verify_effect_set_manifest.py`, which imports no classifier. **ADR-0008** records the
-superseding decision to remove the runtime apparent-intent classifier, keeping the literal
-parser, the confirmation prompt and every historical measurement unedited. **The P5 product
-contract** (`docs/p5-product-contract.md`) locks the conversational authority boundary, the
-truthful `PLANNED`/`REQUESTED`/`RECOVERED` state vocabulary, the zero-incident-caused-effect
-definition and the first case-workspace hierarchy. Labels precede the *remaining*
-implementation, not the pre-existing engine, and that chronology is stated wherever the score
-will be. Both holdouts stay sealed; P4.8 stays closed. See `docs/effect-set-manifest.md`.
-
-**P5.1, the MCP transport spine, is done.** The real authenticated Streamable HTTP boundary
-exists: `mcp==2.2.0` pinned exactly, serving protocol revision **2025-11-25** through the
-`initialize` handshake, stateless, at `POST /mcp` in its own `mcp` process (`pp mcp`). Two of
-the five frozen intent tools are implemented -- `report` and `status` -- and the other three are
-absent rather than stubbed. The process reaches a case only by an authenticated HTTP call to the
-API's new `/internal/intents`, enforced by an import-linter contract that forbids it the domain,
-the database, the API package and SQLAlchemy. The attesting worker comes from the intent API's
-own `PP_SURFACE_WORKER_ID`; no request field anywhere in the chain carries an actor, and the
-clock is the server's. `report` stores the worker's sentence byte for byte; `status` is rendered
-deterministically by `promisepatch.domain.status_view` from the durable case and is delivered as
-given. Every tool call mints a correlation id that reaches the governed audit row. Proved
-offline with a real server and the official SDK client -- handshake, negotiation, discovery,
-successful and invalid calls, authentication, `Origin` 403 / `Host` 421, JSON-RPC errors and
-reconnect -- plus a PostgreSQL suite that drives the whole chain and asserts the rows. No live
-model call: nothing in this slice reaches a provider. See `docs/p5.1-mcp-transport-spine.md` and
-ADR-0009.
-
-**P5.2, clarification and plan confirmation, is done.** The surface is now four of the five
-frozen tools -- `report`, `clarify`, `confirm`, `status` -- with the bounded withdrawal still
-absent rather than stubbed *at that time*; it has since landed. `clarify` stores the worker's answer to the one open question byte
-for byte and hands the case back to the interpreter, concluding nothing; which physical outcome
-that answer selects is decided by the worker process, against options captured from the
-delivery's own rows when the question was asked. `confirm` requires a **`plan_id`**: a derived,
-opaque, never-stored SHA-256 identity of the plan `status` presented, covering the case version
-and every track including the untouched ones, recomputed and compared under the confirming lock
-and refused if the case has moved on. A yes therefore authorises the plan that was read out and
-nothing else -- stale, wrong-case, replayed and repeated confirmations all fail closed through
-existing domain semantics, and worker plan confirmation stays wholly distinct from customer
-consent. `status` now carries the open question with its options and, only on a `PLANNED` case,
-the plan identity and `awaiting_confirmation`; both new tools' speech is rendered by
-`status_view` and delivered as given, reporting permission and never completion. Proved by the
-canonical conversation driven end to end over the real protocol -- report, question, answer,
-plan, explicit yes, authorised status with nothing carried out -- plus staleness, replay and
-wrong-state cases, offline protocol tests, and pure tests for the identity and the vocabulary.
-No live model call. See `docs/p5.2-mcp-clarification-and-confirmation.md` and ADR-0010.
-
-**P5.3, the truthful conversational orchestrator, is done.** A model is now in the loop and has
-no authority it did not have outside it. One bounded semantic job, `select_tool`, returns a
-**verb and nothing else**: `ToolSelection` has no field for a case, a plan, a person or any
-wording, so a fabricated plan identity is refused because the field does not exist. Which verbs
-are on offer is computed deterministically from a `status` reading the server rendered -- seven
-closed phases, fail-closed to a read on any gap -- and is checked twice while remaining defence
-in depth, because the domain checks every call again. A confirmation needs three independent
-things: the phase permits it, the conversation holds the identity `status` returned, and the
-worker's own turn is a plain yes by a closed literal parser that is stricter than the domain and
-is not the consent parser. Everything a worker is told is rendered by `status_view` and
-delivered unchanged; the model's optional glue is capped at 25 words, may hold no digit and none
-of 39 outcome words, fails the whole answer rather than being trimmed, and is dropped unless the
-turn acted. Two tool calls per turn, at most one effecting, the second always `status`; nothing
-is retried. `promisepatch.orchestrator` is a client -- forbidden the domain, the database, the
-API, the engine, SQLAlchemy, an AWS SDK and the MCP server's internals. Proved by the canonical
-six-turn conversation end to end over the real transport against PostgreSQL, plus 73 offline
-tests including the adversarial set (invalid verb for the state, fabricated identity, a
-confirmation the worker never gave, provider and tool outages, staleness between decision and
-call, and an unsupported final-language claim). **One bounded live Nova conversation** ran once:
-all six verbs correct, one attempt each, 9,689 ms wall clock, 10,360 input and 165 output
-tokens, case at `EXECUTING` with nothing carried out -- no dollar figure is published because
-the rate could not be verified from this account. No benchmark program was started. Both
-holdouts stay sealed. See `docs/p5.3-conversational-orchestrator.md` and ADR-0011.
-
-**P5.4, truthful recovery and the first case workspace, is done.** The confirmed canonical case
-now runs through the recovery machinery to four real outcomes, and a person can see them. Over
-the real MCP transport, a real worker process and the real External Order System: `EXT-A` reaches
-`RECOVERED` only once the order system's own event came back, `EXT-B` reaches `REQUESTED` only
-once the provider acknowledged delivery, `EXT-C` and `EXT-D` stay an explicit owner action with a
-reason and a next action and no automatic step, and `EXT-E` and `EXT-F` carry **0 incident-caused
-operational effects**. Each of the three word-rules is proved by holding the intervening state
-open and reading the case out loud in the middle of it -- "changing the order now" before the
-echo, no `provider_ref` and no "asked" while a message is queued, and an escalation rather than a
-success when the order system refuses -- and a planned case drained through every worker cycle
-without a confirmation raises no effect at all. `status_view` gained one pure addition, band 2's
-single `next_action` with its `ActionOwner`, chosen by an ordered walk so an escalation outranks
-a customer's clock; the spoken `status` rendering is unchanged. Two session-authenticated reads,
-`GET /api/cases` and `GET /api/cases/{id}`, project one durable `read_case_status` into the
-contract's five bands, and the workspace at `?case=<id>` renders them: the worker's own words,
-one next action, promises grouped by authority, the untouched band with the backend's own count,
-and a collapsed evidence drawer that arrives with the case. The screen renders and does not
-decide -- every sentence, count and grouping arrives composed -- and the case id lives in the
-address bar, so a reload, a restored tab and a second application process all land on the same
-durable case. Proved by 9 end-to-end recovery tests, 13 workspace API tests against real
-PostgreSQL and 18 frontend tests. No live model call; both holdouts stay sealed. See
-`docs/p5.4-truthful-recovery-and-case-workspace.md`.
-
-**The P5 deployment-entry subset is CLOSED, and P6 may begin.** The roadmap's 18 September
-cutoff names a non-negotiable subset rather than the whole of G5, and every item of it is
-closed in a committed record. Four real tools -- `report`, `clarify`, `confirm`, `status` --
-served over authenticated Streamable HTTP with protocol revision 2025-11-25 pinned, an unlisted
-`Origin` refused `403` and an unlisted `Host` `421` (P5.1, P5.2). Canonical orchestration, end
-to end over that transport, with the model holding no authority it did not have outside the
-loop (P5.3). Server-owned authority throughout: the worker identity and the original turn text
-come from the server, and a confirmation binds to the exact plan that was read out (P5.1-P5.3).
-Independent-client replay through the official SDK against the server `pp mcp` runs, and
-reconnect as a fresh stateless session that picks the same durable case up (P5.1). A minimal
-real-state case and status view in the truthful `PLANNED` / `REQUESTED` / `RECOVERED`
-vocabulary, reached by a case id in the address bar so a reload or a second process lands on
-the same durable case (P5.4). And the published frozen sixteen-scenario manifest, content hash
-`d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`. The whole-delivery branch
-is proved **against that frozen identity**: the customer's own external order edit crosses as a
-signed webhook before anybody speaks, the whole Valley Produce delivery then fails rather than
-half of it, and the expected labels are loaded from the manifest -- S02's frozen labels with
-S11's frozen `ord-d` argument applied -- with its published identity asserted before anything
-else runs, rather than from anything the run observed.
-
-**P6 is open, and its first slice, the deployment preflight, is CLOSED with no IAM gap
-remaining.** The active identity is `PromisePatchDeveloperRole`, and a reproducible
-zero-mutation preflight (`scripts/aws_preflight.py`, read-only by construction: a probe naming
-an API outside a frozen list aborts the run) reported **2 of 9 required permissions** on its
-first run, when the role held nothing but `sts:GetCallerIdentity` and `bedrock:InvokeModel` on
-exactly the `us.amazon.nova-2-lite-v1:0` inference profile. One of those seven denials was the
-preflight's own fault -- the ECR probe listed the whole registry, which a role scoped to
-`repository/promisepatch/*` is correctly denied, so it manufactured a blocker that did not
-exist; it now names a repository and reads `RepositoryNotFoundException` as authorization
-proved. The account owner has since applied the delta, created both roles, and applied the
-one corrected statement the 8-of-9 run identified: `logs:DescribeLogGroups` is evaluated
-account-wide and cannot be scoped to `/promisepatch/*`, so it has its own statement with
-`Resource: "*"` -- names only, no log content, with everything that can read a line still
-scoped. **The preflight now reports 9 of 9 required permissions allowed and exits 0.** Its ECR
-row proves the earlier correction against the live account in both directions at once: the named
-`promisepatch/backend` is authorized and returns `RepositoryNotFoundException` because it does
-not exist, while the registry-wide `repository/*` listing the old probe used is still correctly
-denied. Twelve mutating requirements remain `DECLARED` rather than tested -- verified by hand
-against their real resource ARNs -- because the script does not yet use the now-permitted
-`iam:SimulatePrincipalPolicy`, which is the first P6.2 step. The committed
-deployment-role trust policy is byte-identical to the live one: CloudFormation service
-principal, no condition, the confused-deputy control having moved to the narrow `iam:PassRole`
-in the developer delta. **Nothing was created in AWS by this work and IAM was not broadened by
-it.** The
-smallest architecture that closes G6 is chosen and fully written: one EC2 host running the same
-images with the same per-container environment files as the local stack, a private encrypted RDS
-PostgreSQL for the case state, Caddy terminating TLS with a publicly trusted certificate, ECR,
-SSM Parameter Store for secrets and configuration, and CloudWatch Logs -- no load balancer, no
-NAT gateway, no ECS, no Secrets Manager. Three roles with one job each, both `iam:PassRole`
-grants fenced to a single role and a single service and additionally denied by `NotResource`,
-and no `AdministratorAccess` anywhere. Cost is list-price arithmetic over declared quantities:
-about $33 a month standing, and about $0.0039 per conversation from the measured P5.3 token
-counts. **AgentCore is declined for this slice** and the roadmap's ordinary-compute fallback
-taken, because the role cannot reach AgentCore at all, adopting it would replace the
-authenticated Streamable HTTP boundary G5 closed, and it buys nothing this slice lacks. Nothing
-of this project is deployed -- 0 stacks, 0 databases, no image repository and no log group,
-though the account does carry an unrelated `careloop` project whose spend is not ours -- no
-restart proof is taken, no deployed conversation has run and no Telegram work was started; G6 is
-not advanced beyond this preparation. The one precondition still outstanding for P6.2 is a DNS
-name for `TlsHostname`. See `docs/p6.1-deployment-preflight.md`.
-
-**P6.2, the first real deployment, is CLOSED.** PromisePatch runs at
-**`https://184.194.40.87.sslip.io`** on one `t4g.small` in `us-east-1b` against a private
-encrypted RDS PostgreSQL, behind Caddy holding a real Let's Encrypt certificate -- the
-deployment's own log records four Let's Encrypt validation servers fetching the HTTP-01
-challenge, which is what makes the certificate claim checkable rather than asserted from a
-laptop whose antivirus intercepts TLS. `TlsHostname` no longer needs a domain: left empty, the
-stack derives `<elastic-ip>.sslip.io` from the address it allocates, so a first deploy needs no
-record pointed at an address that does not exist yet, and nothing about TLS is weakened either
-way. The seven deployment smoke checks pass **7/7**, four of them asserting refusals. The
-canonical conversation runs end to end over the public MCP transport from outside AWS to four
-real outcomes -- `EXT-A` recovered, `EXT-B` asked, `EXT-C`/`EXT-D` owner actions, `EXT-E`/`EXT-F`
-untouched with **0 incident-caused effects**. A **real Bedrock Nova call succeeds from inside a
-container on the deployed host**, on the instance role: `semantic.answered`,
-`us.amazon.nova-2-lite-v1:0`, one attempt, repeated across a reboot -- and the case whose
-utterance it read still sits at `NEEDS_HUMAN_INTERPRETATION`, because a reading that comes back
-inside its schema authorises exactly as much as one that never arrives, which is nothing. A
-confirmed case has survived a reboot, a stack update and a second reboot with identical
-per-promise outcomes and no duplicated effect.
-
-**Eleven defects were found that no amount of reading the definition could have found**, five by
-AWS rejecting the stack, five by running it, and one by the account only granting what was asked
-for -- including a reboot that silently re-seeded the database and erased the very cases the
-deployment exists to prove outlive the host, and `HttpPutResponseHopLimit: 1`, which left every
-container unable to reach IMDS and made the instance role unusable from inside. Each has an
-offline test that reproduces it; the deployment suite went 47 to 57 and `scripts/` is 335
-passing. Two IAM actions were needed and the account owner granted both --
-`ec2:ModifyInstanceMetadataOptions` and `cloudformation:ContinueUpdateRollback`, each scoped to a
-resource its role already owned. Two other denials were routed around *without* asking for IAM,
-by making the template stop depending on a permission. IMDSv2 stays required, TLS verification is
-on everywhere, and the database is private. The evidence UI is still not deployed and Telegram is
-untouched. See `docs/p6.2-first-deployment.md`.
-
-**P7 is open, and its first slice, P7.1 -- the judge-facing UX contract -- is CLOSED.** The
-product's surfaces are locked before any visual work, because P7 is design-led and the deployed
-`/` is still one line of plain text and a `404`. Four surfaces, two of them primary and the
-second living inside the first: the **case workspace** at `/` and `/?case=<id>`, the
-**conversation panel inside it** rather than on its own route, the demoted **order book**, and
-**sign-in**. A five-beat judge journey with comprehension budgets -- arrival, the worker's own
-sentence, three authority groups, the counted untouched set, the evidence drawer -- reaches the
-one sentence the whole surface exists to produce inside a minute, with **no CLI, no README and
-no navigation**. All **fourteen** promise states and **nine** case headlines are bound to what a
-screen may and may never draw, including the three the P5 contract's eleven-row table does not
-enumerate; the canonical demo is the frozen manifest's **`S11`**, where Lena's own external edit
-removes her dependency *before* the incident, so her untouched row is contingent rather than
-arranged. The worker's sequence is locked against the orchestrator's own permitted-verb mapping,
-and two capabilities are recorded as genuinely absent rather than drawn as disabled controls:
-the **bounded withdrawal** (since implemented -- see below), and **correcting a physical fact**,
-which exists in the domain but is reachable only from the CLI. The evidence section names, per judge question, the field that
-answers it -- and **three P7.3 backend additions** where no field exists: the causal chain
-itself, the incident-caused-effect count on untouched orders, and the MCP correlation id. The
-Alexa+ voice contract is specified and **implemented nowhere**; no voice turn has been recorded
-and no timing exists. Nine anti-patterns are forbidden outright. **No frontend was changed, no
-AWS resource was touched, nothing was deployed and no push was made.** See
-`docs/p7.1-judge-ux-contract.md` and `docs/p7.1-design-handoff.md`.
-
-**The runtime customer-intent classifier is removed, and that G7 obligation is discharged.** The
-old finding was re-verified rather than assumed and was still true: `worker.py` called
-`customer_intent.prepare`, which made a synchronous Bedrock `classify_reply_intent` call between
-a customer's reply and the prompt telling them how to answer. Nothing authoritative depended on
-it -- every label, a malformed answer and an unreachable provider reached the same branch and
-produced the same message and the same state -- so what it cost was latency, money and a failure
-mode on the one path where a person is waiting. The call, the label and the unavailable-provider
-retry are gone; the literal parser, the sender, deadline and binding checks, the single
-confirmation prompt, `CONFIRMATION_PENDING`, the escalation on a second unreadable reply and the
-frozen wording are all unchanged, and the prompt is now built from the request the reply is
-bound to. Three guards keep it out: an import-linter contract forbidding
-`domain.customer_intent` both `domain.consent` and `promisepatch.semantic`, a source assertion
-over the module naming no provider, and a provider that raises if the consent path asks it about
-a customer's words. The step kind, the step-key prefix, the two `semantic_interpretation_*`
-event types, the module name and `inbound_replies.apparent_intent` are all retained as durable
-identities and historical data. The evaluation surface is untouched: `evals` keeps the 56
-customer-intent cases, both splits, the challenger records and every measurement, and
-`pp semantic-smoke` still asks that job. See `docs/customer-intent-classifier-removal.md`.
-
-**The bounded withdrawal is implemented, and that G7 obligation is discharged.** The fifth
-frozen tool exists across the domain, both transports, the orchestrator and the case workspace,
-and every branch of it was reconstructed from the frozen sources rather than designed. A case
-with no consequential write reaches `CANCELLED` and every live track `WITHDRAWN`; a case that
-had already done something reverses what is reversible -- this case's production holds, its
-still-open approval requests, its undispatched effects and its unclaimed steps -- escalates
-every live track with a reason, and settles at `RESOLVED` carrying `needs_owner_attention`. It
-reverses **no** physical fact, unsays **no** customer decision, and rewrites **no** delivered
-effect: an amendment the order system accepted and a message a customer received are reported
-as *applied*, in sentences the domain composed, and the rendered speech is asserted never to
-read as an undo. A terminal case is refused rather than answered. The actor stays server-derived
-and no request field anywhere can name one, a reason or a physical claim. The verb is offered in
-`CLARIFYING` and `PLANNED` only, which is the frozen per-phase table read literally, and the
-screen draws the control only where `permitted_verbs` says so -- never disabled elsewhere.
-Proved by 70 targeted tests including three end to end over the real MCP transport; no live
-model call, nothing deployed, both holdouts sealed. One frozen item is deliberately **not**
-built and is stated rather than left to be found: §23's "please disregard" customer message,
-which has no precedent in this build and whose owner handoff is implemented instead. See
-`docs/bounded-withdrawal.md`.
-
-**The case workspace is finished, and with it every item G5 carried into G7.** The third and
-last deferral -- the **finishing of the case workspace** beyond the minimal real-state view P5.4
-shipped -- is closed against the frozen G7 text rather than against a later paraphrase of it: one
-primary workspace on one route, a concise promise view, a stable dependency view whose four
-columns hold their geometry on every row, an expandable evidence drawer that arrives with the
-case, causal explanation only where a path exists, unrelated promises visible and quiet and
-counted, every status carried by a phrase and a state name and a marker shape rather than by
-colour, an owner and a next action and a reason on every blocked promise, and a reload, a restored
-tab or a second browser landing on the same durable case. Each criterion has a named passing test;
-238 frontend tests across 22 files pass on the working tree, none of them changed by the closeout.
-Two later documents said this was still open without naming a criterion it failed -- they copied a
-three-item list forward while the withdrawal beside it was genuinely open -- and they are left
-unedited, because each recorded truthfully what its own slice did. One design item stays recorded
-as unmet where it was recorded: the five demo-critical frames do not each compose in one unscrolled
-1280x800 viewport, a composition preference from this project's own P7.1 handoff list traded
-deliberately against the causal rows, and not a frozen criterion. **G7 as a whole remains open** --
-the ten-turn voice measurement, the comprehension check and the sixteen-scenario runner are
-untouched by this. Nothing here reopens the locked roadmap. See
-`docs/case-workspace-closeout.md`.
-
-**All sixteen effect-set scenarios are wired, and no scored run has happened.** Before a single
-one was built, the run protocol was amended to bound what a development run may repair: a harness
-defect may be diagnosed and fixed, and a disagreement between a frozen label and the
-implementation's behaviour may not -- it is recorded, published, and left unresolved until the
-first scored run has been taken and its X/16 captured. That rule is what keeps G8's "whatever the
-result" from being theatre, and it binds this session: **no X/16 was computed, printed or held
-privately**, `--scored` was not invoked, and the building session is not the scoring session.
-Every one of the sixteen now performs its own stipulated facts against the real system -- real
-MCP calls, a real worker, the real External Order System, real signed webhooks -- and reads every
-checkpoint it declares. Four fault injections are explicit named operator actions rather than
-timing accidents: a reply carrying another customer's channel, one delivery replayed under its own
-provider identity, a process killed at `crash.AFTER_EXTERNAL_SUCCESS` once the order system's own
-event count proves it already acted, and a second worker with a different boot identity taking over
-durable state. Two orderings the manifest stipulates are held deliberate the same way. **Every
-scenario agrees on all four partitions at every declared checkpoint** -- not one order is
-misclassified anywhere in the manifest -- and five disagree on effects, every one of them a missing
-`task_hold`, `owner_escalation` or second `customer_message`, never an extra, unauthorised or
-duplicated effect. All five are committed **failing**, unrepaired, with their exact diffs
-published. Two things had to be added: the order system gained an operator quantity edit, because
-three frozen scenarios stipulate a customer resizing their own order and the screen could only
-re-point an item; and the census now attributes a reservation change to whoever *commanded* it
-rather than to the window it fell in, which is a harness defect the manifest's own S14 rationale
-predicted. One stipulated fact is disclosed as unreachable: S04's partial spoilage has no
-deterministic attestation with a number, and the divergence cannot reach any label. Both holdouts
-stay sealed, nothing was deployed and no model was called. See `docs/effect-set-harness.md` and
-`docs/effect-set-run-protocol.md`.
-
-**The first scored run has since been taken, and it is 11/16.** One invocation of the protocol's
-exact scored command, in a session that wrote no harness code and repaired nothing, at
-implementation SHA `e81b5aa` against manifest SHA
-`d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`. Eleven scenarios matched
-their frozen labels exactly; **S06, S07, S08, S12 and S13 failed** and stay committed failing.
-No scenario reached `HARNESS_FAILURE` -- all sixteen executed to a verdict. Every difference is
-an effect count lower than its label; no order is misclassified anywhere in the sixteen, and no
-extra, unauthorized or duplicate effect appeared. **That headline is immutable**: it is never
-replaced by a repaired score, the denominator is permanently sixteen, no failing scenario is
-removed or weakened, and 16/16 remains a separate release condition published beside it. The
-capture is committed unedited at
-`docs/effect-sets/runs/20260915T163255509125+0000-scored.json`; resolving the five is later work
-under G8's correction process. See `docs/effect-set-first-scored-run.md`.
-
-**The first of the five is repaired, and CI now separates the product gate from the benchmark.**
-Cause A is fixed: `_close_request` escalated an approval that could no longer be answered and
-never held the kitchen work, so §23's "EXPIRED -> ESCALATED; task HELD" was performed by halves
-and a bakery could finish a cake the case had already concluded it could not ask about. The hold
-is a required argument rather than a defaulted one, because that function also serves
-undeliverable transport, which §23 does not answer with a hold -- expiry holds, a message that
-failed inside a still-open window does not, and both halves are pinned by a test. **S08 now
-matches its frozen labels.** S06, S07, S12 and S13 stay committed failing with byte-identical
-diffs, unweakened; **cause B stays UNDECIDED**, and causes C, D and E are untouched -- C changes
-every case that reaches `PLANNED`, including the canonical demo case, and does not move until the
-demo narrative is settled. **The published 11/16 headline is unchanged and immutable**; no scored
-run was taken, and a pytest invocation of the scenario suite is a harness-development run that
-publishes no X/16. In CI the sixteen now run in their own job, `effect sets (expected red until
-16/16)`, and `backend + postgres` excludes them with `--ignore`, so a permanently red benchmark
-stops standing in front of a real backend regression. Nothing is skipped, weakened, deselected or
-marked expected-to-fail -- the scenarios run whole and fail identically; only which job their red
-colours changed. **"The release SHA passes required CI" means the product gate**, and G8's 16/16
-on the benchmark stays a separate, still-required release condition. See
-`docs/effect-set-run-protocol.md`, *What passing CI means*.
-
-**G7 is CLOSED, with one criterion deliberately not performed.** Four requirements that had only
-ever been asserted in prose were verified against the implementation and their tests run: a blocked
-promise carries an owner, a next action and a reason; an approval names the exact change and its
-deadline; stale consent explains why the previous plan cannot execute; and a reload or restart
-cannot falsely reset state. G7 closes **with** every one of these stated rather than softened. The
-spoken word budget is met with two exceptions -- the 104-word withdrawal reply, kept long because
-compressing four reversal kinds into a count deletes the distinction the withdrawal record protects,
-and budgets unproved for a case holding many distinct postures at once. The voice gate passed at
-**`K = 9/10`** -- the minimum that passes, by one turn, with turn 7 missing four seconds by 807.8 ms
--- on the local stack with no public-internet round trip, after a first run that was voided late and
-is published in full with its `K = 1/10`. The sixteen-scenario runner is **authored**, all sixteen
-wired, five effect disagreements published and deliberately unresolved; **no scored run has happened
-and no `X/16` exists**. The Telegram customer channel is **unbuilt and deferred into G8's five
-deployed rehearsals**, the gate that requires real customer transport -- a G6 requirement, recorded
-rather than deleted. Correcting a physical fact remains CLI-only, as P7.1 records. And the
-**demo-narrative comprehension check was declined by the project owner**, who judged it low value
-relative to its cost: it is a G7 criterion, so G7 closes with one criterion deliberately not
-performed, not with it met. Both holdouts stay sealed, nothing was deployed, no model was called and
-no product code was changed. See `docs/g7-closeout.md`.
-
-**A judge principal stays read-only, and a deployment now comes up with a case already open.**
-The decision the observer role never had a record for is written: **ADR-0016** states that
-`report` is a physical attestation, so by the core invariant a judge turn is authority over the
-one shared bakery rather than over the speaker's own case -- established by measurement, not
-preference, because the second visitor through the canonical journey attested that a delivery
-*which has not happened yet* failed, on a screen identical to the first visitor's, and the third
-dead-ended. The only design that survives that is a per-visitor universe, and every read above
-the projection is whole-table and unscoped, which makes it tenancy. It supersedes nothing;
-ADR-0013 is unchanged. The defect that made read-only intolerable is fixed separately:
-`pp reset-demo-state` seeds orders, promises and staff and **no case**, so the judge entry had
-landed on an empty list since it shipped. `promisepatch.provisioning.ensure_demo_case` now runs
-at the start of the `worker` process -- not the reset, which is destructive, and not a compose
-service, because the deployed composition has 44 bytes of headroom -- gated on the judge entry's
-own `PP_DEMO_SESSION_ENABLED` so the two cannot drift apart again, and needing no configuration
-change in either stack. It is **additive only**: four guards in order -- the setting, a
-`pg_try_advisory_lock` that skips rather than waits, an emptiness check over *any* case, and
-fixed command identities -- and it never truncates, deletes or updates a pre-existing row, which
-is P6.2's re-seeding defect refused rather than reasoned about. `maya` says the canonical
-sentence and answers the canonical question; the case reaches **`PLANNED`**, the one state where
-all four judge-journey bands are populated and **zero operational effects** exist, and the last
-one reachable without a human saying yes. It carries `S01`'s labels rather than P7.1 §3's `S11`,
-stated rather than glossed: `S11` is the same incident plus Lena's own external edit, which
-provisioning deliberately does not perform, because doing so would couple the boot path to two
-more services and would stage the one contingency `S11` exists to prove is not staged. A
-provisioning failure cannot stop the worker starting, does not gate the API, and leaves the case
-on its open question rather than guessing; what a judge then sees is the product's own sentence,
-already pinned by `judgeEntry.test.tsx`. Twelve tests against real PostgreSQL. Nothing was
-deployed, no AWS resource was touched, no principal gained write authority, and no model was
-called. See `docs/adr/0016-a-judge-principal-stays-read-only.md` and `docs/seeded-demo-case.md`.
-
-**G8's adversarial faults are mapped to their proofs, and one of them is unproven.** Four of G8's
-bullets name fifteen distinct claims between them -- eleven faults plus the stale-plan refusal,
-the whole-delivery branch, the unrelated-external-change branch and the protected-order zero.
-Every one was audited against the implementation by reading assertions rather than test names,
-and fourteen came back **PROVEN**: lost MCP response and replay, foreign identity, model
-self-confirmation, stale plan and stale callback, wrong customer, duplicate webhook, timeout,
-crash before and after external acceptance, browser disconnect, external convergence, the
-approved stale plan refusing mutation after both an order and a stock change -- including the
-roadmap's stricter *"ten green checks alone are insufficient"*, answered by the commit-time
-fingerprint guard that leaves `amendments_for(track) == []` after a **passing** checklist -- and
-the whole-delivery pair with its zero protected-order effects attributed by idempotency key
-rather than by a time window. **Bullet four is UNPROVEN**: the head-of-line measurement, delayed
-semantic calls timed alongside unrelated ready work, has never been taken. The phrase occurs
-once in the whole tree, in the requirement itself; the two nearby artifacts are the
-no-held-transaction probe, which is the evidence the roadmap explicitly names as insufficient,
-and a waiting-case continuation test that carries no timing at all. Two PROVEN rows carry a
-stated precision rather than a downgrade: no e2e severs a browser connection mid-mutation, and no
-test names a read timeout on the MCP-to-intent-API hop, which shares its one `except` clause with
-the connect failure that is tested. Two things outside those bullets are recorded rather than
-repaired -- no backend test names `PromiseState.STALE`, and S06/S07/S12/S13 stay committed
-failing, neither of which this audit caused. Audit only: nothing was built, repaired, run beyond
-three cheap invocations, or deployed, and the immutable 11/16 headline is unchanged. See
-`docs/g8-adversarial-proof-map.md`.
-
-**The MCP human-confirmation trust boundary is closed.** A plan confirmation used to be minted
-by whichever service called it: over the browser that caller was a signed-in person and the
-`HUMAN_APPROVAL` audit row was true, and over MCP it was a process holding a shared service token
-with the actor read from `PP_SURFACE_WORKER_ID` -- so an authenticated host, and therefore a model
-driving one, could produce durable evidence that a named baker had approved a plan they never
-heard. A confirmation now **spends** a durable, plan-bound approval it cannot write: `plan_approvals`
-is governed and append-only, unique on `(case_id, plan_id)`, and its `ApprovalChannel` has exactly
-two members -- `BROWSER_SESSION` and `OPERATOR_CONSOLE` -- with **no member a service surface could
-name**, checked by the database. `recovery.confirm_plan` lost `worker_id` and gained `approval_id`,
-so there is no parameter anywhere on any transport through which a caller can name the person whose
-yes it is, and the intent API calls `find` and never `record`. Refusals are ordered so a caller
-learns the case, the state and the plan are wrong before it learns anything about authority. The
-MCP `confirm` contract changed rather than being preserved misleadingly: same three arguments, and
-its description, the server `INSTRUCTIONS` and `ConfirmResult` all now say it spends a worker's
-agreement and can never create one, with `approved_via` beside `confirmed_by`. The browser is
-unchanged from a caller's view -- same `202`, counts, speech and ADR-0015 parsing -- and gained
-`POST /api/conversation/approve`, which records a yes without carrying it out so a conversation on
-another transport can. Proved by 17 targeted tests against real PostgreSQL plus additions to the
-browser, orchestrator, intent-API and protocol suites, including the defect reproduced exactly as
-it was reachable and the orchestrator's own literal gate removed with the case still not moving.
-No live model call, nothing deployed; a redeploy needs migration `0009_human_plan_approval`. The
-`g8-adversarial-proof-map` §1.3 **PROVEN** was client-side only and carries an amendment saying so.
-See `docs/mcp-human-confirmation-boundary.md` and ADR-0018.
-
-## Authoritative documents
-
-`PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen, gitignored,
-local-only and **authoritative whenever present**. `new_roadmap.md` is the locked P5-P9 roadmap and
-its per-phase acceptance gates; reopening it requires a reproduced correctness or eligibility blocker,
-or a documented official rule change. Read them before deciding anything they cover. Never
-modify them unless explicitly asked. Never commit them.
-
 ## Core rule
 
 **The model understands; the deterministic protocol authorizes.**
 
-## Key invariants
+## Authority invariants
 
-- The LLM never authorizes a write and never produces a consent decision.
-- Customer consent is only a literal `YES` / option code / `NO`; free text is at most a
+These are load-bearing. Never weaken one to make something work; amend the ADR first.
+
+- **Model output is never authority.** The LLM never authorizes a write, never produces a
+  consent decision, and never produces a physical attestation. A reading that arrives inside its
+  schema authorizes exactly as much as one that never arrives: nothing.
+- **Worker plan approval and customer consent are wholly distinct**, with distinct parsers,
+  distinct records and distinct vocabulary. Never merge them.
+- **Customer consent** is only a literal `YES` / option code / `NO`. Free text is at most a
   non-authoritative apparent intent that can trigger one confirmation prompt.
-- Recovery selects only pre-authored `RecipeVersion`s named by `SubstitutionPolicy`. Nothing
-  at runtime creates, derives or synthesizes a version.
+- **Service authentication is not human consent.** Holding the MCP bearer token or the internal
+  service secret proves a *process*, never a person. No request field on any transport can name
+  an actor, a clock, a reason or a physical claim; the actor is server-derived.
+- **MCP `confirm` spends a durable human approval it cannot write.** `plan_approvals` is
+  governed and append-only, unique on `(case_id, plan_id)`, and `ApprovalChannel` has no member
+  a service surface could name. See ADR-0018.
+- A confirmation binds to a **`plan_id`** — the derived, opaque identity of the plan that was
+  read out. Stale, wrong-case, replayed and repeated confirmations fail closed.
+- Recovery selects only pre-authored `RecipeVersion`s named by `SubstitutionPolicy`. Nothing at
+  runtime creates, derives or synthesizes a version.
 - The external order system is the system of record for orders. PromisePatch has no order
   editor; it writes to an order only as a governed recovery amendment.
-- Physical facts (received / not received / spoiled / equipment out) are authoritative
+- **Physical facts** (received / not received / spoiled / equipment out) are authoritative
   independently of recovery authorization. Declining a plan never un-spoils anything; only an
   explicit correcting attestation reverses a fact.
 - A commitment line is open (`EXPECTED`) or settled. Settlement posts its physical outcome to
-  the ledger exactly once, and a settled line contributes zero to expected supply. Received
-  supply is never also counted as expected.
-- Unknown or conflicting state fails closed to `BLOCKED` — never `UNAFFECTED`, never
+  the ledger exactly once; a settled line contributes zero to expected supply. Received supply
+  is never also counted as expected.
+- Unknown or conflicting state **fails closed to `BLOCKED`** — never `UNAFFECTED`, never
   `AUTO_RECOVERABLE`.
-- Promises not reachable from the exception are untouched: no message, no write, no
+- Promises not reachable from the exception are **untouched**: no message, no write, no
   reservation change, no task hold, no audit event.
+- A withdrawal stops future work and is **never an undo**: it reverses no physical fact, unsays
+  no customer decision and rewrites no delivered effect.
+- **Frozen and historical evidence is never silently rewritten.** Manifests, published run
+  captures, measurements and closeout documents are read-only history. A later truth is recorded
+  beside them, never edited into them.
 
-## Architecture summary
+## Architecture
 
-One Python backend (`api`, `worker`, `mcp` entrypoints, plus the `converse` client), one pure engine package
-(`promise_graph`), one React evidence UI, one separate External Order System simulator,
-PostgreSQL as the single store, a persisted case state machine with a step ledger, Bedrock for
-understanding only, MCP for the five intent tools, Telegram for the customer channel.
+One Python backend (`api`, `worker`, `mcp` entrypoints, plus the `converse` client), one pure
+engine package (`promise_graph`), one React evidence UI, one separate External Order System
+simulator, PostgreSQL as the single store, a persisted case state machine with a step ledger,
+Bedrock for understanding only, MCP for the five intent tools, Telegram for the customer channel.
+
 `promise_graph` depends on the standard library and Pydantic only, does no I/O, reads no
-environment, and never calls the wall clock — time is passed in explicitly.
+environment, and never calls the wall clock — time is passed in explicitly. Import-linter
+contracts in `pyproject.toml` enforce every boundary: engine purity, the semantic boundary,
+consent isolation, the MCP client's separation from the domain and database, and the
+orchestrator's separation from everything authoritative.
 
-## Development rules
+## Current state
 
-- One phase at a time. Never build Phase N+1 artifacts while in Phase N.
-- Do not redesign frozen architecture; amend the ADR first if a decision must change.
-- All gates must pass before a phase is complete: pytest with the coverage floor, the
-  Hypothesis CI profile, mypy, ruff check, ruff format, import-linter.
-- Never weaken, skip or delete a test to make code pass. Fix the code or fix the fixture data
-  and say so.
-- Secrets are never committed. No `.env`, no tokens, no credentials.
-- No synthetic validation, no invented metrics, no performance or impact claims.
+Phase 4, the G5 deployment-entry subset and the first deployment are closed in their committed
+records. **G7 is closed with one criterion deliberately not performed** — the demo-narrative
+comprehension check, declined by the project owner. **G8 is the open gate.**
+
+- **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
+  with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
+- **The effect-set benchmark headline is `11/16` and is immutable.** The denominator is
+  permanently sixteen; a repaired score never replaces it, and `16/16` is a separate release
+  condition published beside it. Failing scenarios stay committed failing.
+  See [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) and
+  [effect-set-run-protocol.md](docs/effect-set-run-protocol.md) before touching anything here.
+- **The manifest is frozen**: `docs/effect-sets/scenarios.v1.json`,
+  `promisepatch-effect-sets` v1.0.0, content hash
+  `d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`, checked by
+  `scripts/verify_effect_set_manifest.py`. Never edit a label.
+- **Both evaluation holdouts remain sealed.** Do not open one.
+- **Telegram is unbuilt**, deferred into G8's deployed rehearsals. Correcting a physical fact is
+  CLI-only.
+
+`new_roadmap.md` is the authority on what is open and what each gate requires. Read it before
+deciding what to build. Do not restate its contents here.
+
+## Repository map
+
+| Path | What it is |
+|---|---|
+| `packages/promise-graph/` | The pure deterministic engine. No I/O, no clock, no environment. |
+| `packages/order-contract/` | The shared order-system contract types. |
+| `apps/backend/src/promisepatch/domain/` | Case state machine, consent, recovery, plan approval, withdrawal, status rendering. The authority lives here. |
+| `apps/backend/src/promisepatch/semantic/` | The model boundary. Understanding only. |
+| `apps/backend/src/promisepatch/api/` | HTTP surface: `routers/conversation.py` (browser), `routers/intents.py` (internal), workspace reads. |
+| `apps/backend/src/promisepatch/mcp/` | The MCP transport. Forbidden the domain, the database and SQLAlchemy. |
+| `apps/backend/src/promisepatch/orchestrator/` | The conversational client. Holds no authority. |
+| `apps/backend/src/promisepatch/worker.py` | The durable workflow worker. |
+| `apps/frontend/` | The case workspace. Renders; never decides. |
+| `apps/order-simulator/` | The External Order System, a separate application. |
+| `evals/` | The measurement surface. Never becomes production. |
+| `scripts/` | Harnesses: effect sets, benchmarks, deployment smoke, AWS preflight, local env. |
+| `deploy/` | CloudFormation, compose files, IAM policies. |
+| `docs/` | The authoritative record. ADRs in `docs/adr/`. |
+
+## Local environment
+
+Full instructions are in [README.md](README.md) (*Prerequisites*, *Run the local stack*,
+*Tests*). The rules that bite:
+
+- **Stop the compose `worker` before running the backend suite** — it shares the local database
+  and will claim the steps a workflow test just enqueued. Stop `api` and `mcp` too, or the
+  suite's `TRUNCATE` waits on their connector locks forever.
+- Local containers have **no bind mounts**: they serve the image, not the working tree. Rebuild
+  after editing source, and run Vite on the port the allowlist expects.
+- `boto3` here needs `AWS_CA_BUNDLE` pointing at the local root, or every AWS call fails TLS.
+- Never commit `docker/env/*.env`, `.env`, tokens or credentials.
+
+## Validation
+
+- **Use the `fast-validate` skill.** Run the smallest correct validation for what changed, and
+  say what you skipped. `.claude/skills/fast-validate/SKILL.md`.
+- **GitHub CI is the broad regression authority.** A green local run never means "validated".
+- The full gates are: pytest with the coverage floor, the Hypothesis CI profile, mypy in its
+  three separate groups, `ruff check`, `ruff format`, and import-linter.
+- Do not run the full backend suite for a small change — it is roughly an hour, fully buffered.
+- **Never weaken, skip, delete or deselect a test to make code pass.** Fix the code or fix the
+  fixture data, and say which.
+- The effect-set scenarios run in their own CI job and are **expected red until 16/16**. "The
+  release SHA passes required CI" means the product gate, not that job. Do not touch the
+  effect-set workflow merely because it is red.
+- For a live evaluation run, a budget or a split, use the `eval-runbook` skill. Never improvise
+  a live model invocation.
+
+## AWS and deployment
+
+- **Never mutate an AWS resource unless the task explicitly requires it.** Reads and the
+  read-only preflight are fine; creating, updating or deleting is not.
+- Never broaden IAM to get around a denial without saying so; prefer removing the dependency on
+  the permission. The account owner grants deltas, not this session.
+- IMDSv2 stays required, TLS verification stays on everywhere, the database stays private.
+- `scripts/aws_preflight.py` is read-only by construction and aborts on an unlisted API.
 
 ## Git
 
-One-line Conventional Commit subjects. No body, no bullets, no trailers, no co-author line,
-no generated-by line, no emoji. Example: `feat(engine): propagation`.
-Never push unless explicitly asked.
+- One-line Conventional Commit subjects. **No body, no bullets, no trailers, no co-author line,
+  no generated-by line, no emoji.** Example: `feat(engine): propagation`.
+- **Never push unless explicitly asked.**
+- **Never run a destructive git operation** — no `reset --hard`, no `checkout --`, no `clean`,
+  no force push, no history rewrite. Preserve the user's untracked and uncommitted work.
+
+### Staging discipline
+
+- **NEVER `git add .` and NEVER `git add -A`.** Stage explicit paths only.
+- Before every commit, inspect what is actually staged:
+
+```bash
+git diff --cached --name-only
+```
+
+```bash
+git diff --cached --stat
+```
+
+- Never sweep unrelated or untracked files into a commit. Untracked run captures, local
+  assessments and scratch files stay untracked unless the user asks for them.
+
+## Development rules
+
+- One gate at a time. Never build the next gate's artifacts while the current one is open.
+- Do not redesign frozen architecture; amend the ADR first if a decision must change.
+- No synthetic validation, no invented metrics, no performance or impact claims.
+- State what was not done as plainly as what was.
+
+## Authoritative documents
+
+`PROMISEPATCH_PRODUCT_SPEC.md`, `ARCHITECTURE_PLAN.md` and `new_roadmap.md` are frozen,
+gitignored, local-only and **authoritative whenever present**. Read them before deciding
+anything they cover. Never modify them unless explicitly asked. Never commit them.
+
+`docs/adr/` holds every architectural decision, `0001` through `0018`. The ones that constrain
+day-to-day work most: [0008](docs/adr/0008-remove-runtime-customer-intent-classifier.md) (no
+runtime intent classifier), [0011](docs/adr/0011-conversational-orchestrator-authority.md) (the
+orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-principal.md) and
+[0016](docs/adr/0016-a-judge-principal-stays-read-only.md) (a judge principal stays read-only),
+[0015](docs/adr/0015-a-spoken-yes-checked-by-the-server.md) (a spoken yes is checked by the
+server), and [0018](docs/adr/0018-a-plan-confirmation-spends-a-human-approval.md) (a plan
+confirmation spends a human approval).
+
+## Historical record
+
+Completed work is recorded in `docs/` and is not summarized here. When you need the detail,
+read the source document rather than a paraphrase of it.
+
+| Area | Document |
+|---|---|
+| Semantic boundary and its hardening | [semantic-boundary.md](docs/semantic-boundary.md), [p4.9-semantic-failure-hardening.md](docs/p4.9-semantic-failure-hardening.md) |
+| Explanation quality gate (closed) | [explanation-quality-gate.md](docs/explanation-quality-gate.md) |
+| Product contract and MCP surface | [p5-product-contract.md](docs/p5-product-contract.md), [p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md), [p5.2-mcp-clarification-and-confirmation.md](docs/p5.2-mcp-clarification-and-confirmation.md) |
+| Orchestrator, recovery and workspace | [p5.3-conversational-orchestrator.md](docs/p5.3-conversational-orchestrator.md), [p5.4-truthful-recovery-and-case-workspace.md](docs/p5.4-truthful-recovery-and-case-workspace.md), [case-workspace-closeout.md](docs/case-workspace-closeout.md) |
+| Deployment | [p6.1-deployment-preflight.md](docs/p6.1-deployment-preflight.md), [p6.2-first-deployment.md](docs/p6.2-first-deployment.md), [head-redeploy-2026-09-16.md](docs/head-redeploy-2026-09-16.md) |
+| Judge-facing UX | [p7.1-judge-ux-contract.md](docs/p7.1-judge-ux-contract.md), [p7.1-design-handoff.md](docs/p7.1-design-handoff.md), [p7.3-deployed-judge-surface.md](docs/p7.3-deployed-judge-surface.md) |
+| Effect sets | [effect-set-manifest.md](docs/effect-set-manifest.md), [effect-set-harness.md](docs/effect-set-harness.md), [effect-set-run-protocol.md](docs/effect-set-run-protocol.md), [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md), [effect-set-failure-diagnosis.md](docs/effect-set-failure-diagnosis.md) |
+| G7 and G8 | [g7-closeout.md](docs/g7-closeout.md), [g8-adversarial-proof-map.md](docs/g8-adversarial-proof-map.md), [g8-head-of-line-measurement.md](docs/g8-head-of-line-measurement.md), [g8-head-of-line-disposition.md](docs/g8-head-of-line-disposition.md) |
+| Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
+| Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
+| Order system | [order-system.md](docs/order-system.md) |
+| Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |
