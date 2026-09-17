@@ -1181,6 +1181,11 @@ def test_the_database_is_encrypted_and_backed_up(template: dict[str, Any]) -> No
     # The case state is the evidence a deployed loop happened. A mistyped `delete-stack` must
     # not be able to erase it without leaving a snapshot behind.
     assert template["Resources"]["Database"]["DeletionPolicy"] == "Snapshot"
+    # And the other half, which is the one a release could reach: an update that replaced the
+    # instance rather than deleting it. `deploy.sh stack` refuses any change set that replaces
+    # anything, so a release cannot get here at all -- this is the second line, for the update
+    # that arrives by some other hand.
+    assert template["Resources"]["Database"]["UpdateReplacePolicy"] == "Snapshot"
 
 
 def test_the_bootstrap_does_not_claim_to_run_on_every_boot(template: dict[str, Any]) -> None:
