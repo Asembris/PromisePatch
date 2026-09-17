@@ -59,6 +59,7 @@ APPEND_ONLY_COLUMN = {
     "domain_events": "type",
     "exception_facts": "target_id",
     "inventory_ledger": "source_id",
+    "plan_approvals": "evidence",
     "recipe_version_equipment": "equipment_id",
     "recipe_version_lines": "role",
     "recipe_versions": "authored_by",
