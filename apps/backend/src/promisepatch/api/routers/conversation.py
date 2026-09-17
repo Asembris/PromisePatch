@@ -36,6 +36,15 @@ rolled back. And a confirmation is bound to a plan: ``plan_id`` is the identity 
 presented, compared under the lock the confirmation is written with, so a yes authorises the plan
 that was read and never whatever the case happens to hold when it arrives.
 
+**This is where a plan approval comes from, and it is the only kind of place one can.** A worker
+here has presented a credential of their own, so ``confirm`` writes the durable
+:mod:`promisepatch.domain.plan_approval` row that records *this person approved this exact plan*
+and then carries it out, both in one request because the person is right here. ``approve`` writes
+the same row and stops, for the case where the yes will be carried out by a conversation on
+another transport -- which can then execute it and can never create one. Neither is reachable
+with the internal service token, and no approval this router writes can name anybody but the
+session's own worker.
+
 **A withdrawal stops future work and is never an undo.** ``withdraw`` answers with two lists the
 domain composed: what it stood down, and what had already reached a customer or the order system
 and is therefore *not* reversed. No physical fact moves -- facts and recovery authorisation are
@@ -56,6 +65,8 @@ from promisepatch.api.dependencies import CsrfPrincipalDep, DatabaseDep
 from promisepatch.api.errors import ApiError
 from promisepatch.api.refusals import refusal_for
 from promisepatch.api.schemas.conversation import (
+    ApprovalRecorded,
+    ApproveTurn,
     ClarifyTurn,
     ConfirmTurn,
     ReportTurn,
@@ -63,7 +74,7 @@ from promisepatch.api.schemas.conversation import (
     WithdrawalAccepted,
     WithdrawTurn,
 )
-from promisepatch.domain import cases, intake, recovery, status_view, withdrawal
+from promisepatch.domain import cases, intake, plan_approval, recovery, status_view, withdrawal
 from promisepatch.observability import get_logger
 from promisepatch.orchestrator.policy import reads_as_worker_confirmation
 
@@ -265,11 +276,19 @@ async def confirm(
         raise NOT_A_PLAIN_YES
 
     try:
+        approval = await plan_approval.record(
+            database,
+            case_id=turn.case_id,
+            plan_id=turn.plan_id,
+            worker_id=principal.worker_id,
+            channel=plan_approval.ApprovalChannel.BROWSER_SESSION,
+            evidence=turn.text if turn.text is not None else plan_approval.CONTROL_PRESS,
+        )
         result = await recovery.confirm_plan(
             database,
             case_id=turn.case_id,
             command_id=turn.command_id,
-            worker_id=principal.worker_id,
+            approval_id=approval.id,
             plan_id=turn.plan_id,
         )
     except intake.UnknownWorkerError as error:
@@ -278,6 +297,7 @@ async def confirm(
     except (
         cases.CaseMissingError,
         intake.NotPermittedError,
+        recovery.HumanApprovalMissingError,
         recovery.StalePlanError,
         recovery.PlanNotConfirmableError,
         recovery.ConfirmationConflictError,
@@ -308,6 +328,75 @@ async def confirm(
             escalated=len(result.escalated),
             already_confirmed=not result.created,
         ),
+    )
+
+
+@router.post(
+    "/approve",
+    response_model=ApprovalRecorded,
+    status_code=201,
+    summary="Record this worker's approval of one plan, without carrying it out",
+)
+async def approve(
+    turn: ApproveTurn,
+    principal: CsrfPrincipalDep,
+    database: DatabaseDep,
+) -> ApprovalRecorded:
+    """Write down that this person agreed to this exact plan, and do nothing else with it.
+
+    ``201``, and nothing has moved: the case is still ``PLANNED``, nothing is enqueued, no order
+    is amended and no customer is asked. What exists afterwards is a durable record that a named
+    worker, authenticated by this server on their own session, approved the plan carrying that
+    identity -- which is the one thing a surface holding a service credential cannot produce for
+    itself, and therefore the one thing it has to be given.
+
+    This is what makes an MCP ``confirm`` honest. A conversation on another transport may then
+    carry this decision out; it can find this row and it can create none, so the yes it acts on
+    is always somebody's and never its own. The reverse order is fine too: ``confirm`` on this
+    router records and carries out in a single request, because the person is right here.
+
+    The words are read exactly as ``confirm`` reads them, by the same closed literal rule, and a
+    sentence that is not a plain yes approves nothing. A press of the explicit control carries no
+    words and is recorded as a press: it is the yes, and none is invented on the worker's behalf.
+
+    Recording an approval twice is recording it once. The second call returns the approval the
+    first one wrote rather than a second authority for one agreement.
+    """
+    if turn.text is not None and not reads_as_worker_confirmation(turn.text):
+        logger.info("conversation.approve.not_a_yes", case_id=str(turn.case_id))
+        raise NOT_A_PLAIN_YES
+
+    try:
+        approval = await plan_approval.record(
+            database,
+            case_id=turn.case_id,
+            plan_id=turn.plan_id,
+            worker_id=principal.worker_id,
+            channel=plan_approval.ApprovalChannel.BROWSER_SESSION,
+            evidence=turn.text if turn.text is not None else plan_approval.CONTROL_PRESS,
+        )
+    except intake.UnknownWorkerError as error:
+        logger.error("conversation.attestor_unknown", worker=principal.worker_id)
+        raise ATTESTOR_MISSING from error
+    except (
+        cases.CaseMissingError,
+        intake.NotPermittedError,
+        recovery.StalePlanError,
+        recovery.PlanNotConfirmableError,
+    ) as error:
+        raise _refused(error) from error
+
+    logger.info(
+        "conversation.approve.recorded",
+        case_id=str(turn.case_id),
+        worker=principal.worker_id,
+    )
+    return ApprovalRecorded(
+        case_id=approval.case_id,
+        plan_id=approval.plan_id,
+        approved_by=approval.approved_by,
+        approved_via=approval.channel,
+        speech=status_view.render_approval_recorded(),
     )
 
 

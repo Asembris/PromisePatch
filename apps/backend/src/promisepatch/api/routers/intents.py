@@ -29,12 +29,22 @@ routes, because a stale plan is a fact about the case rather than about which tr
 work. The interpreter runs in the worker, under a lease, in a transaction that can be rolled
 back -- which is the only place a decision that settles a delivery belongs.
 
+**A confirmation here consumes a human's approval and can never create one.** This surface
+authenticates a service, so the one thing it must not be able to do is produce evidence that a
+person agreed to something. ``confirm`` therefore takes no actor and mints nothing: it looks up
+the durable approval a worker left for **exactly this plan**, on a channel where this system
+authenticated them -- their own browser session, or the operator console -- and carries that
+decision out. A plan nobody has approved is refused with ``HUMAN_APPROVAL_REQUIRED``, whatever
+the caller presents, because holding the service token proves which process is asking and
+nothing at all about whether a human was standing there.
+
 **A confirmation is bound to a plan, not to a case.** ``confirm`` carries the identity of the
 plan ``status`` presented, and the domain compares it with the plan the case is offering under
-the lock it writes with. A yes that quotes a superseded plan is refused; it is never applied to
-whatever the case happens to hold when it arrives. Worker plan confirmation is also not
-customer consent: it authorises *asking* an approval-required customer and nothing more, and no
-endpoint here can record a decision on a customer's behalf.
+the lock it writes with, and with the plan the approval was given for. A yes that quotes a
+superseded plan is refused; it is never applied to whatever the case happens to hold when it
+arrives. Worker plan confirmation is also not customer consent: it authorises *asking* an
+approval-required customer and nothing more, and no endpoint here can record a decision on a
+customer's behalf.
 
 **A withdrawal stops future work and is never an undo.** ``withdraw`` reports, in sentences the
 domain composed, both what it stood down and what had already reached a customer or the order
@@ -77,7 +87,15 @@ from promisepatch.api.schemas.intents import (
     WithdrawIntent,
 )
 from promisepatch.db.models import Case
-from promisepatch.domain import analysis, cases, intake, recovery, status_view, withdrawal
+from promisepatch.domain import (
+    analysis,
+    cases,
+    intake,
+    plan_approval,
+    recovery,
+    status_view,
+    withdrawal,
+)
 from promisepatch.observability import get_logger
 
 logger = get_logger(__name__)
@@ -294,22 +312,30 @@ async def confirm(
     worker process is what executes against the confirmation, and until one runs the case sits
     exactly where this left it.
     """
-    worker_id = _authenticate(settings, service_token)
+    _authenticate(settings, service_token)
+    # The credential is checked and then deliberately discarded. This surface's configured
+    # worker attests what a worker *said* -- a report, a clarification -- and may not approve a
+    # plan on anybody's behalf, so the only identity that reaches the confirmation is the one on
+    # the approval row a person already left.
     try:
+        approval = await plan_approval.require(
+            database, case_id=intent.case_id, plan_id=intent.plan_id
+        )
         result = await recovery.confirm_plan(
             database,
             case_id=intent.case_id,
             command_id=intent.command_id,
-            worker_id=worker_id,
+            approval_id=approval.id,
             plan_id=intent.plan_id,
             correlation_id=_correlation_id(request),
         )
     except intake.UnknownWorkerError as error:
-        logger.error("intents.surface_worker_unknown", worker=worker_id)
+        logger.error("intents.approver_unknown", case_id=str(intent.case_id))
         raise SURFACE_WORKER_MISSING from error
     except (
         cases.CaseMissingError,
         intake.NotPermittedError,
+        recovery.HumanApprovalMissingError,
         recovery.StalePlanError,
         recovery.PlanNotConfirmableError,
         recovery.ConfirmationConflictError,
@@ -320,14 +346,16 @@ async def confirm(
         "intents.confirm.accepted",
         case_id=str(result.case_id),
         created=result.created,
-        worker=worker_id,
+        worker=approval.approved_by,
+        approved_via=approval.channel,
     )
     return ConfirmationAccepted(
         case_id=result.case_id,
         command_id=result.command_id,
         state=result.state,
         created=result.created,
-        confirmed_by=worker_id,
+        confirmed_by=approval.approved_by,
+        approved_via=approval.channel,
         applying=len(result.applying),
         awaiting_approval=len(result.awaiting_approval),
         escalated=len(result.escalated),

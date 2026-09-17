@@ -69,6 +69,60 @@ class ClarifyTurn(BaseModel):
     )
 
 
+class ApproveTurn(BaseModel):
+    """A worker's yes to one specific plan, recorded and not carried out.
+
+    Identical in shape to :class:`ConfirmTurn` minus ``command_id``, and the missing field is the
+    difference between the two: a confirmation is a command with an identity a redelivery reuses,
+    and an approval is a fact about a plan, keyed by that plan. Sending it twice records it once.
+
+    Its reason for existing is the trust boundary. A surface that authenticates a *service* --
+    the internal intent API the MCP tools call -- must be able to carry out a worker's approval
+    and must never be able to produce one, so the approval has to be obtainable on a surface
+    where this system authenticated the person. This is that surface, and there is no actor field
+    here either: the approver is the session's own worker, read from the row this server wrote.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case_id: UUID
+    plan_id: str = Field(
+        min_length=1,
+        max_length=128,
+        description=(
+            "the identity of the plan being approved, exactly as the case response returned it. "
+            "Opaque: it names a plan the server rendered and cannot describe one it did not."
+        ),
+    )
+    text: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_UNTRUSTED_CHARACTERS,
+        description=(
+            "what the worker said, verbatim, when they said it rather than pressed it. Read by "
+            "the server with the existing literal rule and never by the caller; omit it for the "
+            "explicit control, whose press is itself the yes."
+        ),
+    )
+
+
+class ApprovalRecorded(BaseModel):
+    """What an approval established: a decision on the record, and nothing carried out.
+
+    There are no counts here, and that is the point -- counts are what a *confirmation* answers
+    with, because a confirmation enqueues work. This answers with who approved what, and a
+    sentence that says nothing has happened yet, because nothing has.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case_id: UUID
+    plan_id: str
+    approved_by: str = Field(description="the session's own worker; no request field names one")
+    approved_via: str = Field(description="the channel that authenticated them")
+    speech: str = Field(description="what to say back, rendered deterministically by the domain")
+
+
 class ConfirmTurn(BaseModel):
     """A worker's yes to one specific plan.
 
@@ -79,8 +133,14 @@ class ConfirmTurn(BaseModel):
 
     There is no ``confirmed: bool``. A false one would be a withdrawal wearing a confirmation's
     name, and withdrawal is its own capability with its own rules; calling this endpoint *is* the
-    yes. It is also not a customer's consent, which is a literal reply on that customer's own
-    channel and cannot be produced by anybody pressing a button in this building.
+    yes, because the caller is the person. It is also not a customer's consent, which is a literal
+    reply on that customer's own channel and cannot be produced by anybody pressing a button in
+    this building.
+
+    A yes here does two things at once: it records the durable approval that says this person
+    agreed to this plan, and it carries that approval out. They are separable -- see
+    :class:`ApproveTurn`, which does only the first, for a yes that another transport will act
+    on -- and they are done together here because the person is present on this request.
 
     ``text`` is the one field a spoken confirmation adds, and its **absence** is as meaningful as
     its presence (ADR-0015). Omitted, the explicit confirmation control was pressed and the press

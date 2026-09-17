@@ -82,6 +82,25 @@ PLAN_NOT_CONFIRMABLE: Final = ApiError(
 )
 """There is no plan on offer, so there is nothing a yes could be about."""
 
+HUMAN_APPROVAL_REQUIRED: Final = ApiError(
+    status_code=403,
+    code="HUMAN_APPROVAL_REQUIRED",
+    message="no human has approved the plan this case is offering",
+)
+"""A confirmation of a plan nobody has agreed to.
+
+``403`` rather than ``409``, because it is a statement about the caller's authority and not
+about the case: the case is in a perfectly good state to be confirmed, and what is missing is
+the one thing this caller cannot supply by trying again differently. A service surface reaches
+this whenever it is asked to confirm a plan no person has approved -- which is the normal answer
+rather than an error condition, and is exactly what stops an authenticated host manufacturing a
+worker's yes.
+
+It is deliberately not a hint. It says a human has not approved, never who could, and the
+sentence is the same whether the approval is absent, belongs to another case or was given for a
+plan this case has moved past.
+"""
+
 CASE_NOT_WITHDRAWABLE: Final = ApiError(
     status_code=409,
     code="CASE_NOT_WITHDRAWABLE",
@@ -100,6 +119,7 @@ _MAPPING: Final[tuple[tuple[type[BaseException], ApiError], ...]] = (
     (intake.NotPermittedError, CASE_NOT_PERMITTED),
     (intake.NotAwaitingClarificationError, NOT_AWAITING_CLARIFICATION),
     (intake.IntakeConflictError, COMMAND_CONFLICT),
+    (recovery.HumanApprovalMissingError, HUMAN_APPROVAL_REQUIRED),
     (recovery.StalePlanError, PLAN_SUPERSEDED),
     (recovery.PlanNotConfirmableError, PLAN_NOT_CONFIRMABLE),
     (recovery.ConfirmationConflictError, COMMAND_CONFLICT),
@@ -132,6 +152,7 @@ __all__ = [
     "CASE_NOT_PERMITTED",
     "CASE_NOT_WITHDRAWABLE",
     "COMMAND_CONFLICT",
+    "HUMAN_APPROVAL_REQUIRED",
     "NOT_AWAITING_CLARIFICATION",
     "PLAN_NOT_CONFIRMABLE",
     "PLAN_SUPERSEDED",

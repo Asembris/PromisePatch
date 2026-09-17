@@ -29,7 +29,15 @@ from promisepatch import provisioning
 from promisepatch.config import LlmProvider, Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
-from promisepatch.domain import analysis, handlers, inbox, intake, observation, recovery
+from promisepatch.domain import (
+    analysis,
+    handlers,
+    inbox,
+    intake,
+    observation,
+    plan_approval,
+    recovery,
+)
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 from promisepatch.integrations import build_semantic_provider
@@ -372,6 +380,13 @@ def confirm_plan_command(
     read the plan cannot quote its identity, and a confirmation that named only a case would
     authorise whatever the case held at the moment it arrived.
 
+    ``--worker`` names the person approving, and this command records their approval before
+    carrying it out -- the operator console is one of the two channels where this system takes a
+    human's word for a plan, the other being their own browser session. It is a person at a
+    terminal on the host, holding the database; that is the authority, and it is why the MCP
+    surface, which holds a shared service token and nothing else, has no equivalent and may only
+    execute an approval somebody else left.
+
     Nothing is sent from here and nothing is applied here. This makes the confirmation durable;
     the worker process is what executes against it, and until one runs the case sits exactly
     where this command left it.
@@ -399,11 +414,19 @@ async def _confirm(
 ) -> recovery.ConfirmationResult:
     database = RuntimeDatabase.from_settings(settings)
     try:
+        approval = await plan_approval.record(
+            database,
+            case_id=case_id,
+            plan_id=plan_id,
+            worker_id=worker_id,
+            channel=plan_approval.ApprovalChannel.OPERATOR_CONSOLE,
+            evidence=f"pp confirm-plan --case {case_id} --plan {plan_id}",
+        )
         return await recovery.confirm_plan(
             database,
             case_id=case_id,
             command_id=command_id,
-            worker_id=worker_id,
+            approval_id=approval.id,
             plan_id=plan_id,
         )
     finally:

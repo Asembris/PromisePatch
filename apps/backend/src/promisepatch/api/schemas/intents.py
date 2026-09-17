@@ -97,16 +97,22 @@ class ClarificationAccepted(BaseModel):
 
 
 class ConfirmIntent(BaseModel):
-    """A worker's yes to one specific plan.
+    """A request to carry out the yes a worker already gave to one specific plan.
 
     ``plan_id`` is the whole difference between this and a blanket authorisation. It is the
     identity of the plan ``status`` presented, and the domain checks it against the plan the
     case is currently offering before anything is enqueued -- so a yes cannot land on a plan
     that was re-made after the worker read it.
 
+    **Calling this endpoint is not the yes.** It once was, and that was the defect: a caller
+    holding the service token could produce a durable record that a named worker had approved a
+    plan. What this asks for now is the execution of an approval a person left on a channel this
+    system authenticated them on, and a plan carrying none is refused. So there is no actor
+    field here, and adding one would not help a caller who wanted to be somebody -- the person
+    is read from the approval row and from nowhere else.
+
     There is no ``confirmed: bool``. A false one would be a withdrawal wearing a confirmation's
-    name, and withdrawal is its own intent with its own rules; calling this endpoint *is* the
-    yes.
+    name, and withdrawal is its own intent with its own rules.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -134,7 +140,15 @@ class ConfirmationAccepted(BaseModel):
     created: bool = Field(
         description="false for a redelivery of a confirmation already accepted, which is a success"
     )
-    confirmed_by: str
+    confirmed_by: str = Field(
+        description=(
+            "the worker whose durable approval this carried out, read from that approval. "
+            "Never this surface's configured worker, which approves nothing."
+        )
+    )
+    approved_via: str = Field(
+        description="the channel that authenticated the approving human, e.g. BROWSER_SESSION"
+    )
     applying: int = Field(
         description="tracks a standing preference covers. Permission to act; not an act"
     )
