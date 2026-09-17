@@ -319,7 +319,7 @@ account `265243686715`, region `us-east-1`, profile `promisepatch`, verified bef
 ran.
 
 Section 7 said what a live check would have to show and that none of it had been done. It has now
-been done, against the real `promisepatch-prod`. **Two change sets were created and both were
+been done, against the real `promisepatch-prod`. **Three change sets were created and all three were
 deleted unexecuted. Nothing else was mutated.** No image was built or pushed, no stack was
 updated, no instance was rebooted or replaced, no fixture was reset, no IAM was touched.
 
@@ -367,6 +367,17 @@ is the shipped one.
   `PP_DEPLOY_DB_BACKUP_DAYS`, so the pre-8.2 script would have submitted the default `7` and
   silently discarded six days of point-in-time recovery. It submitted `1`.
   `SeedDemoFixtureOnFirstBoot=false` was submitted literally.
+- **A deliberately drifted shell moved nothing.** A third change set was built with all six
+  variables set to values that disagree with the live stack -- `PP_DEPLOY_VPC_ID`,
+  `PP_DEPLOY_HOST_SUBNET`, `PP_DEPLOY_DB_SUBNETS`, `PP_DEPLOY_INGRESS_CIDR=203.0.113.4/32`,
+  `PP_DEPLOY_TLS_HOSTNAME=drift.example.com` and `PP_DEPLOY_DB_BACKUP_DAYS=7`. CloudFormation
+  reported the submission carried `vpc-033f9da8cac696679`, the live subnets, `0.0.0.0/0`, an
+  empty `TlsHostname` and `1`: not one of the six reached the template. That is the whole of
+  section 8.2 holding on the real service rather than against a stub, and it is the case where
+  the pre-8.2 script would have narrowed live ingress, renamed the certificate, moved the
+  deployment to another VPC and discarded six days of point-in-time recovery -- none of which is
+  a `Replacement` or a `Remove`, so nothing in the release path would have refused it. The change
+  set was deleted unexecuted.
 - **The ARN parse works on real CLI output.** `aws cloudformation deploy --no-execute-changeset`
   printed its ARN inside the command it suggests, the `grep -o` in `create_stack_change_set`
   recovered it, and `describe-change-set` accepted it.
@@ -440,8 +451,4 @@ holding on the live stack. The confirmation variable was never set.
 - **Section 7 item 3 is unverified.** `DeclaredHostAmiId` and `DemoFixtureSeededOnFirstBoot` are
   outputs of the template on disk, not of the deployed stack, which predates them. They appear
   only after a submission executes, and none did.
-- **The drifted-shell case was not exercised with values set.** The check ran with no `PP_DEPLOY_*`
-  in the environment, so it proves inheritance beats the script's *defaults*
-  (`DatabaseBackupRetentionDays=1` against a default of `7`); it does not separately prove
-  inheritance beats a populated shell on live AWS. The behavioural tests cover that case.
 - **Nothing was executed, so no claim is made here about what an executed release does.**
