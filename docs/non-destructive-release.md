@@ -5,6 +5,11 @@ Status: **closed locally. Nothing has been verified against AWS**, and section 7
 what a live check would have to show. No AWS resource was read, created, updated or deleted
 while this was written.
 
+> **Superseded on 2026-09-18 by [section 9](#9-the-live-check-performed).** The status line
+> above is left as written. The live check has since been run against `promisepatch-prod`, it
+> found a defect in the guard described in section 4 item 3, and section 9 records both what it
+> proved and what it left unperformed.
+
 This closes the first item of [head-redeploy-2026-09-16.md](head-redeploy-2026-09-16.md)
 section 7: *"`deploy.sh stack` still replaces the host whenever Amazon publishes a newer AL2023
 arm64 AMI. Worked around here by pinning; unfixed in the script, and it will recur on the next
@@ -303,3 +308,140 @@ create's job and the test is
 live check would have to show is unchanged and still unperformed; a run of it would now also have
 to show `AllowedIngressCidr`, `DatabaseSubnetIds` and `DatabaseBackupRetentionDays` submitted as
 the stack declares them rather than as the shell holds them.
+
+---
+
+## 9. The live check, performed
+
+Date: 2026-09-18. Identity
+`arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment`,
+account `265243686715`, region `us-east-1`, profile `promisepatch`, verified before anything else
+ran.
+
+Section 7 said what a live check would have to show and that none of it had been done. It has now
+been done, against the real `promisepatch-prod`. **Two change sets were created and both were
+deleted unexecuted. Nothing else was mutated.** No image was built or pushed, no stack was
+updated, no instance was rebooted or replaced, no fixture was reset, no IAM was touched.
+
+### 9.1 The live state, before and after
+
+Identical in every field, read before the first change set and again after the last deletion.
+
+| | before | after |
+|---|---|---|
+| stack status | `UPDATE_COMPLETE` | `UPDATE_COMPLETE` |
+| stack last updated | `2026-09-16T16:40:40Z` | `2026-09-16T16:40:40Z` |
+| `ImageTag` | `b62779d6e975` | `b62779d6e975` |
+| `HostAmiId` | `ami-0fa4996c14e7d501e` | `ami-0fa4996c14e7d501e` |
+| `AllowedIngressCidr` | `0.0.0.0/0` | `0.0.0.0/0` |
+| `DatabaseBackupRetentionDays` | `1` | `1` |
+| `DatabaseSubnetIds` | `subnet-06892e46df75ae5b6,subnet-0c8ed66d49566ba6e` | unchanged |
+| `TlsHostname` | empty | empty |
+| `HostInstanceId` | `i-087c742587f83d61d` | `i-087c742587f83d61d` |
+| EC2 `ImageId` / launch time | `ami-0fa4996c14e7d501e` / `2026-09-13T18:33:33Z` | unchanged |
+| RDS `DbiResourceId` / status | `db-U2JWQBTINX6W6GAB56EOTHOCSM` / `available` | unchanged |
+| SSM `image-tag` | `b62779d6e975` | `b62779d6e975` |
+| change sets on the stack | none | none |
+
+`/healthz` still answers `b62779d6e975`, so the stack, SSM and the running host name the same
+commit after the check as before it.
+
+### 9.2 What the release path did against real AWS
+
+`deploy.sh stack` itself was **not** run, and the reason is this document's own model rather than
+caution: HEAD is `86bee22f3a5d`, its image was never pushed -- ECR holds `b62779d6e975` as the
+newest tag in both repositories -- so a release at HEAD would have moved the CloudFormation
+`ImageTag` to a commit SSM and the host do not name and no image exists for. Instead the script's
+own functions were sourced without its dispatch, the same way the behavioural tests do it, and
+driven against the live account with the tag the stack already declares. Every function exercised
+is the shipped one.
+
+- **`release_host_ami_id` returned `ami-0fa4996c14e7d501e`** -- the value the stack declares --
+  while `latest_host_ami_id` returned `ami-07b9559027f889918` in the same run. The hazard is live
+  and the fix holds against it. That is section 7 item 1, minus the execution.
+- **`inherited_stack_parameters` read back all ten infrastructure parameters** from the real
+  `describe-stacks`, including `TlsHostname` as an empty value and `DatabaseSubnetIds` as one
+  comma-joined field. Both section 8.3 concerns behave on real CLI output.
+- **The change set AWS built carried the live values, not the shell's.**
+  `DatabaseBackupRetentionDays=1` is the proof that matters: the shell running the check had no
+  `PP_DEPLOY_DB_BACKUP_DAYS`, so the pre-8.2 script would have submitted the default `7` and
+  silently discarded six days of point-in-time recovery. It submitted `1`.
+  `SeedDemoFixtureOnFirstBoot=false` was submitted literally.
+- **The ARN parse works on real CLI output.** `aws cloudformation deploy --no-execute-changeset`
+  printed its ARN inside the command it suggests, the `grep -o` in `create_stack_change_set`
+  recovered it, and `describe-change-set` accepted it.
+
+### 9.3 What the live check found that no test could
+
+Section 7 predicted the change set would replace nothing. **It did not.** Real CloudFormation
+answered:
+
+```
+Modify  AWS::EC2::EIPAssociation  ElasticIpAssociation  Replacement: Conditional
+Modify  AWS::EC2::Instance        Host                  Replacement: Conditional
+```
+
+with `Host.UserData` at `RequiresRecreation: Conditionally` and the association's `InstanceId` at
+`Always`. Two things follow, and the second is a defect.
+
+1. **A release against this stack does propose to touch the host**, because the template on disk
+   changed `UserData` -- that is the seed gate from section 4 itself. Gating the seed is a
+   `UserData` edit, and `UserData` is a recreation-capable property, so the fix that stops a
+   replacement reseeding the database cannot land without a run that may replace the host. That is
+   a real cost of the design and it was not noticed when sections 1-8 were written.
+2. **`Replacement` is not a boolean, and the guard treated it as one.** It is `True`, `False` or
+   `Conditional`, the last meaning CloudFormation cannot decide in advance.
+   `replaced_by_change_set` matched `True` and `Remove` only, so it returned *nothing* for the
+   plan above: `stage_stack` would have printed "the change set replaces and removes nothing" and
+   executed a plan AWS had just said may destroy the instance. The protection section 4 claims --
+   "a change set that would replace or remove any resource is refused" -- did not hold against the
+   real service.
+
+The stub could not find this. It answers `describe-change-set` with the *result* of the query
+rather than with a payload the query runs against, so the filter expression was never executed by
+any test, and the twelve mutations of section 5 all passed through it.
+
+**Fixed in `fcd3c3b`.** `Conditional` now counts with `True` and `Remove` -- unknown fails closed
+-- and the regression test runs the query, read out of `deploy.sh`, over the payload AWS actually
+returned, so the filter itself is exercised rather than stubbed. Reverting the fix fails that
+test. Re-run live against the same stack, the fixed guard refused:
+
+```
+REFUSED. would replace or remove: ElasticIpAssociation  Host
+change set deleted unexecuted; nothing mutated
+```
+
+### 9.4 The host-image refusal, proved
+
+`stage_host_image` was run with `PP_DEPLOY_REPLACE_HOST` unset and `PP_DEPLOY_SEED_ON_FIRST_BOOT`
+unset. It printed what dies, refused, and deleted its change set:
+
+```
+  host image  ami-0fa4996c14e7d501e -> ami-07b9559027f889918
+  release     b62779d6e975 (unchanged)
+  instance    i-087c742587f83d61d is destroyed and replaced
+  certificate ordered again for this name
+  database    untouched; the new instance loads no fixture
+  preserving 10 infrastructure parameters as the stack declares them
+  the change set replaces or removes: ElasticIpAssociation  Host
+error: set PP_DEPLOY_REPLACE_HOST=i-087c742587f83d61d to confirm the above. The change set was
+deleted unexecuted and nothing was mutated.
+```
+
+The release tag was passed back unchanged rather than moved to HEAD, which is section 4 item 8
+holding on the live stack. The confirmation variable was never set.
+
+### 9.5 What is still unperformed
+
+- **Section 7 item 1 is verified only up to execution.** A release was built, read and refused;
+  none was executed, because HEAD's image is not in ECR and because the guard -- correctly --
+  refuses this template against this stack. Proving an executed release replaces nothing needs a
+  staged release whose template does not move `UserData`.
+- **Section 7 item 3 is unverified.** `DeclaredHostAmiId` and `DemoFixtureSeededOnFirstBoot` are
+  outputs of the template on disk, not of the deployed stack, which predates them. They appear
+  only after a submission executes, and none did.
+- **The drifted-shell case was not exercised with values set.** The check ran with no `PP_DEPLOY_*`
+  in the environment, so it proves inheritance beats the script's *defaults*
+  (`DatabaseBackupRetentionDays=1` against a default of `7`); it does not separately prove
+  inheritance beats a populated shell on live AWS. The behavioural tests cover that case.
+- **Nothing was executed, so no claim is made here about what an executed release does.**
