@@ -89,6 +89,16 @@ Mirrors :class:`promisepatch.domain.observation.ReportKind`; a test asserts the 
 """
 
 CLARIFICATION_SLOTS: tuple[str, ...] = ("COMMITMENT", "SCOPE")
+
+APPROVAL_CHANNELS: tuple[str, ...] = ("BROWSER_SESSION", "OPERATOR_CONSOLE")
+"""The channels through which PromisePatch itself authenticates the human who approves a plan.
+
+Closed, and closed is the point. Both members name a path on which a person presented a
+credential of their own: a signed-in browser session, or an operator console run on the host.
+There is deliberately **no** member for the MCP surface, whose bearer token authenticates a
+*service* and says nothing about whether anybody was standing there -- so the service surface
+cannot record an approval by naming a channel, because there is no channel it could name.
+"""
 """The parts of a binding that can be materially ambiguous, per the frozen triggers."""
 
 TRACK_STATES: tuple[str, ...] = (

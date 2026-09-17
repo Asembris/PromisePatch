@@ -15,7 +15,7 @@ from alembic.script import ScriptDirectory
 
 from promisepatch.db.boundary import AUDIT_MARKER
 from promisepatch.db.revision import HEAD_REVISION
-from promisepatch.db.types import WORKER_ROLES
+from promisepatch.db.types import APPROVAL_CHANNELS, WORKER_ROLES
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -64,3 +64,21 @@ def test_the_observer_migration_admits_exactly_the_roles_the_runtime_declares() 
     source = OBSERVER_MIGRATION.read_text(encoding="utf-8")
     rendered = ", ".join(f'"{role}"' for role in WORKER_ROLES)
     assert f"AFTER = ({rendered})" in source
+
+
+# ------------------------------------------------------ what 0009 restates rather than imports
+
+
+APPROVAL_MIGRATION = BACKEND / "alembic" / "versions" / "0009_human_plan_approval.py"
+
+
+def test_the_approval_migration_admits_exactly_the_channels_the_runtime_declares() -> None:
+    """The closed set of channels that may record a human approval, at both ends.
+
+    It is the boundary itself: the database admits a channel only if it is in this tuple, and
+    there is no member here for a service surface. A migration that admitted one would let the
+    MCP path write an approval whatever the application code said.
+    """
+    source = APPROVAL_MIGRATION.read_text(encoding="utf-8")
+    rendered = ", ".join(f'"{channel}"' for channel in APPROVAL_CHANNELS)
+    assert f"CHANNELS = ({rendered})" in source

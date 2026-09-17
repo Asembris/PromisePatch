@@ -38,6 +38,7 @@ from promise_graph.model import (
 )
 from promisepatch.db.base import Base
 from promisepatch.db.types import (
+    APPROVAL_CHANNELS,
     CASE_STATES,
     CLARIFICATION_SLOTS,
     REPORT_KINDS,
@@ -443,3 +444,49 @@ class ApprovalDecision(Base):
     provider_message_id: Mapped[str] = mapped_column(String(200), nullable=False)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     received_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+
+
+class PlanApproval(Base):
+    """A human's approval of one exact plan, written where PromisePatch authenticated them.
+
+    The reason this table exists is that a confirmation used to be minted by whoever called the
+    confirming service. On the browser that was a signed-in person and the claim was true; on
+    the MCP surface it was a shared service token and the claim was not -- an authenticated host
+    calling ``confirm`` produced an audit row saying a named worker had approved a plan, when
+    all that had been established was that a process held a secret. So the approval is now a row
+    of its own, written only by a channel that authenticated the human, and the confirmation
+    consumes it.
+
+    ``channel`` is checked against :data:`~promisepatch.db.types.APPROVAL_CHANNELS`, which has
+    no member for a service surface. That is the boundary as a constraint rather than as a
+    convention: the MCP path cannot insert here, because there is no value it could put in this
+    column.
+
+    ``(case_id, plan_id)`` is unique, so one plan carries at most one approval, and a second
+    yes to the same plan is the same yes rather than a second authority. Bound to the *plan*
+    and not to the case: a plan identity covers the case version and every track, so an approval
+    cannot survive the case moving on, cannot be applied to a re-planned set of orders, and
+    cannot be carried to another case at all.
+
+    Append-only, like every other authored record of what somebody claimed. An approval is not
+    edited and not withdrawn -- a case that should no longer execute is withdrawn, which is its
+    own authority with its own row.
+    """
+
+    __tablename__ = "plan_approvals"
+    __table_args__ = (
+        enum_check("channel", APPROVAL_CHANNELS, name="channel"),
+        CheckConstraint("btrim(plan_id) <> ''", name="plan_id_required"),
+        CheckConstraint("btrim(evidence) <> ''", name="evidence_required"),
+        UniqueConstraint("case_id", "plan_id", name="uq_plan_approvals_case_plan"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    plan_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    approved_by: Mapped[str] = mapped_column(ForeignKey("workers.id"), nullable=False)
+    channel: Mapped[str] = mapped_column(String(32), nullable=False)
+    evidence: Mapped[str] = mapped_column(Text, nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
