@@ -33,11 +33,19 @@
 # images and the configuration have to exist before the host boots or its first `compose pull`
 # fails, and the secrets have to exist before the stack resolves the database password.
 #
-# Required environment:
+# **The PP_DEPLOY_* placement, ingress, TLS and sizing variables below provision a stack. They
+# do not release one.** Once the stack exists, every infrastructure parameter a submission sends
+# is read back off that stack, so a shell that has lost `PP_DEPLOY_INGRESS_CIDR`, still carries
+# `PP_DEPLOY_DB_BACKUP_DAYS=1` from a demo roll, or points at a different VPC cannot move any of
+# them by running a release. Changing one on a deployed stack means saying so where the value can
+# be read -- a submission through the template with the new value -- and not letting a stale
+# shell decide. `create_stack_change_set` is where that split lives.
+#
+# Required for a first create, and read by nothing an existing-stack release does:
 #   PP_DEPLOY_VPC_ID          an existing VPC
 #   PP_DEPLOY_HOST_SUBNET     a subnet with a route to an internet gateway
 #   PP_DEPLOY_DB_SUBNETS      two or more subnet ids, comma separated, in different zones
-# Optional:
+# Optional, and likewise first-create only where they name infrastructure:
 #   PP_DEPLOY_TLS_HOSTNAME    the name the certificate is issued for and clients verify.
 #                             Unset, the stack derives `<elastic-ip>.sslip.io` -- a real public
 #                             name that already resolves to the address the stack allocates, so
@@ -283,21 +291,91 @@ stage_config () {
   printf '  uploaded %s/{compose,caddyfile,image-tag}\n' "$PREFIX"
 }
 
+# Every parameter the live stack declares except the three a submission owns, spelled as
+# `Key=Value` overrides and read back off CloudFormation rather than rebuilt from this shell.
+#
+# This is the second half of the same fix as `release_host_ami_id`, and it closes the same class
+# of hole one parameter wider. `HostAmiId` was the parameter whose drift was *proved* to replace
+# the host, but it was never the only infrastructure parameter a release submitted: `VpcId`,
+# `HostSubnetId`, `DatabaseSubnetIds`, `TlsHostname`, `AllowedIngressCidr` and
+# `DatabaseBackupRetentionDays` were all rebuilt from the caller's environment at every run. So a
+# shell that had lost `PP_DEPLOY_INGRESS_CIDR` since the last deploy silently reopened 443 to the
+# internet on the next release; a shell whose `PP_DEPLOY_DB_BACKUP_DAYS` still said `1` from a
+# demo roll silently cut the database's recovery window; and a shell pointed at a different VPC
+# submitted a change set that moves the deployment. None of those is a `Replacement` or a
+# `Remove` on the host, so `replaced_by_change_set` -- which only ever looked for those -- would
+# have let every one of them through. The guard was real and the hole was beside it.
+#
+# An ordinary release owns release state and nothing else. What the deployment *is* -- where it
+# runs, who may reach it, how long its backups live -- is whatever the live stack says it is, and
+# this shell does not get a vote.
+#
+# `--output text` on a two-element projection gives one `key<TAB>value` line per parameter, and
+# an empty `ParameterValue` (`TlsHostname` on the deployed stack) gives an empty second field,
+# which is the value to pass back. A `List<AWS::EC2::Subnet::Id>` comes back already joined --
+# `DatabaseSubnetIds` reads `subnet-a,subnet-b` -- and goes back as one argv element with the
+# comma inside it, which is the same spelling a first create passes and the one CloudFormation
+# splits. Quoting is what makes that true, so the overrides are built as an array.
+inherited_stack_parameters () {
+  aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" \
+    --query "Stacks[0].Parameters[?ParameterKey!='ImageTag' && ParameterKey!='HostAmiId' && ParameterKey!='SeedDemoFixtureOnFirstBoot'].[ParameterKey,ParameterValue]" \
+    --output text
+}
+
 # Build the change set and do not execute it. One parameter list, filled in by both stages that
-# submit this template, because `aws cloudformation deploy` carries forward whatever it is not
-# given -- a stage that named only what it cared about would depend on whatever the last one left
-# behind, and two copies of the list would drift. The only parameters that differ between a
-# release and a host replacement are the three passed in here.
+# submit this template -- a release and a host replacement -- because two copies of the list
+# would drift out of step exactly where it is most expensive to be wrong.
+#
+# The list has two halves and they have different owners:
+#
+#   * **Submission-owned**, always named here explicitly: `ImageTag`, `HostAmiId` and
+#     `SeedDemoFixtureOnFirstBoot`. These are the three arguments, and they are the only three
+#     things either stage is allowed to move. A release passes the tag it pushed, the AMI the
+#     stack already declares and a literal `false`.
+#   * **Infrastructure-owned**: everything else. On an existing stack these are read back off
+#     that stack, so the values submitted are the values already live whatever this shell holds.
+#     Only a first create reads them from the environment, because then there is no stack to
+#     read and nothing yet to preserve.
+#
+# So `PP_DEPLOY_*` is a *provisioning* input, not a release input, and a release does not read
+# one. That is also why the `need` checks live on the first-create branch: an existing-stack
+# release neither requires those variables nor is affected by them.
 #
 # `--role-arn` is what keeps the human's standing privilege small: the resource-creating
 # permissions belong to a role only CloudFormation can assume, so every mutation arrives through
 # a template that was submitted and can be read back.
 #
-# Prints the change set's ARN, or nothing at all when the submission changes nothing.
+# Prints the change set's ARN, or nothing at all when the submission changes nothing. Nothing
+# else may be printed to stdout from here: the caller captures it and reads an ARN out of it.
 create_stack_change_set () {
-  local ami="$1" seed="$2" tag="$3" account output
-  need PP_DEPLOY_VPC_ID; need PP_DEPLOY_HOST_SUBNET
-  need PP_DEPLOY_DB_SUBNETS
+  local ami="$1" seed="$2" tag="$3" account output key value
+  local -a overrides=()
+  if stack_exists; then
+    while IFS=$'\t' read -r key value; do
+      [[ -n "$key" ]] || continue
+      overrides+=("${key}=${value}")
+    done < <(inherited_stack_parameters)
+    # An empty read means the describe failed or the query stopped matching, not that the stack
+    # has no parameters -- and submitting the release parameters alone would then hand every
+    # infrastructure value back to whatever CloudFormation falls back to. Refuse instead.
+    [[ ${#overrides[@]} -gt 0 ]] \
+      || die "the stack declares no parameters to preserve; refusing to submit a release that would reset its infrastructure"
+    printf '  preserving %s infrastructure parameters as the stack declares them\n' \
+      "${#overrides[@]}" >&2
+  else
+    need PP_DEPLOY_VPC_ID; need PP_DEPLOY_HOST_SUBNET
+    need PP_DEPLOY_DB_SUBNETS
+    overrides=(
+      "Environment=${ENVIRONMENT}"
+      "VpcId=${PP_DEPLOY_VPC_ID}"
+      "HostSubnetId=${PP_DEPLOY_HOST_SUBNET}"
+      "DatabaseSubnetIds=${PP_DEPLOY_DB_SUBNETS}"
+      "TlsHostname=${PP_DEPLOY_TLS_HOSTNAME:-}"
+      "AllowedIngressCidr=${PP_DEPLOY_INGRESS_CIDR:-0.0.0.0/0}"
+      "DatabaseBackupRetentionDays=${PP_DEPLOY_DB_BACKUP_DAYS:-7}"
+    )
+  fi
+  overrides+=("ImageTag=${tag}" "HostAmiId=${ami}" "SeedDemoFixtureOnFirstBoot=${seed}")
   account="$(account_id)"
   output="$(aws cloudformation deploy \
     --region "$REGION" \
@@ -308,17 +386,7 @@ create_stack_change_set () {
     --no-execute-changeset \
     --no-fail-on-empty-changeset \
     --tags Project=promisepatch \
-    --parameter-overrides \
-      "Environment=${ENVIRONMENT}" \
-      "VpcId=${PP_DEPLOY_VPC_ID}" \
-      "HostSubnetId=${PP_DEPLOY_HOST_SUBNET}" \
-      "DatabaseSubnetIds=${PP_DEPLOY_DB_SUBNETS}" \
-      "TlsHostname=${PP_DEPLOY_TLS_HOSTNAME:-}" \
-      "AllowedIngressCidr=${PP_DEPLOY_INGRESS_CIDR:-0.0.0.0/0}" \
-      "DatabaseBackupRetentionDays=${PP_DEPLOY_DB_BACKUP_DAYS:-7}" \
-      "ImageTag=${tag}" \
-      "HostAmiId=${ami}" \
-      "SeedDemoFixtureOnFirstBoot=${seed}")"
+    --parameter-overrides "${overrides[@]}")"
   # `deploy --no-execute-changeset` prints the change set's ARN inside the command it tells you
   # to run next, and nothing else in its output looks like one. There is no `--change-set-name`
   # option to ask for a name instead, and taking the newest one from `list-change-sets` would be

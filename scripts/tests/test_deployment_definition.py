@@ -517,16 +517,36 @@ def _stage(name: str) -> str:
     return _function(f"stage_{name}")
 
 
-def _stack_parameter_overrides() -> list[str]:
-    """The parameter names a submission passes, in the order it passes them.
+def _override_names(shell: str) -> list[str]:
+    """The parameter names a stretch of the submission spells out, in the order it spells them.
+
+    Every literal override in this script is ``"Name=${...}"``; the inherited ones are built as
+    ``"${key}=${value}"`` and deliberately name nothing, which is what this cannot match.
+    """
+    return re.findall(r'"([A-Za-z]+)=\$', shell)
+
+
+def _first_create_parameter_overrides() -> list[str]:
+    """The parameters a submission reads out of this shell, which only a first create does.
 
     There is one list and it lives in ``create_stack_change_set``, because two stages submit
     this template -- a release and a host replacement -- and a second copy of the list would
-    drift out of step with the first exactly where it is most expensive to be wrong.
+    drift out of step with the first exactly where it is most expensive to be wrong. On an
+    existing stack this branch is not taken at all: the same names are read back off the stack.
     """
     submit = _function("create_stack_change_set")
-    overrides = submit[submit.index("--parameter-overrides") :]
-    return re.findall(r'"([A-Za-z]+)=', overrides)
+    return _override_names(submit[submit.index("\n  else\n") : submit.index("\n  fi\n")])
+
+
+def _always_submitted_overrides() -> list[str]:
+    """The parameters every submission names for itself, whether the stack exists or not."""
+    submit = _function("create_stack_change_set")
+    return _override_names(submit[submit.index("\n  fi\n") :])
+
+
+def _stack_parameter_overrides() -> list[str]:
+    """Every parameter name a submission can spell, from either branch."""
+    return _first_create_parameter_overrides() + _always_submitted_overrides()
 
 
 def test_the_stack_is_told_the_tag_this_run_pushed() -> None:
@@ -550,32 +570,72 @@ def test_the_stack_is_told_the_tag_this_run_pushed() -> None:
         assert "image_tag" in _stage(stage), f"stage_{stage} does not use the same tag"
 
 
-def test_the_stack_stage_supplies_every_parameter_that_has_no_default(
+def test_a_first_create_supplies_every_parameter_that_has_no_default(
     template: dict[str, Any],
 ) -> None:
-    """So a tag change cannot quietly reset or drop an unrelated one.
+    """Nothing may be left with no value at all on the one run that has nothing to inherit.
 
-    ``aws cloudformation deploy`` carries forward the previous value of any parameter it is not
-    given, which is what keeps ``InstanceType``, ``DatabaseInstanceClass`` and the rest untouched
-    by a release. That is only safe while the parameters with no default -- the ones with no
-    value to fall back to -- are all supplied by the same run. And every override has to name a
-    parameter the template actually declares, or the deploy fails at the point of use for a
+    A first create is the only submission that reads infrastructure out of the caller's shell,
+    because there is no stack yet to read it off. So it is the branch that has to name every
+    parameter with no default -- the ones with no value to fall back to -- and every name it
+    uses has to be one the template declares, or the deploy fails at the point of use for a
     reason that was readable here.
     """
     declared = template["Parameters"]
-    overrides = _stack_parameter_overrides()
+    overrides = _first_create_parameter_overrides() + _always_submitted_overrides()
     required = {name for name, spec in declared.items() if "Default" not in spec}
     assert required <= set(overrides), (
-        f"the stack stage supplies no value for {sorted(required - set(overrides))}"
+        f"a first create supplies no value for {sorted(required - set(overrides))}"
     )
     assert set(overrides) <= set(declared), (
-        f"the stack stage overrides {sorted(set(overrides) - set(declared))}, which the "
+        f"the submission overrides {sorted(set(overrides) - set(declared))}, which the "
         "template does not declare"
     )
-    assert overrides != ["ImageTag"], (
-        "the stack stage passes the image tag alone, so every other parameter depends on "
-        "whatever the last deploy happened to leave behind"
+
+
+def test_a_submission_names_release_state_for_itself_and_inherits_the_rest() -> None:
+    """The parameter-ownership split, asserted where it is written.
+
+    Three parameters are the submission's own -- the release it names, the host image and the
+    demo seed -- and they are passed explicitly by both stages because they are the only three
+    either stage exists to move. Everything else is infrastructure: on an existing stack it is
+    read back off that stack, so it cannot be named from here at all.
+
+    The query that reads it back has to exclude exactly those three. Excluding one fewer would
+    inherit the previous release over the top of this one; excluding one more would put an
+    infrastructure parameter back in reach of this shell.
+    """
+    assert _always_submitted_overrides() == [
+        "ImageTag",
+        "HostAmiId",
+        "SeedDemoFixtureOnFirstBoot",
+    ], "a submission no longer names exactly the three parameters it owns"
+
+    inherited = _function("inherited_stack_parameters")
+    assert "describe-stacks" in inherited, (
+        "the infrastructure is not read back off the stack at all"
     )
+    excluded = set(re.findall(r"ParameterKey!='([A-Za-z]+)'", inherited))
+    assert excluded == {"ImageTag", "HostAmiId", "SeedDemoFixtureOnFirstBoot"}, (
+        f"the inherited-parameter query excludes {sorted(excluded)}; it must exclude exactly "
+        "the three a submission owns"
+    )
+    assert "[ParameterKey,ParameterValue]" in inherited, (
+        "the query returns something other than the key and the value it has to pass back"
+    )
+
+    submit = _function("create_stack_change_set")
+    assert "inherited_stack_parameters" in submit, (
+        "the submission does not read the live stack's parameters"
+    )
+    assert submit.index("stack_exists") < submit.index("inherited_stack_parameters"), (
+        "the submission inherits before checking there is a stack to inherit from"
+    )
+    outside = submit.replace(submit[submit.index("\n  else\n") : submit.index("\n  fi\n")], "")
+    for variable in ("PP_DEPLOY_VPC_ID", "PP_DEPLOY_INGRESS_CIDR", "PP_DEPLOY_DB_BACKUP_DAYS"):
+        assert variable not in outside, (
+            f"{variable} is read outside the first-create branch, so a release can still move it"
+        )
 
 
 def test_a_release_cannot_leave_the_stack_declaring_the_previous_commit() -> None:
@@ -874,11 +934,46 @@ case "$all" in
       echo "aws cloudformation describe-change-set --change-set-name $arn"
       ;;
   *"Stacks[0].Outputs"*)          echo "(outputs)" ;;
+  *"Parameters[?ParameterKey!="*) printf '%s\\n' "$PP_FAKE_LIVE_PARAMETERS" ;;
   *describe-stacks*)              exit "$PP_FAKE_STACK_MISSING" ;;
   *ec2*describe-images*)          echo ami-07b9559027f889918 ;;
   *) echo "unstubbed aws call: $all" >&2; exit 98 ;;
 esac
 """
+
+
+# What the live stack declares, as `describe-stacks` returns it: one `key<TAB>value` row per
+# parameter, the subnet list already comma-joined, and `TlsHostname` empty because the deployed
+# stack derives its name from the address it allocated. Every value here is one the drifted
+# shell below disagrees with.
+LIVE_STACK_PARAMETERS = "\n".join(
+    "\t".join(row)
+    for row in (
+        ("Environment", "prod"),
+        ("VpcId", "vpc-live"),
+        ("HostSubnetId", "subnet-live-host"),
+        ("DatabaseSubnetIds", "subnet-live-a,subnet-live-b"),
+        ("TlsHostname", ""),
+        ("AllowedIngressCidr", "203.0.113.4/32"),
+        ("InstanceType", "t4g.small"),
+        ("DatabaseInstanceClass", "db.t4g.micro"),
+        ("DatabaseStorageGiB", "20"),
+        ("DatabaseBackupRetentionDays", "7"),
+    )
+)
+
+# Every value the drifted shell would submit if it were still trusted. None of these may appear
+# in a submission against an existing stack -- not one of them is a `Replacement` or a `Remove`,
+# so the guard that reads the change set would not have caught a single one.
+DRIFTED_SHELL_VALUES = (
+    "vpc-drift",
+    "subnet-drift-host",
+    "subnet-drift-a",
+    "subnet-drift-b",
+    "0.0.0.0/0",
+    "drift.example.com",
+    "DatabaseBackupRetentionDays=1",
+)
 
 
 def _run_stage(stage: str, scenario: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -914,9 +1009,16 @@ def _run_stage(stage: str, scenario: dict[str, str]) -> subprocess.CompletedProc
         "PP_FAKE_INSTANCE": "i-087c742587f83d61d",
         "PP_FAKE_REPLACED": "",
         "PP_FAKE_STACK_MISSING": "0",
-        "PP_DEPLOY_VPC_ID": "vpc-1",
-        "PP_DEPLOY_HOST_SUBNET": "subnet-1",
-        "PP_DEPLOY_DB_SUBNETS": "subnet-2,subnet-3",
+        "PP_FAKE_LIVE_PARAMETERS": LIVE_STACK_PARAMETERS,
+        # Deliberately none of the above. This is the drifted shell: every one of these differs
+        # from what the live stack declares, so any of them reaching a submission against an
+        # existing stack is the defect rather than a coincidence.
+        "PP_DEPLOY_VPC_ID": "vpc-drift",
+        "PP_DEPLOY_HOST_SUBNET": "subnet-drift-host",
+        "PP_DEPLOY_DB_SUBNETS": "subnet-drift-a,subnet-drift-b",
+        "PP_DEPLOY_INGRESS_CIDR": "0.0.0.0/0",
+        "PP_DEPLOY_DB_BACKUP_DAYS": "1",
+        "PP_DEPLOY_TLS_HOSTNAME": "drift.example.com",
         **scenario,
     }
     environment.pop("PP_DEPLOY_REPLACE_HOST", None)
@@ -988,6 +1090,210 @@ def test_replacing_the_host_without_the_confirmation_mutates_nothing() -> None:
     assert "ImageTag=b62779d6e975" in result.stdout, (
         "replacing the host also moved the release to this checkout's commit"
     )
+
+
+# The same defect as the AMI, one parameter wider, and it survived the fix for the AMI.
+#
+# `release_host_ami_id` stopped a release resolving a newer `HostAmiId`, because moving that one
+# replaces the instance and the replacement's first boot erased the database. But `HostAmiId` was
+# never the only infrastructure parameter a release submitted: `VpcId`, `HostSubnetId`,
+# `DatabaseSubnetIds`, `TlsHostname`, `AllowedIngressCidr` and `DatabaseBackupRetentionDays` were
+# all rebuilt from `PP_DEPLOY_*` at every run. A shell that had lost `PP_DEPLOY_INGRESS_CIDR`
+# since the last deploy therefore reopened 443 to the internet on the next release, and a shell
+# still carrying `PP_DEPLOY_DB_BACKUP_DAYS=1` from a demo roll cut the database's recovery window
+# to a day -- silently, under `UPDATE_COMPLETE`, and without tripping `replaced_by_change_set`,
+# which only ever looked for a `Replacement` or a `Remove`.
+#
+# These run the stage against a stub whose live stack and whose shell disagree about every
+# infrastructure value there is, and read what was actually submitted.
+
+
+def test_a_release_submits_the_infrastructure_the_live_stack_declares() -> None:
+    """The whole guarantee, in one run: the drifted shell reaches nothing.
+
+    The stub's stack declares one set of infrastructure values and the shell holds a different
+    one for every single parameter. What is submitted has to be the stack's, whole, and no value
+    this shell holds may appear anywhere in the call.
+    """
+    result = _run_stage("stage_stack", {"PP_FAKE_REPLACED": ""})
+    assert result.returncode == 0, result.stderr
+    for live in (
+        "VpcId=vpc-live",
+        "HostSubnetId=subnet-live-host",
+        "DatabaseSubnetIds=subnet-live-a,subnet-live-b",
+        "AllowedIngressCidr=203.0.113.4/32",
+        "DatabaseBackupRetentionDays=7",
+        "InstanceType=t4g.small",
+        "DatabaseInstanceClass=db.t4g.micro",
+        "DatabaseStorageGiB=20",
+        "Environment=prod",
+        # Empty, and still submitted. The deployed stack derives its name from the address it
+        # allocated, so `TlsHostname` is the empty string -- and an implementation that skipped
+        # empty values would hand that parameter back to the template's default instead of to
+        # the stack, which is the same class of drift arriving from the other direction.
+        "TlsHostname=",
+    ):
+        assert live in result.stdout, f"the release did not submit {live} as the stack declares it"
+    for drifted in DRIFTED_SHELL_VALUES:
+        assert drifted not in result.stdout, (
+            f"this shell's {drifted} reached the submission, so local drift still changes the "
+            "deployed infrastructure"
+        )
+
+
+def test_a_release_cannot_reopen_an_ingress_this_shell_forgot_about() -> None:
+    """The narrowed range stays narrowed.
+
+    ``AllowedIngressCidr`` is who may reach 80 and 443, its template default is the whole
+    internet, and ``PP_DEPLOY_INGRESS_CIDR`` is optional -- so a shell that simply does not have
+    it set used to submit ``0.0.0.0/0`` over the top of a deliberately narrowed stack. That is
+    not a replacement and not a removal, so nothing in the release path would have refused it.
+    """
+    result = _run_stage("stage_stack", {"PP_DEPLOY_INGRESS_CIDR": "0.0.0.0/0"})
+    assert result.returncode == 0, result.stderr
+    assert "AllowedIngressCidr=203.0.113.4/32" in result.stdout, (
+        "the release did not submit the ingress range the stack declares"
+    )
+    assert "AllowedIngressCidr=0.0.0.0/0" not in result.stdout, (
+        "a release reopened 443 to the internet because this shell had the default set"
+    )
+
+
+def test_a_release_cannot_move_the_deployment_into_another_vpc_or_subnet() -> None:
+    """Placement is the stack's, and the subnet list survives being read back and passed on.
+
+    ``DatabaseSubnetIds`` is a ``List<AWS::EC2::Subnet::Id>``, which ``describe-stacks`` returns
+    already comma-joined. It goes back as one argument with the comma inside it -- the same
+    spelling a first create passes -- so reading it back cannot quietly turn two subnets into
+    one argument per subnet, or one subnet named ``subnet-live-a,subnet-live-b``.
+    """
+    result = _run_stage(
+        "stage_stack",
+        {
+            "PP_DEPLOY_VPC_ID": "vpc-drift",
+            "PP_DEPLOY_HOST_SUBNET": "subnet-drift-host",
+            "PP_DEPLOY_DB_SUBNETS": "subnet-drift-a,subnet-drift-b",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "VpcId=vpc-live" in result.stdout
+    assert "HostSubnetId=subnet-live-host" in result.stdout
+    assert "DatabaseSubnetIds=subnet-live-a,subnet-live-b" in result.stdout, (
+        "the subnet list was not passed back as the one comma-joined value the stack declares"
+    )
+    assert "DatabaseSubnetIds=subnet-live-a subnet-live-b" not in result.stdout, (
+        "the subnet list was split into separate arguments, which is a different parameter list"
+    )
+    for drifted in ("vpc-drift", "subnet-drift-host", "subnet-drift-a", "subnet-drift-b"):
+        assert drifted not in result.stdout, f"a release submitted this shell's {drifted}"
+
+
+def test_a_release_cannot_shorten_the_backup_window_a_demo_roll_left_behind() -> None:
+    """A week of point-in-time recovery is not something a stale variable gets to spend.
+
+    ``PP_DEPLOY_DB_BACKUP_DAYS`` exists because a Free Tier account cannot create the database
+    with seven days, and docs/demo-world-roll.md tells an operator to set it to ``1``. A shell
+    that has done that once used to carry it into every subsequent release of a stack that was
+    created with seven.
+    """
+    result = _run_stage("stage_stack", {"PP_DEPLOY_DB_BACKUP_DAYS": "1"})
+    assert result.returncode == 0, result.stderr
+    assert "DatabaseBackupRetentionDays=7" in result.stdout, (
+        "the release did not submit the retention the stack declares"
+    )
+    assert "DatabaseBackupRetentionDays=1" not in result.stdout, (
+        "a release cut the database's recovery window to a day from a leftover variable"
+    )
+
+
+def test_a_release_still_submits_exactly_the_release_state_it_owns() -> None:
+    """Inheriting everything else may not cost the three things a release is for.
+
+    The tag is this run's commit, the host image is the one the stack already declares -- never
+    a newer one, and the stub fails the run if anything asks EC2 for one -- and the seed is the
+    literal ``false`` that keeps an application release unable to erase the database.
+    """
+    result = _run_stage("stage_stack", {"PP_FAKE_REPLACED": ""})
+    assert result.returncode == 0, result.stderr
+    assert "EXECUTED" in result.stdout, "a clean release executed nothing"
+    assert "ImageTag=aaaabbbbcccc" in result.stdout, "the release did not submit its own commit"
+    assert "HostAmiId=ami-0fa4996c14e7d501e" in result.stdout, (
+        "the release submitted an AMI other than the one the stack declared"
+    )
+    assert "SeedDemoFixtureOnFirstBoot=false" in result.stdout, (
+        "the release did not submit a false seed"
+    )
+    assert "describe-images" not in result.stdout, (
+        "the release asked EC2 for an image, so it can still pick up a newer one"
+    )
+
+
+def test_a_release_that_can_read_no_stack_parameters_refuses_rather_than_resetting_them() -> None:
+    """An empty read is a failure, not an empty stack.
+
+    If the describe stops answering -- a permission lost, a query that no longer matches -- the
+    submission would otherwise carry the three release parameters alone and let CloudFormation
+    fall back for the rest, which is the defect arriving by a different door. It refuses, and
+    refuses before submitting anything.
+    """
+    result = _run_stage("stage_stack", {"PP_FAKE_LIVE_PARAMETERS": ""})
+    assert result.returncode != 0, "a release with nothing to preserve submitted anyway"
+    assert "cloudformation deploy" not in result.stdout, (
+        "the submission was made before the refusal"
+    )
+    assert "EXECUTED" not in result.stdout, "something was executed"
+
+
+def test_replacing_the_host_preserves_the_infrastructure_the_stack_declares() -> None:
+    """The destructive stage inherits too, so it changes the host image and the host image only.
+
+    ``host-image`` is the one operation allowed to replace the instance. That is not a licence
+    to carry a drifted shell's VPC, ingress range or retention along with it.
+    """
+    result = _run_stage(
+        "stage_host_image",
+        {"PP_FAKE_REPLACED": "Host", "PP_DEPLOY_HOST_AMI_ID": "ami-07b9559027f889918"},
+    )
+    assert result.returncode != 0, "the host was replaced with no confirmation at all"
+    assert "HostAmiId=ami-07b9559027f889918" in result.stdout, (
+        "the deliberate upgrade did not submit the image it was given"
+    )
+    assert "AllowedIngressCidr=203.0.113.4/32" in result.stdout
+    assert "VpcId=vpc-live" in result.stdout
+    for drifted in DRIFTED_SHELL_VALUES:
+        assert drifted not in result.stdout, (
+            f"replacing the host carried this shell's {drifted} in with it"
+        )
+
+
+def test_a_first_create_provisions_from_the_configuration_it_is_given() -> None:
+    """The one submission that has nothing to inherit, and must still be fully specified.
+
+    No stack means no infrastructure to preserve and no cases to lose, so a first create reads
+    placement, ingress and TLS out of the shell that is provisioning it and resolves the newest
+    Amazon Linux 2023 arm64 image -- the only implicit resolution left in the script.
+    """
+    result = _run_stage("stage_stack", {"PP_FAKE_STACK_MISSING": "1"})
+    assert result.returncode == 0, result.stderr
+    assert "VpcId=vpc-drift" in result.stdout, "a first create ignored the VPC it was given"
+    assert "HostSubnetId=subnet-drift-host" in result.stdout
+    assert "DatabaseSubnetIds=subnet-drift-a,subnet-drift-b" in result.stdout
+    assert "AllowedIngressCidr=0.0.0.0/0" in result.stdout
+    assert "TlsHostname=drift.example.com" in result.stdout
+    assert "DatabaseBackupRetentionDays=1" in result.stdout
+    assert "describe-images" in result.stdout, (
+        "a first create did not resolve an image, so it has no host to build"
+    )
+    assert "HostAmiId=ami-07b9559027f889918" in result.stdout
+    assert "SeedDemoFixtureOnFirstBoot=false" in result.stdout
+    assert "vpc-live" not in result.stdout, "a first create read parameters off a stack"
+
+
+def test_a_first_create_refuses_without_the_placement_it_cannot_read_anywhere() -> None:
+    """And says which variable, because there is nothing to fall back to."""
+    result = _run_stage("stage_stack", {"PP_FAKE_STACK_MISSING": "1", "PP_DEPLOY_VPC_ID": ""})
+    assert result.returncode != 0, "a first create with no VPC submitted anyway"
+    assert "PP_DEPLOY_VPC_ID" in result.stderr, "the refusal does not name what is missing"
 
 
 def test_the_deployment_publishes_what_it_would_do_to_the_host_and_the_data(
