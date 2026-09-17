@@ -22,9 +22,12 @@ all**, and **a case is withdrawn by the worker or not at all.**
 a ``CONFIRM`` that does not pass it is refused here before the surface is touched.
 It is *not* the consent parser and has nothing to do with a customer: worker plan confirmation
 and customer consent are different authorities produced by different people, and this function
-can no more record a customer's decision than the tool it guards can. It is deliberately
-stricter than the domain, which treats the call itself as the yes -- an extra lock on the one
-door a conversational layer could otherwise open by being agreeable.
+can no more record a customer's decision than the tool it guards can. It is the *client* half
+of a gate whose other half is not in this process at all: the domain will not carry out a
+confirmation that no durable human approval stands behind, whatever this loop believed. So a
+conversation that bypassed this function entirely, or a client that is not this one, still
+cannot turn an agreeable turn into a worker's yes -- and this check remains worth having,
+because it stops the call being made at all rather than merely being refused.
 
 :func:`reads_as_worker_withdrawal` is its counterpart, and exists for the mirrored reason. A
 withdrawal stops work somebody asked for, so it must not be reachable by a model reading dismay

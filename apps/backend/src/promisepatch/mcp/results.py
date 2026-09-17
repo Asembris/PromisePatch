@@ -64,13 +64,19 @@ class ClarifyResult(Envelope):
 
 
 class ConfirmResult(Envelope):
-    """One worker's yes to one specific plan, and what that yes permits. Never what it did.
+    """One worker's yes to one specific plan, carried out -- and what that yes permits.
 
     Every count here is a permission or a queued intention. ``applying`` is how many tracks a
     standing preference covers -- the contract's ``AUTHORIZED``, which is explicitly not
     ``RECOVERED`` -- and ``awaiting_approval`` is how many customers this authorises *asking*.
     There is no field in this result that could say an order was changed, because when it is
     returned none has been.
+
+    ``confirmed_by`` and ``approved_via`` are the two fields that make the rest of it mean
+    anything. They name the person whose durable approval this call spent and the channel that
+    authenticated them, both read from that approval rather than from this server's
+    configuration or from anything the caller sent -- which is why a result carrying them is
+    evidence that somebody agreed, and a tool call on its own never was.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -79,7 +85,10 @@ class ConfirmResult(Envelope):
         description="false when this exact confirmation was already accepted, which is a success"
     )
     confirmed_by: str = Field(
-        description="the worker whose yes this is, resolved from server configuration"
+        description="the worker whose recorded approval this carried out, read from that approval"
+    )
+    approved_via: str = Field(
+        description="the channel that authenticated them, e.g. BROWSER_SESSION. Never this surface"
     )
     applying: int = Field(description="tracks a standing preference covers; permission, not an act")
     awaiting_approval: int = Field(

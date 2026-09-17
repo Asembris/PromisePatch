@@ -38,6 +38,15 @@ returned, and the engine checks it against the plan the case is currently offeri
 is attached to something specific rather than to whatever the case holds when it lands, and a
 caller that never read the plan has nothing to quote. This process cannot compute that
 identity -- it has no rows -- which is exactly why it cannot fabricate one.
+
+**And a confirmation here spends a worker's approval; it never creates one.** Holding the
+bearer credential proves which client is asking and establishes nothing whatever about whether
+a human was present, so ``confirm`` is not the moment a worker agrees. The agreement is a
+durable row the worker leaves on a channel PromisePatch authenticated them on -- their own
+signed-in workspace, or the operator console -- and this tool asks for it to be carried out. A
+plan nobody has approved is refused however the call is dressed, which is what makes the
+sentence "a model cannot confirm on a worker's behalf" a property of the system rather than an
+instruction the model is trusted to follow.
 """
 
 from __future__ import annotations
@@ -99,12 +108,15 @@ Use `clarify` only to pass on what the worker actually answered, verbatim, exact
 `report`. If they said something you are unsure of, ask them again -- do not decide for them, \
 and do not turn a guess into an attestation.
 
-Use `confirm` only when the worker has explicitly said yes to the plan you read them, and pass \
-the `plan_id` that `status` returned for that case. You cannot confirm on a worker's behalf and \
-you cannot confirm a plan you have not read. A confirmation that quotes a plan the case has \
-moved past is refused: read `status` again, tell the worker what changed, and ask them again. \
-Confirming authorises work; it does not perform any, so do not say an order was changed -- ask \
-for `status` and deliver what it says.
+Use `confirm` to carry out an approval the worker has **already given on their own screen**, \
+passing the `plan_id` that `status` returned. Calling it is not the worker agreeing: their \
+agreement is recorded where they signed in, and this tool can only spend one, never create one. \
+So if it is refused because no human has approved the plan, that is the system working -- say \
+so plainly, ask the worker to approve it in the workspace, and do not try again until they say \
+they have. A confirmation that quotes a plan the case has moved past is refused too: read \
+`status` again, tell the worker what changed, and ask them to approve the new one. Confirming \
+authorises work; it does not perform any, so do not say an order was changed -- ask for \
+`status` and deliver what it says.
 
 Worker confirmation is not customer consent. They are different people and different \
 authorities, and confirming a plan has agreed nothing on any customer's behalf.
@@ -281,15 +293,16 @@ def build_server(engine: CaseEngine) -> MCPServer:
     async def confirm(
         case_id: Annotated[
             str,
-            Field(description="The case whose plan the worker is confirming."),
+            Field(description="The case whose already-approved plan should be carried out."),
         ],
         plan_id: Annotated[
             str,
             Field(
                 description=(
                     "The plan identity `status` returned for this case, quoted back exactly. "
-                    "If the case has moved on since you read it the confirmation is refused; "
-                    "read `status` again rather than guessing."
+                    "The worker's approval is bound to this exact plan, so if the case has "
+                    "moved on since you read it the confirmation is refused; read `status` "
+                    "again rather than guessing."
                 )
             ),
         ],
@@ -334,6 +347,7 @@ def build_server(engine: CaseEngine) -> MCPServer:
             state=_text(body, "state"),
             created=bool(body.get("created", False)),
             confirmed_by=_required(body, "confirmed_by"),
+            approved_via=_required(body, "approved_via"),
             applying=int(body.get("applying", 0)),
             awaiting_approval=int(body.get("awaiting_approval", 0)),
             escalated=int(body.get("escalated", 0)),
