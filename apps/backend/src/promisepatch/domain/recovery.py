@@ -755,6 +755,15 @@ async def hold_tasks(write: GovernedWrite, *, track: Any, case_id: UUID) -> tupl
     Only the lines this track's own evidence reaches. The order may have other lines, and a
     hold on work the exception never touched would be exactly the selective-continuation
     failure the spec forbids.
+
+    **The ``SCHEDULED`` predicate is the contract, not an optimisation.** A hold prevents work
+    from starting; it cannot stop work that has started, and a row that said otherwise would
+    assert a physical stop nobody performed. It is also the only thing keeping release honest:
+    ``withdrawal._release_holds`` restores the literal ``SCHEDULED`` and ``production_tasks``
+    remembers no prior state, so a started task held here would come back from a withdrawal
+    claiming it had never begun. Started work on a blocked promise is escalated to its owner
+    instead, which is true. Do not widen this to ``STARTED`` -- see ADR-0017 and
+    ``docs/started-work-contract.md`` for the three changes that would have to land first.
     """
     line_ids = await _affected_lines(write.connection, track=track)
     if not line_ids:

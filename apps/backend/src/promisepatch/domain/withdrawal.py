@@ -608,6 +608,13 @@ async def _release_holds(write: GovernedWrite, *, case_id: UUID, tasks: tuple[st
     promise is untouched. The physical fact is not reversed by any of this: if the shortfall is
     real the promise is still at risk, which is why every live track lands on the owner's desk in
     the same transaction.
+
+    **This writes the literal ``SCHEDULED``, and that is safe only because a started task is
+    never held.** ``recovery.hold_tasks`` matches ``SCHEDULED`` and nothing else, so every row
+    this statement can reach really was scheduled before it was held. Widening that predicate
+    without giving this table a memory of the prior state would make a withdrawal -- the one
+    operation whose whole promise is that it reverses no physical fact -- rewrite begun work
+    into work that never began. See ADR-0017 and ``docs/started-work-contract.md``.
     """
     if not tasks:
         return 0
