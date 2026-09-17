@@ -9,6 +9,11 @@ while this was written.
 > above is left as written. The live check has since been run against `promisepatch-prod`, it
 > found a defect in the guard described in section 4 item 3, and section 9 records both what it
 > proved and what it left unperformed.
+>
+> **Extended on 2026-09-18 by [section 10](#10-the-template-needs-a-way-in-and-it-is-not-a-release).**
+> The guard section 9 fixed also means this repository's template can no longer reach the
+> deployed stack through a release at all. Section 10 adds the one operation that can carry it,
+> and the confirmation it will not execute without. Nothing in section 10 was run against AWS.
 
 This closes the first item of [head-redeploy-2026-09-16.md](head-redeploy-2026-09-16.md)
 section 7: *"`deploy.sh stack` still replaces the host whenever Amazon publishes a newer AL2023
@@ -452,3 +457,193 @@ holding on the live stack. The confirmation variable was never set.
   outputs of the template on disk, not of the deployed stack, which predates them. They appear
   only after a submission executes, and none did.
 - **Nothing was executed, so no claim is made here about what an executed release does.**
+
+## 10. The template needs a way in, and it is not a release
+
+Date: 2026-09-18. Status: **closed locally. No AWS resource was read, created, updated or
+deleted while this was written.** No image was built or pushed, no change set was created, no
+instance was rebooted, no fixture was reset, no IAM was touched. Section 10.7 is the procedure
+for doing this against AWS later; it has not been run.
+
+### 10.1 Why the live stack cannot accept this template through `stack`
+
+Section 9.3 found it and did not draw the consequence. Submitting the template in this checkout
+against `promisepatch-prod` — the stack deployed on 2026-09-13 — changes `Host.UserData`,
+because gating the first-boot seed (section 4 item 5) is a `UserData` edit. Real CloudFormation
+answered:
+
+```
+Modify  AWS::EC2::EIPAssociation  ElasticIpAssociation  Replacement: Conditional
+Modify  AWS::EC2::Instance        Host                  Replacement: Conditional
+```
+
+`Conditional` means the service cannot decide in advance whether the resource survives. Since
+`fcd3c3b` the release guard counts that with `True` and `Remove`, and `stage_stack` refuses it
+and deletes the change set unexecuted. That refusal is correct and must not be relaxed: an
+application release that *may* destroy the instance is the hazard this entire document exists
+for.
+
+So both halves of that are true at once, and together they are a gap:
+
+- the deployed stack **cannot** receive the current template through a release, and
+- it **must not** be able to.
+
+There was no third operation. `host-image` would have carried the template, which is exactly
+the temptation this section refuses: see 10.4.
+
+### 10.2 The operation model
+
+Three operations submit `deploy/cloudformation/promisepatch.yaml`. They differ only in what
+they are allowed to move, and nothing else about them is different.
+
+| | `stack` (release) | `infrastructure` | `host-image` |
+|---|---|---|---|
+| reached by `all` | yes | **no** | no |
+| `ImageTag` | this run's commit | **the stack's, read back** | the stack's, read back |
+| `HostAmiId` | the stack's, read back | **the stack's, unless `PP_DEPLOY_HOST_AMI_ID` names another** | `PP_DEPLOY_HOST_AMI_ID`, else the newest AL2023 arm64 image |
+| `SeedDemoFixtureOnFirstBoot` | literal `false` | **literal `false`** | `PP_DEPLOY_SEED_ON_FIRST_BOOT`, default `false` |
+| infrastructure parameters | the stack's, read back | **the stack's, read back** | the stack's, read back |
+| a plan that may replace anything | refused, always | **printed, then confirmed or refused** | printed, then confirmed |
+| confirmation | none possible | `PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE` | `PP_DEPLOY_REPLACE_HOST` |
+| requires a clean tree | yes | no | no |
+
+`infrastructure` is therefore the narrowest operation that can carry a template change: it
+preserves the release, preserves the host image by default, forces the seed off, inherits every
+infrastructure parameter off the live stack, and is unreachable from `stack`, `rollout` and
+`all`. **An ordinary release is still incapable of changing infrastructure**, and nothing here
+weakened that — the release path is byte-for-byte what section 9 verified live.
+
+What it deliberately does **not** do: it does not reset or reload a fixture, and it cannot. The
+seed is the literal `false` a release passes, not a variable, so `PP_DEPLOY_SEED_ON_FIRST_BOOT`
+reaches it nowhere. `host-image` remains the only stage in this deployment that can reseed.
+
+### 10.3 The destructive confirmation contract
+
+1. The change set is built with `--no-execute-changeset` and described before anything runs —
+   the same single submission every other stage uses.
+2. `replaced_by_change_set` reports every `Replacement: True`, every `Replacement: Conditional`
+   and every `Action: Remove`. There is one such detector in the script and all three stages
+   read it.
+3. **An empty result executes.** A plan that replaces and removes nothing is an ordinary
+   template update and is applied without asking anything, because there is nothing to ask
+   about.
+4. **A non-empty result is printed in full, one logical id per line**, before it is judged, so
+   what was refused is readable in the same output as the refusal.
+5. **A plan naming any resource outside `Host` and `ElasticIpAssociation` is refused outright**,
+   whatever is set. The confirmation is an instance id; it names the host and it names nothing
+   else, so it cannot stand in for the `Database` — whose replacement is every case in the
+   deployment. Widening that list is a code change somebody reads.
+6. Otherwise the operator must set `PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE` to the **exact**
+   `HostInstanceId` the stack publishes. Not a boolean, not a yes, not a truncation, not another
+   instance, not a different case. It cannot be guessed, cannot be typed without having read the
+   stack, and cannot survive from a run against a different instance.
+7. **It is not `PP_DEPLOY_REPLACE_HOST`.** Both confirmations name the same id, so one variable
+   would mean an abandoned `host-image` attempt silently authorizes an infrastructure upgrade
+   that may replace the host, and the reverse. Each variable is read by exactly one stage, and a
+   test asserts neither stage mentions the other's.
+8. Every refusal deletes the change set and exits non-zero. Nothing is mutated on any refusing
+   path.
+
+### 10.4 Whether `host-image` could have done this instead
+
+It was audited before the stage was written, and it shares everything below the semantics:
+`create_stack_change_set`, `replaced_by_change_set`, `discard_change_set`,
+`execute_stack_change_set`, `stack_output`, `declared_image_tag`, `declared_host_ami_id`,
+`stack_exists`. There is still one parameter list and one submission, and `host-image` was not
+touched — a test pins its AMI resolution, its seed variable, its own confirmation and its
+`EVERY CASE IS ERASED` warning, and its behavioural tests from `a2550d9` still pass unchanged.
+
+What it could not share is the meaning. `host-image` exists to destroy the instance: it resolves
+the newest AMI when given none, it is the one stage that can arm the seed, and it demands its
+confirmation unconditionally because replacement is the point rather than a risk. Applying a
+template through it would have meant an operation whose printed summary says the instance is
+being destroyed when the intent was to change a `UserData` line, an AMI moving as a side effect
+of a template upgrade, and the only reseeding path in the deployment sitting one variable away
+from a routine operation. Overloading it to avoid a new stage would have cost exactly the
+legibility the confirmation depends on.
+
+### 10.5 What was checked, and how
+
+`scripts/tests/test_deployment_definition.py`, 127 tests (102 before, 25 added). Eleven of the
+new ones **run** a stage against the stubbed `aws` of `a2550d9` and read what was submitted,
+executed or deleted; the rest assert structure, and one runs the guard's own JMESPath query —
+taken out of `deploy.sh` — over the payload real CloudFormation returned.
+
+Required properties, and where each is held:
+
+| property | test |
+|---|---|
+| a release still refuses `True`, `Conditional` and `Remove` | `test_a_release_refuses_every_answer_that_is_not_a_flat_no` (parametrized over all three, against the real payload shape) |
+| the upgrade preserves `ImageTag` | `test_an_infrastructure_upgrade_preserves_the_release_and_the_host_image` |
+| it preserves `HostAmiId` by default | same, plus `test_an_infrastructure_upgrade_resolves_no_image_of_its_own` |
+| the seed stays false | `test_an_infrastructure_upgrade_cannot_be_made_to_seed` (with `PP_DEPLOY_SEED_ON_FIRST_BOOT=true` set) |
+| it cannot run through `all` | `test_an_infrastructure_upgrade_is_never_reached_by_a_release` |
+| a destructive plan cannot execute unconfirmed | `test_..._refuses_unconfirmed`, `test_only_the_exact_instance_id_confirms_a_destructive_upgrade` (six wrong values), `test_the_host_image_confirmation_does_not_authorize_an_infrastructure_upgrade` |
+| a non-destructive plan executes | `test_an_infrastructure_upgrade_preserves_the_release_and_the_host_image`, `test_a_confirmed_infrastructure_upgrade_executes_the_plan_it_read` |
+| local drift changes no unrelated infrastructure | `test_an_infrastructure_upgrade_leaves_unrelated_infrastructure_where_it_is` |
+| `host-image` is unchanged | `test_replacing_the_host_is_still_exactly_what_it_was`, plus every test from `a2550d9` |
+
+**Mutation check.** Thirteen mutations were applied to `deploy/deploy.sh` one at a time and the
+suite run against each; `deploy.sh` was restored after every one and verified identical.
+**13/13 were caught by the file**, and **11/13 by the behavioural runs alone**. The two the
+stubbed runs could not catch are not behaviours of a stage run and are held elsewhere: adding
+`stage_infrastructure` to the `all` chain (a dispatch property, caught by the reachability test)
+and dropping `Conditional` from the guard (caught by the query test, which executes the real
+filter rather than a stub of it).
+
+The mutations: confirmation inverted; confirmation accepting any non-empty value; confirmation
+reading `PP_DEPLOY_REPLACE_HOST` instead of its own variable; allowlist widened to `Database`;
+the unnameable-resource refusal disabled; `image_tag` instead of `declared_image_tag`; the AMI
+defaulting to `latest_host_ami_id`; the seed read from the environment; the stage added to
+`all`; the refusal no longer discarding its change set; `Conditional` dropped from the guard;
+the plan never read; and a harmless plan made to demand a confirmation.
+
+### 10.6 What this does not do
+
+- **Nothing was run against AWS.** No change set for this template exists, the live stack still
+  predates it, and no claim is made here about what an executed upgrade does.
+- **No fixture reset was implemented**, deliberately. The deployed rehearsals G8 requires start
+  from clean fixtures; how that reset is reached is a separate decision and is not this stage.
+- **The `INFRASTRUCTURE_MAY_REPLACE` list is a policy, not a proof.** It bounds what the
+  instance-id confirmation may authorize. A template change that legitimately needs to replace
+  something else is refused until somebody widens the list in a commit, which is the intended
+  cost.
+- Section 9.5 is otherwise unchanged: an *executed* release is still unproved, and
+  `DeclaredHostAmiId` / `DemoFixtureSeededOnFirstBoot` are still outputs of the template rather
+  than of the deployed stack.
+
+### 10.7 The migration procedure, for when it is run
+
+Not performed. Run in this order, from a checkout of the commit whose template is being applied,
+with the `promisepatch` profile and the identity of section 9 verified first.
+
+1. **Read the live state and keep it.** Stack status, `Parameters`, `Outputs`, the EC2
+   `ImageId` and launch time, the RDS `DbiResourceId` and status, and SSM `image-tag` — the
+   table in section 9.1 is the shape. This is the before column; there must be an after one.
+2. **Confirm the release is where it should be before touching the template.** The stack's
+   `ImageTag`, SSM `image-tag` and `/healthz` must already name the same commit. An upgrade
+   preserves whatever is declared, so a drifted release would be preserved too.
+3. `./deploy/deploy.sh preflight` — zero mutation, and the gate the stage runs anyway.
+4. `./deploy/deploy.sh infrastructure` with `PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE` **unset**.
+   This builds the change set, prints the release and host image it is preserving, prints every
+   resource the plan may replace, refuses, and deletes the change set. Nothing is mutated.
+5. **Read that output before doing anything else.** If it names anything beyond `Host` and
+   `ElasticIpAssociation` the stage refuses outright and the template needs reading, not a
+   confirmation. If it replaces nothing, step 4 will have executed it and the rest of this is
+   only verification.
+6. **Decide, knowing the cost.** A replaced `Host` means: a new instance; cloud-init runs again;
+   a Let's Encrypt certificate ordered afresh for the same name against the weekly duplicate
+   limit; and every container pulled again. The database outlives it and is **not** reseeded —
+   the seed is `false` and cannot be otherwise from this stage. Confirm the ECR tag the stack
+   declares still exists, or the new instance will boot and fail to pull.
+7. Re-run with `PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE=<the HostInstanceId printed in step 4>`.
+   The stage rebuilds the change set, describes it again, and executes only that one.
+8. **Read the after state**, against step 1: `HostInstanceId` (changed if the host was replaced),
+   `ImageTag` (unchanged), `HostAmiId` (unchanged unless explicitly moved),
+   `AllowedIngressCidr`, `DatabaseBackupRetentionDays`, `DatabaseSubnetIds` (all unchanged), the
+   RDS `DbiResourceId` (**unchanged, or the database was replaced and the run failed whatever
+   CloudFormation reported**), and `DemoFixtureSeededOnFirstBoot`, which should now exist as an
+   output and read `false`.
+9. `./deploy/deploy.sh smoke`, and check a case that existed before the upgrade still exists.
+10. Record the before and after columns, the change set's printed plan, and anything that
+    differed from this procedure, in a new section of this document.
