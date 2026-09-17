@@ -356,7 +356,7 @@ def test_no_conversation_request_carries_an_actor_or_a_clock(api: TestClient) ->
 
 
 def test_every_conversation_route_is_a_session_mutation(api: TestClient) -> None:
-    """Four POSTs and nothing else: no read, no delete, no route that skipped the list."""
+    """Five POSTs and nothing else: no read, no delete, no route that skipped the list."""
     schema = api.get("/openapi.json").json()
 
     conversation = {
@@ -369,6 +369,7 @@ def test_every_conversation_route_is_a_session_mutation(api: TestClient) -> None
         "/api/conversation/report": {"post"},
         "/api/conversation/clarify": {"post"},
         "/api/conversation/confirm": {"post"},
+        "/api/conversation/approve": {"post"},
         "/api/conversation/withdraw": {"post"},
     }
 
