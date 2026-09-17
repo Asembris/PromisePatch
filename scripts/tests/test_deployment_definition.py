@@ -26,6 +26,7 @@ false a month later. That is what makes them worth asserting rather than reviewi
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -841,6 +842,151 @@ def test_the_first_boot_seed_is_gated_on_the_parameter(template: dict[str, Any])
     assert guard in script, "the first-boot seed runs unconditionally"
     assert script.index(guard) < script.index("run --rm -T seed"), (
         "the seed runs before the gate that is supposed to decide whether it runs"
+    )
+
+
+# The stages above are asserted by reading the script. These two run it.
+#
+# A static assertion says the refusal is spelled correctly; it cannot say the refusal fires.
+# `stage_stack` is a sequence of command substitutions whose behaviour depends on what `aws`
+# answers, and the one thing that matters -- that a change set replacing the host is refused
+# before anything executes -- is a property of running it. So `aws` is replaced by a stub that
+# answers from a scenario, the function definitions are sourced without the dispatch at the
+# bottom, and the stage is called directly. No AWS call leaves the machine, and every call
+# the stage makes is logged -- so "the release never asked EC2 for a newer image" is an
+# assertion about a run rather than about a spelling.
+
+FAKE_AWS = """#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$PP_FAKE_LOG"
+all="$*"
+case "$all" in
+  *get-caller-identity*)          echo 111122223333 ;;
+  *"ParameterKey=='HostAmiId'"*)  echo "$PP_FAKE_DECLARED_AMI" ;;
+  *"ParameterKey=='ImageTag'"*)   echo "$PP_FAKE_DECLARED_TAG" ;;
+  *"OutputKey=='HostInstanceId'"*) echo "$PP_FAKE_INSTANCE" ;;
+  *describe-change-set*)          echo "$PP_FAKE_REPLACED" ;;
+  *delete-change-set*)            echo deleted >> "$PP_FAKE_LOG.deleted" ;;
+  *execute-change-set*)           echo executed >> "$PP_FAKE_LOG.executed" ;;
+  *"cloudformation wait"*)        : ;;
+  *"cloudformation deploy"*)
+      echo "Changeset created successfully. Run the following command to review changes:"
+      arn=arn:aws:cloudformation:us-east-1:111122223333:changeSet/awscli-1/abc
+      echo "aws cloudformation describe-change-set --change-set-name $arn"
+      ;;
+  *"Stacks[0].Outputs"*)          echo "(outputs)" ;;
+  *describe-stacks*)              exit "$PP_FAKE_STACK_MISSING" ;;
+  *ec2*describe-images*)          echo ami-07b9559027f889918 ;;
+  *) echo "unstubbed aws call: $all" >&2; exit 98 ;;
+esac
+"""
+
+
+def _run_stage(stage: str, scenario: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """Source the script's functions, without its dispatch, and call one stage against a stub."""
+    executable = shutil.which("bash")
+    if executable is None:
+        pytest.skip("no bash on this machine to run the stage with")
+    script = _deploy_script()
+    directory = tempfile.mkdtemp()
+    root = Path(directory)
+    (root / "functions.sh").write_text(
+        script[: script.index('case "$STAGE" in')], encoding="utf-8", newline="\n"
+    )
+    aws = root / "aws"
+    aws.write_text(FAKE_AWS, encoding="utf-8", newline="\n")
+    aws.chmod(0o755)
+    # `image_tag` refuses a dirty tree and reads this repository's HEAD; neither is what is
+    # under test, so it is overridden after sourcing.
+    (root / "harness.sh").write_text(
+        "set -euo pipefail\n"
+        f". '{root.as_posix()}/functions.sh'\n"
+        "image_tag () { printf 'aaaabbbbcccc'; }\n"
+        f"{stage}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    environment = {
+        **os.environ,
+        "PATH": f"{root.as_posix()}{os.pathsep}{os.environ['PATH']}",
+        "PP_FAKE_LOG": (root / "calls.log").as_posix(),
+        "PP_FAKE_DECLARED_AMI": "ami-0fa4996c14e7d501e",
+        "PP_FAKE_DECLARED_TAG": "b62779d6e975",
+        "PP_FAKE_INSTANCE": "i-087c742587f83d61d",
+        "PP_FAKE_REPLACED": "",
+        "PP_FAKE_STACK_MISSING": "0",
+        "PP_DEPLOY_VPC_ID": "vpc-1",
+        "PP_DEPLOY_HOST_SUBNET": "subnet-1",
+        "PP_DEPLOY_DB_SUBNETS": "subnet-2,subnet-3",
+        **scenario,
+    }
+    environment.pop("PP_DEPLOY_REPLACE_HOST", None)
+    environment.pop("PP_DEPLOY_SEED_ON_FIRST_BOOT", None)
+    environment.update(scenario)
+    result = subprocess.run(
+        [executable, str(root / "harness.sh")],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+        cwd=str(REPOSITORY_ROOT),
+    )
+    result.stdout += "\n--- calls ---\n" + (root / "calls.log").read_text(encoding="utf-8")
+    if (root / "calls.log.executed").exists():
+        result.stdout += "\nEXECUTED\n"
+    if (root / "calls.log.deleted").exists():
+        result.stdout += "\nDELETED\n"
+    return result
+
+
+def test_a_release_whose_plan_replaces_the_host_is_actually_refused() -> None:
+    """Run it. The change set names the Host, and nothing may be executed.
+
+    This is the 2026-09-16 change set, which reported ``Replacement: True`` on the Host and the
+    EIPAssociation and was deleted by hand. Here the stage does it: refuses, deletes, exits
+    non-zero, and never reaches `execute-change-set`.
+    """
+    result = _run_stage("stage_stack", {"PP_FAKE_REPLACED": "Host\tElasticIpAssociation"})
+    assert result.returncode != 0, "a release that would replace the host succeeded"
+    assert "describe-images" not in result.stdout, "the release resolved its own host image"
+    assert "Host" in result.stderr, "the refusal does not say what would be replaced"
+    assert "EXECUTED" not in result.stdout, "the change set was executed anyway"
+    assert "DELETED" in result.stdout, "the refused change set was left behind"
+
+
+def test_a_release_that_replaces_nothing_executes_the_plan_it_read() -> None:
+    """The other branch, and the parameters it submits.
+
+    The AMI is the one the stack declared -- the stub exits 99 if anything asks EC2 for a newer
+    image -- and the seed is `false`, which is what makes an application release unable to
+    erase the database.
+    """
+    result = _run_stage("stage_stack", {"PP_FAKE_REPLACED": ""})
+    assert result.returncode == 0, result.stderr
+    assert "EXECUTED" in result.stdout, "a clean release executed nothing"
+    assert "DELETED" not in result.stdout, "a clean release deleted its own change set"
+    assert "describe-images" not in result.stdout, (
+        "the release asked EC2 for an image, so it can still pick up a newer one"
+    )
+    assert "HostAmiId=ami-0fa4996c14e7d501e" in result.stdout, (
+        "the release submitted an AMI other than the one the stack declared"
+    )
+    assert "SeedDemoFixtureOnFirstBoot=false" in result.stdout, (
+        "the release did not submit a false seed"
+    )
+    assert "ImageTag=aaaabbbbcccc" in result.stdout
+
+
+def test_replacing_the_host_without_the_confirmation_mutates_nothing() -> None:
+    """The destructive stage, unconfirmed: it must print the damage and then refuse."""
+    result = _run_stage("stage_host_image", {"PP_FAKE_REPLACED": "Host"})
+    assert result.returncode != 0, "the host was replaced with no confirmation at all"
+    assert "i-087c742587f83d61d" in result.stderr, (
+        "the refusal does not name the instance whose id would confirm it"
+    )
+    assert "EXECUTED" not in result.stdout, "the host was replaced anyway"
+    assert "DELETED" in result.stdout, "the refused change set was left behind"
+    assert "ImageTag=b62779d6e975" in result.stdout, (
+        "replacing the host also moved the release to this checkout's commit"
     )
 
 
