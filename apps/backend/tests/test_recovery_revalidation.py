@@ -37,7 +37,15 @@ from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import ApprovalRequestState, ParserKind
 from promise_graph.revalidation import RevalidationOutcome
 from promisepatch.db.models import ApprovalDecision, RecoveryOption
-from promisepatch.domain import analysis, approvals, cases, crash, recovery, revalidation
+from promisepatch.domain import (
+    analysis,
+    approvals,
+    cases,
+    crash,
+    messaging,
+    recovery,
+    revalidation,
+)
 from promisepatch.domain.adapters import FakeEffectAdapter, ProviderBehaviour
 
 pytestmark = pytest.mark.integration
@@ -831,6 +839,65 @@ async def test_a_re_planned_track_starts_again_with_no_consent_at_all(
     # The decision survives as history and authorises nothing.
     assert len(await physical.decisions()) == 1
     assert await amendments_for(physical, track_b.id) == []
+
+
+async def _notices(intake: Intake, track_id: UUID) -> list[Any]:
+    """Every §14.4 supersede notice queued for one track, by its own idempotency shape."""
+    return [
+        row
+        for row in await intake.effects_for(track_id)
+        if row.kind == approvals.EFFECT_MESSAGE_SEND
+        and str(row.idempotency_key).startswith("pp:supersede:")
+    ]
+
+
+async def test_a_customer_whose_order_moved_is_told_once_and_asked_for_nothing(
+    physical: Intake,
+) -> None:
+    """§14.4 and §23: the customer is told their order changed, exactly once.
+
+    The strongest part is what the message is *not*. It carries no reply instruction, so it
+    cannot be answered and cannot become a second consent; and it does not travel under the
+    ``request_id`` key, because the request it is about is superseded by the same transaction
+    that queues it and the dispatcher's window guard would refuse it unsent.
+    """
+    case_id, _ = await approved_case(physical)
+    track_b = await track_of(physical, case_id, B)
+    request = await the_request(physical)
+
+    await physical.bump_order_version(ho.ORDER_B)
+    await physical.drain(limit=40)
+
+    notices = await _notices(physical, track_b.id)
+    assert len(notices) == 1
+    assert notices[0].idempotency_key == analysis.supersede_idempotency_key(request.id)
+    assert notices[0].payload["superseded_request_id"] == str(request.id)
+    assert "request_id" not in notices[0].payload
+    assert messaging.SUPERSEDE_NOTICE in notices[0].payload["text"]
+    assert messaging.CONSENT_INSTRUCTION not in notices[0].payload["text"]
+    assert await amendments_for(physical, track_b.id) == []
+
+
+async def test_a_re_plan_the_customers_order_did_not_cause_tells_them_nothing(
+    physical: Intake,
+) -> None:
+    """The message says their order changed. Here it did not, so there is no message.
+
+    The owner rewrote a constraint, which makes the approval stale and re-plans the promise just
+    as an order edit would. Telling Tomas his order changed would be a false sentence about his
+    own order, and §23 gives that row no customer message.
+    """
+    case_id, _ = await approved_case(physical)
+    track_b = await track_of(physical, case_id, B)
+
+    await physical.set_constraint_kind(ho.CONSTRAINT_B_ASK, "NO_SUBSTITUTION")
+    await physical.drain(limit=40)
+
+    replan = await physical.step_named(case_id, analysis.replan_step_key(track_b.id))
+    assert replan is not None
+    assert replan.state == "DONE"
+    assert replan.result["supersede_notice"] is None
+    assert await _notices(physical, track_b.id) == []
 
 
 async def test_a_re_plan_produces_a_fresh_fingerprint_and_options(physical: Intake) -> None:

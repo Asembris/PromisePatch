@@ -108,6 +108,9 @@ from promisepatch.domain.cases import (
     settled_case_state,
 )
 from promisepatch.domain.model import (
+    EFFECT_MESSAGE_SEND as _EFFECT_MESSAGE_SEND,
+)
+from promisepatch.domain.model import (
     EFFECT_TRACK_ID,
     EVENT_STEP_COMPLETED,
     EVENT_STEP_FAILED,
@@ -285,8 +288,12 @@ def confirmation_idempotency_key(request_id: UUID, reply_id: UUID) -> str:
 
 # ------------------------------------------------------------------------------ effect naming
 
-EFFECT_MESSAGE_SEND: Final = "MESSAGE_SEND"
-"""The §13.3 outbox kind for anything said to a customer on their own channel."""
+EFFECT_MESSAGE_SEND: Final = _EFFECT_MESSAGE_SEND
+"""The §13.3 outbox kind for anything said to a customer on their own channel.
+
+Declared in :mod:`promisepatch.domain.model` and re-exported here, so the re-plan that sends
+§14.4's supersede notice can name it without importing this module, which would close a cycle.
+"""
 
 # ------------------------------------------------------------------------------ timer naming
 

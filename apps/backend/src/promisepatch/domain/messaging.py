@@ -52,6 +52,36 @@ in what form would invite a second sentence nobody can act on.
 """
 
 
+SUPERSEDE_NOTICE: Final = (
+    "Your order changed after we asked you about it, so that request no longer applies, "
+    "and nothing was done to your order because of it."
+)
+"""§14.4's one message, and the only place a customer may receive a second one in the MVP.
+
+A notice, not a question. It carries neither :data:`CONSENT_INSTRUCTION` nor
+:data:`CONFIRMATION_INSTRUCTION`, and there is no word a customer could send back that would
+mean anything -- which is why the builder below invites none.
+
+**It says that their order changed, so it is sent only where that is true.** §14.4 words the
+message as "explaining that their order changed", and §23 puts it in the row headed "order
+changes while approval pending". A re-plan whose cause was something else -- stock consumed
+elsewhere, a constraint rewritten, a task started -- has not changed this customer's order, and
+telling them it did would be the one thing this module may never do.
+
+"nothing was done to your order because of it" is a claim about the world, and it holds by
+construction on every path that reaches here: a plan goes stale *before* its amendment, so the
+request being voided never became a write.
+"""
+
+SUPERSEDE_FOLLOW_UP: Final = "If we still need your permission, we will send a new request."
+"""§14.4's "and a new request (if any) follows", worded so that either outcome keeps it true.
+
+Whether the fresh plan needs asking at all is decided after this message is composed, so
+promising a new request outright would be a promise this module cannot keep. Saying nothing
+would leave a customer whose last word was a yes with no idea whether anybody is coming back.
+"""
+
+
 @dataclass(frozen=True, slots=True)
 class ApprovalMessage:
     """Everything the message says, read from rows before this module is called.
@@ -144,6 +174,32 @@ def build_confirmation_prompt(message: ApprovalMessage) -> str:
     )
 
 
+def build_supersede_notice(message: ApprovalMessage) -> str:
+    """Compose §14.4's supersede notice: the customer's order moved, so the ask is void.
+
+    Short, and deliberately incurious about what changed. PromisePatch did not make the edit and
+    has no business narrating somebody's own order back at them; what it owes them is that the
+    question they were asked no longer stands and that nothing was done on the strength of it.
+
+    It names the change reference so the customer knows which conversation this ends, and it
+    does not restate the change itself -- the original request named the exact substitution and
+    is the message this one is about.
+    """
+    return "\n".join(
+        [
+            f"Hello {message.customer_name},",
+            "",
+            f"About your order {message.order_reference}:",
+            "",
+            SUPERSEDE_NOTICE,
+            "",
+            f"Change reference: {message.option_code}",
+            "",
+            SUPERSEDE_FOLLOW_UP,
+        ]
+    )
+
+
 def _change(message: ApprovalMessage) -> str:
     """One sentence naming what the customer would receive instead, however much we know.
 
@@ -178,13 +234,34 @@ def carries_confirmation_literals(text: str, *, option_code: str) -> bool:
     return CONFIRMATION_INSTRUCTION in text and option_code in text
 
 
+def carries_supersede_literals(text: str, *, option_code: str) -> bool:
+    """Whether a supersede notice may be sent at all.
+
+    The same pre-send shape as the other two guards, against the two sentences §14.4 fixes for
+    this message. Separate rather than parameterised, because this one must *not* accept a text
+    carrying a reply instruction: a notice that invited YES or NO would be a second question the
+    customer's answer could not be applied to.
+    """
+    return (
+        SUPERSEDE_NOTICE in text
+        and SUPERSEDE_FOLLOW_UP in text
+        and option_code in text
+        and CONSENT_INSTRUCTION not in text
+        and CONFIRMATION_INSTRUCTION not in text
+    )
+
+
 __all__ = [
     "CONFIRMATION_INSTRUCTION",
     "CONSENT_INSTRUCTION",
+    "SUPERSEDE_FOLLOW_UP",
+    "SUPERSEDE_NOTICE",
     "ApprovalMessage",
     "build_approval_request",
     "build_confirmation_prompt",
+    "build_supersede_notice",
     "carries_confirmation_literals",
     "carries_required_literals",
+    "carries_supersede_literals",
     "render_due",
 ]

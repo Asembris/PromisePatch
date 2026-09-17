@@ -81,7 +81,7 @@ from promisepatch.db.models import Promise as PromiseRow
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
-from promisepatch.domain import plan_identity
+from promisepatch.domain import messaging, plan_identity
 from promisepatch.domain.cases import (
     CASE_RECONCILING,
     CASE_REVALIDATING,
@@ -91,6 +91,7 @@ from promisepatch.domain.cases import (
     revalidate_step_key,
 )
 from promisepatch.domain.model import (
+    EFFECT_MESSAGE_SEND,
     EFFECT_TRACK_ID,
     EVENT_STEP_COMPLETED,
     EVENT_STEP_SKIPPED,
@@ -98,6 +99,7 @@ from promisepatch.domain.model import (
     CaseChange,
     CreateStep,
     Disposition,
+    EmitEffect,
     StepOutcome,
 )
 from promisepatch.domain.observation import (
@@ -105,6 +107,7 @@ from promisepatch.domain.observation import (
     SOURCE_DETERMINISTIC,
     STEP_BEGIN_INTERPRETATION,
 )
+from promisepatch.graph.channel import split_channel
 from promisepatch.graph.loader import load_snapshot, snapshot_session
 
 NAMESPACE: Final = UUID("2c9f7a61-4d38-5b0e-9c17-8f6a3b25de41")
@@ -181,6 +184,17 @@ def replan_step_key(track_id: UUID) -> str:
     unique index declines it.
     """
     return f"replan:{track_id}"
+
+
+def supersede_idempotency_key(request_id: UUID) -> str:
+    """§12.3's shape, for the one notice §14.4 allows: ``pp:supersede:{request_id}``.
+
+    Keyed on the request being superseded rather than on the track or the clock, because that
+    request is superseded exactly once and the notice is about it. A re-plan replayed after a
+    crash proposes the identical key, and a provider that honours keys collapses them into the
+    one message the customer should see.
+    """
+    return f"pp:supersede:{request_id}"
 
 
 def statement_of(step_key: str) -> UUID:
@@ -659,6 +673,7 @@ async def _replan(
         else None
     )
     moved_to = CASE_PLANNED if plan is not None else CASE_RECONCILING
+    notice = await _supersede_notice(connection, track=track)
 
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
@@ -687,6 +702,7 @@ async def _replan(
             "chosen_option_id": None if plan is None else _optional(plan.chosen_id),
             "case_state": moved_to,
             "cited": list(record.cited_constraint_ids),
+            "supersede_notice": None if notice is None else notice.idempotency_key,
         },
         provenance={
             "step_key": step_key,
@@ -713,6 +729,7 @@ async def _replan(
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to),
         successors=await case_successors(connection, moved_to, case_id=case.id),
+        effects=() if notice is None else (notice,),
         events=(
             AppendEvent(
                 type=EVENT_TRACK_REPLANNED,
@@ -734,7 +751,83 @@ async def _replan(
             "options": 0 if plan is None else len(plan.options),
             "chosen": None if plan is None else _optional(plan.chosen_id),
             "case_state": moved_to,
+            "supersede_notice": None if notice is None else notice.idempotency_key,
         },
+    )
+
+
+async def _supersede_notice(connection: AsyncConnection, *, track: Any) -> EmitEffect | None:
+    """§14.4's one message, or ``None`` where its own sentence would not be true.
+
+    The message says *your order changed*. So the condition for sending it is that claim, read
+    from the rows that make it: the order version this customer was asked against, captured on
+    their request, against the version the order carries now. That is §14.3's check 2 asked a
+    second time, and it is the only reading under which the notice cannot lie.
+
+    A re-plan has other causes -- stock consumed elsewhere, a constraint rewritten, a task
+    started -- and on those paths this returns ``None``. §14.4 and §23 both word the message as
+    an order change and neither owes one for anything else; sending it anyway would tell a
+    customer their order moved when it did not, which is the same failure as claiming an effect
+    that did not happen, run backwards.
+
+    ``None`` also where there is no request at all: an automatic track was never asked, and "the
+    only place a customer may receive a second message" presupposes a first.
+    """
+    if track.approval_request_id is None:
+        return None
+    row = (
+        await connection.execute(
+            select(
+                ApprovalRequest.id,
+                ApprovalRequest.option_code,
+                ApprovalRequest.captured_order_version,
+                ApprovalRequest.customer_channel,
+                Order.external_id,
+                Order.external_version,
+                Customer.name,
+            )
+            .join(Order, Order.id == ApprovalRequest.order_id)
+            .join(Customer, Customer.id == Order.customer_id)
+            .where(ApprovalRequest.id == track.approval_request_id)
+        )
+    ).one_or_none()
+    if row is None:  # pragma: no cover - the track's own foreign key says otherwise
+        return None
+    if row.external_version == row.captured_order_version:
+        return None
+
+    text = messaging.build_supersede_notice(
+        messaging.ApprovalMessage(
+            customer_name=row.name,
+            order_reference=row.external_id,
+            option_code=row.option_code,
+        )
+    )
+    if not messaging.carries_supersede_literals(text, option_code=row.option_code):
+        # The same pre-send check §13.6 puts on the other two messages, and it cannot fail while
+        # the text is composed from a template. It predates any drafter on purpose.
+        raise AnalysisStateError(f"the supersede notice for {row.id} is missing its literals")
+
+    kind, address = split_channel(row.customer_channel)
+    return EmitEffect(
+        kind=EFFECT_MESSAGE_SEND,
+        payload={
+            EFFECT_TRACK_ID: str(track.id),
+            # Deliberately *not* under ``request_id``. That key is what the dispatcher's one
+            # pre-flight reads to refuse an approval message whose window has closed, and this
+            # request is superseded by the very transaction that queues this notice -- so naming
+            # it there would have the guard refuse the message §14.4 requires, every time.
+            "superseded_request_id": str(row.id),
+            "promise_id": track.promise_id,
+            "option_code": row.option_code,
+            "channel_kind": kind,
+            "channel_address": address,
+            "text": text,
+        },
+        # No continuation, deliberately. Nothing waits on this message: the track's own posture
+        # is decided by the re-plan that sent it, and a customer who is told their order changed
+        # is not being asked for anything.
+        idempotency_key=supersede_idempotency_key(row.id),
     )
 
 

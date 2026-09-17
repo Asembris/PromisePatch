@@ -147,6 +147,43 @@ def test_a_message_missing_its_detail_still_carries_its_instruction() -> None:
     assert "OPT-ABC123" in text
 
 
+def test_the_supersede_notice_says_the_order_changed_and_asks_for_nothing() -> None:
+    """§14.4's one message: it tells, it does not ask, and it claims no write was made."""
+    text = messaging.build_supersede_notice(_message())
+
+    assert messaging.SUPERSEDE_NOTICE in text
+    assert messaging.SUPERSEDE_FOLLOW_UP in text
+    assert "A Customer" in text
+    assert "EXT-X" in text
+    assert "OPT-ABC123" in text
+    assert messaging.CONSENT_INSTRUCTION not in text
+    assert messaging.CONFIRMATION_INSTRUCTION not in text
+    assert "YES" not in text
+    assert "NO" not in text
+
+
+def test_the_supersede_notice_never_promises_the_original_and_never_reassures() -> None:
+    """The same two rules the ask is held to: no restoration promised, nothing reassured."""
+    lowered = messaging.build_supersede_notice(_message()).lower()
+
+    for forbidden in ("safe", "fine", "guarantee", "no problem", "don't worry", "as ordered"):
+        assert forbidden not in lowered
+
+
+def test_the_supersede_guard_refuses_a_notice_that_invites_a_reply() -> None:
+    """A notice carrying a reply instruction would be a question nobody could act on."""
+    good = messaging.build_supersede_notice(_message())
+    assert messaging.carries_supersede_literals(good, option_code="OPT-ABC123") is True
+    assert messaging.carries_supersede_literals(good, option_code="OPT-OTHER") is False
+    assert messaging.carries_supersede_literals("nothing here", option_code="OPT-ABC123") is False
+    assert (
+        messaging.carries_supersede_literals(
+            good + chr(10) + messaging.CONSENT_INSTRUCTION, option_code="OPT-ABC123"
+        )
+        is False
+    )
+
+
 def test_the_pre_send_guard_refuses_a_message_missing_either_literal() -> None:
     """The check exists before the drafter it will one day check."""
     assert messaging.carries_required_literals("nothing here", option_code="OPT-ABC123") is False

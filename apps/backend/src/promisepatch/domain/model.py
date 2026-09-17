@@ -111,6 +111,14 @@ string: the transition that enqueues it, the dispatcher that routes it and the a
 sends it. The adapter is deliberately unable to import the transition -- it may not reach a
 database -- so the shared word has to live somewhere neither of them owns.
 """
+EFFECT_MESSAGE_SEND: Final = "MESSAGE_SEND"
+"""The §13.3 outbox kind for anything said to a customer on their own channel.
+
+Here for the same reason as the amendment above, and now for one more: the transitions that
+enqueue a customer message live in three modules -- the consent protocol, the confirmation
+prompt and §14.4's re-plan -- and the last of them cannot import the first without closing a
+cycle. A word three writers share belongs to none of them.
+"""
 CASE_SUBJECT: Final = "CASE"
 
 EFFECT_CASE_ID: Final = "case_id"
