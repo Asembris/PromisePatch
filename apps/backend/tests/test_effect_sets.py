@@ -191,10 +191,18 @@ async def answered_without_analysis(
 
 
 async def confirmed(server: McpServer, intake: Intake, case_id: UUID) -> None:
-    """The plan the surface offered, quoted back to it as the worker's explicit yes."""
+    """The plan the surface offered, approved by the worker, and then carried out.
+
+    The approval is recorded where this system authenticates a person rather than over the
+    tools: a conversation spends a worker's yes and can never write one. This changes how the
+    worker's agreement reaches the case and changes nothing a scenario is labelled on -- no
+    partition, no effect and no refusal is decided here.
+    """
     async with server.session() as session:
         offered = body(await session.call_tool("status", {"case_id": str(case_id)}))
-        assert offered["awaiting_confirmation"] is True, offered
+    assert offered["awaiting_confirmation"] is True, offered
+    await intake.approve(case_id, plan_id=str(offered["plan_id"]))
+    async with server.session() as session:
         await session.call_tool(
             "confirm", {"case_id": str(case_id), "plan_id": str(offered["plan_id"])}
         )

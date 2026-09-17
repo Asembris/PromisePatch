@@ -125,7 +125,13 @@ async def test_the_canonical_conversation_is_carried_by_the_orchestrator(
         assert "Nothing has been done yet." in planned.reply
         assert "left alone" in planned.reply, "the untouched band is not decoration"
 
-        # 5. The worker says yes. Authority, and not an act.
+        # The worker approves the plan they have just been read, on their own signed-in
+        # workspace. This is not a step the conversation can perform for them and not one it can
+        # skip: the tool it is about to call spends this approval and cannot create one, so
+        # without this line turn 5 is refused and the case stays where it is.
+        await physical.approve(case_id, plan_id=conversation.plan_id)
+
+        # 5. The worker says yes, and the conversation carries out what they approved.
         confirmed = await loop.take_turn(conversation, THE_YES)
         conversation = confirmed.conversation
         turns.append(confirmed)

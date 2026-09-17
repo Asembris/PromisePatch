@@ -96,8 +96,11 @@ async def confirmed_over_the_wire(server: McpServer, intake: Intake) -> UUID:
     """The canonical conversation, every turn a real tool call, ending in an explicit yes.
 
     Four tools and no shortcuts: the case id comes back from ``report``, the plan identity
-    comes back from ``status``, and the confirmation quotes that identity. Nothing in this
-    helper knows a table exists.
+    comes back from ``status``, and the confirmation quotes that identity.
+
+    One step is not a tool call and cannot be: the worker's approval of the plan they were read.
+    A conversation spends an approval and can never write one, so it happens where this system
+    authenticated the person -- their own workspace -- and then the conversation carries it out.
     """
     async with server.session() as session:
         opened = body(await session.call_tool("report", {"text": CANONICAL_REPORT}))
@@ -109,6 +112,8 @@ async def confirmed_over_the_wire(server: McpServer, intake: Intake) -> UUID:
         await intake.drain()
 
         offered = body(await session.call_tool("status", {"case_id": str(case_id)}))
+    await intake.approve(case_id, plan_id=str(offered["plan_id"]))
+    async with server.session() as session:
         assert offered["awaiting_confirmation"] is True
         assert offered["plan_id"]
         await session.call_tool("confirm", {"case_id": str(case_id), "plan_id": offered["plan_id"]})

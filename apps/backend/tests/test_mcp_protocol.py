@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 import pytest
 from _mcp_support import (
     ALLOWED_ORIGIN,
+    APPROVING_WORKER,
     BEARER,
     JSON_RPC_HEADERS,
     PLAN_ID,
@@ -137,11 +138,12 @@ async def test_the_instructions_state_the_boundary(mcp: McpServer) -> None:
     instructions = _sse_result(response.text)["instructions"]
     assert isinstance(instructions, str)
     assert "verbatim" in instructions
-    # The four sentences that are the authority posture, not the verb list. A model that reads
-    # only these still cannot decide who is speaking, confirm on somebody's behalf, confirm a
-    # plan it never read, or mistake a worker's yes for a customer's.
-    assert "cannot confirm on a worker's behalf" in instructions
-    assert "cannot confirm a plan you have not read" in instructions
+    # The sentences that are the authority posture, not the verb list. A model that reads only
+    # these still cannot decide who is speaking, turn its own call into a worker's agreement,
+    # confirm a plan it never read, or mistake a worker's yes for a customer's.
+    assert "Calling it is not the worker agreeing" in instructions
+    assert "can only spend one, never create one" in instructions
+    assert "already given on their own screen" in instructions
     assert "Worker confirmation is not customer consent." in instructions
     assert "cannot record a customer's consent, choose who is speaking" in instructions
 
@@ -374,10 +376,14 @@ async def test_an_answer_that_names_a_worker_is_still_attested_by_the_server(
     assert result.structured_content["attested_by"] == SURFACE_WORKER
 
 
-async def test_a_confirmation_that_names_a_worker_is_still_the_configured_one(
-    mcp: McpServer,
-) -> None:
-    """ "Confirm on Maya's behalf" names a value the server ignores. Nothing else is forwarded."""
+async def test_a_confirmation_that_names_a_worker_names_nobody(mcp: McpServer) -> None:
+    """ "Confirm on Maya's behalf" names a value the server ignores. Nothing else is forwarded.
+
+    And the answer names somebody the caller never mentioned: the worker whose recorded approval
+    the engine spent, with the channel that authenticated them. A surface that reported back the
+    identity it was configured with would be telling a conversation that a person had agreed on
+    the strength of a setting in a file.
+    """
     assert mcp.intents is not None
     async with mcp.session() as session:
         result = await session.call_tool(
@@ -386,7 +392,9 @@ async def test_a_confirmation_that_names_a_worker_is_still_the_configured_one(
         )
     assert set(mcp.intents.last.body) == {"command_id", "case_id", "plan_id"}
     assert result.structured_content is not None
-    assert result.structured_content["confirmed_by"] == SURFACE_WORKER
+    assert result.structured_content["confirmed_by"] == APPROVING_WORKER
+    assert result.structured_content["confirmed_by"] != SURFACE_WORKER
+    assert result.structured_content["approved_via"] == "BROWSER_SESSION"
 
 
 async def test_an_empty_answer_is_refused_before_the_engine(mcp: McpServer) -> None:
@@ -455,7 +463,8 @@ async def test_confirm_reports_permission_and_never_completion(mcp: McpServer) -
     assert body["applying"] == 1
     assert body["awaiting_approval"] == 1
     assert body["escalated"] == 1
-    assert body["confirmed_by"] == SURFACE_WORKER
+    assert body["confirmed_by"] == APPROVING_WORKER
+    assert body["approved_via"] == "BROWSER_SESSION"
     assert "changed" not in body["speech"].replace("has been changed yet", "")
     assert not {"recovered", "applied", "sent", "amended"} & set(body)
 

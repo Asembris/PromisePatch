@@ -43,6 +43,15 @@ from promisepatch.mcp import CaseEngine, build_app
 BEARER = "test-mcp-bearer-token"
 SERVICE_TOKEN = "test-internal-service-token"
 SURFACE_WORKER = "maya"
+
+APPROVING_WORKER = "rosa"
+"""Who the fake engine says approved the plan, chosen to be **not** the surface worker.
+
+The two being different is the assertion. A confirmation reports the person whose durable
+approval it carried out, read from that approval; a surface reporting its own configured
+identity back would be dressing a setting in a file up as somebody's agreement, and a fixture
+that used one name for both could not tell the two apart.
+"""
 ALLOWED_ORIGIN = "http://localhost:5173"
 PLAN_ID = "0" * 64
 """A plan identity of the right shape for the offline suite. Opaque to the MCP process, which
@@ -136,7 +145,8 @@ class RecordingIntents:
             "command_id": body.get("command_id"),
             "state": "EXECUTING",
             "created": True,
-            "confirmed_by": SURFACE_WORKER,
+            "confirmed_by": APPROVING_WORKER,
+            "approved_via": "BROWSER_SESSION",
             "applying": 1,
             "awaiting_approval": 1,
             "escalated": 1,

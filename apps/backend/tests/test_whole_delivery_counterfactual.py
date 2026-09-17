@@ -203,11 +203,17 @@ async def answered(server: McpServer, intake: Intake, case_id: UUID, answer: str
 
 
 async def confirmed(server: McpServer, intake: Intake, case_id: UUID) -> str:
-    """The plan the surface offered, quoted back to it as the worker's explicit yes."""
+    """The plan the surface offered, approved by the worker, and then carried out.
+
+    The approval is not a tool call and cannot be one: a conversation spends a worker's yes and
+    can never write one, so it is recorded where this system authenticated them.
+    """
     async with server.session() as session:
         offered = body(await session.call_tool("status", {"case_id": str(case_id)}))
-        assert offered["awaiting_confirmation"] is True, offered
-        plan_id = str(offered["plan_id"])
+    assert offered["awaiting_confirmation"] is True, offered
+    plan_id = str(offered["plan_id"])
+    await intake.approve(case_id, plan_id=plan_id)
+    async with server.session() as session:
         await session.call_tool("confirm", {"case_id": str(case_id), "plan_id": plan_id})
     return plan_id
 
