@@ -30,12 +30,15 @@ from _mcp_support import SERVICE_TOKEN
 from _order_system_support import PROMISEPATCH_ORIGIN, order_system_settings
 from fastapi import FastAPI
 from pydantic import SecretStr
+from sqlalchemy import select
 
 from promisepatch.api.auth import cookies
 from promisepatch.api.routers import auth as login_router
 from promisepatch.api.routers import intents as intents_router
 from promisepatch.api.schemas.cases import CaseWorkspaceResponse
 from promisepatch.config import Settings
+from promisepatch.db.models import PlanApproval
+from promisepatch.domain import plan_approval
 from promisepatch.domain.physical import case_id_for
 from promisepatch.main import create_app
 from promisepatch.orchestrator import policy
@@ -996,6 +999,208 @@ async def test_a_withdrawn_case_cannot_be_withdrawn_again(
     assert again.json()["error"]["code"] == "CASE_NOT_WITHDRAWABLE"
 
 
+# ------------------------------------------------- where a plan approval comes from, and only
+
+
+async def test_a_confirmation_records_the_approval_it_carries_out(
+    worker: Browser, physical: Intake
+) -> None:
+    """The browser is a channel this system authenticates a person on, so it may take their yes.
+
+    One request does both halves, because the person is on it: the durable approval naming them
+    and the channel that authenticated them, and then the confirmation that spends it. The
+    behaviour a worker sees is exactly what it was -- a ``202``, the counts, the sentence -- and
+    what is new is that the record now says who agreed rather than asserting that somebody did.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await worker.say(
+        "confirm",
+        {"command_id": str(uuid4()), "case_id": str(case_id), "plan_id": view.plan_id},
+    )
+
+    assert response.status_code == 202, response.text
+    assert (await physical.case(case_id)).state == "EXECUTING"
+    async with physical.database.connect() as connection:
+        rows = list(
+            (
+                await connection.execute(
+                    select(PlanApproval).where(PlanApproval.case_id == case_id)
+                )
+            ).all()
+        )
+    assert len(rows) == 1
+    assert rows[0].plan_id == view.plan_id
+    assert rows[0].approved_by == BAKER
+    assert rows[0].channel == "BROWSER_SESSION"
+    assert rows[0].evidence == plan_approval.CONTROL_PRESS
+
+
+async def test_a_spoken_yes_is_recorded_as_the_words_the_worker_said(
+    worker: Browser, physical: Intake
+) -> None:
+    """The evidence column holds the sentence, not a verdict about it.
+
+    A press and a spoken yes are different facts and are stored differently, so a later reader
+    can tell which one happened. The words are the worker's own, byte for byte, and the reading
+    of them is still the server's closed literal rule rather than the browser's.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await worker.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": view.plan_id,
+            "text": "yes please",
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    async with physical.database.connect() as connection:
+        row = (
+            await connection.execute(select(PlanApproval).where(PlanApproval.case_id == case_id))
+        ).one()
+    assert row.evidence == "yes please"
+    assert row.channel == "BROWSER_SESSION"
+
+
+async def test_a_sentence_that_is_not_a_yes_records_no_approval_at_all(
+    worker: Browser, physical: Intake
+) -> None:
+    """The literal rule runs before anything is written, so a near-yes leaves nothing behind.
+
+    This matters more than it did. An approval is durable authority that another transport can
+    later spend, so a surface that wrote one on words nobody could read as agreement would be
+    manufacturing exactly what the whole boundary exists to prevent -- and would do it in a row
+    that outlives the request.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await worker.say(
+        "confirm",
+        {
+            "command_id": str(uuid4()),
+            "case_id": str(case_id),
+            "plan_id": view.plan_id,
+            "text": "yes, but change the raspberry one first",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "NOT_A_PLAIN_YES"
+    assert (await physical.case(case_id)).state == "PLANNED"
+    async with physical.database.connect() as connection:
+        rows = list(
+            (
+                await connection.execute(
+                    select(PlanApproval).where(PlanApproval.case_id == case_id)
+                )
+            ).all()
+        )
+    assert rows == []
+
+
+async def test_approving_records_a_worker_yes_and_carries_nothing_out(
+    worker: Browser, physical: Intake
+) -> None:
+    """The half a conversation on another transport can later spend, and nothing more.
+
+    ``201`` and a case that has not moved: no track is escalated, nothing is enqueued, no order
+    is amended and no customer is asked. What exists afterwards is a decision on the record,
+    which is precisely the thing a surface holding only a service credential cannot write.
+    """
+    case_id = await planned(physical)
+    view = await worker.workspace(case_id)
+
+    response = await worker.say(
+        "approve",
+        {"case_id": str(case_id), "plan_id": view.plan_id},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["approved_by"] == BAKER
+    assert body["approved_via"] == "BROWSER_SESSION"
+    assert "Nothing has been carried out yet" in body["speech"]
+    assert (await physical.case(case_id)).state == "PLANNED"
+    assert await physical.effects() == []
+
+
+async def test_an_observer_session_cannot_approve_a_plan(
+    observer: Browser, physical: Intake
+) -> None:
+    """The read-only principal, refused by the domain on the route that mints authority.
+
+    There is no observer check in the route. ``require_permitted`` refuses inside the domain
+    service, which is what stops a capability added later from quietly admitting one.
+    """
+    case_id = await planned(physical)
+    plan_id = await physical.plan_id(case_id)
+
+    response = await observer.say("approve", {"case_id": str(case_id), "plan_id": plan_id})
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CASE_NOT_PERMITTED"
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_the_service_token_buys_nothing_on_the_approving_route(
+    worker: Browser, physical: Intake
+) -> None:
+    """The credential that reaches the intent API is not a way onto a person's own channel.
+
+    Presented instead of the session's CSRF token, so what is being asked is exactly whether
+    holding the internal secret lets a caller record somebody's approval. It does not: a browser
+    route wants the session, and the shared secret is not one.
+    """
+    case_id = await planned(physical)
+    plan_id = await physical.plan_id(case_id)
+    assert worker.client is not None
+
+    response = await worker.client.post(
+        "/api/conversation/approve",
+        json={"case_id": str(case_id), "plan_id": plan_id},
+        headers={intents_router.SERVICE_TOKEN_HEADER: SERVICE_TOKEN},
+    )
+
+    assert response.status_code in {401, 403}
+    assert (await physical.case(case_id)).state == "PLANNED"
+
+
+async def test_an_approval_recorded_in_the_browser_is_spendable_by_the_service_surface(
+    worker: Browser, physical: Intake
+) -> None:
+    """The two halves of the real product flow, in the order the product performs them.
+
+    The worker approves on their own screen and the conversation carries it out over the service
+    surface -- which is refused before the approval exists and accepted after, with nothing about
+    the request changing in between. That difference is the boundary, observed from outside.
+    """
+    case_id = await planned(physical)
+    plan_id = await physical.plan_id(case_id)
+    assert worker.client is not None
+    call = {"command_id": str(uuid4()), "case_id": str(case_id), "plan_id": plan_id}
+    headers = {intents_router.SERVICE_TOKEN_HEADER: SERVICE_TOKEN}
+
+    before = await worker.client.post("/internal/intents/confirm", json=call, headers=headers)
+    assert before.status_code == 403
+    assert before.json()["error"]["code"] == "HUMAN_APPROVAL_REQUIRED"
+
+    approved = await worker.say("approve", {"case_id": str(case_id), "plan_id": plan_id})
+    assert approved.status_code == 201, approved.text
+
+    after = await worker.client.post("/internal/intents/confirm", json=call, headers=headers)
+    assert after.status_code == 202, after.text
+    assert after.json()["confirmed_by"] == BAKER
+    assert after.json()["approved_via"] == "BROWSER_SESSION"
+    assert (await physical.case(case_id)).state == "EXECUTING"
+
+
 # --------------------------------------------------------- the two transports say one thing
 
 
@@ -1061,16 +1266,15 @@ async def test_the_two_transports_refuse_an_unapproved_plan_for_different_reason
 ) -> None:
     """Where they differ, they differ about authority -- and that difference is the whole fix.
 
-    The same request on both: confirm a plan nobody has agreed to. The browser holds a person's
-    own session, so it may record that person's approval, and the only thing wrong with the call
-    is the identity it quoted -- ``PLAN_SUPERSEDED``. The intent API holds a shared service
+    The same request on both, on two cases in the same state, quoting each case's own current
+    plan: confirm a plan nobody has yet agreed to. The browser holds a person's own session, so
+    the call *is* that person agreeing and it succeeds. The intent API holds a shared service
     token, which establishes which process is asking and nothing about whether a human was
-    present, so it cannot record anybody's approval and refuses for that reason instead --
-    ``HUMAN_APPROVAL_REQUIRED``.
+    present, so it has nobody's agreement to carry out and says so.
 
-    This is the asymmetry the mapping is *not* supposed to hide. Two surfaces answering
-    identically here would mean either that the browser had stopped being able to take a
-    person's word, or that the service surface had started being able to invent one.
+    This is the asymmetry the shared refusal mapping is *not* supposed to hide. Two surfaces
+    answering identically here would mean either that the browser had stopped being able to take
+    a person's word, or that the service surface had started being able to invent one.
     """
     browser_case = await planned(physical)
     tool_case = await planned(physical)
@@ -1081,7 +1285,7 @@ async def test_the_two_transports_refuse_an_unapproved_plan_for_different_reason
         {
             "command_id": str(uuid4()),
             "case_id": str(browser_case),
-            "plan_id": "0000000000000000",
+            "plan_id": await physical.plan_id(browser_case),
         },
     )
     over_the_tools = await worker.client.post(
@@ -1089,15 +1293,15 @@ async def test_the_two_transports_refuse_an_unapproved_plan_for_different_reason
         json={
             "command_id": str(uuid4()),
             "case_id": str(tool_case),
-            "plan_id": "0000000000000000",
+            "plan_id": await physical.plan_id(tool_case),
         },
         headers={intents_router.SERVICE_TOKEN_HEADER: SERVICE_TOKEN},
     )
 
-    assert over_the_browser.json()["error"]["code"] == "PLAN_SUPERSEDED"
-    assert over_the_tools.json()["error"]["code"] == "HUMAN_APPROVAL_REQUIRED"
+    assert over_the_browser.status_code == 202, over_the_browser.text
     assert over_the_tools.status_code == 403
-    assert (await physical.case(browser_case)).state == "PLANNED"
+    assert over_the_tools.json()["error"]["code"] == "HUMAN_APPROVAL_REQUIRED"
+    assert (await physical.case(browser_case)).state == "EXECUTING"
     assert (await physical.case(tool_case)).state == "PLANNED"
 
 

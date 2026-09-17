@@ -27,8 +27,10 @@ import pytest_asyncio
 from _intake_support import BAKER, CANONICAL_REPORT, CORRECTION, RASPBERRY_ONLY, Intake
 from _intake_support import physical as physical
 from _mcp_support import BEARER, SERVICE_TOKEN, mcp_over_http, serve
+from sqlalchemy import select
 
 from promisepatch.config import Settings
+from promisepatch.db.models import PlanApproval
 from promisepatch.main import create_app
 from promisepatch.orchestrator import Conversation, Orchestrator, TurnResult, connect
 from promisepatch.orchestrator.policy import BLOCKED_SENTENCES, MAX_TOOL_CALLS_PER_TURN, Blocked
@@ -66,6 +68,55 @@ async def chain(physical: Intake) -> AsyncIterator[str]:
     """Two servers on two sockets -- the MCP endpoint and the real API -- and the client's URL."""
     async with serve(create_app(api_settings())) as api_base, mcp_over_http(api_base) as server:
         yield server.url
+
+
+async def test_the_model_choosing_confirm_on_an_unapproved_plan_changes_nothing(
+    chain: str, physical: Intake
+) -> None:
+    """The loop's own gate removed, and the case still does not move.
+
+    The model is scripted to choose ``CONFIRM``, the worker's turn is a plain yes so the client
+    grammar passes it, the phase permits it, and the conversation is holding the real plan
+    identity ``status`` returned. Every client-side condition is satisfied. The one thing that
+    has not happened is the worker agreeing anywhere this system authenticated them, and that is
+    sufficient: the call is refused on the server, the worker is told deterministically that the
+    conversation may not do it, and the case is exactly where it was.
+
+    This is the defence the loop's own literal rule is *not*. That rule stops an agreeable
+    conversation making the call; this stops a conversation that makes the call anyway.
+    """
+    conversation = Conversation()
+    provider = chooses("REPORT", "STATUS", "CLARIFY", "STATUS", "CONFIRM", "STATUS")
+
+    async with connect(chain, token=BEARER, timeout_seconds=30.0) as surface:
+        loop = Orchestrator(provider=provider, surface=surface)
+        opened = await loop.take_turn(conversation, CANONICAL_REPORT, correlation_id=str(uuid4()))
+        conversation = opened.conversation
+        case_id = UUID(str(conversation.case_id))
+        await physical.drain_intake(case_id)
+        conversation = (await loop.take_turn(conversation, WHAT_NOW)).conversation
+        conversation = (await loop.take_turn(conversation, RASPBERRY_ONLY)).conversation
+        await physical.drain()
+        planned = await loop.take_turn(conversation, WHAT_IS_THE_PLAN)
+        conversation = planned.conversation
+        assert conversation.phase is ConversationPhase.PLANNED
+        assert conversation.plan_id, "the loop is holding the real identity, not a guess"
+
+        refused = await loop.take_turn(conversation, THE_YES)
+
+    assert refused.calls == ("confirm", "status")
+    assert "not permitted" in refused.reply
+    assert (await physical.case(case_id)).state == "PLANNED"
+    assert await physical.effects() == []
+    async with physical.database.connect() as connection:
+        approvals = list(
+            (
+                await connection.execute(
+                    select(PlanApproval).where(PlanApproval.case_id == case_id)
+                )
+            ).all()
+        )
+    assert approvals == [], "a refused tool call left no authority behind either"
 
 
 async def test_the_canonical_conversation_is_carried_by_the_orchestrator(
