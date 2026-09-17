@@ -159,3 +159,35 @@ reversible before the thing that reverses it can tell the truth.
   after a scored run rather than before one. It belongs under
   [the correction process](../effect-set-run-protocol.md#if-a-frozen-label-turns-out-to-be-wrong),
   beside the 11/16 headline and never over it.
+
+## Amendment — 17 September 2026, verifying this decision against HEAD
+
+Every load-bearing claim above was re-checked against the implementation and holds. The decision
+stands unchanged and no production code moved. Two facts were found that this ADR did not record.
+Neither contradicts it; both were needed to close
+[the started-work contract](../started-work-contract.md).
+
+**1. The disagreement is with a manifest-wide rule, not with S12's label.** The frozen manifest's
+`vocabulary.labelling_rules` declares **R1** — *every escalation to the owner holds that order's
+production task* — unconditionally, and `scripts/verify_effect_set_manifest.py` refuses any
+manifest in which an order escalates without a hold. S12's label is therefore R1 correctly applied
+to the one fixture row where R1 is false, not an authoring slip. A v1 manifest expecting
+`ord-e task_hold 0` would be structurally invalid by its own verifier, so the relabelling decision
+4 declines was never available to be taken quietly. This strengthens decision 4 rather than
+qualifying it, and it is why a revised benchmark contract has to revise R1 rather than one label.
+
+**2. Decision 5's repair is insufficient as specified, and the missing part is a precondition.**
+`held_from_state` repairs release. It does not repair reading. `revalidation._task_is_ours` treats
+`HELD by our own case` as satisfying check 6, *"production task not started and still ahead"*, and
+that equivalence is sound only because `hold_tasks` can hold nothing but a `SCHEDULED` task, which
+makes `HELD` a faithful proxy for "was scheduled". Widening the predicate to `STARTED` breaks that
+relation at its root while the check that depends on it reads only `state` and `held_by_case_id`.
+So decision 5 gains a third part, ordered before the other two: `_task_is_ours` must refuse a hold
+whose remembered state was `STARTED`. This is a hazard in a repair that has not been made, not a
+defect at HEAD — no started task is ever `HELD`, so no current path reaches it.
+
+One detail in decision 5 has since gone stale: it names the migration `0009_*`, and
+`0009_human_plan_approval` now exists at HEAD, so the repair's migration is `0010_*`.
+
+Neither finding reopens this decision. The consequence of both is that decision 5 costs more than
+it appeared to, which makes decision 6's refusal to take it before the release stronger, not weaker.
