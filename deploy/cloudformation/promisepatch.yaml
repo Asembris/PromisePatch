@@ -50,6 +50,12 @@ Metadata:
           [InstanceType, DatabaseInstanceClass, DatabaseStorageGiB, DatabaseBackupRetentionDays]
       - Label: { default: Release }
         Parameters: [Environment, ImageTag]
+      # Apart from Release on purpose. Neither of these is an application release: one
+      # replaces the host and one erases every case. `deploy.sh stack` passes the value the
+      # stack already carries for the first and a literal `false` for the second, so a release
+      # can only ever leave both where they were.
+      - Label: { default: Infrastructure and demo state }
+        Parameters: [HostAmiId, SeedDemoFixtureOnFirstBoot]
 
 Parameters:
   Environment:
@@ -145,13 +151,36 @@ Parameters:
   HostAmiId:
     Type: AWS::EC2::Image::Id
     Description: >-
-      The current Amazon Linux 2023 arm64 image, resolved at deploy time by deploy.sh and
-      passed in, so no AMI id is pinned in git. It is not read from the AWS-published SSM
-      parameter by the stack, though that parameter is the same fact: resolving it in the
-      template requires the CloudFormation service role to hold ssm:GetParameters on
-      `parameter/aws/service/*`, and the deployment role is scoped to this project's own
-      parameters. Resolving it with the ec2:DescribeImages the submitting identity already
-      holds keeps that scope rather than widening it to make a template read work.
+      An Amazon Linux 2023 arm64 image, resolved at deploy time by deploy.sh and passed in, so
+      no AMI id is pinned in git. It is not read from the AWS-published SSM parameter by the
+      stack, though that parameter is the same fact: resolving it in the template requires the
+      CloudFormation service role to hold ssm:GetParameters on `parameter/aws/service/*`, and
+      the deployment role is scoped to this project's own parameters. Resolving it with the
+      ec2:DescribeImages the submitting identity already holds keeps that scope rather than
+      widening it to make a template read work.
+
+      **Changing this replaces the host.** `ImageId` is a replacement property on
+      `AWS::EC2::Instance`, so a new value is an Add and a Remove, a new instance, a first boot
+      and a re-ordered certificate. That is a deliberate operation -- `deploy.sh host-image` --
+      and never a side effect of a release: `deploy.sh stack` passes back the value the stack
+      already declares, so an application release cannot move it by resolving a newer image.
+
+  SeedDemoFixtureOnFirstBoot:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Whether an instance's first boot loads the demo fixture. `pp reset-demo-state` replaces
+      every domain row PromisePatch owns, and the database outlives the host, so on a
+      replacement instance that boot step erases the cases the deployment exists to prove
+      survive it. It is therefore false unless a deploy says otherwise, and it gates both the
+      seed invocation and the `PP_ALLOW_FIXTURE_RESET` the seed needs to run at all -- two
+      layers, so a hand-run `compose run seed` on a host provisioned with it off is refused by
+      the application rather than only by the bootstrap.
+
+      True is for a deployment whose database has no cases yet: a first deploy, and the clean
+      fixtures a G8 rehearsal starts from. It takes effect only on an instance's first boot, so
+      setting it on a running host changes nothing until that host is replaced.
 
 Conditions:
   # The address this stack allocates is the only one a DNS record could point at, so when no
@@ -496,7 +525,11 @@ Resources:
               PP_AWS_REGION=${!REGION}
               PP_MIGRATION_DATABASE_URL=postgresql+asyncpg://postgres:${!DB_MASTER_PASSWORD}@${!HOST}:${!PORT}/promisepatch
               PP_DB_APP_PASSWORD=${!DB_PASSWORD}
-              PP_ALLOW_FIXTURE_RESET=true
+              # The first of the two layers gating the seed. `migrate` does not read it and is
+              # unaffected; `seed` is refused by the application itself when it is false, so a
+              # hand-run `compose run seed` on a host provisioned without a seed does not erase
+              # the database either. `SeedDemoFixtureOnFirstBoot` is the only thing that sets it.
+              PP_ALLOW_FIXTURE_RESET=${SeedDemoFixtureOnFirstBoot}
               PP_DEMO_WORKER_PASSWORD=${!WORKER_PASSWORD}
               PP_DEMO_OWNER_PASSWORD=${!OWNER_PASSWORD}
               EOF
@@ -632,12 +665,25 @@ Resources:
               # the unit, running converge.sh. One path, exercised from the first minute.
               systemctl enable --now promisepatch.service
 
-              # Load the fixture once, on this instance. `compose run` enables the service's own profile,
-              # which is the only thing that does -- `up -d` cannot reach it, and neither can
-              # `converge.sh`. The `cd` is not decoration: compose reads the composition from the working
-              # directory, and without it this line fails and takes the rest of the bootstrap with it.
+              # Load the fixture once, on this instance, and only when this deploy asked for it.
+              #
+              # The gate is the point. The database outlives the host, so on a replacement instance
+              # this line runs against a database full of real cases and erases every one of them --
+              # which is exactly what an ordinary release used to risk, because `deploy.sh stack`
+              # resolved a newer AMI at every run and a changed `ImageId` replaces the instance. The
+              # release path now passes `SeedDemoFixtureOnFirstBoot=false` literally, so the worst a
+              # release can do to the demo world is nothing.
+              #
+              # `compose run` enables the service's own profile, which is the only thing that does --
+              # `up -d` cannot reach it, and neither can `converge.sh`. The `cd` is not decoration:
+              # compose reads the composition from the working directory, and without it this line
+              # fails and takes the rest of the bootstrap with it.
               cd /opt/promisepatch
-              docker compose --env-file env/stack.env run --rm -T seed
+              if [ "${SeedDemoFixtureOnFirstBoot}" = "true" ]; then
+                docker compose --env-file env/stack.env run --rm -T seed
+              else
+                echo "SeedDemoFixtureOnFirstBoot is false; the demo fixture was not loaded"
+              fi
             # The one substitution the template supplies rather than the parameter list:
             # when no hostname was given, the script below is written with the name made
             # from this stack's own Elastic IP. Every other ${...} in the script is still
@@ -687,6 +733,21 @@ Outputs:
       from -- so this and that are two independently readable answers to the same question,
       and the deployment smoke check fails when they differ.
     Value: !Ref ImageTag
+
+  DeclaredHostAmiId:
+    Description: >-
+      The image this host was built from. Published so `deploy.sh stack` can pass it back
+      unchanged rather than resolving a newer one, which is what keeps an application release
+      from replacing the instance, and so the AMI a deployment actually runs is readable
+      without describing the instance.
+    Value: !Ref HostAmiId
+
+  DemoFixtureSeededOnFirstBoot:
+    Description: >-
+      Whether the boot that provisioned an instance would load the demo fixture. False on
+      every release. Read it before a host is replaced: it says whether the replacement's
+      first boot would erase the cases in the database the old host leaves behind.
+    Value: !Ref SeedDemoFixtureOnFirstBoot
 
   LogGroupName:
     Value: !Ref LogGroup
