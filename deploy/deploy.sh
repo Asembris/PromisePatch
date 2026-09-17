@@ -9,10 +9,25 @@
 #   ./deploy/deploy.sh registry    # create the two ECR repositories, idempotently
 #   ./deploy/deploy.sh images      # build for arm64 and push, tagged with the commit SHA
 #   ./deploy/deploy.sh config      # upload the compose file, the Caddyfile and the tag
-#   ./deploy/deploy.sh stack       # create or update the CloudFormation stack
+#   ./deploy/deploy.sh stack       # release: move the image tag, replace nothing
 #   ./deploy/deploy.sh rollout     # reboot the host onto the image this commit pushed
 #   ./deploy/deploy.sh smoke       # prove the deployed endpoints from outside
 #   ./deploy/deploy.sh all         # the above, in that order
+#
+# And one stage that is not a release and is never reached by one:
+#
+#   ./deploy/deploy.sh host-image  # replace the instance, on purpose, after showing what dies
+#
+# **An application release moves the image tag and nothing else.** It passes back the host image
+# the stack already declares, passes a literal `false` for the demo seed, and refuses any change
+# set that would replace or remove a resource. That is not a style choice: `ImageId` is a
+# replacement property on `AWS::EC2::Instance`, `stage_stack` used to resolve the newest AL2023
+# image at every run, and the instance's first boot ends in `compose run seed`, which replaces
+# every domain row in a database that outlives the host. So the first release after Amazon
+# published a new image would have replaced the host and erased every case on it. That was
+# proved rather than argued -- a change set built that way reported `Replacement: True` on the
+# Host and the EIPAssociation, and was deleted unexecuted -- and it is recorded in
+# docs/head-redeploy-2026-09-16.md section 7 and closed by docs/non-destructive-release.md.
 #
 # The order is not arbitrary. The registry has to exist before an image can be pushed, the
 # images and the configuration have to exist before the host boots or its first `compose pull`
@@ -35,6 +50,14 @@
 #   PP_DEPLOY_DB_BACKUP_DAYS  days of automated database backups, default 7. An account on the
 #                             AWS Free Tier plan cannot have 7 and RDS refuses the create; set
 #                             it to what the plan allows, and record that it was lowered.
+# Read only by `host-image`, and by nothing a release runs:
+#   PP_DEPLOY_HOST_AMI_ID     the image to move to. Unset, the newest AL2023 arm64 one.
+#   PP_DEPLOY_SEED_ON_FIRST_BOOT
+#                             `true` loads the demo fixture on the new instance's first boot,
+#                             which erases every case in the database. Default false. This is
+#                             the only way a deployment reseeds, and it is deliberately not
+#                             reachable from `stack`, `rollout` or `all`.
+#   PP_DEPLOY_REPLACE_HOST    the id of the instance being destroyed, typed back to confirm it.
 #
 # TLS verification is never weakened anywhere in this script or anywhere in this repository:
 # a test enumerates every spelling of "trust whatever certificate turns up" and fails on any of
@@ -69,15 +92,49 @@ stack_output () {
   aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
 }
 
-# The current Amazon Linux 2023 arm64 image, resolved here rather than by the template.
+stack_exists () {
+  aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" >/dev/null 2>&1
+}
+
+# The newest Amazon Linux 2023 arm64 image, resolved here rather than by the template.
 # `AWS::SSM::Parameter::Value<...>` on the AWS-published AMI parameter is the tidier spelling and
 # is the one this template used to carry; it needs the CloudFormation *service role* to hold
 # `ssm:GetParameters` on `parameter/aws/service/*`, which the deployment role does not have and
 # is not being given -- that role is scoped to this project's own parameters. The submitting
 # identity already holds `ec2:DescribeImages`, so the same fact is read with the permission that
 # exists. Latest by creation date, never a pinned id: an AMI in git goes stale silently.
-host_ami_id () {
+#
+# **A release never calls this.** Only `host-image` and a first create do; see
+# `release_host_ami_id` for why that distinction is the whole point.
+latest_host_ami_id () {
   aws ec2 describe-images --region "$REGION" --owners amazon     --filters "Name=name,Values=al2023-ami-2023.*-kernel-6.1-arm64"                "Name=state,Values=available"                "Name=architecture,Values=arm64"     --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text
+}
+
+# What CloudFormation currently declares the host was built from.
+declared_host_ami_id () {
+  aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Parameters[?ParameterKey=='HostAmiId'].ParameterValue" --output text
+}
+
+# The image an application release passes: the one the stack already carries, never a newer one.
+#
+# This is the fix. `ImageId` is a replacement property on `AWS::EC2::Instance`, and `stage_stack`
+# used to resolve the newest image at every run -- so the first release after Amazon published an
+# AL2023 build replaced the host, ran cloud-init again against the database the old host left
+# behind, and erased every case in it. Reading the value back means a release cannot move it at
+# all. Moving it is `stage_host_image`, which says what dies before it asks.
+#
+# A stack that does not exist yet has nothing to preserve and no cases to lose, so a first create
+# resolves the newest image. That is the only path in this script that does so implicitly.
+release_host_ami_id () {
+  local ami
+  if stack_exists; then
+    ami="$(declared_host_ami_id)"
+    [[ "$ami" == ami-* ]] || die "the stack declares no HostAmiId; run host-image to set one"
+  else
+    ami="$(latest_host_ami_id)"
+    [[ "$ami" == ami-* ]] || die "no Amazon Linux 2023 arm64 image was found in $REGION"
+  fi
+  printf '%s' "$ami"
 }
 
 # The image tag is the commit, and only ever the commit. A dirty tree is refused rather than
@@ -226,24 +283,29 @@ stage_config () {
   printf '  uploaded %s/{compose,caddyfile,image-tag}\n' "$PREFIX"
 }
 
-stage_stack () {
-  say "stack"
+# Build the change set and do not execute it. One parameter list, filled in by both stages that
+# submit this template, because `aws cloudformation deploy` carries forward whatever it is not
+# given -- a stage that named only what it cared about would depend on whatever the last one left
+# behind, and two copies of the list would drift. The only parameters that differ between a
+# release and a host replacement are the three passed in here.
+#
+# `--role-arn` is what keeps the human's standing privilege small: the resource-creating
+# permissions belong to a role only CloudFormation can assume, so every mutation arrives through
+# a template that was submitted and can be read back.
+#
+# Prints the change set's ARN, or nothing at all when the submission changes nothing.
+create_stack_change_set () {
+  local ami="$1" seed="$2" tag="$3" account output
   need PP_DEPLOY_VPC_ID; need PP_DEPLOY_HOST_SUBNET
   need PP_DEPLOY_DB_SUBNETS
-  local account tag ami
-  account="$(account_id)"; tag="$(image_tag)"; ami="$(host_ami_id)"
-  [[ "$ami" == ami-* ]] || die "no Amazon Linux 2023 arm64 image was found in $REGION"
-  printf '  image %s
-' "$ami"
-  # `--role-arn` is what keeps the human's standing privilege small: the resource-creating
-  # permissions belong to a role only CloudFormation can assume, so every mutation arrives
-  # through a template that was submitted and can be read back.
-  aws cloudformation deploy \
+  account="$(account_id)"
+  output="$(aws cloudformation deploy \
     --region "$REGION" \
     --stack-name "$STACK_NAME" \
     --template-file "$TEMPLATE" \
     --role-arn "arn:aws:iam::${account}:role/${DEPLOYMENT_ROLE_NAME}" \
     --capabilities CAPABILITY_NAMED_IAM \
+    --no-execute-changeset \
     --no-fail-on-empty-changeset \
     --tags Project=promisepatch \
     --parameter-overrides \
@@ -255,9 +317,121 @@ stage_stack () {
       "AllowedIngressCidr=${PP_DEPLOY_INGRESS_CIDR:-0.0.0.0/0}" \
       "DatabaseBackupRetentionDays=${PP_DEPLOY_DB_BACKUP_DAYS:-7}" \
       "ImageTag=${tag}" \
-      "HostAmiId=${ami}"
+      "HostAmiId=${ami}" \
+      "SeedDemoFixtureOnFirstBoot=${seed}")"
+  # `deploy --no-execute-changeset` prints the change set's ARN inside the command it tells you
+  # to run next, and nothing else in its output looks like one. There is no `--change-set-name`
+  # option to ask for a name instead, and taking the newest one from `list-change-sets` would be
+  # guessing which change set this run made.
+  printf '%s' "$output" | grep -o 'arn:aws[a-z-]*:cloudformation:[^ ]*:changeSet/[^ ]*' | tail -1 || true
+}
+
+# What the change set says will happen to existing resources, before any of it happens.
+#
+# This is the only thing in this script that can see an instance replacement coming. It was read
+# by hand on 2026-09-16 -- a change set built with a newly-resolved AMI reported `Replacement:
+# True` on the Host and on the EIPAssociation, and was deleted rather than executed, which is the
+# only reason the cases on that host still exist. This is that step written down, so the next
+# release does not depend on somebody thinking to do it.
+#
+# A `Remove` counts as well as a `Replacement`, because renaming a logical resource is reported
+# as an Add and a Remove with no replacement flag at all, and that is also a new instance.
+replaced_by_change_set () {
+  aws cloudformation describe-change-set --region "$REGION" --change-set-name "$1" \
+    --query "Changes[?ResourceChange.Replacement=='True' || ResourceChange.Action=='Remove'].ResourceChange.LogicalResourceId" \
+    --output text
+}
+
+discard_change_set () {
+  aws cloudformation delete-change-set --region "$REGION" --change-set-name "$1" >/dev/null
+}
+
+# The change set described above is the one executed here. There is no window between reading
+# the plan and running it, and no second submission that could resolve anything differently.
+execute_stack_change_set () {
+  aws cloudformation execute-change-set --region "$REGION" --change-set-name "$1"
+  aws cloudformation wait "$2" --region "$REGION" --stack-name "$STACK_NAME"
+}
+
+# An application release. It moves the image tag and nothing else.
+#
+# The host image is whatever the stack already declares, the demo seed is a literal `false` that
+# no environment variable can turn on from here, and a change set that would replace or remove
+# any resource is refused and deleted rather than executed. So a release cannot replace the host,
+# cannot pick up a newer AMI, cannot run the bootstrap again and cannot reseed the database --
+# not by policy but because the values that would do any of those are not reachable from this
+# stage. The database is preserved the same way: every RDS parameter is carried forward or read
+# back rather than recomputed here, and a change set proposing to replace anything is refused
+# before it executes.
+stage_stack () {
+  say "stack (application release)"
+  local tag ami change_set replaced waiter
+  tag="$(image_tag)"; ami="$(release_host_ami_id)"
+  waiter="stack-update-complete"; stack_exists || waiter="stack-create-complete"
+  printf '  release %s, host image %s (unchanged), seed false\n' "$tag" "$ami"
+  change_set="$(create_stack_change_set "$ami" "false" "$tag")"
+  if [[ -z "$change_set" ]]; then
+    printf '  the stack already declares this release; nothing to change\n'
+  else
+    replaced="$(replaced_by_change_set "$change_set")"
+    if [[ -n "$replaced" && "$replaced" != "None" ]]; then
+      discard_change_set "$change_set"
+      die "this release would replace or remove: ${replaced}. A release moves the image tag and nothing else, so the change set was deleted unexecuted and nothing was mutated. Run host-image if replacing the instance is what you want."
+    fi
+    printf '  the change set replaces and removes nothing; executing\n'
+    execute_stack_change_set "$change_set" "$waiter"
+  fi
   aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME" \
     --query 'Stacks[0].Outputs' --output table
+}
+
+# Replacing the host, deliberately. Not a release, and not reachable from one.
+#
+# This is the expensive operation and the destructive one: a new EC2 instance, a first boot that
+# runs the bootstrap again, and a Let's Encrypt certificate ordered afresh for the same name
+# against a weekly duplicate limit. With the seed on it is also the only thing in this deployment
+# that reseeds, and reseeding erases every case in a database that outlives the host.
+#
+# Everything it destroys is named before it is asked for, and the confirmation is the id of the
+# instance being destroyed -- which cannot be guessed, cannot be left set from a previous run,
+# and cannot be typed without having read the stack.
+stage_host_image () {
+  say "host-image (replaces the instance)"
+  local ami instance seed tag change_set replaced
+  stack_exists || die "there is no stack to give a host image to; run stack first"
+  ami="${PP_DEPLOY_HOST_AMI_ID:-$(latest_host_ami_id)}"
+  [[ "$ami" == ami-* ]] || die "no Amazon Linux 2023 arm64 image was found in $REGION"
+  instance="$(stack_output HostInstanceId)"
+  [[ -n "$instance" && "$instance" != "None" ]] || die "the stack publishes no HostInstanceId"
+  seed="${PP_DEPLOY_SEED_ON_FIRST_BOOT:-false}"
+  [[ "$seed" == "true" || "$seed" == "false" ]] \
+    || die "PP_DEPLOY_SEED_ON_FIRST_BOOT is ${seed}; it is true or false"
+  # Not `image_tag`: this stage builds and pushes nothing, so it must not move the release. It
+  # passes back what the stack already declares, and a host replacement changes the host alone.
+  tag="$(declared_image_tag)"
+  printf '  host image  %s -> %s\n' "$(declared_host_ami_id)" "$ami"
+  printf '  release     %s (unchanged)\n' "$tag"
+  printf '  instance    %s is destroyed and replaced\n' "$instance"
+  printf '  certificate ordered again for this name\n'
+  if [[ "$seed" == "true" ]]; then
+    printf '  DATABASE    the demo fixture is reloaded: EVERY CASE IS ERASED\n'
+  else
+    printf '  database    untouched; the new instance loads no fixture\n'
+  fi
+  change_set="$(create_stack_change_set "$ami" "$seed" "$tag")"
+  if [[ -z "$change_set" ]]; then
+    printf '  the stack already declares this host image and this seed; nothing to change\n'
+    return
+  fi
+  replaced="$(replaced_by_change_set "$change_set")"
+  printf '  the change set replaces or removes: %s\n' "${replaced:-nothing}"
+  if [[ "${PP_DEPLOY_REPLACE_HOST:-}" != "$instance" ]]; then
+    discard_change_set "$change_set"
+    die "set PP_DEPLOY_REPLACE_HOST=${instance} to confirm the above. The change set was deleted unexecuted and nothing was mutated."
+  fi
+  execute_stack_change_set "$change_set" "stack-update-complete"
+  printf '  replaced; the new instance is %s\n' "$(stack_output HostInstanceId)"
+  printf '  run smoke to check what it serves\n'
 }
 
 # A release, once the image is pushed and the parameters are written: reboot the host, which
@@ -324,6 +498,10 @@ case "$STAGE" in
   stack)     stage_preflight; stage_stack ;;
   rollout)   stage_preflight; stage_rollout ;;
   smoke)     stage_smoke ;;
+  # Deliberately absent from `all`. Replacing the host is not part of any release, and an
+  # operation that destroys an instance and can erase every case is one somebody asks for by
+  # name.
+  host-image) stage_preflight; stage_host_image ;;
   all)
     stage_preflight
     stage_secrets
@@ -334,5 +512,5 @@ case "$STAGE" in
     stage_rollout
     stage_smoke
     ;;
-  *) die "usage: $0 {preflight|secrets|registry|images|config|stack|rollout|smoke|all}" ;;
+  *) die "usage: $0 {preflight|secrets|registry|images|config|stack|rollout|smoke|all|host-image}" ;;
 esac

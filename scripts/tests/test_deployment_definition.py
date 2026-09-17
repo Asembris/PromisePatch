@@ -503,19 +503,28 @@ def _deploy_script() -> str:
     return (DEPLOY / "deploy.sh").read_text(encoding="utf-8")
 
 
-def _stage(name: str) -> str:
-    """One stage function's body, so a property is asserted where it has to hold."""
+def _function(name: str) -> str:
+    """One shell function's body, so a property is asserted where it has to hold."""
     script = _deploy_script()
-    opening = f"stage_{name} () {{"
-    assert opening in script, f"there is no stage_{name}"
+    opening = f"{name} () {{"
+    assert opening in script, f"there is no {name}"
     start = script.index(opening)
     return script[start : script.index("\n}\n", start)]
 
 
+def _stage(name: str) -> str:
+    return _function(f"stage_{name}")
+
+
 def _stack_parameter_overrides() -> list[str]:
-    """The parameter names `stage_stack` passes, in the order it passes them."""
-    stack = _stage("stack")
-    overrides = stack[stack.index("--parameter-overrides") :]
+    """The parameter names a submission passes, in the order it passes them.
+
+    There is one list and it lives in ``create_stack_change_set``, because two stages submit
+    this template -- a release and a host replacement -- and a second copy of the list would
+    drift out of step with the first exactly where it is most expensive to be wrong.
+    """
+    submit = _function("create_stack_change_set")
+    overrides = submit[submit.index("--parameter-overrides") :]
     return re.findall(r'"([A-Za-z]+)=', overrides)
 
 
@@ -530,7 +539,12 @@ def test_the_stack_is_told_the_tag_this_run_pushed() -> None:
     """
     stack = _stage("stack")
     assert 'tag="$(image_tag)"' in stack, "the stack stage derives the tag from something else"
-    assert '"ImageTag=${tag}"' in stack, "the stack is never told which image this run pushed"
+    assert '"ImageTag=${tag}"' in _function("create_stack_change_set"), (
+        "the stack is never told which image this run pushed"
+    )
+    assert 'create_stack_change_set "$ami" "false" "$tag"' in stack, (
+        "the release stage does not hand that tag to the submission"
+    )
     for stage in ("images", "config"):
         assert "image_tag" in _stage(stage), f"stage_{stage} does not use the same tag"
 
