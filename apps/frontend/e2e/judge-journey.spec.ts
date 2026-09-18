@@ -178,6 +178,59 @@ test('a worker answers the open question from inside the workspace', async ({ pa
   expect(planned.awaiting_confirmation).toBe(true)
 })
 
+/**
+ * The comprehension beat, against real backend state.
+ *
+ * Everything asserted here is a value the backend decided: the lane titles, the counts on them,
+ * the authority on each row and the two integers under the boundary rule. Nothing is a literal
+ * this file arranged, and nothing is a phrase the screen composed — which is the only way a
+ * test of "a judge can tell these apart" is a test of the product rather than of its markup.
+ */
+test('a judge can tell the four outcomes apart on one screen', async ({ page }) => {
+  // The canonical landing state: planned, nothing done, and every band populated at once.
+  await waitForHeadline(caseId, 'PLANNED')
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Look around a real case' }).click()
+  await expect(page.getByTestId('case-workspace')).toBeVisible()
+
+  // One incident, drawn once, above every path out of it.
+  await expect(page.getByTestId('incident-source')).toHaveCount(1)
+
+  // Three authorities, in the contract's order, each saying how many orders it decides.
+  const lanes = page.getByTestId('authority-band')
+  await expect(lanes).toHaveCount(3)
+  await expect(lanes.nth(0)).toHaveAttribute('data-authority', 'STANDING_PREFERENCE')
+  await expect(lanes.nth(1)).toHaveAttribute('data-authority', 'CUSTOMER')
+  await expect(lanes.nth(2)).toHaveAttribute('data-authority', 'OWNER')
+  for (const lane of await lanes.all()) {
+    const stated = await lane.getAttribute('data-count')
+    await expect(lane.getByTestId('count')).toContainText(stated as string)
+  }
+
+  // Every threatened promise sits under exactly one authority, and each carries its own path.
+  const rows = page.getByTestId('promise-row')
+  await expect(rows).toHaveCount(4)
+  for (const row of await rows.all()) {
+    await expect(row).toHaveAttribute('data-chain', 'present')
+  }
+
+  // Nothing on a planned case may read as finished. Permission is not an act.
+  for (const status of await page.getByTestId('promise-status').all()) {
+    await expect(status).toHaveAttribute('data-finished', 'false')
+  }
+
+  // And the other half of the claim: what the incident did not reach, counted, with the
+  // zero the backend counted rather than asserted.
+  const untouched = page.getByTestId('untouched-proof')
+  await expect(untouched).toHaveAttribute('data-effects', '0')
+  await expect(untouched).toHaveAttribute('data-untouched', '2')
+  await expect(untouched).toHaveAttribute('data-universe', '6')
+  await expect(page.getByTestId('untouched-row')).toHaveCount(2)
+
+  // Nobody has been asked anything yet, so no row claims an answer from anybody.
+  await expect(page.getByTestId('promise-consent')).toHaveCount(0)
+})
+
 test('a worker confirms the plan, and the screen claims no completion', async ({ page }) => {
   const planned = await waitForHeadline(caseId, 'PLANNED')
   await signIn(page)

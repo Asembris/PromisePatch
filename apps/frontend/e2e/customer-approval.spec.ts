@@ -188,6 +188,14 @@ test('the worker workspace tells the truth about what the customer did', async (
   // The product's own vocabulary for a promise whose customer said yes and whose order then
   // carried the change. Printed by the backend; the screen holds no synonym for it.
   await expect(page.getByTestId('case-workspace')).toContainText('changed')
+
+  // And the half the state cannot say. "changed" is the truth about the order and is silent
+  // about who permitted it; the row still carries the answer a person actually gave, read off
+  // the approval record. Exactly one of the six promises has one, because exactly one customer
+  // was asked -- a second would mean the case had spoken to somebody it never reached.
+  const consent = page.getByTestId('promise-consent')
+  await expect(consent).toHaveCount(1)
+  await expect(consent).toHaveText(/the customer said yes/)
 })
 
 test('the promises the exception never reached are still untouched afterwards', async ({
