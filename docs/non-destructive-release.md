@@ -14,6 +14,11 @@ while this was written.
 > The guard section 9 fixed also means this repository's template can no longer reach the
 > deployed stack through a release at all. Section 10 adds the one operation that can carry it,
 > and the confirmation it will not execute without. Nothing in section 10 was run against AWS.
+>
+> **Performed on 2026-09-18, recorded in [section 11](#11-the-migration-performed).** Section
+> 10.7's procedure has been run against `promisepatch-prod`. The stack is now on this template,
+> the host was **not** replaced, every case survived, and an ordinary release against the live
+> stack now proposes no resource change at all. Section 11.8 says what it still leaves unproved.
 
 This closes the first item of [head-redeploy-2026-09-16.md](head-redeploy-2026-09-16.md)
 section 7: *"`deploy.sh stack` still replaces the host whenever Amazon publishes a newer AL2023
@@ -647,3 +652,226 @@ with the `promisepatch` profile and the identity of section 9 verified first.
 9. `./deploy/deploy.sh smoke`, and check a case that existed before the upgrade still exists.
 10. Record the before and after columns, the change set's printed plan, and anything that
     differed from this procedure, in a new section of this document.
+
+---
+
+## 11. The migration, performed
+
+Date: 2026-09-18. Identity
+`arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment`,
+account `265243686715`, region `us-east-1`, profile `promisepatch`, verified before anything
+else ran and unchanged throughout.
+
+Section 10.7 is the procedure and said it had not been run. It has now been run against the real
+`promisepatch-prod`. **The stack was updated once, deliberately, through `infrastructure`.** No
+image was built or pushed, no fixture was reset, no IAM was touched, `host-image` was never run,
+and no host-image or seed variable was set at any point.
+
+### 11.1 The gate before anything was submitted
+
+Section 10.7 step 2 requires the three declarations to already name the same commit, because an
+upgrade preserves whatever is declared and would have preserved a drift too.
+
+| declaration | value |
+|---|---|
+| CloudFormation `ImageTag` | `b62779d6e975` |
+| SSM `/promisepatch/prod/image-tag` | `b62779d6e975` |
+| `/healthz` `image` | `b62779d6e975` |
+
+They agreed, so the upgrade was allowed to proceed. `b62779d6e975` was also confirmed present in
+**both** ECR repositories -- `promisepatch/backend` and `promisepatch/order-simulator` -- which is
+step 6's requirement: had the host been replaced, it would have had an image to pull.
+
+`./deploy/deploy.sh preflight` passed 9/9 tested requirements.
+
+### 11.2 The live state, before and after
+
+| | before | after |
+|---|---|---|
+| stack status | `UPDATE_COMPLETE` | `UPDATE_COMPLETE` |
+| stack last updated | `2026-09-16T16:40:40Z` | `2026-09-18T10:19:07Z` |
+| `ImageTag` | `b62779d6e975` | `b62779d6e975` |
+| `HostAmiId` | `ami-0fa4996c14e7d501e` | `ami-0fa4996c14e7d501e` |
+| `SeedDemoFixtureOnFirstBoot` | *(parameter absent)* | `false` |
+| `AllowedIngressCidr` | `0.0.0.0/0` | `0.0.0.0/0` |
+| `DatabaseBackupRetentionDays` | `1` | `1` |
+| `DatabaseSubnetIds` | `subnet-06892e46df75ae5b6,subnet-0c8ed66d49566ba6e` | unchanged |
+| `DatabaseInstanceClass` / `DatabaseStorageGiB` | `db.t4g.micro` / `20` | unchanged |
+| `VpcId` / `HostSubnetId` / `InstanceType` | `vpc-033f9da8cac696679` / `subnet-0c8ed66d49566ba6e` / `t4g.small` | unchanged |
+| `TlsHostname` | empty | empty |
+| `HostInstanceId` | `i-087c742587f83d61d` | **`i-087c742587f83d61d`** |
+| EC2 `ImageId` | `ami-0fa4996c14e7d501e` | unchanged |
+| EC2 launch time | `2026-09-13T18:33:33Z` | **`2026-09-18T10:19:33Z`** |
+| RDS `DbiResourceId` | `db-U2JWQBTINX6W6GAB56EOTHOCSM` | **unchanged** |
+| RDS status / retention / created | `available` / `1` / `2026-09-11T11:19:51Z` | unchanged |
+| SSM `image-tag` | `b62779d6e975` | `b62779d6e975` |
+| `/healthz` `image` | `b62779d6e975` | `b62779d6e975` |
+| `/healthz` `boot_id` | `1abf8699-...` | `663859da-...` |
+| fixture `loaded_at` | `2026-09-13T18:35:32.148240Z` | **unchanged** |
+| cases | 4 | **4, byte-identical** |
+| ingress | 80 and 443 from `0.0.0.0/0` | unchanged |
+| change sets on the stack | none | none |
+
+Three **new** stack outputs appeared, which is section 7 item 3 and section 9.5's second open
+item, both now closed: `DeclaredHostAmiId` = `ami-0fa4996c14e7d501e` (equal to the AMI declared
+before the upgrade), and `DemoFixtureSeededOnFirstBoot` = `false`. Every pre-existing output --
+`PublicUrl`, `PublicAddress`, `TlsHostname`, `McpEndpoint`, `WebhookEndpoint`,
+`DatabaseEndpoint`, `HostInstanceId`, `DeclaredImageTag`, `LogGroupName`, `InstanceRoleArn` -- is
+unchanged.
+
+### 11.3 The plan, read before it ran
+
+`./deploy/deploy.sh infrastructure` with `PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE` **unset** printed
+its plan, refused, deleted the change set unexecuted and exited non-zero:
+
+```
+  release     b62779d6e975 (unchanged)
+  host image  ami-0fa4996c14e7d501e (unchanged)
+  database    no fixture is loaded, no case is reset
+  preserving 10 infrastructure parameters as the stack declares them
+  THIS PLAN MAY REPLACE OR REMOVE:
+    ElasticIpAssociation
+    Host
+  instance    i-087c742587f83d61d may be destroyed and replaced
+error: set PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE=i-087c742587f83d61d to confirm the above.
+```
+
+A **separate** change set was then built through the shipped `create_stack_change_set`, described
+in full, and deleted unexecuted -- because the stage's own printed list is filtered to what the
+guard matches, and the question "is `Database` in this plan at all" has to be asked of the whole
+plan. The complete answer was two changes and no others:
+
+```
+Modify  AWS::EC2::EIPAssociation  ElasticIpAssociation  Replacement: Conditional
+          InstanceId  RequiresRecreation: Always        (ResourceReference)
+Modify  AWS::EC2::Instance        Host                  Replacement: Conditional
+          UserData    RequiresRecreation: Conditionally (DirectModification)
+          UserData    RequiresRecreation: Conditionally (ParameterReference x2)
+```
+
+**`Database` does not appear in the change set** -- not as a modification, not as a replacement,
+not as a removal. Every one of the ten inherited infrastructure parameters was submitted exactly
+as the live stack declared it; the only parameter that differed from the live stack was
+`SeedDemoFixtureOnFirstBoot`, which the stack did not have and which was submitted as the literal
+`false`. The whole of the plan is the seed gate of section 4 item 5 -- a `UserData` edit -- and
+the association's dependence on the instance it points at.
+
+Only then was the run repeated with `PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE=i-087c742587f83d61d`.
+
+### 11.4 The host was not replaced
+
+The confirmation authorized a replacement. CloudFormation did not perform one. The stack events
+for the update are four lines and name one resource:
+
+```
+2026-09-18T10:19:07Z  promisepatch-prod  UPDATE_IN_PROGRESS  User Initiated
+2026-09-18T10:19:12Z  Host               UPDATE_IN_PROGRESS
+2026-09-18T10:19:46Z  Host               UPDATE_COMPLETE
+2026-09-18T10:19:50Z  promisepatch-prod  UPDATE_COMPLETE
+```
+
+`ElasticIpAssociation` was never touched -- its `Conditional` existed only because it references
+an instance that *might* have been recreated, and once the instance was not, there was nothing to
+do. `Conditional` resolved to *no recreation*: the instance id, the AMI, the root volume, the
+Elastic IP and the certificate all survived.
+
+**The instance was stopped and started in place.** `HostInstanceId` and `InstanceId` are the same
+value they were, and the EC2 launch time moved from `2026-09-13T18:33:33Z` to
+`2026-09-18T10:19:33Z` -- which is what a stop/start does and what a replacement would not have
+done, because a replacement produces a different id. The restart is visible in the application as
+a new `boot_id`. So applying a `UserData` change to a running instance cost a reboot-equivalent
+and about forty seconds, and cost nothing else. That is a better outcome than section 10.7 step 6
+prepared for, and the preparation was still correct: `Conditional` means the service would not say
+in advance, so the cost had to be accepted before it could be found not to be charged.
+
+The database was never at risk in this run and was not touched. `DbiResourceId` is the same
+resource, and no snapshot was taken because `UpdateReplacePolicy: Snapshot` was never reached.
+
+### 11.5 The demo world survived
+
+This is the claim the whole document exists to protect, so it was checked against the data rather
+than inferred from the absence of a seed.
+
+- **All four pre-existing cases are still there**, with the same ids, states, headlines, reported
+  text, `opened_at` and `updated_at`: `7e6319bc...` (`RESOLVED`), `637b8f53...` (`PLANNED`),
+  `e66c5060...` (`NEEDS_HUMAN_INTERPRETATION`), `744f5f78...` (`RESOLVED`).
+- **Two full case workspaces are byte-identical across the upgrade.** `/api/cases/{id}` was
+  fetched before and after and hashed: `637b8f53...` is `7b9dd90ce530caae...` both times,
+  `744f5f78...` is `e1ac192ed387b7da...` both times.
+- **The fixture was not reloaded.** `/readyz` reports `loaded_at` `2026-09-13T18:35:32.148240Z`
+  and digest `f6cb717c...` after the upgrade, both exactly as before. A reseed would have written
+  a new `loaded_at`.
+
+The reads were made through `/api/auth/demo-session`, which issues the read-only observer
+principal of ADR-0013 and ADR-0016. Nothing in this verification could write.
+
+`./deploy/deploy.sh smoke` passes **12/12** with `PP_MCP_BEARER_TOKEN` supplied, and 10/12 passed
+with 2 skipped and **0 failed** without it. See 11.7.
+
+### 11.6 An ordinary release now proposes nothing at all
+
+Section 9.5's first open item -- *"proving an executed release replaces nothing needs a staged
+release whose template does not move `UserData`"* -- is closed, without building or pushing an
+image and without moving the deployment to an unstaged one. Two change sets were built through
+the shipped release functions and both were deleted unexecuted.
+
+- **Same release.** `create_stack_change_set` with the AMI `release_host_ami_id` returns and the
+  tag the stack declares produced **no change set at all**: CloudFormation answered *"The
+  submitted information didn't contain changes."* The template in this checkout and the deployed
+  stack are now the same thing. That is zero infrastructure drift, stated by the service.
+- **A genuine release.** The same submission with `ImageTag` moved to `acfdd975dd4d` -- a tag that
+  really exists in both ECR repositories -- produced a change set whose resource-change list is
+  **empty**. Not "no replacements": no resource changes whatsoever. `ImageTag` is referenced
+  nowhere in `Host.UserData`; it reaches only the `DeclaredImageTag` output.
+  `replaced_by_change_set`, the shipped guard, returned the empty string against it, so
+  `stage_stack` would have printed *"the change set replaces and removes nothing; executing"*.
+  Every other parameter was submitted as the live stack declares it.
+
+In the same run `release_host_ami_id` returned `ami-0fa4996c14e7d501e` while `latest_host_ami_id`
+returned `ami-0d50898f9b64253da` -- a *third* AL2023 arm64 image, newer than the
+`ami-07b9559027f889918` of section 9. Amazon has now published two images since this stack was
+created, the hazard of section 1 is live and growing, and a release still passes back the image
+the stack declares.
+
+Both verification change sets were deleted, as was the `FAILED` change-set object the empty
+submission leaves behind. **The stack has no change sets.**
+
+### 11.7 One defect the live run found, fixed in `4a3603f`
+
+`./deploy/deploy.sh smoke` reported **10/12, 1 failed** on a healthy deployment, minutes after
+the upgrade -- which is exactly the moment a spurious failure is read as damage. The failing check
+was `origin-refused`: *"status 401, expected 403"*, which reads as "the deployed origin guard is
+open".
+
+It was not. The origin guard sits *behind* the bearer check, so an unauthenticated request is
+refused `401` before the origin is ever considered. The shell running the check had no
+`PP_MCP_BEARER_TOKEN`, so the check could not be performed at all -- and reported a verdict about
+the deployment anyway. Its sibling `protocol-revision`, which depends on the same token, has
+always reported `SKIPPED` with the reason; the module docstring even said *"that one check"*, and
+there were two.
+
+Supplying the token from SSM and re-running gave **12/12, 0 failed**, which is what proved the
+deployment healthy and the check wrong.
+
+`check_origin_refused` now skips with the same explicit reason, and the docstring names both
+checks. A skip is still neither a pass nor silence: the run's exit code fails on any `FAILED`, so
+a missing token cannot turn a broken deployment green. The regression test passes `None` as the
+HTTP client on purpose -- a skip has to decide before it touches the network, so deleting the skip
+turns the test into an `AttributeError` rather than a quiet pass. **The mutation was applied and
+caught.**
+
+### 11.8 What is still unperformed
+
+- **The instance's `UserData` was not read back directly.** `ec2:DescribeInstanceAttribute` is
+  not in the developer role and **IAM was not broadened to get it**. That the new gated `UserData`
+  landed on the resource rests on CloudFormation's own `Host UPDATE_COMPLETE` with `UserData` in
+  the change's scope, and on `DemoFixtureSeededOnFirstBoot` = `false` now being a stack output of
+  the same parameter the bootstrap reads. Both are strong; neither is the bytes on the instance.
+- **No replacement was exercised.** This upgrade was authorized to replace the host and did not.
+  What a *replaced* instance does on its first boot with `SeedDemoFixtureOnFirstBoot=false` -- the
+  thing the gate exists for -- is still proved only by the definition and its tests, not by an
+  observed replacement.
+- **Fixture reset is still coupled to replacing the host**, unchanged from section 6. G8's
+  deployed rehearsals from clean fixtures still have no cheap path.
+- **No release was executed.** The release path was proved to propose nothing; executing one needs
+  an image built and pushed, which this run deliberately did not do.
