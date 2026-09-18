@@ -156,6 +156,46 @@ describe('the case workspace', () => {
     stream.close()
   })
 
+  it('publishes the counted zero in the first screen, not only under band 4', async () => {
+    // The half of the claim this product exists to make. It is a backend integer counted from
+    // effect rows, and it used to appear only beneath band 3 — a screen and a half down on a
+    // laptop, which is to say after the judge had stopped reading.
+    const { stream } = mountAtCase({ [CASE_PATH]: () => json(PLANNED_CASE) })
+
+    const counts = within(await screen.findByTestId('case-counts'))
+    expect(counts.getByText('effects on them')).toBeInTheDocument()
+    // The figure the backend counted, not one this screen worked out from anything else.
+    const effects = await screen.findByTestId('untouched-proof')
+    expect(effects).toHaveAttribute('data-effects', '0')
+    stream.close()
+  })
+
+  it('follows the backend when the counted effects are not zero', async () => {
+    // The only reason the zero is worth publishing: a non-zero would reach the same tile. A
+    // screen that could only render the number it hoped for would not be evidence of anything.
+    const { stream } = mountAtCase({
+      [CASE_PATH]: () => json({ ...PLANNED_CASE, untouched_effect_count: 2 }),
+    })
+
+    const counts = within(await screen.findByTestId('case-counts'))
+    // Scoped to its own tile: `untouched_count` is also 2 on this fixture, and a bare text
+    // match would pass while the effects tile printed anything at all.
+    const tile = counts.getByText('effects on them').closest('[data-testid="count"]')
+    expect(tile).toHaveTextContent('2')
+    stream.close()
+  })
+
+  it('claims nothing about effects on a case that has assessed no promise', async () => {
+    // The same refusal `UntouchedProof` and `status_view` both make: a reader cannot tell a
+    // zero that was counted from a zero that was merely not reached yet.
+    const { stream } = mountAtCase({ [CASE_PATH]: () => json(CLARIFYING_CASE) })
+
+    const counts = within(await screen.findByTestId('case-counts'))
+    expect(counts.queryByText('effects on them')).not.toBeInTheDocument()
+    expect(counts.queryByText('effect on them')).not.toBeInTheDocument()
+    stream.close()
+  })
+
   it('shows an open question as a question rather than as a result', async () => {
     const { stream } = mountAtCase({ [CASE_PATH]: () => json(CLARIFYING_CASE) })
 

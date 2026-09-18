@@ -162,9 +162,28 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
             <p className="text-sm text-muted">{view.sentence}</p>
           </div>
 
+          {/* The whole claim, in the first screen, as three backend integers side by side.
+              None of them is arithmetic and none of them is composed here: the third one is
+              counted from the effect rows of the promises the case left alone, and it is the
+              figure a sceptical reader most wants to have been counted rather than declared.
+              It was previously published only under band 4, which on a laptop viewport is a
+              screen and a half below the fold -- so the half of the claim this product exists
+              to make arrived last.
+
+              Withheld while the case has assessed nothing, for the reason `UntouchedProof` and
+              `status_view` both withhold it: a reader cannot tell a zero that was counted from
+              a zero that was merely not reached yet. The other two tiles are the case's own
+              partition and stand at nothing on a case that has partitioned nothing. */}
           <dl className="flex shrink-0 gap-3" data-testid="case-counts">
             <CountTile value={view.threatened_count} label="orders affected" one="order affected" />
             <CountTile value={view.untouched_count} label="left alone" />
+            {view.promise_count === 0 ? null : (
+              <CountTile
+                value={view.untouched_effect_count}
+                label="effects on them"
+                one="effect on them"
+              />
+            )}
           </dl>
         </div>
 
