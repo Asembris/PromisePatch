@@ -258,8 +258,8 @@ def test_line_quantities_are_whole_units(api: TestClient) -> None:
             assert line.quantity > 0
 
 
-WRITEABLE_PREFIXES = ("/api/auth", "/api/conversation", "/api/integrations")
-"""The only three families of route in this application that a caller may write to.
+WRITEABLE_PREFIXES = ("/api/auth", "/api/conversation", "/api/customer", "/api/integrations")
+"""The only four families of route in this application that a caller may write to.
 
 ``/api/auth`` is a person signing in or out. ``/api/integrations`` is another *system* handing
 us something it has already done -- authenticated with a shared secret rather than a session,
@@ -270,12 +270,27 @@ and storing the delivery rather than acting on it.
 new was the transport, not the authority -- the same three application services the MCP tools
 reach, over a session instead of a service token, with the actor read off the session row.
 
-None of the three is an order editor, and the test below says so about this one specifically
-rather than trusting the prefix: what a caller may state is a sentence, a case and a plan
-identity the server itself handed out. There is no field naming an order, a line, a quantity or
-a recipe version, so there is nothing here that could be talked into editing one. The external
-order system remains the system of record, and PromisePatch still writes to an order only as a
-governed recovery amendment raised by the worker process.
+``/api/customer`` is the fourth, and it is the narrowest of them: a customer answering the one
+question they were asked about their own order. It writes an inbound record and nothing else --
+the same thing ``/api/integrations`` does with a delivery -- and every check that turns that
+record into a decision runs later, in the worker, under the case lock. It is not the worker's
+plan approval and shares nothing with it: different table, different parser, different words.
+
+None of the four is an order editor, and this file says so about each of them specifically
+rather than trusting the prefix. A prefix here only earns its place beside a test that states
+what the family may write *about*, field by field: for the conversation routes a sentence, a
+case and a plan identity the server itself handed out; for the customer route one answer out of
+two. No family has a field naming an order, a line, a quantity or a recipe version, so there is
+nothing on any of them that could be talked into editing one. The external order system remains
+the system of record, and PromisePatch still writes to an order only as a governed recovery
+amendment raised by the worker process.
+"""
+
+CUSTOMER_FIELDS: frozenset[str] = frozenset({"answer"})
+"""Every field a customer's page may put in an answer. One, and it is not free text.
+
+Stated whole for the reason :data:`CONVERSATION_FIELDS` is: a field added to the model fails
+here rather than passing a test that only looked for the words somebody thought to forbid.
 """
 
 CONVERSATION_FIELDS: dict[str, frozenset[str]] = {
@@ -372,6 +387,71 @@ def test_every_conversation_route_is_a_session_mutation(api: TestClient) -> None
         "/api/conversation/approve": {"post"},
         "/api/conversation/withdraw": {"post"},
     }
+
+
+def test_the_customer_route_is_not_an_order_editor(api: TestClient) -> None:
+    """The fourth writeable family answers one question and cannot say anything else.
+
+    The prefix allowlist admits it; this says what it may carry. One required field, whose value
+    is one of two members of a closed enum, with ``extra="forbid"`` so a field a caller invented
+    is refused rather than ignored. There is no order, no line, no quantity, no resource and no
+    recipe version to name, and no free text either -- the two words that reach the literal
+    parser are composed on the server from those members, so a page cannot put a sentence in
+    front of the one thing in this system that reads a yes.
+
+    Asserted over the published schema rather than the source, because the schema is what a
+    caller reads: a field that appeared here is a field somebody would reasonably try to set.
+    """
+    schema = api.get("/openapi.json").json()
+    models = schema["components"]["schemas"]
+
+    assert frozenset(models["CustomerAnswerRequest"]["properties"]) == CUSTOMER_FIELDS
+    assert models["CustomerAnswerRequest"]["additionalProperties"] is False
+    assert models["CustomerAnswer"]["enum"] == ["APPROVE", "DECLINE"]
+
+
+def test_no_customer_request_carries_an_actor_a_channel_or_a_clock(api: TestClient) -> None:
+    """Who answered, on what channel and when are the server's, and there is no field to say so.
+
+    The authority invariant this route exists under: no request field on any transport may name
+    an actor, a clock, a reason or a physical claim. The channel comes from the signature on the
+    link and the clock from the database, and the body has room for neither -- which is what
+    stops a worker, an owner or an MCP client who found this address from answering as somebody
+    else by filling one in.
+    """
+    schema = api.get("/openapi.json").json()
+    properties = frozenset(schema["components"]["schemas"]["CustomerAnswerRequest"]["properties"])
+
+    assert not (
+        properties
+        & {
+            "sender",
+            "channel",
+            "customer",
+            "customer_id",
+            "request_id",
+            "actor",
+            "worker_id",
+            "answered_at",
+            "received_at",
+            "now",
+            "timestamp",
+            "text",
+        }
+    )
+
+
+def test_the_customer_surface_is_one_path_read_and_answered(api: TestClient) -> None:
+    """One route, one read, one write. A second path here would be a second way to be asked."""
+    schema = api.get("/openapi.json").json()
+
+    customer = {
+        path: set(operations)
+        for path, operations in schema["paths"].items()
+        if path.startswith("/api/customer")
+    }
+
+    assert customer == {"/api/customer/approval/{token}": {"get", "post"}}
 
 
 def test_the_integration_ingress_is_the_only_route_an_order_can_arrive_through(
