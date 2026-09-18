@@ -174,7 +174,11 @@ function WhatHappened({ view }: { view: CaseWorkspaceResponse }): ReactNode {
               `status_view` both withhold it: a reader cannot tell a zero that was counted from
               a zero that was merely not reached yet. The other two tiles are the case's own
               partition and stand at nothing on a case that has partitioned nothing. */}
-          <dl className="flex shrink-0 gap-3" data-testid="case-counts">
+          {/* `shrink-0` only once there is room for it. Three tiles do not fit a phone
+              beside anything, and a row that refuses to shrink takes the whole page sideways
+              with it -- so below `sm` they wrap onto their own lines, which is also where the
+              quote above them already takes a line of its own. */}
+          <dl className="flex flex-wrap gap-3 sm:shrink-0" data-testid="case-counts">
             <CountTile value={view.threatened_count} label="orders affected" one="order affected" />
             <CountTile value={view.untouched_count} label="left alone" />
             {view.promise_count === 0 ? null : (
