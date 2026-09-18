@@ -586,6 +586,54 @@ async def test_the_workspace_says_the_customer_said_no_and_hands_it_to_the_owner
     assert line.owner == status_view.ActionOwner.OWNER
 
 
+async def test_a_yes_stays_on_the_worker_s_row_after_the_order_system_carried_it(
+    physical: Intake, customer: Customer
+) -> None:
+    """The answer a person gave outlives the state it moved the promise to.
+
+    ``RECOVERED`` / "changed" is the truth about the order, and it says nothing about who
+    permitted the change. A worker reading the row afterwards is still told that Tomas was asked
+    and agreed, off the approval record rather than off the state beside it.
+    """
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+
+    await customer.press(link_for(request), "APPROVE")
+    await physical.drain(limit=60)
+
+    line = await workspace_line(physical, case_id, B)
+    assert line.state == status_view.PromiseState.RECOVERED
+    assert line.consent == "the customer said yes"
+
+
+async def test_a_no_is_stated_on_the_row_as_well_as_in_the_state_it_settled(
+    physical: Intake, customer: Customer
+) -> None:
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+
+    await customer.press(link_for(request), "DECLINE")
+    await physical.drain(limit=60)
+
+    line = await workspace_line(physical, case_id, B)
+    assert line.state == status_view.PromiseState.DECLINED
+    assert line.consent == "the customer said no"
+
+
+async def test_a_promise_nobody_was_asked_about_claims_no_answer_on_the_same_case(
+    physical: Intake, customer: Customer
+) -> None:
+    """The selectivity claim, applied to consent. Only one of these six was ever asked."""
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+
+    await customer.press(link_for(request), "APPROVE")
+    await physical.drain(limit=60)
+
+    for promise_id in (A, C, D, E, F):
+        assert (await workspace_line(physical, case_id, promise_id)).consent is None
+
+
 async def test_the_workspace_says_no_answer_by_the_deadline_when_nobody_pressed(
     physical: Intake,
 ) -> None:
@@ -599,6 +647,10 @@ async def test_the_workspace_says_no_answer_by_the_deadline_when_nobody_pressed(
         await physical.request_for(request.track_id)
     ).state == ApprovalRequestState.EXPIRED.value
     assert await promise_state(physical, case_id, B) == status_view.PromiseState.EXPIRED
+    # Never "said no": nobody said anything, and the row says the window closed.
+    line = await workspace_line(physical, case_id, B)
+    assert line.consent == "the window closed with no answer"
+    assert "said" not in (line.consent or "")
 
 
 async def test_the_customer_is_told_the_truthful_outcome_afterwards(

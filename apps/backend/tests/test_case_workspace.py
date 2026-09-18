@@ -414,6 +414,27 @@ async def test_the_workspace_shows_the_four_real_outcomes_after_the_work_ran(
     assert view.untouched_effect_count == 0, "after the work ran, and not only before it"
 
 
+async def test_only_the_promise_a_customer_was_asked_about_carries_an_answer(
+    browser: httpx2.AsyncClient, wired: Boundary, physical: Intake
+) -> None:
+    """The consent line is selective in exactly the way the rest of the case is.
+
+    One of six promises needed a customer, so one of six rows says anything about a customer.
+    The automatic one changed under a standing preference and was never asked; the two blocked
+    ones have nobody to ask; the two untouched ones were not reached at all. A row that claimed
+    an answer on any of those would be the screen inventing a consent.
+    """
+    case_id = await settled_case(physical, wired)
+
+    view = await workspace(browser, case_id)
+
+    asked = promise(view, ASK)
+    assert asked.state == "REQUESTED"
+    assert asked.consent == "the customer has been asked and has not answered"
+    for promise_id in (AUTO, *BLOCKED, *UNTOUCHED):
+        assert promise(view, promise_id).consent is None
+
+
 async def test_a_blocked_promise_names_an_owner_a_reason_and_a_next_action(
     browser: httpx2.AsyncClient, wired: Boundary, physical: Intake
 ) -> None:
