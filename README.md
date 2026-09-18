@@ -46,8 +46,16 @@ worker and a judge read a case on.
 same API, event stream and MCP endpoint over TLS on one `t4g.small` in `us-east-1b`, against a
 private encrypted RDS PostgreSQL. Twelve deployment smoke checks pass, five of them asserting a
 refusal. See [`docs/p6.2-first-deployment.md`](docs/p6.2-first-deployment.md) and
-[`docs/p7.3-deployed-judge-surface.md`](docs/p7.3-deployed-judge-surface.md). The Telegram
-customer channel is **not built**; the customer channel in this build is simulated.
+[`docs/p7.3-deployed-judge-surface.md`](docs/p7.3-deployed-judge-surface.md). The host serves
+`b62779d6e975`, which predates the customer approval surface below; it has not been redeployed
+since.
+
+**How a customer answers.** The Telegram channel is **not built** — nothing delivers the
+message. What a customer answers *on* is real: a signed possession link, carried in the
+outbound message's payload, opens a page that writes one literal answer into the unchanged
+consent protocol. It proves possession and never identity, and it is in this repository rather
+than on the deployed host. See
+[`docs/customer-approval-link.md`](docs/customer-approval-link.md).
 
 **The measured voice number.** Ten predeclared voice turns were recorded, and **9 of 10 started a
 truthful spoken response within four seconds of speech ending** — the gate is 9, so it passes by
