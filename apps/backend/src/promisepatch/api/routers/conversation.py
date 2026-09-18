@@ -262,9 +262,9 @@ async def confirm(
     A spoken confirmation carries the worker's own words, and they are read **here** rather than
     by the browser that captured them (ADR-0015). The rule is
     :func:`promisepatch.orchestrator.policy.reads_as_worker_confirmation`, imported rather than
-    rewritten: the same closed opening affirmations and the same disqualifying words the
-    conversational orchestrator has always applied, so the two surfaces cannot drift into
-    disagreeing about what a yes is. A press of the explicit control carries no words at all and
+    rewritten: the same closed set of affirmations, spanned across the *whole* turn, that the
+    conversational orchestrator applies, so the two surfaces cannot drift into disagreeing about
+    what a yes is. A press of the explicit control carries no words at all and
     is unchanged -- the press is the yes.
 
     Neither reading widens what a yes is *about*. ``plan_id`` still decides that, still compared
