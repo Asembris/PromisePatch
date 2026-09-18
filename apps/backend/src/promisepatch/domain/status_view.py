@@ -415,7 +415,7 @@ def _promise_state(case_state: str, track: TrackStatus) -> PromiseState:
         case "STALE":
             return PromiseState.STALE
         case "ESCALATED":
-            return PromiseState.ESCALATED
+            return _escalated_state(track)
         case "RECOVERED":
             # The workflow reaches this state only after the order system's own version was
             # observed to carry the amendment. An acknowledgement alone leaves the track
@@ -428,6 +428,39 @@ def _promise_state(case_state: str, track: TrackStatus) -> PromiseState:
         case "PENDING":
             return _pending_state(case_state, track)
     return PromiseState.AWAITING_PLAN
+
+
+def _escalated_state(track: TrackStatus) -> PromiseState:
+    """An escalated promise, told apart by whether its own approval request explains it.
+
+    Every escalation is the owner's, and they are not all the same thing to read. A decline and
+    an expiry are settled answers about a question that was genuinely asked -- "said no", "no
+    answer by the deadline" -- and the product contract gives each its own phrase and its own
+    next action. A track that escalated for any other reason has none of that behind it, and
+    "needs you" is the whole truth about it.
+
+    They arrive here rather than through :func:`_waiting_state` because the transition that
+    settles either one escalates the track in the *same* transaction that records it: there is
+    no committed state in which a declined promise is still waiting for its customer. Reading
+    the request from the escalated track is therefore the only way this distinction survives,
+    and without it a worker is told a customer's "no" in the same words as a missing recipe.
+
+    The order is the protocol's. A decision is read first, because a customer who answered
+    before their window closed answered, whatever a later timer wrote on the request.
+    """
+    approval = track.approval
+    if approval is None:
+        return PromiseState.ESCALATED
+    if approval.decision == "DECLINE":
+        return PromiseState.DECLINED
+    if approval.decision == "APPROVE":
+        # An approval that escalated did not escalate *because* of the answer -- it was refused
+        # afterwards, or the work it authorised could not be done. Saying "said yes" here would
+        # describe the consent and hide the outcome, so this stays the owner's plain escalation.
+        return PromiseState.ESCALATED
+    if approval.state == "EXPIRED":
+        return PromiseState.EXPIRED
+    return PromiseState.ESCALATED
 
 
 def _waiting_state(track: TrackStatus) -> PromiseState:
