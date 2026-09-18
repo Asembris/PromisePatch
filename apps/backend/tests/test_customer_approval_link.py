@@ -41,6 +41,7 @@ from fastapi import FastAPI
 
 from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import ApprovalRequestState
+from promisepatch.api.views import cases as case_views
 from promisepatch.api.views.customer import Phase
 from promisepatch.config import Settings, get_settings
 from promisepatch.db.models import ApprovalDecision, InboundReply
@@ -183,6 +184,35 @@ async def test_the_message_carries_a_link_to_the_customers_own_channel(
     assert possession.channel == request.customer_channel
     # The frozen wording is untouched: the link travels beside the text, never inside it.
     assert url not in sent[0].payload["text"]
+
+
+async def test_no_worker_surface_carries_the_link_the_message_took(physical: Intake) -> None:
+    """The other half of possession, asserted rather than only stated.
+
+    The test above proves the link reaches the customer's channel. This one proves it reaches
+    nowhere else -- because a link a worker could read is a link a worker could open, and
+    possession would stop meaning anything the moment one screen rendered it.
+
+    What is searched is the whole workspace response as the wire carries it: every band, every
+    promise, the evidence drawer, the spoken and written renderings, all of it, projected by the
+    same function ``GET /api/cases/{id}`` returns and serialised the same way. ``may_speak`` is
+    ``True`` on purpose -- that is the most permissive projection this product builds, so a field
+    that leaked the link to anybody would leak it here.
+
+    Neither the token nor the base URL it hangs off appears, and the token is read off the
+    outbox first so that a future case which minted no link cannot make this pass by having
+    nothing to find.
+    """
+    case_id = await waiting_case(physical)
+    sent = [row for row in await physical.effects() if row.kind == approvals.EFFECT_MESSAGE_SEND]
+    token = sent[0].payload["approval_url"].partition(f"?{customer_link.PARAM}=")[2]
+    assert customer_link.verify(secret=LINK_SECRET, token=token)
+
+    status = await analysis.read_case_status(physical.database, case_id=case_id)
+    served = case_views.build(status, opening=None, may_speak=True).model_dump_json()
+
+    assert token not in served
+    assert LINK_BASE_URL not in served
 
 
 async def test_the_link_shows_the_change_that_is_actually_proposed(
