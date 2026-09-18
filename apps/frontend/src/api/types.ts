@@ -495,3 +495,47 @@ export interface CaseSummaryView {
 export interface CaseListResponse {
   cases: CaseSummaryView[]
 }
+
+// -------------------------------------------------------------------------------- customer
+
+/**
+ * What the customer's own approval page is shown.
+ *
+ * Every field but `phase` and `answerable` is optional, because the closed reading carries
+ * none of them: a link that opens nothing answers in this same shape with a phase and no
+ * detail, so the page has one response to render rather than two.
+ *
+ * There is no price field, and its absence is the contract rather than an omission —
+ * PromisePatch models no amount on an order, an order line, a recipe version or a recovery
+ * option, so there is no price difference to state and a field here would invite one to be
+ * invented.
+ */
+export interface CustomerApprovalResponse {
+  /** `OPEN`, `RECEIVED`, `APPROVED`, `DECLINED`, `EXPIRED`, `SUPERSEDED` or `CLOSED`. */
+  phase: string
+  /**
+   * Whether this page may still offer the choice.
+   *
+   * The server's answer, never the browser's. A page that worked out for itself whether a
+   * window was open would be a second, weaker deadline kept where the customer's device holds
+   * it — and the one that decides is the database's, compared under the request's own lock.
+   */
+  answerable: boolean
+  customer_name: string | null
+  order_reference: string | null
+  option_code: string | null
+  /** When the order itself is due, if the mirror holds it. */
+  due_at: string | null
+  /** When this question closes. The request's own deadline. */
+  answer_by: string | null
+  from_product: string | null
+  to_product: string | null
+  affected_resource: string | null
+  substitute_resource: string | null
+  /** What has actually happened to the order since, if anything has. */
+  outcome: string | null
+  answered_at: string | null
+}
+
+/** The two answers a button can carry, which are the two the literal parser reads. */
+export type CustomerAnswer = 'APPROVE' | 'DECLINE'

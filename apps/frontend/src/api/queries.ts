@@ -24,10 +24,12 @@ import {
 } from '@tanstack/react-query'
 import {
   ApiError,
+  answerCustomerApproval,
   clarifyTurn,
   confirmTurn,
   fetchCase,
   fetchCases,
+  fetchCustomerApproval,
   fetchMe,
   fetchPromises,
   fetchResources,
@@ -42,6 +44,8 @@ import { responseReceived, turnSent, type TurnVerb } from '../instrumentation/tu
 import type {
   CaseListResponse,
   CaseWorkspaceResponse,
+  CustomerAnswer,
+  CustomerApprovalResponse,
   PromisesResponse,
   ResourcesResponse,
   SignInOptions,
@@ -55,6 +59,11 @@ export const promisesKey = ['promises'] as const
 export const resourcesKey = ['resources'] as const
 export const casesKey = ['cases'] as const
 export const signInOptionsKey = ['sign-in-options'] as const
+
+/** One key per link, so two tabs on two different questions do not share a reading. */
+export function customerApprovalKey(token: string): readonly [string, string] {
+  return ['customer-approval', token]
+}
 
 /** One key per case, so a feed frame refreshes the case being read and not every case ever read. */
 export function caseKey(caseId: string): readonly [string, string] {
@@ -437,6 +446,49 @@ export function useWithdrawTurn(): UseMutationResult<
     onSettled: (_result, _error, variables) => {
       void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
       void client.invalidateQueries({ queryKey: casesKey })
+    },
+  })
+}
+
+/**
+ * The approval request one link opens.
+ *
+ * Polled while the answer is stored and not yet read. That window is the worker's, not the
+ * browser's — the record is durable the moment the page returns, and what has not happened is
+ * the protocol reading it — so the page waits for a decision it can report rather than
+ * asserting one. Every other phase is settled, and a settled page polls nothing.
+ *
+ * A forged or unknown link is an `ApiError` the caller renders; it is never retried, because
+ * a signature does not become valid on a second attempt.
+ */
+export function useCustomerApproval(
+  token: string | null,
+): UseQueryResult<CustomerApprovalResponse, Error> {
+  return useQuery({
+    queryKey: customerApprovalKey(token ?? ''),
+    queryFn: ({ signal }) => fetchCustomerApproval(token as string, signal),
+    enabled: token !== null,
+    retry: retryTransportFailures,
+    refetchInterval: (query) => (query.state.data?.phase === 'RECEIVED' ? 2_000 : false),
+  })
+}
+
+/**
+ * Answer the question, and replace the page with what the server then says is true.
+ *
+ * The response is written straight into the cache rather than triggering a refetch, because
+ * the answer the server returns *is* the reading taken after the write committed. There is no
+ * optimistic update here and there must not be: the one thing this page may never do is show a
+ * decision before the protocol has written one.
+ */
+export function useAnswerCustomerApproval(
+  token: string | null,
+): UseMutationResult<CustomerApprovalResponse, Error, CustomerAnswer> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (answer: CustomerAnswer) => answerCustomerApproval(token as string, answer),
+    onSuccess: (reading) => {
+      client.setQueryData(customerApprovalKey(token ?? ''), reading)
     },
   })
 }

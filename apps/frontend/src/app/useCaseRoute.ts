@@ -16,6 +16,21 @@ import { useCallback, useEffect, useState } from 'react'
 
 export const CASE_PARAM = 'case'
 
+/**
+ * The parameter a customer's approval link carries, matching `customer_link.PARAM`.
+ *
+ * Read before anything else the shell does, because the page it selects is the one screen here
+ * that must not bootstrap a session: a customer has none, and asking `/api/auth/me` on their
+ * behalf would be a signed-out read on every load of a page that is not about a worker at all.
+ */
+export const APPROVAL_PARAM = 'approve'
+
+/** The approval token in the address bar, or `null` when there is none. */
+export function currentApprovalToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get(APPROVAL_PARAM)
+}
+
 function currentCaseId(): string | null {
   if (typeof window === 'undefined') return null
   return new URLSearchParams(window.location.search).get(CASE_PARAM)

@@ -19,6 +19,8 @@
 import type {
   CaseListResponse,
   CaseWorkspaceResponse,
+  CustomerAnswer,
+  CustomerApprovalResponse,
   ErrorResponse,
   PromisesResponse,
   ResourcesResponse,
@@ -243,4 +245,65 @@ export async function confirmTurn(body: {
   text?: string
 }): Promise<TurnAccepted> {
   return requestJson<TurnAccepted>('/api/conversation/confirm', { method: 'POST', body })
+}
+
+// -------------------------------------------------------------------------------- customer
+
+/**
+ * The customer's approval page, read and answered with no credential but the link.
+ *
+ * Deliberately **not** routed through `request`. That helper sends `credentials: 'include'`
+ * and echoes the CSRF token, both of which belong to a worker's session — and a customer has
+ * neither. Sending them here would be harmless on the wire and misleading in the source: the
+ * one thing that opens this surface is the signature on the link, and a reader of this module
+ * should be able to see that no other credential is even reachable from it.
+ *
+ * It also means a worker who happens to be signed in on the same browser gains nothing by
+ * opening a customer link. Their cookie is not sent, and the server would not read it if it
+ * were.
+ */
+async function customerRequest(
+  token: string,
+  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+): Promise<CustomerApprovalResponse> {
+  const method = options.method ?? 'GET'
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json'
+
+  const response = await fetch(apiUrl(`/api/customer/approval/${encodeURIComponent(token)}`), {
+    method,
+    headers,
+    credentials: 'omit',
+    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    ...(options.signal ? { signal: options.signal } : {}),
+  })
+  if (!response.ok) throw await toApiError(response)
+  return (await response.json()) as CustomerApprovalResponse
+}
+
+/** What this link opens. A forged or unknown link is an `ApiError` with `LINK_NOT_FOUND`. */
+export async function fetchCustomerApproval(
+  token: string,
+  signal?: AbortSignal,
+): Promise<CustomerApprovalResponse> {
+  return customerRequest(token, signal ? { signal } : {})
+}
+
+/**
+ * Answer the question this link opens, with one of the two words it invites.
+ *
+ * The body carries the choice and nothing else. There is no sender, no channel, no timestamp
+ * and no free text — the channel comes from the link's own signature and the clock from the
+ * database, so there is nothing here a page could put in a request that would name who was
+ * answering or when.
+ *
+ * What comes back is a reading, not a decision. A stored answer reads `RECEIVED` until the
+ * protocol has read it under the case lock; the page says that, and never a decision no row
+ * yet holds.
+ */
+export async function answerCustomerApproval(
+  token: string,
+  answer: CustomerAnswer,
+): Promise<CustomerApprovalResponse> {
+  return customerRequest(token, { method: 'POST', body: { answer } })
 }

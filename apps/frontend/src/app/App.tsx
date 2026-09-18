@@ -1,5 +1,9 @@
 /**
- * The shell: bootstrap the session, then show one screen or the other.
+ * The shell: choose which product this address is for, then show one screen or the other.
+ *
+ * Two products are served from one bundle, and the split is the first thing that happens. An
+ * approval link goes to the customer's page, which has no session and must not ask for one;
+ * everything else goes to the worker's app, which bootstraps one before it draws anything.
  *
  * There are exactly three states, and the middle one is the reason this is a component rather
  * than a ternary. Until `/api/auth/me` has answered, the app does not know whether anyone is
@@ -19,12 +23,33 @@ import { useMe } from '../api/queries'
 import { useEventStream } from '../api/useEventStream'
 import { LoginScreen } from '../features/auth/LoginScreen'
 import { CaseWorkspace } from '../features/case/CaseWorkspace'
+import { CustomerApproval } from '../features/customer/CustomerApproval'
 import { LiveOperations } from '../features/live-ops/LiveOperations'
 import { PromisePatchLockup } from '../components/Brand'
 import { Header } from './Header'
-import { useCaseRoute } from './useCaseRoute'
+import { currentApprovalToken, useCaseRoute } from './useCaseRoute'
 
+/**
+ * Which of the two products this address is for, decided before either one mounts.
+ *
+ * A dispatcher rather than a branch inside the shell, because the two screens have genuinely
+ * different needs and hooks cannot be conditional: the worker's app opens a session and a feed,
+ * and the customer's page must do neither. A customer has no account to bootstrap, and an
+ * approval link that flashed a sign-in form on its way to the question would be telling
+ * somebody they needed a login they will never have.
+ *
+ * The token is read once, at mount, and not watched. There is no in-app navigation to or from
+ * a customer link — it is arrived at from a message and left by closing the tab — so listening
+ * for `popstate` here would be wiring up a transition that does not exist.
+ */
 export function App(): ReactNode {
+  const approvalToken = currentApprovalToken()
+  if (approvalToken !== null) return <CustomerApproval token={approvalToken} />
+  return <WorkerApp />
+}
+
+/** The worker's product: a session, a live feed, and one case or the order book. */
+function WorkerApp(): ReactNode {
   const me = useMe()
   const worker = me.data?.worker ?? null
   const stream = useEventStream(worker !== null)
