@@ -89,7 +89,9 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   `scripts/verify_effect_set_manifest.py`. Never edit a label.
 - **Both evaluation holdouts remain sealed.** Do not open one.
 - **Telegram is unbuilt**, deferred into G8's deployed rehearsals. Correcting a physical fact is
-  CLI-only.
+  CLI-only. A customer answers on the web, through a signed possession link carried in the
+  outbound message's payload — a transport into the unchanged consent protocol, never a second
+  one. See [customer-approval-link.md](docs/customer-approval-link.md).
 
 `new_roadmap.md` is the authority on what is open and what each gate requires. Read it before
 deciding what to build. Do not restate its contents here.
@@ -215,6 +217,7 @@ read the source document rather than a paraphrase of it.
 | G7 and G8 | [g7-closeout.md](docs/g7-closeout.md), [g8-adversarial-proof-map.md](docs/g8-adversarial-proof-map.md), [g8-head-of-line-measurement.md](docs/g8-head-of-line-measurement.md), [g8-head-of-line-disposition.md](docs/g8-head-of-line-disposition.md) |
 | Started work and the hold contract | [started-work-contract.md](docs/started-work-contract.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
+| Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |
