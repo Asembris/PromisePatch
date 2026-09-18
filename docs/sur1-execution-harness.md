@@ -62,6 +62,7 @@ One method, and deliberately no others.
 ```python
 class ArmAdapter(Protocol):
     label: str
+
     def run(self, request: AttemptRequest) -> ArmAttempt: ...
 ```
 
