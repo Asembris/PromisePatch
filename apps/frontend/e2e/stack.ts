@@ -170,6 +170,69 @@ export async function waitForHeadline(caseId: string, headline: string): Promise
   return last
 }
 
+/**
+ * The approval link this case sent, read where the customer's channel would have received it.
+ *
+ * The link exists in exactly one place: the payload of the outbound message queued for the
+ * customer's own channel. Nothing stores it, no worker screen renders it and no endpoint hands
+ * one out -- which is the point, because a link anybody could ask for would make possession of
+ * one mean nothing. So this spec plays the part of the channel and reads the message, through
+ * the privileged container rather than through any surface a person could reach.
+ *
+ * The script goes in over stdin rather than as a `-c` argument, so nothing here depends on how
+ * two shells agree to quote a nested string.
+ *
+ * Arrangement, not the claim. A failure here is a stack that has not asked anybody yet.
+ */
+const READ_APPROVAL_LINK = `
+import asyncio, json
+from sqlalchemy import select
+from promisepatch.config import get_settings
+from promisepatch.db.runtime import RuntimeDatabase
+from promisepatch.db.models import OutboxMessage
+
+async def main():
+    database = RuntimeDatabase.from_settings(get_settings())
+    async with database.connect() as connection:
+        rows = (
+            await connection.execute(
+                select(OutboxMessage)
+                .where(OutboxMessage.kind == "MESSAGE_SEND")
+                .order_by(OutboxMessage.created_at)
+            )
+        ).all()
+    print("LINKS " + json.dumps([row.payload.get("approval_url") for row in rows]))
+
+asyncio.run(main())
+`
+
+export function approvalLink(): string {
+  const out = execSync('docker compose exec -T api python -', {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+    input: READ_APPROVAL_LINK,
+  })
+  const line = out.split(/\r?\n/).find((entry) => entry.startsWith('LINKS '))
+  if (line === undefined) throw new Error(`could not read the outbox: ${out}`)
+  const links = JSON.parse(line.slice('LINKS '.length)) as (string | null)[]
+  const link = links.find((entry) => entry !== null && entry !== undefined)
+  if (link === undefined) throw new Error('this stack has queued no approval message')
+  return link
+}
+
+/** Wait until the stack has an approval link to give, as the customer's channel would wait. */
+export async function waitForApprovalLink(): Promise<string> {
+  const deadline = Date.now() + 120_000
+  for (;;) {
+    try {
+      return approvalLink()
+    } catch (error) {
+      if (Date.now() > deadline) throw error
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+    }
+  }
+}
+
 /** Answer the one question a case is waiting on, from outside the browser. */
 export async function answerClarification(caseId: string, text: string): Promise<void> {
   const response = await fetch(`${promisePatchAPI()}/internal/intents/clarify`, {
