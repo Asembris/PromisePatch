@@ -644,6 +644,36 @@ forbidden_modules = ["promisepatch", "sqlalchemy"]
 # That is what makes "only a literal reply authorises a change" checkable rather than reviewed --
 # and what stops "just look up the request here" from ever being the easy fix in the one place
 # where looking something up could turn a sentence into a signature.
+# A possession link opens a page; it never decides anything, and this is what keeps it that
+# way. The module that mints and verifies one holds no database, no clock, no HTTP framework and
+# -- above all -- no parser: a link cannot be made to read an answer, only to name the question.
+# Banning `promisepatch.domain.consent` here is the important line. Without it, the shortest
+# path to "the link says yes" is an import, and possession of a URL would have become consent.
+[[tool.importlinter.contracts]]
+name = "a possession link names a request and decides nothing"
+type = "forbidden"
+source_modules = ["promisepatch.domain.customer_link"]
+forbidden_modules = [
+    "asyncio",
+    "datetime",
+    "fastapi",
+    "logging",
+    "os",
+    "promisepatch.api",
+    "promisepatch.db",
+    "promisepatch.domain.approvals",
+    "promisepatch.domain.consent",
+    "promisepatch.main",
+    "promisepatch.semantic",
+    "random",
+    "socket",
+    "sqlalchemy",
+    "starlette",
+    "subprocess",
+    "time",
+    "urllib",
+]
+
 [[tool.importlinter.contracts]]
 name = "consent is decided by literal text alone"
 type = "forbidden"

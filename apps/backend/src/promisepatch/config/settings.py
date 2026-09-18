@@ -161,6 +161,33 @@ class Settings(BaseSettings):
     ones.
     """
 
+    customer_link_secret: SecretStr | None = None
+    """The secret a customer's approval link is signed with, or ``None`` when none is set.
+
+    The customer channel is the one surface PromisePatch offers to somebody it cannot
+    authenticate. There is no account, no password and no session: what a link proves is that
+    whoever opened it was given it, which is possession and is never identity. Signing is what
+    makes possession *bounded* -- a link names one approval request and one channel, and neither
+    can be edited into another one without the secret.
+
+    A :class:`~pydantic.SecretStr` so it cannot reach a log line, and with it unset the customer
+    surface refuses every link rather than accepting unsigned ones. Unset is therefore a closed
+    door, exactly as it is for :attr:`order_system_webhook_secret`, and not a permissive default.
+
+    **It is not an authority on its own.** A valid link opens a page; whether the request is
+    still open, whether the window has closed and whether the channel it names is the channel
+    the request was sent to are all decided afterwards, against persisted rows.
+    """
+
+    customer_link_base_url: str | None = None
+    """Where a customer's approval link points, or ``None`` when no link may be built.
+
+    The public address of the evidence surface, which is not the same thing as the API's own
+    address and is not derivable from a request: a link is composed by the worker, in a
+    transaction, with no request in scope at all. Deliberately not defaulted -- a default here
+    would put a localhost address in a message sent to a real customer.
+    """
+
     order_system_timeout_seconds: float = 10.0
     """How long one amendment call may take before it is treated as an uncertain delivery.
 
@@ -409,6 +436,38 @@ class Settings(BaseSettings):
         that accepted deliveries without a secret would accept them from anyone.
         """
         return _required(self.order_system_webhook_secret, "PP_ORDER_SYSTEM_WEBHOOK_SECRET")
+
+    def require_customer_link_secret(self) -> str:
+        """The customer-link signing secret, or a precise failure naming what to configure.
+
+        Required rather than defaulted, for the reason the webhook secret is: a surface that
+        accepted unsigned links would accept a link anybody could write.
+        """
+        if self.customer_link_secret is None:
+            raise RuntimeError(
+                "PP_CUSTOMER_LINK_SECRET is not configured; the customer approval surface "
+                "refuses every link rather than accepting an unsigned one."
+            )
+        return self.customer_link_secret.get_secret_value()
+
+    @property
+    def customer_links_configured(self) -> bool:
+        """Whether this process can both sign a link and say where it points.
+
+        Both or neither. A signed link with nowhere to point is not a link, and an address with
+        no secret would produce one anybody could forge -- so the two are read as one answer and
+        the surface is closed unless both are set.
+        """
+        return self.customer_link_secret is not None and self.customer_link_base_url is not None
+
+    def require_customer_link_base_url(self) -> str:
+        """Where a customer's approval link points, without its trailing slash."""
+        if self.customer_link_base_url is None:
+            raise RuntimeError(
+                "PP_CUSTOMER_LINK_BASE_URL is not configured; no customer approval link "
+                "can be built."
+            )
+        return self.customer_link_base_url.rstrip("/")
 
     def require_bedrock_model_id(self) -> str:
         """The configured model, or a precise failure naming what to configure.
