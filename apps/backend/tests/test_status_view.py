@@ -326,6 +326,112 @@ def test_a_closed_window_with_no_answer_is_expiry() -> None:
     assert project(case("WAITING", expired)).threatened[0].state is PromiseState.EXPIRED
 
 
+# ---------------------------------------------------- the answer, carried past what followed
+
+
+def test_a_promise_nobody_was_asked_about_carries_no_consent() -> None:
+    """No request, no sentence. An automatic promise must not read as one somebody agreed to."""
+    automatic = track(state="PENDING", classification="AUTO_RECOVERABLE", approval=None)
+    assert project(case("PLANNED", automatic)).threatened[0].consent is None
+
+
+def test_a_message_still_in_flight_says_nobody_has_been_asked() -> None:
+    """The same gate the word "asked" passes. A queued message has reached nobody."""
+    queued = track(
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(provider_ref=None),
+    )
+    assert project(case("WAITING", queued)).threatened[0].consent is None
+
+
+def test_a_delivered_question_with_no_answer_says_so_in_the_published_words() -> None:
+    asked = track(
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(state="SENT"),
+    )
+    promise = project(case("WAITING", asked)).threatened[0]
+    assert promise.state is PromiseState.REQUESTED
+    assert promise.consent == closed_phrase(FactId.APPROVAL_STATE, "SENT")
+
+
+@pytest.mark.parametrize(
+    ("decision", "expected"),
+    [("APPROVE", "the customer said yes"), ("DECLINE", "the customer said no")],
+)
+def test_a_literal_decision_is_stated_in_the_product_s_own_two_words(
+    decision: str, expected: str
+) -> None:
+    decided = track(
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(state="ANSWERED", decision=decision),
+    )
+    assert project(case("WAITING", decided)).threatened[0].consent == expected
+
+
+def test_a_yes_survives_a_change_that_was_then_carried_out() -> None:
+    """The promise reads "changed"; the record still says a person agreed to it."""
+    recovered = track(
+        state="RECOVERED",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(state="ANSWERED", decision="APPROVE"),
+    )
+    promise = project(case("RESOLVED", recovered)).threatened[0]
+    assert promise.state is PromiseState.RECOVERED
+    assert promise.consent == "the customer said yes"
+
+
+def test_a_yes_whose_change_could_not_be_carried_out_is_not_hidden_by_the_escalation() -> None:
+    """The one case this field exists for.
+
+    Revalidation refused, or the amendment failed, *after* a customer said yes. The promise is
+    the owner's and says so -- and a worker picking it up is told the customer already agreed,
+    which the escalation itself deliberately never says.
+    """
+    refused = track(
+        state="ESCALATED",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(state="ANSWERED", decision="APPROVE"),
+    )
+    promise = project(case("RESOLVED", refused)).threatened[0]
+    assert promise.state is PromiseState.ESCALATED
+    assert promise.phrase == "needs you"
+    assert promise.consent == "the customer said yes"
+
+
+def test_a_closed_window_states_the_closure_and_claims_no_answer() -> None:
+    expired = track(
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(state="EXPIRED"),
+    )
+    promise = project(case("WAITING", expired)).threatened[0]
+    assert promise.consent == closed_phrase(FactId.APPROVAL_STATE, "EXPIRED")
+    assert "said" not in (promise.consent or "")
+
+
+def test_a_withdrawn_request_says_why_it_was_withdrawn() -> None:
+    superseded = track(
+        state="PENDING",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(state="SUPERSEDED"),
+    )
+    promise = project(case("PLANNED", superseded)).threatened[0]
+    assert promise.consent == closed_phrase(FactId.APPROVAL_STATE, "SUPERSEDED")
+
+
+def test_a_decision_outranks_a_timer_that_fired_after_it() -> None:
+    """A customer who answered answered. The request state moving on does not unsay it."""
+    late = track(
+        state="ESCALATED",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(state="EXPIRED", decision="APPROVE"),
+    )
+    assert project(case("WAITING", late)).threatened[0].consent == "the customer said yes"
+
+
 # ------------------------------------------------------------------------ what was left alone
 
 

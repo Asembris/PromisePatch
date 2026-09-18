@@ -210,6 +210,23 @@ class PromiseView:
     same wording.
     """
 
+    consent: str | None
+    """What this promise's customer was asked, and what came back. ``None`` where nobody was.
+
+    Read from the durable approval record rather than from :attr:`state`, and that separation is
+    the whole point of the field. The state says where the *promise* has got to, and it moves on:
+    a promise whose customer said yes reads "changed" once the order system's own version agrees,
+    and one whose approved change could not then be carried out reads "needs you". Both are true,
+    and both are silent about the thing a worker most needs before they pick that promise up --
+    that a person was asked, and answered. This carries the answer forward beside whatever the
+    promise became, so a consent that succeeded is never hidden by a step that failed after it.
+
+    It invents no word. A decision is stated in the two phrases the state vocabulary already
+    owns, and every other posture is the sentence :mod:`promisepatch.domain.explanations` already
+    publishes for that request state, so there is no second dictionary here to disagree with the
+    first.
+    """
+
     track_id: str
     track_state: str
     classification: str | None
@@ -394,7 +411,44 @@ def _promise(case_state: str, track: TrackStatus) -> PromiseView:
         rule_id=track.rule_id,
         owner=_promise_owner(state),
         next_action=_promise_next_action(state),
+        consent=_consent(track),
     )
+
+
+_DECISION_STATES: Final[dict[str, PromiseState]] = {
+    "APPROVE": PromiseState.CONSENTED,
+    "DECLINE": PromiseState.DECLINED,
+}
+"""The two literal answers, mapped to the states whose phrases already name them.
+
+Mapped rather than re-worded. "said yes" and "said no" live in :data:`_PROMISE_PHRASE`, and this
+borrows them, so the product's word for a decision changes in one place and changes everywhere.
+"""
+
+
+def _consent(track: TrackStatus) -> str | None:
+    """The customer's side of one promise, independent of where the promise itself got to.
+
+    Two gates, and each is one the state vocabulary already applies elsewhere in this module.
+
+    A recorded decision is read first, for the reason :func:`_escalated_state` gives: a customer
+    who answered answered, whatever a later timer or a refused revalidation wrote on the request
+    afterwards.
+
+    Where there is no decision, an undelivered message says nothing. ``provider_ref`` is stamped
+    when the provider acknowledged delivery, so without it nobody has been asked -- and a request
+    still queued produces no sentence rather than "the customer has been asked", which is exactly
+    the refusal :func:`_waiting_state` makes about the word "asked".
+    """
+    approval = track.approval
+    if approval is None:
+        return None
+    decided = _DECISION_STATES.get(approval.decision or "")
+    if decided is not None:
+        return f"the customer {_PROMISE_PHRASE[decided]}"
+    if approval.provider_ref is None:
+        return None
+    return closed_phrase(FactId.APPROVAL_STATE, approval.state)
 
 
 def _promise_state(case_state: str, track: TrackStatus) -> PromiseState:

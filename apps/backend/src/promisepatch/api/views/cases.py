@@ -300,6 +300,7 @@ def _promise(
         reason=item.reason,
         reason_phrase=item.reason_phrase,
         deadline_at=item.deadline_at,
+        consent=item.consent,
         owner=item.owner.value,
         next_action=item.next_action,
         track_id=UUID(item.track_id),

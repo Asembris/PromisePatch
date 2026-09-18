@@ -143,6 +143,12 @@ class PromiseWorkspaceView(BaseModel):
         description="the same reason in the domain's published words, or null when it has none"
     )
     deadline_at: str | None
+    consent: str | None = Field(
+        description=(
+            "what this promise's customer was asked and what came back, read from the approval "
+            "record rather than from the state, so an answer is not hidden by what followed it"
+        )
+    )
     owner: str = Field(description="whose move this promise is now")
     next_action: str = Field(description="what moves it, or a sentence saying nothing does")
     track_id: UUID
