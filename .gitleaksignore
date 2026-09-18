@@ -1,0 +1,29 @@
+# Findings gitleaks may stop reporting, one fingerprint at a time.
+#
+# A fingerprint is `commit:path:rule:line`, so every line here pins exactly one finding in
+# exactly one commit. Nothing is disabled by rule, by path or by pattern: a rule switched off
+# here would be switched off for code nobody has written yet, and the whole value of this scan
+# is that it runs against what somebody writes next.
+#
+# An entry earns its place only when the value is provably not a credential *and* the commit
+# holding it cannot be edited. History is not rewritten in this repository, so a false positive
+# that has already been pushed can be answered in one of two ways -- pin it here, or leave the
+# build red for ever. What must not happen is the value being real.
+#
+# Fixing the working tree is a separate obligation and is not optional: an entry here stops the
+# scanner reporting one historical blob, and does nothing about the file as it stands today.
+#
+# **Describe the value; never reproduce it.** A comment that quotes the string it is explaining
+# puts that string back into the repository, at which point this file needs an entry about
+# itself -- which was the first thing that happened when this file was written.
+
+# A stand-in approval link in a frontend test whose backend is stubbed, so no signature was ever
+# verified against it. Its two base64 fields decode to the English words for what they stand in
+# for; there was no secret in it. The deployment's real signing key, `PP_CUSTOMER_LINK_SECRET`,
+# is generated per machine by `scripts/bootstrap_local_env.py` and is never committed.
+#
+# `generic-api-key` matched on entropy and on the name of the constant, which is the rule
+# working correctly on a fixture written to look more convincing than it needed to. The fixture
+# now spells both fields out in words and trips nothing. This line exists only because the
+# original spelling is in a commit that has been pushed and stays as it is.
+c15f913b60c26ed2c347f96aba81862b2ac5d1b3:apps/frontend/tests/customerApproval.test.tsx:generic-api-key:25

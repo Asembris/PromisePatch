@@ -22,8 +22,17 @@ import {
   type Responder,
 } from './harness'
 
-const TOKEN = 'v1.cGF5bG9hZA.c2lnbmF0dXJl'
-const PATH = `/api/customer/approval/${TOKEN}`
+/**
+ * A stand-in link, in the right shape and deliberately unlike a real one.
+ *
+ * Nothing here verifies a signature — the backend is stubbed, so the only thing this value has
+ * to do is be the string that travels in the address and in the path. It is spelled out in
+ * words rather than as base64 so that it reads as a fixture to a person, and so that a secret
+ * scanner reading the repository is not asked to tell a fake token from a real one by entropy
+ * alone. A convincing-looking fixture is a false positive somebody has to triage later.
+ */
+const LINK = 'v1.not-a-real-payload.not-a-real-signature'
+const PATH = `/api/customer/approval/${LINK}`
 
 /** One open question, in the shape the backend returns it. */
 const OPEN = {
@@ -63,7 +72,7 @@ const RECEIVED: Responder = (record) =>
   record.method === 'POST' ? json({ ...OPEN, phase: 'RECEIVED', answerable: false }) : json(OPEN)
 
 function arriving(routes: Record<string, Responder> = {}): Backend {
-  window.history.pushState({}, '', `/?approve=${TOKEN}`)
+  window.history.pushState({}, '', `/?approve=${LINK}`)
   return mockBackend({ [PATH]: () => json(OPEN), ...routes })
 }
 
