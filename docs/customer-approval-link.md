@@ -146,6 +146,45 @@ nothing could reach either.
 escalation. An escalation after an *approval* stays plain too — the approval is not why it
 escalated, and "said yes" would describe the consent while hiding the outcome.
 
+## The answer outlives the state it produced
+
+The paragraph above closes one gap and leaves the other half of it open. `_escalated_state`
+refuses to say "said yes" about a promise whose approved change then failed, and it is right to:
+the outcome is the owner's and the phrase has to say so. But the worker picking that promise up
+was then told nothing at all about the customer — the same "needs you" as a promise nobody was
+ever asked about. The same is true in the happy direction: `RECOVERED` / "changed" is the truth
+about the order and is silent about who permitted it, so the one promise on the case that needed
+a human being's permission read exactly like the one covered by a standing preference.
+
+`PromiseView.consent` is that missing half, and it is deliberately **not** derived from the
+promise state beside it. `status_view._consent` reads the track's own approval record, so the
+answer a person gave stays on the row after the promise has moved on — past `RECOVERED`, and past
+an escalation that happened *after* the yes. A row now carries two independent readings: what
+happened to the order, and what the customer said. Neither can hide the other.
+
+It invents no word. A decision is stated with the two phrases `_PROMISE_PHRASE` already owns
+("said yes", "said no"), borrowed rather than re-typed; every other posture is the sentence
+`explanations.CLOSED_VOCABULARIES[FactId.APPROVAL_STATE]` already publishes for that request
+state, which is what makes "asked", "the window closed with no answer" and "the request was
+withdrawn because the order changed" arrive rather than being composed.
+
+Two gates, each borrowed from a refusal this module already makes:
+
+- **A recorded decision is read first**, for `_escalated_state`'s reason — a customer who
+  answered answered, whatever a later timer wrote on the request afterwards.
+- **An undelivered message says nothing.** Without `provider_ref` nobody has been asked, so the
+  field is `None` rather than "the customer has been asked" — the same gate that stops the word
+  "asked" being said about a message still in the outbox.
+
+### What it deliberately is not
+
+- **Not an authority.** It is a projection of a durable record. Nothing reads it to decide
+  anything, and a screen showing it cannot cause a consent to exist.
+- **Not the customer's words.** `ApprovalStatus` carries no reply text and no channel address by
+  design, and this adds neither.
+- **Not in the spoken status.** `render` is a measured surface with a word budget; the consent
+  line is structured-view only and `speech` is byte-for-byte what it was.
+
 ## What is proved
 
 | Property | Where |
@@ -154,6 +193,9 @@ escalated, and "said yes" would describe the consent while hiding the outcome.
 | The loop, against a real database, worker and HTTP hop | [`test_customer_approval_link.py`](../apps/backend/tests/test_customer_approval_link.py) |
 | The page says only what the backend read | [`customerApproval.test.tsx`](../apps/frontend/tests/customerApproval.test.tsx) |
 | The whole journey in a browser, against the real stack | [`customer-approval.spec.ts`](../apps/frontend/e2e/customer-approval.spec.ts) |
+| A yes survives onto the worker's row past `RECOVERED` and past a later escalation | [`test_status_view.py`](../apps/backend/tests/test_status_view.py), [`test_customer_approval_link.py`](../apps/backend/tests/test_customer_approval_link.py) |
+| Only the promise a customer was asked about claims an answer | [`test_case_workspace.py`](../apps/backend/tests/test_case_workspace.py) |
+| The row renders the sentence unchanged, and none at all where there is none | [`propagation.test.tsx`](../apps/frontend/tests/propagation.test.tsx) |
 
 The backend file covers approve, decline, replay, a decline that cannot be pressed into an
 approval, a closed window, a superseded request, an approval that fails revalidation and changes
