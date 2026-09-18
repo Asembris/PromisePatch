@@ -31,6 +31,7 @@ import type { ReactNode } from 'react'
 import type { AuthorityBandView, CausalStepView, PromiseWorkspaceView } from '../../api/types'
 import { PromiseStatePill, StateMarker } from '../../components/badges'
 import { Card, QuietCard, SectionLabel } from '../../components/surfaces'
+import { Count } from '../../components/values'
 import {
   CausalAbsence,
   CausalColumnHeading,
@@ -39,7 +40,7 @@ import {
   CausalPathCount,
 } from '../../components/causal'
 import { formatDateTime } from '../../components/time'
-import { authorityTone } from '../../components/vocabulary'
+import { TONE_RAIL, authorityTone } from '../../components/vocabulary'
 import {
   CAUSAL_SLOTS,
   groupCausalChain,
@@ -168,9 +169,16 @@ function AuthorityLane({ band }: { band: AuthorityBandView }): ReactNode {
       data-authority={band.authority}
       data-count={band.count}
     >
-      <h3 className="flex items-center gap-2 px-1 text-sm font-semibold">
-        <StateMarker marker="filled" tone={authorityTone(band.authority)} />
-        {band.title}
+      <h3 className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm font-semibold">
+        <span className="flex items-center gap-2">
+          <StateMarker marker="filled" tone={authorityTone(band.authority)} />
+          {band.title}
+        </span>
+        {/* The backend's integer for this group, published where the group is named. The list
+            below renders as many rows as it was handed and this says as many as it was told;
+            they are separate claims, and a heading that took the length of the list it had
+            just drawn would be reporting on its own rendering rather than on the case. */}
+        <Count value={band.count} label="orders" one="order" />
       </h3>
       <ul className="space-y-1.5">
         {band.promises.map((promise) => (
@@ -200,7 +208,7 @@ function PromiseLaneRow({
   return (
     <li>
       <Card
-        className="group px-4 py-2 transition-colors hover:border-edge-strong focus-visible:border-edge-strong"
+        className={`group border-l-2 px-4 py-2 transition-colors hover:border-edge-strong focus-visible:border-edge-strong ${TONE_RAIL[tone]}`}
         tabIndex={0}
         data-testid="promise-row"
         data-promise-id={promise.promise_id}
@@ -324,6 +332,18 @@ function PromiseReading({
         {promise.deadline_at === null ? null : <> · by {formatDateTime(promise.deadline_at)}</>}
       </span>
       {chain.pathCount > 1 ? <CausalPathCount value={chain.pathCount} /> : null}
+      {/* What a person actually answered, carried on the row rather than left in the drawer.
+          It is deliberately not derived from the state beside it: the backend reads it off the
+          approval record, so it is still here after the promise has moved on to "changed" --
+          and, the case this exists for, after an approved change failed and the promise reads
+          "needs you". A row that showed only the state would let a consent that succeeded
+          disappear behind the step that failed after it. */}
+      {promise.consent === null ? null : (
+        <span className="w-full text-ask" data-testid="promise-consent">
+          <span className="text-label uppercase">customer </span>
+          {promise.consent}
+        </span>
+      )}
       <span className="w-full text-muted" data-testid="promise-next-action">
         <span className="text-label uppercase">next </span>
         {promise.next_action}

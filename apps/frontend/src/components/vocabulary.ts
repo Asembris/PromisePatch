@@ -42,6 +42,24 @@ export const TONE_PILL: Record<Tone, string> = {
   brand: 'bg-brand/15 text-brand ring-brand/40',
 }
 
+/**
+ * A tone as a card's left rail.
+ *
+ * The one place a promise row carries its own authority without spending a word on it. The lane
+ * heading above it says whose permission the group needs; this repeats that on every row so the
+ * three groups stay separable halfway down a scroll, where the heading is off screen. It is the
+ * same channel as the heading's marker and adds no claim of its own — a rail never says whether
+ * anything happened, exactly as `AUTHORITY_TONE` never does.
+ */
+export const TONE_RAIL: Record<Tone, string> = {
+  neutral: 'border-l-edge-strong',
+  auto: 'border-l-auto',
+  ask: 'border-l-ask',
+  owner: 'border-l-owner',
+  done: 'border-l-done',
+  brand: 'border-l-brand',
+}
+
 /** A tone as foreground only, for a marker or an inline word. */
 export const TONE_TEXT: Record<Tone, string> = {
   neutral: 'text-muted',

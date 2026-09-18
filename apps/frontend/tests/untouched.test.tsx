@@ -35,6 +35,7 @@ function untouched(
     reason: 'NOT_REACHABLE',
     reason_phrase: 'the exception reaches nothing it depends on',
     deadline_at: null,
+    consent: null,
     owner: 'NOBODY',
     next_action: 'Nothing. This promise is not reachable from what happened.',
     track_id: `track-${id}`,

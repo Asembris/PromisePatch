@@ -36,6 +36,7 @@ function workspacePromise(
     reason: 'PREAPPROVAL_COVERS',
     reason_phrase: 'the order already pre-approves this substitution',
     deadline_at: null,
+    consent: null,
     owner: 'YOU',
     next_action: 'Read the plan and confirm it, or leave it as it is.',
     track_id: `track-${promiseId}`,
@@ -363,6 +364,9 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
           deadline_at: '2026-03-04T10:05:00+00:00',
           owner: 'CUSTOMER',
           next_action: 'Nothing. The customer has been asked and has not answered.',
+          // The explanation layer's own sentence for a request in `SENT`, which is what the
+          // backend puts here once the provider has acknowledged delivery.
+          consent: 'the customer has been asked and has not answered',
           track_state: 'WAITING_FOR_CUSTOMER',
           classification: 'APPROVAL_REQUIRED',
           rule_id: 'R-VISIBLE-ASK',

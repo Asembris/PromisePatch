@@ -284,6 +284,15 @@ export interface PromiseWorkspaceView {
   /** The same reason in the domain's published words, or `null` when it has none. */
   reason_phrase: string | null
   deadline_at: string | null
+  /**
+   * What this promise's customer was asked and what came back, or `null` if nobody was asked.
+   *
+   * Read by the backend off the durable approval record rather than off `state`, so it survives
+   * the promise moving on. A promise whose customer said yes reads `RECOVERED` / "changed" once
+   * the order system agrees, and one whose approved change then failed reads `ESCALATED` /
+   * "needs you" — and in both the answer a person actually gave is still here to be shown.
+   */
+  consent: string | null
   owner: string
   next_action: string
   track_id: string

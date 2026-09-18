@@ -58,6 +58,7 @@ function promise(
     authority: 'STANDING_PREFERENCE',
     reason: 'PREAPPROVAL_COVERS',
     reason_phrase: 'the order already pre-approves this substitution',
+    consent: null,
     deadline_at: null,
     owner: 'YOU',
     next_action: 'Read the plan and confirm it, or leave it as it is.',
@@ -315,5 +316,133 @@ describe('what the map may never carry', () => {
     const status = screen.getByTestId('promise-status')
     expect(status).toHaveAttribute('data-state', 'RECOVERED')
     expect(status).toHaveAttribute('data-finished', 'true')
+  })
+})
+
+describe('what the customer answered, on the row', () => {
+  it('says nothing at all about a promise nobody was asked about', () => {
+    draw(LANE)
+
+    expect(screen.queryByTestId('promise-consent')).not.toBeInTheDocument()
+  })
+
+  it('renders the backend’s sentence, unchanged, beside the promise it belongs to', () => {
+    draw([
+      band('CUSTOMER', 'Needs the customer', [
+        promise('pr-b', 'EXT-B', 'Tomas Lindqvist', {
+          authority: 'CUSTOMER',
+          state: 'REQUESTED',
+          phrase: 'asked',
+          consent: 'the customer has been asked and has not answered',
+        }),
+      ]),
+    ])
+
+    expect(screen.getByTestId('promise-consent')).toHaveTextContent(
+      'the customer has been asked and has not answered',
+    )
+  })
+
+  it('still shows a yes on a promise the order system has since carried', () => {
+    draw([
+      band('CUSTOMER', 'Needs the customer', [
+        promise('pr-b', 'EXT-B', 'Tomas Lindqvist', {
+          authority: 'CUSTOMER',
+          state: 'RECOVERED',
+          phrase: 'changed',
+          consent: 'the customer said yes',
+        }),
+      ]),
+    ])
+
+    expect(screen.getByTestId('promise-status')).toHaveTextContent('changed')
+    expect(screen.getByTestId('promise-consent')).toHaveTextContent('the customer said yes')
+  })
+
+  it('shows a no as a settled answer and not as the change being made', () => {
+    draw([
+      band('CUSTOMER', 'Needs the customer', [
+        promise('pr-b', 'EXT-B', 'Tomas Lindqvist', {
+          authority: 'CUSTOMER',
+          state: 'DECLINED',
+          phrase: 'said no',
+          consent: 'the customer said no',
+          next_action: 'The owner decides what to offer instead. Nothing else will happen.',
+        }),
+      ]),
+    ])
+
+    const status = screen.getByTestId('promise-status')
+    expect(status).toHaveAttribute('data-finished', 'false')
+    expect(status).not.toHaveAttribute('data-tone', 'done')
+    expect(screen.getByTestId('promise-consent')).toHaveTextContent('the customer said no')
+  })
+
+  it('does not let a step that failed afterwards hide the yes that came first', () => {
+    // The one shape this line exists for. Revalidation refused, or the amendment could not be
+    // applied, *after* the customer agreed: the promise is the owner's and reads as the owner's,
+    // and the consent that really happened is still on the row rather than only in the drawer.
+    draw([
+      band('CUSTOMER', 'Needs the customer', [
+        promise('pr-b', 'EXT-B', 'Tomas Lindqvist', {
+          authority: 'CUSTOMER',
+          state: 'ESCALATED',
+          phrase: 'needs you',
+          consent: 'the customer said yes',
+          owner: 'OWNER',
+          next_action: 'The owner handles this one by hand. Nothing will change until they do.',
+        }),
+      ]),
+    ])
+
+    const status = screen.getByTestId('promise-status')
+    expect(status).toHaveTextContent('needs you')
+    expect(status).toHaveAttribute('data-finished', 'false')
+    expect(screen.getByTestId('promise-consent')).toHaveTextContent('the customer said yes')
+    expect(screen.getByTestId('promise-next-action')).toHaveTextContent('by hand')
+  })
+})
+
+describe('telling the three authorities apart at a glance', () => {
+  it('publishes the backend’s count beside each lane rather than the length of its list', () => {
+    // The lane is handed one row and told it decides two. It prints what it was told: a lane
+    // that counted its own children would be reporting on its rendering, not on the case.
+    draw([band('OWNER', 'Needs the owner', [promise('pr-c', 'EXT-C', 'Okafor-Reyes')], 2)])
+
+    const lane = screen.getByTestId('authority-band')
+    expect(lane).toHaveAttribute('data-count', '2')
+    expect(within(lane).getByTestId('count')).toHaveTextContent('2')
+    expect(within(lane).getAllByTestId('promise-row')).toHaveLength(1)
+  })
+
+  it('gives one order its singular word', () => {
+    draw(LANE)
+
+    const count = within(screen.getByTestId('authority-band')).getByTestId('count')
+    expect(count).toHaveTextContent('1')
+    expect(within(count).getByText('order')).toBeInTheDocument()
+  })
+
+  it('carries each lane’s authority on its own rows, so a scrolled row keeps its group', () => {
+    // Identical states across three lanes: at `PLANNED` every promise reads the same phrase, so
+    // the authority is the only thing separating the rows and it has to be on the row itself.
+    draw([
+      band('STANDING_PREFERENCE', 'Covered by a standing preference', [
+        promise('pr-a', 'EXT-A', 'Priya Nair'),
+      ]),
+      band('CUSTOMER', 'Needs the customer', [
+        promise('pr-b', 'EXT-B', 'Tomas Lindqvist', { authority: 'CUSTOMER' }),
+      ]),
+      band('OWNER', 'Needs the owner', [
+        promise('pr-c', 'EXT-C', 'Okafor-Reyes', { authority: 'OWNER' }),
+      ]),
+    ])
+
+    const rails = screen
+      .getAllByTestId('promise-row')
+      // `border-l-2` is the width and is on every row; the tone is the one that names a colour.
+      .map((row) => [...row.classList].find((entry) => /^border-l-[a-z]/.test(entry)))
+    expect(new Set(rails).size).toBe(3)
+    expect(rails).toEqual(['border-l-auto', 'border-l-ask', 'border-l-owner'])
   })
 })
