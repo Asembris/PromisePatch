@@ -117,6 +117,9 @@ def generated_secrets() -> dict[str, str]:
         # What an MCP client presents to the MCP endpoint. Generated rather than defaulted,
         # because a default would mean every copy of this repository shipped one usable token.
         "__MCP_BEARER_TOKEN__": secrets.token_urlsafe(32),
+        # What a customer's approval link is signed with. Generated per machine for the same
+        # reason: a shipped default would let anybody write a link this stack would open.
+        "__CUSTOMER_LINK_SECRET__": secrets.token_urlsafe(32),
     }
 
 
