@@ -3,10 +3,11 @@
 # It runs the sixteen frozen scenarios of `promisepatch-effect-sets` v1.0.0, manifest SHA
 # d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc. The first scored run of that
 # manifest is published at **11/16**, captured immutably at
-# `docs/effect-sets/runs/20260915T163255509125+0000-scored.json`. Five scenarios -- S06, S07, S12
-# and S13, with S08 since repaired -- disagree with their frozen labels and stay committed
-# failing. That headline is never replaced by a repaired score, and the denominator is
-# permanently sixteen.
+# `docs/effect-sets/runs/20260915T163255509125+0000-scored.json`. Five scenarios -- S06, S07, S08,
+# S12 and S13 -- disagreed with their frozen labels there. Four have since been repaired, each with
+# its own fix SHA; S12 stays committed failing, because its label applies a manifest-wide rule that
+# is false for work the kitchen had already started (`docs/started-work-contract.md`). That
+# headline is never replaced by a repaired score, and the denominator is permanently sixteen.
 #
 # It lives in a file of its own rather than as one job beside the product gate because a badge is
 # per *workflow*, not per job. Sharing a workflow with the product jobs meant one permanently red
@@ -16,8 +17,8 @@
 #
 # `docs/effect-set-run-protocol.md` forbids weakening, skipping, deselecting, removing or marking
 # these scenarios expected-to-fail, so this workflow cannot be turned green by anything except the
-# repairs themselves. It goes green when the remaining disagreements are resolved under G8's
-# correction process; S08 is the first that has landed.
+# repairs themselves. It goes green when the remaining disagreement is resolved under G8's
+# correction process; S08, S06, S07 and S13 have landed and S12 has not.
 #
 # Branch protection therefore requires the product jobs in `pr.yml` and not this one. See
 # `docs/effect-set-run-protocol.md`, "What passing CI means".
@@ -68,8 +69,8 @@ jobs:
     # The scenarios that disagree with their frozen labels stay committed failing.
     # `docs/effect-set-run-protocol.md` forbids weakening, skipping, deselecting, removing or
     # marking them expected-to-fail, so this job cannot be turned green by anything except the
-    # repairs themselves. It goes green when the remaining disagreements are resolved under
-    # G8's correction process; S08 is the first that has landed.
+    # repairs themselves. It goes green when the remaining disagreement is resolved under
+    # G8's correction process; S08, S06, S07 and S13 have landed and S12 has not.
     #
     # Nothing here is weakened to achieve that. The tests run whole, with the same command and
     # the same disposable database as the product job, and they fail with exactly the diffs the

@@ -8,10 +8,13 @@ expected label, and nothing in it decides what passing means.
 
 **All sixteen are wired.** Each one performs its own stipulated facts and reads every checkpoint
 it declares; :data:`scripts.run_effect_sets.WIRED` is what the runner reads, and it now names the
-whole manifest. Wired is not the same as agreeing: four of these tests are committed **failing**,
-because a disagreement between a frozen label and what the system does is the measurement arriving
-early, and the protocol is explicit that it is recorded and left alone until the first scored run
-has been taken. Nothing is skipped, weakened or marked expected-to-fail.
+whole manifest. Wired is not the same as agreeing: ``test_s12_external_edit_adds_dependency_before``
+is committed **failing**, because a disagreement between a frozen label and what the system does is
+the measurement arriving early, and the protocol is explicit that it is recorded and left alone
+rather than repaired away. S12's is the one that cannot be repaired at all without a new manifest
+version: its label applies a manifest-wide rule that is false for work the kitchen had already
+started, which ``docs/started-work-contract.md`` establishes and ADR-0017 declines to act on.
+Nothing is skipped, weakened or marked expected-to-fail.
 
 **Nothing here is a score.** A run of this file is a harness-development run under
 `docs/effect-set-run-protocol.md`: it writes per-scenario verdicts to the run's sink if it was

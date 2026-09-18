@@ -12,8 +12,12 @@ Its red means a regression, and that is the only thing it means.
 The **second is red on purpose and is meant to stay red.** It runs the sixteen frozen effect-set
 scenarios, whose [first scored run](docs/effect-set-first-scored-run.md) is published at
 **11/16**. Five of the sixteen disagreed with labels written by hand before the runner existed;
-one of those five, S08, has since been repaired, and the other four stay committed *failing* with
-their exact diffs published. `docs/effect-set-run-protocol.md` forbids weakening, skipping,
+four of those five — S08, then S06, S07 and S13 — have since been repaired, each with its own fix
+SHA, and **S12 stays committed *failing*** with its exact diffs published, because its label
+applies a manifest-wide rule that is false for work the kitchen had already started
+([`docs/started-work-contract.md`](docs/started-work-contract.md)). No repaired run has been
+scored; a development run is not a score.
+`docs/effect-set-run-protocol.md` forbids weakening, skipping,
 deselecting, removing or marking any of them expected-to-fail — so this badge goes green only
 when the remaining disagreements are repaired, and a green tick before then would mean a scenario
 had been quietly weakened. **11/16 is the permanent headline**: it is never replaced by a
