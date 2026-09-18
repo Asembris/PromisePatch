@@ -403,3 +403,32 @@ See [`mcp-human-confirmation-boundary.md`](mcp-human-confirmation-boundary.md) a
 [ADR-0018](adr/0018-a-plan-confirmation-spends-a-human-approval.md). **Nothing else on this page
 changes**: the other fourteen rows are unaffected, bullet four's head-of-line measurement remains
 **UNPROVEN**, and the immutable 11/16 headline is untouched.
+
+---
+
+## Amendment, 2026-09-18 — bullet four's measurement was taken after this page was written
+
+**This page is left as it was written, and so is the amendment above it.** §4 audited the
+repository at `c4e7503` and reported, correctly for that commit, that no artifact recorded the
+head-of-line measurement and that the phrase *head-of-line* occurred once in the whole tree. The
+measurement has since been predeclared, built, run and dispositioned, so §4's **UNPROVEN**, §6's
+rank-1 *"Not started"* and the 2026-09-17 amendment's closing clause *"bullet four's head-of-line
+measurement remains UNPROVEN"* are superseded by what follows. None of them is edited.
+
+| what exists now | where |
+|---|---|
+| the protocol, fixed before the harness | [g8-head-of-line-predeclaration.md](g8-head-of-line-predeclaration.md), amended at `7cb188c` |
+| the harness and its tests | `scripts/run_head_of_line.py`, `scripts/tests/test_run_head_of_line.py` |
+| nine unedited run captures | `docs/head-of-line/runs/` |
+| the measurement | [g8-head-of-line-measurement.md](g8-head-of-line-measurement.md) |
+| the owner's decision on the conditional | [g8-head-of-line-disposition.md](g8-head-of-line-disposition.md) |
+
+**The measurement was taken and both delayed arms failed the gate**: `H_representative = 1545.8 ms`
+and `H_treatment = 8173.4 ms` against `H ≤ 1000.0 ms`, a threshold fixed before the harness existed
+and not moved. **The roadmap's conditional "smallest scheduling correction" is declined**, by the
+owner, in the disposition, with its cost stated — not overlooked and not deferred.
+
+So the bullet's *measurement* requirement is discharged and its *conditional* is decided. That is a
+different sentence from "the gate passed", and neither this amendment nor the disposition softens
+the `FAIL`. **Nothing else on this page changes**: the other fourteen rows are unaffected, §1.3
+stands as the 2026-09-17 amendment left it, and the immutable 11/16 headline is untouched.
