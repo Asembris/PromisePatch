@@ -2686,6 +2686,32 @@ def test_the_smoke_check_asserts_refusals_and_not_only_availability() -> None:
     } <= names
 
 
+@pytest.mark.parametrize("check_name", ["check_origin_refused", "check_protocol_revision"])
+def test_a_check_that_cannot_be_performed_skips_rather_than_fails(check_name: str) -> None:
+    """A missing local credential is not evidence that the deployment is broken.
+
+    Both of these checks have to get *past* the bearer check to observe the thing they assert,
+    so without ``PP_MCP_BEARER_TOKEN`` neither can be performed at all. ``check_protocol_revision``
+    always said so; ``check_origin_refused`` reported FAILED with "status 401, expected 403",
+    which reads as "the deployed origin guard is open". That fired against the live stack on
+    2026-09-18 minutes after an infrastructure upgrade, on a deployment that was healthy and
+    that smoked 12/12 the moment the token was supplied.
+
+    The client is ``None`` on purpose: a skip must decide before it touches the network, so
+    deleting the skip turns this into an ``AttributeError`` rather than a quiet pass.
+    """
+    from scripts import deployment_smoke
+
+    check = getattr(deployment_smoke, check_name)
+    outcome = check(
+        None, deployment_smoke.Target(base_url="https://example.invalid", bearer_token=None)
+    )
+    assert outcome.outcome is deployment_smoke.Outcome.SKIPPED, (
+        f"{check_name} claims a verdict about the deployment from a check it could not run"
+    )
+    assert "PP_MCP_BEARER_TOKEN" in outcome.detail, "the skip does not say what is missing"
+
+
 def test_the_smoke_check_proves_the_deployment_is_the_one_that_was_deployed() -> None:
     """Up is not the same claim as current, and only the second one is about a release.
 

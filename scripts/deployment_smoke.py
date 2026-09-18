@@ -32,9 +32,10 @@ Run it against the deployed origin::
 
     uv run python scripts/deployment_smoke.py --base-url https://<host>
 
-``PP_MCP_BEARER_TOKEN`` enables the authenticated handshake check. Without it that one check
-reports ``SKIPPED`` and the run still fails if any other check fails -- a missing token must
-not be able to turn a broken deployment green.
+``PP_MCP_BEARER_TOKEN`` enables the two checks that have to get *past* the bearer check to
+observe anything: the authenticated handshake, and the origin guard that sits behind it.
+Without it both report ``SKIPPED`` and the run still fails if any other check fails -- a
+missing token must not be able to turn a broken deployment green.
 """
 
 from __future__ import annotations
@@ -157,6 +158,21 @@ def check_mcp_requires_bearer(client: httpx2.Client, target: Target) -> Check:
 
 def check_origin_refused(client: httpx2.Client, target: Target) -> Check:
     asserts = "an unlisted Origin is 403"
+    # The origin guard sits *behind* the bearer check, so an unauthenticated request never
+    # reaches it -- it is refused 401 first, and 401 is not evidence about the origin at all.
+    # Reporting FAILED here would say the deployed guard is broken when what is missing is a
+    # credential in the shell running the check. That happened on 2026-09-18: a healthy
+    # `deploy.sh smoke` against the live stack reported 10/12 and exit 2 for this reason
+    # alone, immediately after an infrastructure upgrade, which is exactly the moment a
+    # spurious failure is read as damage. SKIPPED is the honest outcome, and it still cannot
+    # turn a broken deployment green: a skip is neither a pass nor silence.
+    if not target.bearer_token:
+        return Check(
+            name="origin-refused",
+            asserts=asserts,
+            outcome=Outcome.SKIPPED,
+            detail="PP_MCP_BEARER_TOKEN is not set",
+        )
     return _expect_status(
         client,
         target,
