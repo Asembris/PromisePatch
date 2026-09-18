@@ -399,11 +399,34 @@ jobs:
             --publish 127.0.0.1:5432:5432 \
             postgres:16-alpine
 
-          for _ in $(seq 1 60); do
-            if docker exec pp-postgres pg_isready -U postgres -d promisepatch; then break; fi
+          # The official image runs /docker-entrypoint-initdb.d against a temporary server
+          # started with listen_addresses='' -- reachable on the unix socket and nowhere else --
+          # then stops it and restarts listening on TCP. Polling the default socket therefore
+          # sees "accepting connections" during initialisation and "rejecting connections" a
+          # moment later, in the restart window, which is exactly how this step failed. So poll
+          # TCP, which the temporary server never answers, and require three consecutive
+          # successes so no momentary window can be mistaken for a ready database.
+          ready=0
+          for _ in $(seq 1 90); do
+            if [ "$(docker inspect --format '{{.State.Running}}' pp-postgres)" != "true" ]; then
+              docker logs pp-postgres
+              echo "PostgreSQL exited during initialisation" >&2
+              exit 1
+            fi
+            if docker exec pp-postgres \
+                 pg_isready --quiet -h 127.0.0.1 -p 5432 -U postgres -d promisepatch; then
+              ready=$((ready + 1))
+              if [ "$ready" -ge 3 ]; then break; fi
+            else
+              ready=0
+            fi
             sleep 1
           done
-          docker exec pp-postgres pg_isready -U postgres -d promisepatch
+          if [ "$ready" -lt 3 ]; then
+            docker logs pp-postgres
+            echo "PostgreSQL never accepted TCP connections on 127.0.0.1:5432" >&2
+            exit 1
+          fi
 
           address="127.0.0.1:5432/promisepatch"
           {
