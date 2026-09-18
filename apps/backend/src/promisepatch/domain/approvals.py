@@ -92,7 +92,7 @@ from promisepatch.db.models import (
 )
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
-from promisepatch.domain import consent, messaging
+from promisepatch.domain import consent, customer_link, messaging
 from promisepatch.domain.analysis import NAMESPACE, fresh_snapshot
 from promisepatch.domain.cases import (
     CASE_EXECUTING,
@@ -252,6 +252,23 @@ def request_id_for(track_id: UUID, option_id: UUID) -> UUID:
 def reply_id_for(provider_message_id: str) -> UUID:
     """One stored reply per provider message, however many times it is handed to us."""
     return uuid5(NAMESPACE, f"reply:{provider_message_id}")
+
+
+def link_message_id(request_id: UUID, channel: str) -> str:
+    """The provider message id a link-borne answer is stored under. One per request per channel.
+
+    Derived from the request and the channel, and deliberately **not** from the answer. That is
+    what makes a second press of either button a no-op rather than a second reply: both propose
+    the same id, ``inbox_events`` is unique on ``(source, provider_event_id)``, and the second
+    insert writes nothing at all. So a customer who presses Decline and then Approve has
+    declined -- a decline can never be edited into an approval by pressing again, and that
+    property is a unique index rather than a branch somebody has to remember to write.
+
+    Derived rather than minted for the usual reason as well: a fresh id per press would make
+    every double-click, every retried request and every impatient refresh into another reply
+    about a question that only has one answer.
+    """
+    return f"link:{uuid5(NAMESPACE, f'link-reply:{request_id}:{channel}')}"
 
 
 def option_code_for(option_id: UUID) -> str:
@@ -595,6 +612,7 @@ async def _request(
                     material=material,
                     option_code=code,
                     text=text,
+                    approval_url=_approval_url(request_id=request_id, channel=material.channel),
                 ),
                 idempotency_key=key,
             ),
@@ -665,6 +683,28 @@ async def _insert_request(
     )
 
 
+def _approval_url(*, request_id: UUID, channel: str) -> str | None:
+    """Where this customer may answer this request, or ``None`` if this deployment mints none.
+
+    Composed here, in the transaction that creates the request, rather than handed out later on
+    demand. That is what makes the link *the message's* -- it goes to the channel the request
+    was sent to and to nowhere else, and there is no surface in PromisePatch that will hand a
+    link to anybody who did not receive the message, because none is stored for one to read.
+
+    Deterministic in the request and the channel, so the redelivery of a message carries the
+    same link rather than a second one.
+    """
+    settings = get_settings()
+    if not settings.customer_links_configured:
+        return None
+    return customer_link.url_for(
+        base_url=settings.require_customer_link_base_url(),
+        secret=settings.require_customer_link_secret(),
+        request_id=request_id,
+        channel=channel,
+    )
+
+
 def _message_payload(
     *,
     track: Any,
@@ -672,12 +712,22 @@ def _message_payload(
     material: _Material,
     option_code: str,
     text: str,
+    approval_url: str | None,
 ) -> Mapping[str, Any]:
     """What the provider is being asked to send, and what its answer makes runnable.
 
     The continuation is stored on the row rather than held by the dispatcher, which is what
     makes the hand-off crash-safe: the step that turns a delivered message into a waiting track
     is enqueued by the same transaction that records the provider's acceptance.
+
+    ``approval_url`` is the one place a customer is handed a way to answer that is not words on
+    a channel, and it travels *beside* the text rather than inside it. The text is §13.6's
+    frozen wording and a transport may not edit it; a transport that can render a link renders
+    this one, and a transport that cannot sends the words unchanged and loses nothing -- the
+    two literal words remain the whole protocol either way.
+
+    It is ``None`` where the deployment configured no signing secret, which is a closed door
+    rather than a missing feature: a link nobody signed is a link anybody could write.
     """
     return {
         EFFECT_TRACK_ID: str(track.id),
@@ -687,6 +737,7 @@ def _message_payload(
         "option_code": option_code,
         "channel_kind": material.channel_kind,
         "channel_address": material.channel_address,
+        "approval_url": approval_url,
         "text": text,
         CONTINUATION: {
             DELIVERED: {
