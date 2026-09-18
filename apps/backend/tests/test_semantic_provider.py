@@ -342,8 +342,8 @@ async def test_only_the_worker_s_own_sentence_is_ever_sent_to_the_provider(
 
     configured = FakeSemanticProvider()
     worker = Worker(database=cast(Any, None), adapter=FakeEffectAdapter(), semantic=configured)
-    await worker._execute_one_step()
-    await worker._execute_one_step()
+    await worker._execute_one_step(defer=False)
+    await worker._execute_one_step(defer=False)
 
     assert handed == {"worker": configured}
     assert configured.calls == []
