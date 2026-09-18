@@ -144,7 +144,12 @@ async def enqueue_step(
 
 
 async def claim_step(
-    database: RuntimeDatabase, *, worker: str, lease: timedelta = LEASE_DURATION
+    database: RuntimeDatabase,
+    *,
+    worker: str,
+    lease: timedelta = LEASE_DURATION,
+    exclude_cases: Sequence[UUID] = (),
+    exclude_kinds: Sequence[str] = (),
 ) -> StepClaim | None:
     """Take one eligible step, in a short transaction of its own.
 
@@ -155,6 +160,15 @@ async def claim_step(
 
     Every instant compared here is the database's, never the process's: two workers with
     drifting clocks must agree about whether a lease has expired.
+
+    The two exclusions are how a caller says *not this one, not now*, and they are narrowings of
+    what this sweep looks at rather than changes to what is eligible. ``exclude_cases`` keeps a
+    caller that is already working on a case from taking a second step of it and running the two
+    beside each other; ``exclude_kinds`` keeps it from taking work it has no capacity for. Both
+    are statements about **this process** and bind no other worker: a row this sweep passed over
+    is still ordinary claimable work, and the next sweep -- here or in another container -- finds
+    it exactly where it was. Neither can make a row invisible for good, because both default to
+    empty and are recomputed on every call.
     """
     crash.at(crash.BEFORE_CLAIM)
     async with database.begin() as connection:
@@ -164,11 +178,15 @@ async def claim_step(
         )
         expired = (CaseStep.state == "IN_FLIGHT") & (CaseStep.lease_expires_at <= now)
 
+        eligible = select(CaseStep.id).where(or_(due, expired))
+        if exclude_cases:
+            eligible = eligible.where(CaseStep.case_id.notin_(tuple(exclude_cases)))
+        if exclude_kinds:
+            eligible = eligible.where(CaseStep.kind.notin_(tuple(exclude_kinds)))
+
         candidate = (
             await connection.execute(
-                select(CaseStep.id)
-                .where(or_(due, expired))
-                .order_by(CaseStep.created_at, CaseStep.id)
+                eligible.order_by(CaseStep.created_at, CaseStep.id)
                 .limit(1)
                 .with_for_update(skip_locked=True)
             )
