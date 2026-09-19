@@ -149,6 +149,12 @@ def drive_attempt(
     Returns the evidence, the arm's diagnostics, the driver's terminal status or
     ``PENDING_SCORE``, a note, the spent budget and the latency. It never raises for a bad
     answer: an arm that produced nothing returns empty evidence and is scored ``INVALID``.
+
+    **It never raises for an unexpected failure either.** A surface that refused, a transport
+    that broke, a receiver that threw something this module has no name for -- each ends *this
+    attempt* as ``HARNESS_FAILURE`` with the exception recorded, and the run goes on to the next
+    one. A benchmark that lost twenty-six attempts because the first one hit an unnamed error
+    would have nothing to publish and no way to say what was missing.
     """
     scenario = contract.scenario(identity.scenario_id)
     budget = _budget(contract, clock)
@@ -180,6 +186,16 @@ def drive_attempt(
         evidence = _salvage(world, note)
     except HarnessFailureError as failure:
         status, note = "HARNESS_FAILURE", str(failure)
+        evidence = _salvage(world, note)
+    except Exception as unexpected:
+        # An attempt that failed in a way nobody named is still one attempt. Letting it out of
+        # this function would end the *run* -- every later arm and every later scenario would
+        # never be driven, and a comparative result would be missing rows nobody could account
+        # for. So it is recorded as what it is: HARNESS_FAILURE, which is a nonpass, is disclosed
+        # by name with the exception on it, is never VOID and is never retried. Nothing is
+        # softened by catching it; what changes is that the other attempts still happen.
+        status = "HARNESS_FAILURE"
+        note = f"{type(unexpected).__name__}: {unexpected}"
         evidence = _salvage(world, note)
 
     latency = clock.monotonic() - started

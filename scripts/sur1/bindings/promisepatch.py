@@ -303,9 +303,16 @@ class LiveWorkerSurface:
         return self._settled()
 
     def answer_clarification(self, answer: str) -> Mapping[str, Any]:
+        """Say back what the worker answered, verbatim, under the name the tool asks for.
+
+        ``answer`` and not ``text``: ``report`` takes ``text`` because an exception report is a
+        statement, and ``clarify`` takes ``answer`` because it is a reply to a question the
+        product asked. Sending the wrong one is refused by the tool's own schema, which is how
+        this was found.
+        """
         self.tools.call(
             "clarify",
-            {"case_id": self.case_id, "text": answer, "client_request_id": f"sur1-{uuid4()}"},
+            {"case_id": self.case_id, "answer": answer, "client_request_id": f"sur1-{uuid4()}"},
         )
         return self._settled()
 
