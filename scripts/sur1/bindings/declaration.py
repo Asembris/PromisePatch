@@ -37,6 +37,7 @@ import json
 from pathlib import Path
 from typing import Any, Final
 
+from scripts.sur1.bindings import clock as clock_module
 from scripts.sur1.bindings import events as events_module
 from scripts.sur1.bindings import programs as programs_module
 from scripts.sur1.bindings import realisation as realisation_module
@@ -78,6 +79,7 @@ IMPLEMENTATION_MODULES: Final = (
     setup_module,
     events_module,
     worldsink_module,
+    clock_module,
 )
 """Every module whose source decides what a program is or what its world looks like.
 
@@ -89,6 +91,13 @@ a declared event observes and what it does, which is the rest of what a scenario
 They are also the modules the structural blindness checks walk, so listing them here is what
 makes a trigger that started reading an arm or an answer a parse failure rather than a review
 question.
+
+The clock is in it because *where in time* a world is installed decides whether its commitments
+fall inside the bakery day, and therefore which clarification a scenario asks and whether any
+answer can resolve it. A world digest cannot see that -- it is rendered as offsets from the
+anchor and is invariant under it by design -- so a change to the anchor rule would otherwise
+move what every scenario does while all nine digests held still. That is exactly the failure
+this hash exists for. See ADR-0019.
 """
 
 
