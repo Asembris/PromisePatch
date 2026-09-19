@@ -5,7 +5,7 @@ policy permits no second opinion. So everything that would make the resulting nu
 something other than what it appears to mean is asked **before** an arm is constructed, in one
 place, and any failure refuses the run.
 
-Ten checks, and each is a fact rather than a promise:
+Eleven checks, and each is a fact rather than a promise:
 
 1. the three frozen identities recompute to their published values;
 2. all three bindings say they are real, so a run cannot be driven by a double;
@@ -17,7 +17,8 @@ Ten checks, and each is a fact rather than a promise:
 8. the nine programs are the frozen nine, at their published hashes, and nothing on their
    preparation path can name a field that says what a correct answer is;
 9. the output directory is new, or is a resumable run of the same experiment;
-10. nothing on the scoring path can reach an arm's name.
+10. nothing on the scoring path can reach an arm's name;
+11. nothing that fires a world event can name an arm, an answer or a scorer's reading.
 
 **A preflight reads and never writes.** It opens clients, asks services whether they are ready
 and recomputes hashes. It creates no run directory, mints no token, prepares no world and calls
@@ -27,7 +28,12 @@ the thing this exists to protect.
 **Failing is the useful outcome.** :func:`require` raises with every failed check named, rather
 than returning a boolean somebody has to remember to read.
 
-**Nothing here has authorised or taken a run.**
+**Passing is a capability, not a note.** :func:`authorise` turns a passing scored report into a
+:class:`~scripts.sur1.authorisation.ScoredAuthorisation` bound to the exact inputs that were
+checked, and the driver and the capture layer ask for that object. This is the only place one is
+minted, so "the preflight ran" stopped being something a caller could be trusted to have done.
+
+**Nothing here has minted a capability against real bindings, and no run has been taken.**
 """
 
 from __future__ import annotations
@@ -40,6 +46,13 @@ from pathlib import Path
 from typing import Any, Final
 
 from scripts.sur1 import predeclaration
+from scripts.sur1.authorisation import (
+    AuthorisationError,
+    RunFingerprint,
+    ScoredAuthorisation,
+    _grant,
+    digest_of,
+)
 from scripts.sur1.bindings import is_real
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.setup import unprogrammed
@@ -48,6 +61,28 @@ from scripts.sur1.evidence import UNDETERMINED, OutboundClassifier
 from scripts.sur1.frozen import ARMS, Contract, FrozenIdentityError
 
 SCORED: Final = "scored"
+
+REQUIRED_CHECKS: Final = (
+    "frozen_identities",
+    "real_bindings",
+    "model_identity",
+    "configuration",
+    "receivers",
+    "classifier_identity",
+    "world_programs",
+    "world_program_freeze",
+    "output_directory",
+    "blinding",
+    "event_blinding",
+)
+"""Every question a scored run must have been asked, named so a partial report cannot mint.
+
+:func:`authorise` refuses a report that does not carry all of these, which is what stops a
+capability being minted from a hand-built report holding one passing check. It is a constant
+rather than a count because a report naming eleven checks, one of which is new and two of which
+are missing, would pass a count. :func:`preflight` is asserted to produce exactly these names,
+so this cannot drift away from what is actually asked.
+"""
 
 FORBIDDEN_ON_THE_SCORING_PATH: Final = (
     "promisepatch",
@@ -538,13 +573,52 @@ def require(report: PreflightReport) -> PreflightReport:
     )
 
 
+def authorise(report: PreflightReport, fingerprint: RunFingerprint) -> ScoredAuthorisation:
+    """Mint the capability a scored run is driven under. The only way one comes into existence.
+
+    Three refusals, and each closes a different way of arriving here without having asked the
+    questions. The report has to *be* a :class:`PreflightReport` rather than an object shaped
+    like one. It has to name every check in :data:`REQUIRED_CHECKS`, so a report carrying a
+    single passing check cannot mint. And every check it names has to have passed, which is
+    :func:`require`'s rule restated as a precondition on authority rather than on proceeding.
+
+    The fingerprint is the caller's observation of the run it is about to drive, and the
+    capability binds it. Nothing here re-observes it: the recomputation that matters happens in
+    :func:`~scripts.sur1.driver.drive`, against the objects the driver was actually handed, which
+    is the only place where a substitution between the preflight and the run would show up.
+    """
+    if not isinstance(report, PreflightReport):
+        raise AuthorisationError(
+            f"a scored authorisation is minted from a preflight report, not from "
+            f"{type(report).__name__}"
+        )
+    if report.kind != SCORED or fingerprint.kind != SCORED:
+        raise AuthorisationError(
+            f"only a scored preflight authorises a scored run: report {report.kind!r}, "
+            f"fingerprint {fingerprint.kind!r}"
+        )
+    missing = tuple(name for name in REQUIRED_CHECKS if name not in {c.name for c in report.checks})
+    if missing:
+        raise AuthorisationError(
+            f"this report did not ask every question a scored run is gated on: {list(missing)}"
+        )
+    if not report.passed:
+        raise PreflightRefusedError(
+            "a scored SUR-1 run cannot be authorised:\n"
+            + "\n".join(f"  - {check.name}: {check.detail}" for check in report.failures)
+        )
+    return _grant(fingerprint, digest_of(report.as_payload()))
+
+
 __all__ = [
     "EVENT_MODULES",
     "FORBIDDEN_SCENARIO_FIELDS",
+    "REQUIRED_CHECKS",
     "SCORED",
     "Check",
     "PreflightRefusedError",
     "PreflightReport",
+    "authorise",
     "blinding",
     "classifier_identity",
     "configuration",
