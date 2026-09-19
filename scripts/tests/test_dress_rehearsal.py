@@ -423,13 +423,21 @@ def test_a_reply_that_is_not_a_literal_decision_has_no_button_and_is_refused() -
 
 
 def test_the_sink_carries_no_sender_channel_or_clock_to_the_endpoint() -> None:
-    """The customer surface has no field for any of them, and neither does this caller."""
-    source = (REPO / "scripts" / "rehearsal" / "world.py").read_text(encoding="utf-8")
-    press = source.split("def _press(")[1].split("def _record(")[0]
+    """The customer surface has no field for any of them, and neither does this caller.
+
+    The press itself now lives in :mod:`scripts.sur1.bindings.consentdoor`, because the scored
+    path needs the same door and two copies of an authority boundary is one copy too many. The
+    rehearsal reaches the endpoint through that module and nowhere else, so this reads it there.
+    """
+    source = (REPO / "scripts" / "sur1" / "bindings" / "consentdoor.py").read_text(encoding="utf-8")
+    press = source.split("def _press(")[1]
     request = press.split("httpx2.post(")[1].split(")")[0]
     assert 'json={"answer": answer}' in request
     for forbidden in ("sender", "channel", "received_at", "text", "now"):
-        assert forbidden not in request, f"the rehearsal sends {forbidden} to the customer endpoint"
+        assert forbidden not in request, f"the door sends {forbidden} to the customer endpoint"
+
+    rehearsal = (REPO / "scripts" / "rehearsal" / "world.py").read_text(encoding="utf-8")
+    assert "httpx2" not in rehearsal, "the rehearsal reaches the customer endpoint only by door"
 
 
 def test_an_unnamed_failure_ends_one_attempt_and_not_the_run(tmp_path: Path) -> None:

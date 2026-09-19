@@ -41,38 +41,23 @@ needed; that workaround is gone and ``ContainerOrderReceiver`` with it.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Final
-from urllib.parse import parse_qs, urlsplit
+from typing import Any
 
-from scripts.sur1.bindings.receivers import (
-    ChannelLedger,
-    DatabaseReader,
-    ReceiverUnreadableError,
-    channel_identity,
+from scripts.sur1.bindings.consentdoor import (
+    ANSWER_FOR_TEXT,
+    APPROVE,
+    DECLINE,
+    NO_BUTTON,
+    OPENED,
+    ConsentDoorError,
+    SignedLinkDoor,
 )
+from scripts.sur1.bindings.receivers import ChannelLedger, DatabaseReader
 from scripts.sur1.bindings.worldsink import LedgerWriter
 from scripts.sur1.evidence import INBOUND, ChannelMessage
-
-APPROVE: Final = "APPROVE"
-DECLINE: Final = "DECLINE"
-ANSWER_FOR_TEXT: Final = {"YES": APPROVE, "NO": DECLINE}
-"""Which button a stipulated literal reply presses.
-
-The mapping is from the two literal words the consent parser reads to the two values the
-customer endpoint's schema permits, and it is total in neither direction on purpose: a reply
-that is not one of those two words has no button on that page, and the rehearsal refuses rather
-than inventing a way to say it.
-"""
-
-LINK_PARAMETER: Final = "approve"
-"""The query parameter the customer page dispatches on, and where the token is in the URL."""
-
-MESSAGE_SEND: Final = "MESSAGE_SEND"
-"""The outbox kind that carries a customer message. Read, never written."""
 
 
 class RehearsalIngressError(RuntimeError):
@@ -128,10 +113,34 @@ class CustomerLinkSink:
             raise RehearsalIngressError(
                 f"delivery {delivery} of {message_id} is outside the {deliveries} declared"
             )
-        token = self._link_for(channel)
-        if token is not None:
-            return self._press(token=token, channel=channel, order=order, text=text)
+        try:
+            receipt = self._door().offer(channel=channel, order=order, text=text)
+        except ConsentDoorError as failure:
+            raise RehearsalIngressError(str(failure)) from failure
+        if receipt["door"] == OPENED:
+            self.receipts.append(receipt)
+            return f"reply:{order}:{receipt['answer']}:via-signed-link:{receipt['status_code']}"
+        if receipt["reason"] == NO_BUTTON:
+            raise RehearsalIngressError(
+                f"{text!r} is neither of the two words the customer page can send; a rehearsal "
+                "reply that is not a literal decision has no button and is not invented one"
+            )
         return self._record(message_id=message_id, channel=channel, order=order, text=text)
+
+    def _door(self) -> SignedLinkDoor:
+        """The benchmark's own door, which this rehearsal uses rather than a second copy of it.
+
+        The mechanism is shared and the *policy* is not, which is the whole difference between
+        the two callers. A scored attempt records the reply on the channel and then offers it
+        here, because ``E2`` must hold the same observable event whatever the door did. A
+        rehearsal presses the link when there is one and records only when there is not, which
+        is what it has always done and what its captures describe.
+        """
+        return SignedLinkDoor(
+            api_base_url=self.api_base_url,
+            database=self.database,
+            timeout_seconds=self.timeout_seconds,
+        )
 
     def move_stock(self, *, resource: str, delta: Decimal, source_id: str, order: str) -> str:
         """The same append-only posting :class:`LiveWorldSink` makes, unchanged."""
@@ -141,79 +150,6 @@ class CustomerLinkSink:
             source_id=source_id,
             recorded_at=datetime.now(UTC),
         )
-
-    # -- the ingress ---------------------------------------------------------------------------
-
-    def _link_for(self, channel: str) -> str | None:
-        """The signed link PromisePatch sent to this channel, if it sent one.
-
-        Read out of the outbox payload, which is the only place a link is. Nothing stores one,
-        no surface hands one out, and this reads the message rather than minting a second link,
-        because a link this harness signed for itself would prove possession of nothing.
-        """
-        try:
-            rows = self.database.rows(
-                "E2",
-                "SELECT payload FROM outbox_messages"
-                f" WHERE kind = '{MESSAGE_SEND}' ORDER BY created_at DESC",
-            )
-        except ReceiverUnreadableError:
-            return None
-        for (payload,) in rows:
-            body = payload if isinstance(payload, dict) else json.loads(payload)
-            # The identity the arming and the fixture speak, not the bare address the row
-            # stores. Read the other way round, this matched nothing and every reply quietly
-            # took the fallback door -- which is a reply PromisePatch never receives.
-            if channel_identity(body) != channel:
-                continue
-            url = body.get("approval_url")
-            if not url:
-                continue
-            found = parse_qs(urlsplit(str(url)).query).get(LINK_PARAMETER)
-            if found:
-                return str(found[0])
-        return None
-
-    def _press(self, *, token: str, channel: str, order: str, text: str) -> str:
-        """Post one answer to the customer approval endpoint, and nothing else.
-
-        No sender field, no channel field, no timestamp and no free text: the endpoint has none,
-        the channel comes out of the signature and the clock comes out of the database.
-        """
-        import httpx2
-
-        literal = text.strip().upper()
-        answer = ANSWER_FOR_TEXT.get(literal)
-        if answer is None:
-            raise RehearsalIngressError(
-                f"{text!r} is neither of the two words the customer page can send; a rehearsal "
-                "reply that is not a literal decision has no button and is not invented one"
-            )
-        try:
-            reply = httpx2.post(
-                f"{self.api_base_url}/api/customer/approval/{token}",
-                json={"answer": answer},
-                timeout=self.timeout_seconds,
-            )
-        except Exception as failure:
-            raise RehearsalIngressError(
-                f"the customer approval surface was unreachable: {type(failure).__name__}: "
-                f"{failure}"
-            ) from failure
-        if reply.status_code not in (200, 202):
-            raise RehearsalIngressError(
-                f"the customer approval surface answered {reply.status_code} to {order}'s reply"
-            )
-        receipt = {
-            "door": "customer-approval-link",
-            "order": order,
-            "channel": channel,
-            "answer": answer,
-            "status_code": reply.status_code,
-            "stored": reply.status_code == 202,
-        }
-        self.receipts.append(receipt)
-        return f"reply:{order}:{answer}:via-signed-link:{reply.status_code}"
 
     def _record(self, *, message_id: str, channel: str, order: str, text: str) -> str:
         """The harness's own transport, for an arm that opened no approval request.
