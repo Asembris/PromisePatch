@@ -31,6 +31,7 @@ run for any scenario in that state. The mechanism is closed; the authoring is na
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -177,14 +178,23 @@ class KitchenWriter:
     holder: UUID
 
     def _execute(self, statement: str, parameters: Sequence[Any]) -> int:
-        import psycopg
+        """One statement, and how many rows it actually moved.
 
-        with (
-            psycopg.connect(_dsn(self.url), autocommit=True, connect_timeout=5) as connection,
-            connection.cursor() as cursor,
-        ):
-            cursor.execute(statement, parameters)
-            return int(cursor.rowcount)
+        ``RETURNING id`` rather than a status tag, because the two answers this class gives --
+        held, or refused because the work was not scheduled -- are the difference between zero
+        rows and one, and a parsed tag is a second place that could be got wrong.
+        """
+        return asyncio.run(self._run(statement, parameters))
+
+    async def _run(self, statement: str, parameters: Sequence[Any]) -> int:
+        import asyncpg
+
+        connection = await asyncpg.connect(dsn=_dsn(self.url), timeout=5)
+        try:
+            moved = await connection.fetch(statement, *parameters)
+        finally:
+            await connection.close()
+        return len(moved)
 
     def hold(self, task_id: str) -> Mapping[str, Any]:
         """Hold one task so work cannot begin. Refused on work that has already started.
@@ -194,9 +204,9 @@ class KitchenWriter:
         first place. An arm that asks is told no, which is a reading about that arm.
         """
         changed = self._execute(
-            "UPDATE production_tasks SET state = %s, held_by_case_id = %s"
-            " WHERE id = %s AND state = %s",
-            (HELD, str(self.holder), task_id, SCHEDULED),
+            "UPDATE production_tasks SET state = $1, held_by_case_id = $2"
+            " WHERE id = $3 AND state = $4 RETURNING id",
+            (HELD, self.holder, task_id, SCHEDULED),
         )
         if changed == 0:
             return {"held": False, "task_id": task_id, "reason": "not scheduled work"}
@@ -204,9 +214,9 @@ class KitchenWriter:
 
     def release(self, task_id: str) -> Mapping[str, Any]:
         changed = self._execute(
-            "UPDATE production_tasks SET state = %s, held_by_case_id = NULL"
-            " WHERE id = %s AND held_by_case_id = %s",
-            (SCHEDULED, task_id, str(self.holder)),
+            "UPDATE production_tasks SET state = $1, held_by_case_id = NULL"
+            " WHERE id = $2 AND held_by_case_id = $3 RETURNING id",
+            (SCHEDULED, task_id, self.holder),
         )
         if changed == 0:
             return {"released": False, "task_id": task_id, "reason": "not held by this attempt"}

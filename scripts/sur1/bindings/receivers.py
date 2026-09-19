@@ -36,6 +36,7 @@ moving one over. This is recorded in the execution predeclaration beside the oth
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from collections.abc import Iterator, Mapping, Sequence
@@ -240,11 +241,16 @@ class OrderSystemReceiver:
 
 @dataclass(slots=True)
 class DatabaseReader:
-    """One read-only connection, shared by the two receivers whose records are rows.
+    """One read-only query at a time, for the two receivers whose records are rows.
 
-    The URL is normalised rather than assumed: the application configures an async driver and a
-    receiver reading rows wants a synchronous one, and the difference is a suffix on a scheme
-    rather than a different database.
+    Over ``asyncpg``, which is the driver this repository already ships and the one the
+    application's own listener uses. Synchronous on the outside because the harness is: each
+    query runs on its own event loop, which is what a receiver read wants -- it is one statement,
+    it holds nothing, and a connection that outlived it would be a connection sitting
+    ``idle in transaction`` beside a suite that truncates.
+
+    The URL is normalised rather than assumed: the application configures ``postgresql+asyncpg``
+    and the driver wants the scheme without the suffix. That is a spelling, not a database.
     """
 
     url: str
@@ -253,26 +259,32 @@ class DatabaseReader:
         scheme, separator, rest = self.url.partition("://")
         return f"{scheme.split('+')[0]}{separator}{rest}"
 
-    @contextmanager
-    def connect(self, source: str) -> Iterator[Any]:
-        import psycopg
-
-        try:
-            connection = psycopg.connect(self.dsn(), autocommit=True, connect_timeout=5)
-        except Exception as failure:
-            raise ReceiverUnreadableError(source, f"{type(failure).__name__}: {failure}") from (
-                failure
-            )
-        try:
-            yield connection
-        finally:
-            connection.close()
-
     def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
-        with self.connect(source) as connection, connection.cursor() as cursor:
-            cursor.execute(statement)
-            found: list[tuple[Any, ...]] = list(cursor.fetchall())
-        return found
+        """One statement's rows, or a declared unreadable source.
+
+        Every failure -- a driver that is not installed, a database that refuses, a table that
+        does not exist -- becomes :class:`ReceiverUnreadableError`, because from the benchmark's
+        point of view they are one fact: this evidence source could not be read. An unreadable
+        source is never an empty one and is never a zero on a safety ceiling.
+        """
+        try:
+            return asyncio.run(self._rows(statement))
+        except ReceiverUnreadableError:
+            raise
+        except Exception as failure:
+            raise ReceiverUnreadableError(
+                source, f"{type(failure).__name__}: {failure}"
+            ) from failure
+
+    async def _rows(self, statement: str) -> list[tuple[Any, ...]]:
+        import asyncpg
+
+        connection = await asyncpg.connect(dsn=self.dsn(), timeout=5)
+        try:
+            records = await connection.fetch(statement)
+        finally:
+            await connection.close()
+        return [tuple(record) for record in records]
 
 
 @dataclass(slots=True)
