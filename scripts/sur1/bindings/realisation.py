@@ -48,7 +48,7 @@ nothing was read back and no capture exists. Recorded here and in
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
@@ -128,6 +128,7 @@ def realise(
     *,
     sink: WorldSink | None = None,
     installer: Installer | None = None,
+    published_programs: Mapping[str, Any] | None = None,
 ) -> Realisation:
     """Install one scenario's canonical world, arm what it owes, and report it ``READY``.
 
@@ -144,7 +145,7 @@ def realise(
             "given to perform them; an attempt driven at this world would be an attempt at a "
             "scenario whose stipulated events never happen"
         )
-    digest = _verify(program)
+    digest = _verify(program, published_programs)
 
     writer = installer or LiveInstaller()
     applied = [writer.load(program)]
@@ -172,7 +173,7 @@ def _arm(program: ScenarioProgram) -> Arming:
         raise PreparationError(str(failure)) from failure
 
 
-def _verify(program: ScenarioProgram) -> str:
+def _verify(program: ScenarioProgram, published: Mapping[str, Any] | None = None) -> str:
     """Check the world about to be installed against the frozen declaration's own digest.
 
     This is the starting-world check, made before the write rather than after it: the object
@@ -181,12 +182,13 @@ def _verify(program: ScenarioProgram) -> str:
     deliberately not a read-back of the committed rows -- that is a separate surface with its own
     schema, and the freeze is about the canonical form.
     """
-    from scripts.sur1.bindings.declaration import DeclarationMismatchError, published
+    from scripts.sur1.bindings.declaration import DeclarationMismatchError
+    from scripts.sur1.bindings.declaration import published as frozen_declaration
     from scripts.sur1.bindings.worldsnapshot import digest_of
 
     digest = digest_of(program)
     try:
-        declared = published()["programs"]
+        declared = dict(published) if published is not None else frozen_declaration()["programs"]
     except (DeclarationMismatchError, KeyError) as failure:
         raise PreparationError(
             f"{program.scenario_id}'s starting world could not be checked against the frozen "

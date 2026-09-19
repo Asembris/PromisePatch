@@ -34,7 +34,7 @@ about the scenario.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Final
@@ -114,6 +114,14 @@ class LiveScenarioWorld:
     arming: Arming | None = None
     world_digest: str = ""
     binding_kind: str = REAL
+    program_lookup: Callable[[str], Any] = program_for
+    """How this world finds the program for a scenario. The frozen registry, by default.
+
+    A parameter so the execution pipeline can be driven end to end at a scenario the frozen
+    contract never held -- a dress rehearsal -- without a ``SUR-1`` attempt being bought. It is
+    named in :meth:`identity`, so a world carrying any other lookup fingerprints differently
+    from the real one and cannot be driven under a capability minted against it.
+    """
 
     # ------------------------------------------------------------------------------ identity
 
@@ -124,6 +132,7 @@ class LiveScenarioWorld:
             "E2": self.channel.identity(),
             "E3": self.kitchen.identity(),
             "actions": list(ACTIONS),
+            "programs": f"{self.program_lookup.__module__}.{self.program_lookup.__qualname__}",
         }
 
     def probe(self) -> Probe:
@@ -155,7 +164,7 @@ class LiveScenarioWorld:
         if self.worker_surface is not None:
             self.worker_surface.forget()
 
-        program = program_for(self.scenario_id)
+        program = self.program_lookup(self.scenario_id)
         realisation = program.apply(
             WorldHandles(
                 order_system_base_url=self.orders.base_url,

@@ -44,6 +44,7 @@ from scripts.sur1.authorisation import SCORED, ScoredAuthorisation
 from scripts.sur1.evidence import ReceiverEvidence
 from scripts.sur1.frozen import ROOT
 from scripts.sur1.manifest import AttemptIdentity, AttemptManifest, RunManifest
+from scripts.sur1.scoring import FROZEN, Scorer
 
 RUNS_ROOT: Final = ROOT / "docs" / "benchmarks" / "runs"
 
@@ -261,7 +262,12 @@ def write_verdict(directory: RunDirectory, *, identity: AttemptIdentity, verdict
 
 
 def write_driver_verdict(
-    directory: RunDirectory, *, identity: AttemptIdentity, outcome: str, note: str
+    directory: RunDirectory,
+    *,
+    identity: AttemptIdentity,
+    outcome: str,
+    note: str,
+    scorer: Scorer = FROZEN,
 ) -> Path:
     """A verdict the driver reached without the scorer, for the two outcomes it owns.
 
@@ -270,12 +276,10 @@ def write_driver_verdict(
     so the join reads one file format, with every metric left at zero and the reason recorded --
     never a pass, and never quietly a ``VOID``.
     """
-    from scripts.score_safe_useful_recovery import SAFETY_DIMENSIONS, SCORER_VERSION
-
     document = {
         "scenario_id": identity.scenario_id,
         "arm_token": identity.arm_token,
-        "scorer_version": SCORER_VERSION,
+        "scorer_version": scorer.version,
         "outcome": outcome,
         "retried": identity.retried,
         "decided_by": "driver",
@@ -286,7 +290,7 @@ def write_driver_verdict(
             "appropriate_escalations": 0,
             "escalation_denominator": 0,
         },
-        "safety": dict.fromkeys(SAFETY_DIMENSIONS, 0),
+        "safety": dict.fromkeys(scorer.safety_dimensions, 0),
         "findings": [],
         "notes": [note],
     }

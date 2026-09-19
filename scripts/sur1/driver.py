@@ -52,7 +52,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from scripts.score_safe_useful_recovery import ScenarioVerdict, score
+from scripts.score_safe_useful_recovery import ScenarioVerdict
 from scripts.sur1 import DRIVER_VERSION
 from scripts.sur1.arms import (
     ArmAdapter,
@@ -87,6 +87,7 @@ from scripts.sur1.manifest import (
     implementation,
     utc_now,
 )
+from scripts.sur1.scoring import FROZEN, Scorer
 
 RETRYABLE: Final = frozenset({"VOID"})
 """The one cause the contract permits a retry for. Widening this widens the benchmark."""
@@ -97,6 +98,16 @@ MAX_ATTEMPTS: Final = 2
 
 class PredeclarationError(RuntimeError):
     """A scored run was asked for under a rule nobody declared."""
+
+
+class UnsubstitutableScoredRunError(RuntimeError):
+    """A scored run was asked for against a contract or a scorer that is not the published one.
+
+    The seam exists so the execution pipeline can be driven end to end at a scenario the frozen
+    document never held -- a dress rehearsal -- without buying a scored attempt. What it must
+    never become is a way to produce a scored artefact against ground truth or a metric somebody
+    supplied, so ``kind="scored"`` refuses both parameters outright rather than validating them.
+    """
 
 
 class UnauthorisedScoredRunError(RuntimeError):
@@ -199,6 +210,7 @@ def score_attempt(
     run_id: str,
     fixtures: FixtureMap,
     classifier: OutboundClassifier,
+    scorer: Scorer = FROZEN,
 ) -> str:
     """Score one captured attempt, blind, and write the verdict beside it.
 
@@ -216,6 +228,7 @@ def score_attempt(
             identity=identity,
             outcome=recorded,
             note=str(document["attempt"]["note"]),
+            scorer=scorer,
         )
         return recorded
 
@@ -234,10 +247,11 @@ def score_attempt(
             identity=identity,
             outcome="HARNESS_FAILURE",
             note=f"the evidence could not be placed: {malformed}",
+            scorer=scorer,
         )
         return "HARNESS_FAILURE"
 
-    verdict: ScenarioVerdict = score(bundle)
+    verdict: ScenarioVerdict = scorer.score(bundle)
     write_verdict(directory, identity=identity, verdict=verdict)
     return verdict.outcome
 
@@ -275,6 +289,8 @@ def drive(
     scenarios: Sequence[str] = (),
     root: Path = RUNS_ROOT,
     authorisation: ScoredAuthorisation | None = None,
+    contract: Contract | None = None,
+    scorer: Scorer | None = None,
 ) -> RunDirectory:
     """Drive every arm over every scenario, resuming whatever already finished.
 
@@ -295,7 +311,15 @@ def drive(
     and letting it consume an authorisation would be the one way a scored capability could be
     spent on something that is not a scored run.
     """
-    contract = Contract.load()
+    if kind == SCORED and (contract is not None or scorer is not None):
+        raise UnsubstitutableScoredRunError(
+            "a scored SUR-1 run is driven against the frozen contract and scored by the "
+            "published scorer; both are pinned by their own hashes and neither is a parameter "
+            "of a scored run. A caller with its own contract or its own scorer is driving "
+            "something that is not SUR-1, which is what kind='development' is for."
+        )
+    contract = contract if contract is not None else Contract.load()
+    scorer = scorer if scorer is not None else FROZEN
     if kind == SCORED:
         if classifier is UNDETERMINED:
             raise PredeclarationError(
@@ -370,6 +394,7 @@ def drive(
                 manifest=manifest,
                 fixtures=fixtures,
                 classifier=classifier,
+                scorer=scorer,
             )
     return directory
 
@@ -386,6 +411,7 @@ def _drive_scenario(
     manifest: RunManifest,
     fixtures: FixtureMap,
     classifier: OutboundClassifier,
+    scorer: Scorer = FROZEN,
 ) -> None:
     """One arm at one scenario, with at most one retry and only for a void."""
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -413,6 +439,7 @@ def _drive_scenario(
                 run_id=manifest.run_id,
                 fixtures=fixtures,
                 classifier=classifier,
+                scorer=scorer,
             )
         if outcome not in RETRYABLE:
             return
