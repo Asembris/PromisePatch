@@ -554,7 +554,14 @@ class FakeInstaller:
 
     loaded: list[str] = field(default_factory=list)
     crossed: list[str] = field(default_factory=list)
+    reset_calls: list[str] = field(default_factory=list)
     refuse: str = ""
+
+    def reset(self, handles: Any) -> str:
+        self.reset_calls.append("order-system")
+        if self.refuse == "reset":
+            raise PreparationError("the order system refused")
+        return "order-system:reset"
 
     def load(self, program: ScenarioProgram) -> str:
         if self.refuse == "load":
@@ -583,7 +590,9 @@ def test_every_scenario_realises_ready_with_its_world_installed_and_its_events_a
 
         assert realisation.state == READY and realisation.ready, scenario_id
         assert installer.loaded == [scenario_id]
-        assert realisation.applied[0] == f"load:hollow-oak+sur1-{scenario_id}"
+        assert installer.reset_calls == ["order-system"], scenario_id
+        assert realisation.applied[0] == "order-system:reset"
+        assert realisation.applied[1] == f"load:hollow-oak+sur1-{scenario_id}"
         assert realisation.arming.state == ARMED
         assert realisation.arming.log == ()
         assert realisation.arming.pending == realisation.arming.planned
@@ -599,8 +608,9 @@ def test_a_realisation_installs_the_world_before_it_crosses_an_external_change(
         realisation = realised(built[scenario_id], installer)
 
         assert installer.crossed == [order], scenario_id
-        assert realisation.applied[0].startswith("load:")
-        assert realisation.applied[1].startswith(f"external-change:{order}")
+        assert realisation.applied[0] == "order-system:reset"
+        assert realisation.applied[1].startswith("load:")
+        assert realisation.applied[2].startswith(f"external-change:{order}")
 
 
 def test_only_the_two_scenarios_the_contract_stipulates_cross_the_order_system(
@@ -741,3 +751,30 @@ def test_a_realisation_describes_itself_without_naming_an_arm(
     assert payload["armed"]["fired"] == []
     rendered = repr(payload)
     assert not any(arm in rendered for arm in ARMS)
+
+
+def test_preparing_a_world_resets_the_order_system_it_is_about_to_be_amended_against(
+    built: dict[str, ScenarioProgram],
+) -> None:
+    """The world is three systems, and a clean fixture is a clean fixture in all three.
+
+    The graph load gives PromisePatch an order book at version 1. The order simulator keeps
+    whatever versions the previous attempt left it at, because nothing reset it. An amendment
+    carrying ``expected_version: 1`` against an order the last attempt moved to 2 is answered
+    ``409 Conflict``, the recovery is abandoned and the promise escalates -- so only the very
+    first attempt of a run would ever have had a clean order book. Observed on the dress
+    rehearsal: arm B amended EXT-A and was refused EXT-B, and arm C was refused both.
+    """
+    installer = FakeInstaller()
+    realisation = realised(built["C01"], installer)
+
+    assert installer.reset_calls == ["order-system"]
+    assert realisation.applied[0] == "order-system:reset", "the order book is cleaned first"
+
+
+def test_a_world_whose_order_system_will_not_reset_is_never_reported_ready(
+    built: dict[str, ScenarioProgram],
+) -> None:
+    """A half-prepared world is never carried on as a prepared one."""
+    with pytest.raises(PreparationError, match="order system refused"):
+        realised(built["C01"], FakeInstaller(refuse="reset"))

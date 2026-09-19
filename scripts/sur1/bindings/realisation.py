@@ -24,9 +24,19 @@ deliberate and every stage of it can only fail closed:
    stipulated event no observable trigger can honestly fire;
 2. the world about to be installed is checked against the frozen declaration's own digest for
    that scenario, so a program that drifted from the freeze refuses before it is written;
-3. the canonical graph is installed through the governed fixture load;
-4. each pre-incident external change crosses into the order system's own record;
-5. the declared events are armed, and only then is ``READY`` returned.
+3. the external order system is put back to its seeded order book;
+4. the canonical graph is installed through the governed fixture load;
+5. each pre-incident external change crosses into the order system's own record;
+6. the declared events are armed, and only then is ``READY`` returned.
+
+**The world is three systems and all three are prepared.** Step 3 exists because the world an arm
+acts on is the order system, the customer channel and the kitchen, and resetting two of them is
+not a clean fixture. The graph load gives PromisePatch an order book at version 1; the order
+simulator keeps whatever versions the previous attempt left it at; and an amendment carrying
+``expected_version: 1`` against an order the last attempt moved to 2 is answered ``409 Conflict``,
+the recovery is abandoned and the promise escalates. Only the very first attempt of a run would
+have seen a clean order book. It is reset **after** the two refusals above, so a scenario that
+cannot be realised does not cost the order book.
 
 A realisation that could not complete raises
 :class:`~scripts.sur1.bindings.setup.PreparationError`, the driver records ``HARNESS_FAILURE``
@@ -99,12 +109,14 @@ class Realisation:
 
 
 class Installer(Protocol):
-    """The two writes a realisation makes, kept behind a name so their order can be proved.
+    """The three writes a realisation makes, kept behind a name so their order can be proved.
 
     A test can hand :func:`realise` an installer that refuses and assert that nothing reports
     ``READY``, without a database, an order system, or a single row written. The default is the
     live one and there is no configuration by which a run could choose another.
     """
+
+    def reset(self, handles: WorldHandles) -> str: ...
 
     def load(self, program: ScenarioProgram) -> str: ...
 
@@ -136,6 +148,9 @@ class LiveInstaller:
     install the declared world at an instant the engine's own bakery-day arithmetic can still
     read, without describing a different world.
     """
+
+    def reset(self, handles: WorldHandles) -> str:
+        return _reset(handles)
 
     def load(self, program: ScenarioProgram) -> str:
         return _load(program, expected_database=self.expected_database, anchor=self.anchor)
@@ -171,7 +186,7 @@ def realise(
     digest = _verify(program, published_programs)
 
     writer = installer or LiveInstaller(expected_database=handles.database.url, anchor=anchor)
-    applied = [writer.load(program)]
+    applied = [writer.reset(handles), writer.load(program)]
     for step in program.steps:
         if isinstance(step, ExternalRepin):
             applied.append(writer.cross(step, handles))
@@ -246,6 +261,29 @@ def _endpoint(url: str) -> tuple[str, str]:
 
 def _same_database(migration_url: str, expected: str) -> bool:
     return _endpoint(migration_url) == _endpoint(expected)
+
+
+def _reset(handles: WorldHandles) -> str:
+    """Put the external order system back to its seeded order book, through its own endpoint.
+
+    Its own surface and not a write into its store: the order system is a separate application
+    and its state is its to restore. ``POST /admin/reset`` is the endpoint it publishes for
+    exactly this.
+    """
+    import httpx2
+
+    try:
+        answer = httpx2.post(f"{handles.order_system_base_url}/admin/reset", timeout=30.0)
+    except Exception as failure:
+        raise PreparationError(
+            f"the order system could not be reset: {type(failure).__name__}: {failure}"
+        ) from failure
+    if answer.status_code != 200:
+        raise PreparationError(
+            f"the order system answered {answer.status_code} to a reset; an attempt driven at "
+            "an order book the last attempt moved would be answered 409 on every amendment"
+        )
+    return "order-system:reset"
 
 
 def _load(program: ScenarioProgram, *, expected_database: str = "", anchor: Any = None) -> str:
