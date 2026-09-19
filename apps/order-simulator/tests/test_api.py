@@ -9,7 +9,7 @@ from starlette.testclient import TestClient
 from order_contract import amendments
 from order_contract.amendments import AmendmentRequest, AmendmentResult
 from order_contract.events import SCHEMA_VERSION, OrderSnapshot
-from order_simulator import ui
+from order_simulator import capabilities, ui
 
 LENA_ORDER = "EXT-D"
 LENA_LINE = "ol-d"
@@ -354,3 +354,49 @@ def test_a_since_that_is_not_an_instant_is_refused(client: TestClient) -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "SINCE_NOT_AN_INSTANT"
+
+
+def test_this_build_says_which_projection_it_publishes(client: TestClient) -> None:
+    """A reader can ask what the admin log carries instead of inferring it from an image date.
+
+    The capability names are what a reader depends on -- that the committed body is published,
+    and that it carries the command -- rather than a release number nobody can check against
+    behaviour.
+    """
+    declared = client.get("/admin/capabilities").json()
+
+    assert declared["service"] == "order-simulator"
+    assert set(declared["capabilities"]) >= {
+        capabilities.COMMITTED_BODY,
+        capabilities.COMMAND_IDEMPOTENCY_KEY,
+        capabilities.PREVIOUS_VERSION,
+    }
+    assert "command" in declared["projection"]["admin_events"]["body_fields"]
+
+
+def test_the_declared_projection_is_the_one_the_endpoint_actually_publishes(
+    client: TestClient,
+) -> None:
+    """The declaration is checked against the document, so the two cannot drift apart.
+
+    This is the whole worth of the capability route: a build that advertised a field it had
+    stopped publishing would be worse than one that advertised nothing.
+    """
+    post_amendment(client, an_amendment(), key="pp:amend:one")
+    declared = client.get("/admin/capabilities").json()["projection"]["admin_events"]
+
+    entry = client.get("/admin/events").json()["events"][0]
+
+    assert sorted(entry) == sorted(declared["entry_fields"])
+    assert sorted(entry["event"]) == sorted(declared["body_fields"])
+
+
+def test_the_declared_entry_fields_are_the_constant_a_reader_is_given(
+    client: TestClient,
+) -> None:
+    """``ADMIN_EVENT_ENTRY_FIELDS`` is the published list, not a second copy of it."""
+    post_amendment(client, an_amendment(), key="pp:amend:one")
+
+    entry = client.get("/admin/events").json()["events"][0]
+
+    assert sorted(entry) == sorted(capabilities.ADMIN_EVENT_ENTRY_FIELDS)

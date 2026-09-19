@@ -38,7 +38,7 @@ from order_contract.amendments import (
     ErrorResponse,
 )
 from order_contract.events import SCHEMA_VERSION, OrderSnapshot
-from order_simulator import ui
+from order_simulator import capabilities, ui
 from order_simulator.config import Settings, get_settings
 from order_simulator.observability import configure_logging, get_logger
 from order_simulator.store import EVENT_PAGE, OrderStore, SimulatorError
@@ -228,22 +228,20 @@ def create_app(settings: Settings | None = None, *, deliver: bool = True) -> Fas
                 "since": None if moment is None else moment.isoformat(),
                 "truncated": truncated,
                 "events": [
-                    {
-                        "event_id": str(event.event_id),
-                        "external_order_id": event.external_order_id,
-                        "type": event.type,
-                        "previous_version": event.previous_version,
-                        "version": event.version,
-                        "occurred_at": event.occurred_at.isoformat(),
-                        "source": event.source,
-                        "delivery_state": event.state,
-                        "attempts": event.attempts,
-                        "event": json.loads(event.body),
-                    }
-                    for event in events
+                    capabilities.event_entry(event, body=json.loads(event.body)) for event in events
                 ],
             }
         )
+
+    @app.get("/admin/capabilities", summary="What this build of the order system publishes")
+    async def admin_capabilities() -> dict[str, Any]:
+        """The shape of the admin projection, so a reader can ask instead of assuming.
+
+        A build that predates this route answers ``404``, which is a usable answer: it says the
+        process is older than the projection the caller is about to depend on. See
+        :mod:`order_simulator.capabilities`.
+        """
+        return capabilities.declaration()
 
     @app.post("/admin/reset", summary="Put the demo order book back to its seeded state")
     async def reset() -> dict[str, Any]:
