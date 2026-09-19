@@ -109,9 +109,10 @@ def stack(environ: Mapping[str, str] | None = None) -> BindingConfig:
         f"http://127.0.0.1:{port('PROMISEPATCH_API_PUBLISHED_PORT', '58000')}"
     )
     # The login endpoint matches ``Origin`` against ``PP_CORS_ORIGINS`` by exact string, and that
-    # allowlist names the browser origins rather than the API's own. ``BindingConfig`` defaults
-    # the origin to the API URL, which that endpoint answers 403 to, so the rehearsal reads the
-    # allowlist the API was actually configured with and sends the first origin on it.
+    # allowlist names the browser origins rather than the API's own. ``BindingConfig`` has no
+    # default for it at all -- the one it used to have was a value the product answers 403 to --
+    # so the rehearsal reads the allowlist the API was actually configured with and sends the
+    # first origin on it, which is what ``SUR1_WORKSPACE_ORIGIN`` names for a scored run.
     allowed = [
         origin.strip()
         for origin in _values(API_ENV).get("PP_CORS_ORIGINS", "").split(",")
