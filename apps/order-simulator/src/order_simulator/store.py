@@ -152,6 +152,12 @@ _SCHEMA: Final[tuple[str, ...]] = (
     "CREATE INDEX IF NOT EXISTS ix_webhook_deliveries_state ON webhook_deliveries(state)",
 )
 
+EVENT_PAGE: Final = 200
+"""How many events ``events`` returns when a reader names no window of its own."""
+
+EVENT_PAGE_MAX: Final = 2000
+"""The largest window one read may ask for, so a log read stays one bounded answer."""
+
 SOURCE_OPERATOR: Final = "operator"
 SOURCE_AMENDMENT: Final = "amendment"
 """Who made a change. Recorded on the event row so the operator screen can say which it was."""
@@ -185,6 +191,28 @@ class DeliveryClaim:
     event_id: UUID
     attempts: int
     body: str
+
+
+@dataclass(frozen=True, slots=True)
+class CommittedEvent:
+    """One committed event, whole: the published message and where its delivery got to.
+
+    ``body`` is the exact :class:`~order_contract.events.OrderEvent` this system committed and
+    hands to a webhook subscriber -- the same bytes, read rather than re-derived. An audit of
+    this system asks the same question a subscriber does, and answering it with a summary that
+    drops the command that caused the change would make the log unable to say who asked.
+    """
+
+    event_id: UUID
+    external_order_id: str
+    type: str
+    previous_version: int | None
+    version: int
+    occurred_at: datetime
+    source: str
+    body: str
+    state: str
+    attempts: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -419,6 +447,51 @@ class OrderStore:
                 last_error=row["last_error"],
             )
             for row in rows
+        )
+
+    def events(
+        self, *, since: datetime | None = None, limit: int = EVENT_PAGE
+    ) -> tuple[tuple[CommittedEvent, ...], bool]:
+        """The committed event log, oldest first, with whether the window was cut short.
+
+        Chronological rather than newest-first, because this is the log and not the operator
+        screen: a reader following the system forwards from an instant wants the next events in
+        the order they happened.
+
+        ``limit`` is a window and never a silent one. The second half of the answer says whether
+        more events matched than were returned, so a reader that stopped early knows it did --
+        a truncated log that looked complete would let an audit conclude something never
+        happened when it simply was not fetched.
+        """
+        window = max(1, min(int(limit), EVENT_PAGE_MAX))
+        clause = "" if since is None else " WHERE e.occurred_at >= ?"
+        parameters: tuple[Any, ...] = () if since is None else (_iso(since),)
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT e.event_id, e.external_order_id, e.type, e.previous_version, e.version,"
+                " e.occurred_at, e.source, e.payload, d.state, d.attempts"
+                " FROM order_events e JOIN webhook_deliveries d ON d.event_id = e.event_id"
+                f"{clause} ORDER BY e.seq LIMIT ?",
+                (*parameters, window + 1),
+            ).fetchall()
+        truncated = len(rows) > window
+        return (
+            tuple(
+                CommittedEvent(
+                    event_id=UUID(row["event_id"]),
+                    external_order_id=row["external_order_id"],
+                    type=row["type"],
+                    previous_version=row["previous_version"],
+                    version=row["version"],
+                    occurred_at=_moment(row["occurred_at"]),
+                    source=row["source"],
+                    body=str(row["payload"]),
+                    state=row["state"],
+                    attempts=row["attempts"],
+                )
+                for row in rows[:window]
+            ),
+            truncated,
         )
 
     def event_body(self, event_id: UUID) -> str:

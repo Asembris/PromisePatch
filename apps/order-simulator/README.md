@@ -29,7 +29,7 @@ monotonic counter, and it is the number PromisePatch mirrors.
 | `GET /orders`, `GET /orders/{id}` | the authoritative current state of an order |
 | `POST /orders/{id}/amendments` | one governed recovery amendment, keyed by `Idempotency-Key` |
 | `POST /admin/reset` | put the demo order book back |
-| `GET /admin/events` | recent events and where each delivery got to |
+| `GET /admin/events` | the committed event log, oldest first, each entry carrying the event body a webhook subscriber is handed and where its delivery got to; `since` and `limit` window it and `truncated` says when the window cut it short |
 | `GET /healthz`, `GET /readyz` | liveness, and whether the store is open and seeded |
 
 Every committed mutation writes its order change, its version bump and its event in one SQLite

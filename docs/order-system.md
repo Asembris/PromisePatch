@@ -102,7 +102,7 @@ Without Docker: `uv run order-simulator` (it reads `OS_*` from the environment).
 ```bash
 curl -X POST http://localhost:58100/admin/reset     # put the demo order book back
 curl http://localhost:58100/orders                  # what the order system currently holds
-curl http://localhost:58100/admin/events            # recent events and their delivery state
+curl http://localhost:58100/admin/events            # the committed event log and its delivery state
 ```
 
 The operator screen at <http://localhost:58100> lists the six demo orders with their version,

@@ -22,8 +22,10 @@ demo lie.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import FastAPI, Form, Header, Response
@@ -39,7 +41,7 @@ from order_contract.events import SCHEMA_VERSION, OrderSnapshot
 from order_simulator import ui
 from order_simulator.config import Settings, get_settings
 from order_simulator.observability import configure_logging, get_logger
-from order_simulator.store import OrderStore, SimulatorError
+from order_simulator.store import EVENT_PAGE, OrderStore, SimulatorError
 from order_simulator.webhooks import WebhookDispatcher
 
 logger = get_logger(__name__)
@@ -191,24 +193,57 @@ def create_app(settings: Settings | None = None, *, deliver: bool = True) -> Fas
         )
         return JSONResponse(content=result.model_dump(mode="json"))
 
-    @app.get("/admin/events", summary="Recent order events and their delivery state")
-    async def recent_events() -> dict[str, Any]:
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "events": [
-                {
-                    "event_id": str(delivery.event_id),
-                    "external_order_id": delivery.external_order_id,
-                    "type": delivery.type,
-                    "version": delivery.version,
-                    "occurred_at": delivery.occurred_at.isoformat(),
-                    "source": delivery.source,
-                    "delivery_state": delivery.state,
-                    "attempts": delivery.attempts,
-                }
-                for delivery in store.latest_deliveries()
-            ],
-        }
+    @app.get("/admin/events", summary="The committed event log and each event's delivery state")
+    async def recent_events(since: str | None = None, limit: int = EVENT_PAGE) -> Response:
+        """Every committed event, oldest first, each carrying the message that left this system.
+
+        ``event`` is the published :class:`~order_contract.events.OrderEvent` itself, read out
+        of the row it was committed on. It is the same document a webhook subscriber is handed,
+        so an auditor reading this system's own log sees what its subscribers saw -- including
+        the command that caused a change, which is the only thing that says whose amendment it
+        was rather than merely that the order moved.
+
+        ``since`` is an ISO-8601 instant and ``limit`` a window; ``truncated`` says whether more
+        events matched than were returned, because a log that stopped early and looked complete
+        would let a reader conclude something never happened.
+        """
+        moment: datetime | None = None
+        if since is not None:
+            try:
+                moment = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            except ValueError:
+                return _error(
+                    SimulatorError(
+                        "SINCE_NOT_AN_INSTANT",
+                        "since must be an ISO-8601 instant",
+                        status=400,
+                    )
+                )
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=UTC)
+        events, truncated = store.events(since=moment, limit=limit)
+        return JSONResponse(
+            content={
+                "schema_version": SCHEMA_VERSION,
+                "since": None if moment is None else moment.isoformat(),
+                "truncated": truncated,
+                "events": [
+                    {
+                        "event_id": str(event.event_id),
+                        "external_order_id": event.external_order_id,
+                        "type": event.type,
+                        "previous_version": event.previous_version,
+                        "version": event.version,
+                        "occurred_at": event.occurred_at.isoformat(),
+                        "source": event.source,
+                        "delivery_state": event.state,
+                        "attempts": event.attempts,
+                        "event": json.loads(event.body),
+                    }
+                    for event in events
+                ],
+            }
+        )
 
     @app.post("/admin/reset", summary="Put the demo order book back to its seeded state")
     async def reset() -> dict[str, Any]:

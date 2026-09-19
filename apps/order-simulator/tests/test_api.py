@@ -276,3 +276,81 @@ def test_the_admin_reset_restores_the_seeded_book(client: TestClient) -> None:
 
     assert client.post("/admin/reset").json() == {"reset": True, "orders": 6}
     assert client.get("/admin/events").json()["events"] == []
+
+
+def test_the_event_log_carries_the_message_a_subscriber_is_handed(client: TestClient) -> None:
+    """The command, the previous version and the line's item are in the log, not only on a wire.
+
+    A summary that dropped the command could say an order moved and never say whose amendment
+    moved it. These are the fields the published ``OrderEvent`` carries, read back out of this
+    system's own record rather than re-derived from the order.
+    """
+    post_amendment(client, an_amendment(), key="pp:amend:one")
+
+    entry = client.get("/admin/events").json()["events"][0]
+    event = entry["event"]
+
+    assert entry["previous_version"] == 1
+    assert event["previous_version"] == 1
+    assert event["command"]["idempotency_key"] == "pp:amend:one"
+    assert event["changed_line_ids"] == [LENA_LINE]
+    changed = {line["external_line_id"]: line for line in event["order"]["lines"]}
+    assert changed[LENA_LINE]["external_item_id"] == LEMON_CURD
+
+
+def test_an_operator_change_is_logged_with_no_command_rather_than_a_guessed_one(
+    client: TestClient,
+) -> None:
+    """Nobody asked this system's permission, so the event names no commander."""
+    client.post(
+        f"/ui/orders/{LENA_ORDER}/lines/{LENA_LINE}",
+        data={"to_item_id": LEMON_CURD},
+        follow_redirects=False,
+    )
+
+    entry = client.get("/admin/events").json()["events"][0]
+
+    assert entry["source"] == "operator"
+    assert entry["event"]["command"] is None
+
+
+def test_the_log_reads_forwards_from_an_instant(client: TestClient) -> None:
+    post_amendment(client, an_amendment(), key="pp:amend:one")
+    first = client.get("/admin/events").json()["events"][0]
+    post_amendment(
+        client,
+        an_amendment(expected_version=2, from_item_id=LEMON_CURD, to_item_id=RASPBERRY_LEMON),
+        key="pp:amend:two",
+    )
+
+    whole = client.get("/admin/events").json()["events"]
+    later = client.get("/admin/events", params={"since": first["occurred_at"]}).json()
+
+    assert [entry["version"] for entry in whole] == [2, 3]
+    assert later["since"] == first["occurred_at"]
+    assert [entry["version"] for entry in later["events"]] == [2, 3]
+
+
+def test_a_window_that_cut_the_log_short_says_so(client: TestClient) -> None:
+    """A truncated log that looked complete would let a reader conclude nothing else happened."""
+    post_amendment(client, an_amendment(), key="pp:amend:one")
+    post_amendment(
+        client,
+        an_amendment(expected_version=2, from_item_id=LEMON_CURD, to_item_id=RASPBERRY_LEMON),
+        key="pp:amend:two",
+    )
+
+    cut = client.get("/admin/events", params={"limit": 1}).json()
+    whole = client.get("/admin/events").json()
+
+    assert cut["truncated"] is True
+    assert len(cut["events"]) == 1
+    assert whole["truncated"] is False
+    assert len(whole["events"]) == 2
+
+
+def test_a_since_that_is_not_an_instant_is_refused(client: TestClient) -> None:
+    response = client.get("/admin/events", params={"since": "yesterday"})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "SINCE_NOT_AN_INSTANT"
