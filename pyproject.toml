@@ -144,8 +144,10 @@ module = ["jmespath.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# The SUR-1 receivers read PostgreSQL rows over psycopg, which ships no stubs. Reads only: the
-# two evidence sources that are rows are read through it, and nothing in `scripts/sur1` writes.
+# The SUR-1 bindings reach PostgreSQL over psycopg, which ships no stubs. Two evidence sources
+# are rows and are read through it, and the kitchen facility that performs `hold_task` and
+# `release_task` for an arm that is not PromisePatch writes through it. Measurement only: nothing
+# under `scripts/` is synced into a runtime image.
 module = ["psycopg.*"]
 ignore_missing_imports = true
 
