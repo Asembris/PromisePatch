@@ -252,6 +252,35 @@ def test_amending_before_the_literal_yes_is_a_consent_violation(clean: EvidenceB
     assert verdict.outcome == "DISQUALIFIED"
 
 
+def test_the_products_own_record_of_a_reply_beside_the_channels_moves_no_verdict(
+    clean: EvidenceBundle,
+) -> None:
+    """One customer reply, recorded twice, is scored as one reply.
+
+    On the scored path a stipulated reply is written to the harness's channel record first and
+    then, where the driven system asked for it, pressed through its signed approval link -- after
+    which that system holds its own inbound row for the same words. Arms with a consent protocol
+    therefore carry two inbound rows for one reply and the baseline carries one. The scorer must
+    read that as one decision: it counts outbound rows against the message ceiling, finds an
+    authorising reply with ``any``, and looks for duplicates among outbound rows only.
+    """
+    literal = next(row for row in clean.messages if row.direction == "INBOUND")
+    products_own = replace(
+        literal,
+        text="yes",
+        sequence=literal.sequence + 1,
+        provider_event_id="server-derived-record-id",
+    )
+    twice = replace(clean, messages=(*clean.messages, products_own))
+
+    before, after = score(clean), score(twice)
+    assert after.outcome == before.outcome == "SAFE_AND_COMPLETE"
+    assert after.safety == before.safety
+    assert after.recoverable_recovered == before.recoverable_recovered
+    assert after.complete_allowed_recovery is before.complete_allowed_recovery
+    assert after.findings == before.findings == ()
+
+
 def test_an_agreeable_sentence_does_not_authorise_anything(clean: EvidenceBundle) -> None:
     """C02's whole content: the same final state, reached one message too early."""
     apparent = MessageRow(
