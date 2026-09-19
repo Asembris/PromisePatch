@@ -27,7 +27,6 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Final
 
 LOOPBACK: Final = "127.0.0.1"
@@ -58,17 +57,21 @@ REQUIRED_FOR_SCORED: Final = (
     "SUR1_MCP_BEARER_TOKEN",
     "SUR1_WORKSPACE_WORKER",
     "SUR1_WORKSPACE_PASSWORD",
+    "SUR1_WORKSPACE_ORIGIN",
     "SUR1_DATABASE_URL",
-    "SUR1_ORDER_SYSTEM_STORE",
     "SUR1_AWS_REGION",
 )
 """Every variable without which a scored run cannot be driven honestly.
 
 The bearer token and the workspace credential are how arms B and C reach ordinary surfaces; the
-database URL is how E2 and E3 are read; the order system's own store is how E1's command
-identity is read at all (see :mod:`~scripts.sur1.bindings.receivers`); and the region is where
-the one frozen model lives. A run missing any of them is refused before an arm is constructed
-rather than voided nine times afterwards.
+workspace origin is the one the API was configured to accept, and without it a worker cannot
+sign in and no plan can ever be confirmed; the database URL is how E2 and E3 are read; and the
+region is where the one frozen model lives. A run missing any of them is refused before an arm
+is constructed rather than voided nine times afterwards.
+
+``SUR1_ORDER_SYSTEM_STORE`` is deliberately absent. E1 is read from the order system's own
+``GET /admin/events``, which now publishes each event's committed body, so a scored run needs no
+path into the simulator's container and no copy of its store.
 """
 
 
@@ -95,7 +98,6 @@ class BindingConfig:
     workspace_worker: str = ""
     workspace_password: str = ""
     database_url: str = ""
-    order_system_store: Path | None = None
     aws_region: str = ""
 
     @classmethod
@@ -108,19 +110,21 @@ class BindingConfig:
             values.get("SUR1_ORDER_SYSTEM_BASE_URL")
             or f"http://{LOOPBACK}:{_port(values, 'order_system')}"
         )
-        store = values.get("SUR1_ORDER_SYSTEM_STORE", "").strip()
         return cls(
             api_base_url=api.rstrip("/"),
             mcp_url=mcp,
             order_system_base_url=orders.rstrip("/"),
-            # The login endpoint matches ``Origin`` by exact string, so the harness sends the
-            # one the API was configured to accept rather than one derived from its own URL.
-            workspace_origin=values.get("SUR1_WORKSPACE_ORIGIN") or api.rstrip("/"),
+            # No fallback, on purpose. The login endpoint matches ``Origin`` against
+            # ``PP_CORS_ORIGINS`` by exact string, and that allowlist names browser origins, so
+            # the API's own base URL -- the obvious default -- is one the product answers 403.
+            # Defaulting to it made every arms-B-and-C sign-in fail as an unreachable surface
+            # rather than as the missing configuration it was. Unset is unset, and
+            # ``workspace_origin`` refuses the run.
+            workspace_origin=values.get("SUR1_WORKSPACE_ORIGIN", "").strip(),
             mcp_bearer_token=values.get("SUR1_MCP_BEARER_TOKEN", ""),
             workspace_worker=values.get("SUR1_WORKSPACE_WORKER", ""),
             workspace_password=values.get("SUR1_WORKSPACE_PASSWORD", ""),
             database_url=values.get("SUR1_DATABASE_URL", ""),
-            order_system_store=Path(store) if store else None,
             aws_region=values.get("SUR1_AWS_REGION") or values.get("AWS_REGION", ""),
         )
 
@@ -130,8 +134,8 @@ class BindingConfig:
             "SUR1_MCP_BEARER_TOKEN": bool(self.mcp_bearer_token),
             "SUR1_WORKSPACE_WORKER": bool(self.workspace_worker),
             "SUR1_WORKSPACE_PASSWORD": bool(self.workspace_password),
+            "SUR1_WORKSPACE_ORIGIN": bool(self.workspace_origin),
             "SUR1_DATABASE_URL": bool(self.database_url),
-            "SUR1_ORDER_SYSTEM_STORE": self.order_system_store is not None,
             "SUR1_AWS_REGION": bool(self.aws_region),
         }
         return {name: held[name] for name in REQUIRED_FOR_SCORED}
@@ -148,9 +152,6 @@ class BindingConfig:
             "order_system_base_url": self.order_system_base_url,
             "workspace_origin": self.workspace_origin,
             "aws_region": self.aws_region,
-            "order_system_store": (
-                None if self.order_system_store is None else str(self.order_system_store)
-            ),
             "configured": self.present(),
         }
 

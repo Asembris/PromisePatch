@@ -40,6 +40,7 @@ from scripts.sur1.preflight import (
     real_bindings,
     receivers,
     require,
+    workspace_origin,
     world_programs,
 )
 
@@ -49,8 +50,8 @@ CONFIGURED = {
     "SUR1_MCP_BEARER_TOKEN": "a-token",
     "SUR1_WORKSPACE_WORKER": "maya",
     "SUR1_WORKSPACE_PASSWORD": "a-password",
+    "SUR1_WORKSPACE_ORIGIN": "http://localhost:55173",
     "SUR1_DATABASE_URL": "postgresql://reader@127.0.0.1:55432/promisepatch",
-    "SUR1_ORDER_SYSTEM_STORE": "/tmp/orders.sqlite3",
     "SUR1_AWS_REGION": REGION,
 }
 
@@ -61,6 +62,7 @@ class ReachableBinding:
 
     source: str
     reachable: bool = True
+    origin_accepted: bool = True
     binding_kind: str = REAL
     payload: Mapping[str, Any] = field(default_factory=dict)
     clock: RunClock | None = None
@@ -79,6 +81,21 @@ class ReachableBinding:
 
     def probes(self) -> tuple[Probe, ...]:
         return (self.probe(),)
+
+    def origin_probe(self) -> Probe:
+        """What a real worker surface answers when the preflight asks about its origin.
+
+        A value, not a call: nothing here reaches an API. Which is the point -- the preflight
+        asks the binding and the binding is what talks to the deployment, so this file can
+        assert the gate's rule without a stack.
+        """
+        return Probe(
+            "WORKSPACE_ORIGIN",
+            self.origin_accepted,
+            "an origin this API accepts"
+            if self.origin_accepted
+            else "this API does not accept that sign-in origin",
+        )
 
 
 def model() -> ReachableBinding:
@@ -403,6 +420,7 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "real_bindings",
         "model_identity",
         "configuration",
+        "workspace_origin",
         "receivers",
         "classifier_identity",
         "world_programs",
@@ -440,3 +458,73 @@ def test_a_real_bedrock_client_is_never_opened_by_a_preflight_that_only_reads_id
 
     assert model_identity(model=client, contract=Contract.load()).passed
     assert opened == []
+
+
+# ------------------------------------------------------------------------- the workspace origin
+
+
+def test_an_unset_workspace_origin_refuses_the_run() -> None:
+    """There is no default this API accepts, so there is nothing to fall back to.
+
+    The rehearsal found this the expensive way: the old default was the API's own base URL, the
+    product answered ``403``, and the failure read as an unreachable workspace rather than as a
+    variable nobody had set.
+    """
+    check = workspace_origin(
+        config=config(SUR1_WORKSPACE_ORIGIN=""), surface=ReachableBinding(source="SURFACE")
+    )
+
+    assert not check.passed
+    assert "SUR1_WORKSPACE_ORIGIN is unset" in check.detail
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        "localhost:55173",
+        "http://localhost:55173/",
+        "http://localhost:55173/api",
+        "http://",
+        "ftp://localhost:55173",
+        "http://localhost:55173?x=1",
+    ],
+)
+def test_a_value_that_is_not_an_origin_refuses_the_run(malformed: str) -> None:
+    """The allowlist holds exact strings, so a trailing slash is a different origin."""
+    check = workspace_origin(
+        config=config(SUR1_WORKSPACE_ORIGIN=malformed),
+        surface=ReachableBinding(source="SURFACE"),
+    )
+
+    assert not check.passed
+    assert "is not an origin" in check.detail
+
+
+def test_an_origin_this_api_refuses_refuses_the_run() -> None:
+    """Well formed and set is not enough: the deployment has to serve it."""
+    check = workspace_origin(
+        config=config(), surface=ReachableBinding(source="SURFACE", origin_accepted=False)
+    )
+
+    assert not check.passed
+    assert "PP_CORS_ORIGINS" in check.detail
+
+
+def test_a_surface_that_cannot_be_asked_refuses_the_run() -> None:
+    """A scored run may not proceed on the assumption that a sign-in would have worked."""
+    check = workspace_origin(config=config(), surface=object())
+
+    assert not check.passed
+    assert "cannot be asked" in check.detail
+
+
+def test_an_origin_the_api_accepts_passes() -> None:
+    check = workspace_origin(config=config(), surface=ReachableBinding(source="SURFACE"))
+
+    assert check.passed
+
+
+def test_the_configuration_check_names_the_workspace_origin_it_now_requires() -> None:
+    """It is a scored requirement, not only a live probe's incidental finding."""
+    assert "SUR1_WORKSPACE_ORIGIN" in REQUIRED_FOR_SCORED
+    assert not configuration(config(SUR1_WORKSPACE_ORIGIN="")).passed

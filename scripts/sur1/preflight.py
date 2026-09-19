@@ -5,20 +5,22 @@ policy permits no second opinion. So everything that would make the resulting nu
 something other than what it appears to mean is asked **before** an arm is constructed, in one
 place, and any failure refuses the run.
 
-Eleven checks, and each is a fact rather than a promise:
+Thirteen checks, and each is a fact rather than a promise:
 
 1. the three frozen identities recompute to their published values;
 2. all three bindings say they are real, so a run cannot be driven by a double;
 3. the model configuration is the contract's own, and names an explicit region;
 4. every credential and address a scored run needs is configured;
-5. every receiver answers, so no scenario is voided for an unreadable source afterwards;
-6. the ``asserts_change`` rule is the declared one and hashes to its published identity;
-7. every selected scenario has a world program that builds the world it declares;
-8. the nine programs are the frozen nine, at their published hashes, and nothing on their
+5. the workspace origin is set, is well formed, and is one this API actually accepts;
+6. every receiver answers, so no scenario is voided for an unreadable source afterwards;
+7. the ``asserts_change`` rule is the declared one and hashes to its published identity;
+8. every selected scenario has a world program that builds the world it declares;
+9. the nine programs are the frozen nine, at their published hashes, and nothing on their
    preparation path can name a field that says what a correct answer is;
-9. the output directory is new, or is a resumable run of the same experiment;
-10. nothing on the scoring path can reach an arm's name;
-11. nothing that fires a world event can name an arm, an answer or a scorer's reading.
+10. the world names the clock its scenarios are installed at;
+11. the output directory is new, or is a resumable run of the same experiment;
+12. nothing on the scoring path can reach an arm's name;
+13. nothing that fires a world event can name an arm, an answer or a scorer's reading.
 
 **A preflight reads and never writes.** It opens clients, asks services whether they are ready
 and recomputes hashes. It creates no run directory, mints no token, prepares no world and calls
@@ -67,6 +69,7 @@ REQUIRED_CHECKS: Final = (
     "real_bindings",
     "model_identity",
     "configuration",
+    "workspace_origin",
     "receivers",
     "classifier_identity",
     "world_programs",
@@ -213,6 +216,70 @@ def configuration(config: BindingConfig) -> Check:
     if missing:
         return Check("configuration", False, f"not configured: {', '.join(missing)}")
     return Check("configuration", True, "every address and credential a scored run needs is set")
+
+
+def workspace_origin(*, config: BindingConfig, surface: object) -> Check:
+    """The origin arms B and C sign in with is one this deployment actually accepts.
+
+    Three questions, and only the running API can answer the third.
+
+    **Set.** There is no default. The obvious one -- the API's own base URL -- is a value the
+    product refuses: ``api/routers/auth.py`` matches ``Origin`` against ``PP_CORS_ORIGINS`` by
+    exact string and that allowlist names browser origins. Falling back to it silently made the
+    failure surface as an unreachable workspace rather than as the missing configuration it was,
+    and a worker who cannot sign in can never approve a plan, so ``confirm`` can never spend one
+    and every arm-B and arm-C attempt ends ``HARNESS_FAILURE``.
+
+    **Well formed.** An origin is a scheme, a host and an optional port, and nothing else. A
+    value carrying a path, a query or a trailing slash is not the string the allowlist holds, so
+    it would be refused on a difference nobody could see in a log.
+
+    **Accepted.** Asked of the deployment rather than of a copy of its configuration this
+    harness would have to keep, by the surface that would do the signing in. A surface that
+    cannot be asked fails the check: a scored run may not proceed on the assumption.
+    """
+    origin = config.workspace_origin
+    if not origin:
+        return Check(
+            "workspace_origin",
+            False,
+            "SUR1_WORKSPACE_ORIGIN is unset and there is no default this API accepts; without "
+            "it a worker cannot sign in, so no plan can ever be approved or confirmed",
+        )
+    malformed = _malformed_origin(origin)
+    if malformed:
+        return Check("workspace_origin", False, f"{origin!r} is not an origin: {malformed}")
+    ask = getattr(surface, "origin_probe", None)
+    if not callable(ask):
+        return Check(
+            "workspace_origin",
+            False,
+            f"this worker surface cannot be asked whether {config.api_base_url} accepts "
+            f"{origin}, so whether a worker could sign in at all is unknown",
+        )
+    probe = ask()
+    if not probe.reachable:
+        return Check(
+            "workspace_origin",
+            False,
+            f"{probe.detail}; set SUR1_WORKSPACE_ORIGIN to one of the deployment's own "
+            "PP_CORS_ORIGINS",
+        )
+    return Check("workspace_origin", True, probe.detail)
+
+
+def _malformed_origin(origin: str) -> str:
+    """Why this string is not an origin, or the empty string when it is one."""
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(origin)
+    if parsed.scheme not in ("http", "https"):
+        return "an origin names http or https"
+    if not parsed.netloc:
+        return "an origin names a host"
+    if parsed.path or parsed.query or parsed.fragment:
+        return "an origin is a scheme, a host and a port, and carries no path, query or fragment"
+    return ""
 
 
 def receivers(*, world: object, surface: object) -> Check:
@@ -595,6 +662,7 @@ def preflight(
             else Check("model_identity", False, "the frozen contract did not load")
         ),
         configuration(config),
+        workspace_origin(config=config, surface=surface),
         receivers(world=world, surface=surface),
         classifier_identity(classifier),
         world_programs(selected),

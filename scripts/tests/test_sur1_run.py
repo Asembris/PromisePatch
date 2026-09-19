@@ -37,7 +37,7 @@ ENVIRONMENT = {
     "SUR1_MCP_BEARER_TOKEN": "a-token",
     "SUR1_WORKSPACE_WORKER": "maya",
     "SUR1_WORKSPACE_PASSWORD": "a-password",
-    "SUR1_ORDER_SYSTEM_STORE": "/tmp/orders.sqlite3",
+    "SUR1_WORKSPACE_ORIGIN": "http://localhost:55173",
     "SUR1_AWS_REGION": "eu-west-1",
 }
 
@@ -160,6 +160,7 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
     assert directory is None
     assert not (tmp_path / "just-asking").exists()
     assert [check.name for check in report.failures] == [
+        "workspace_origin",
         "receivers",
         "classifier_identity",
     ], "a development run reports the undetermined rule rather than being refused for it"
