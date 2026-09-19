@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 from scripts.sur1.arms import ArmAttempt, ArmVoidError, HarnessFailureError
-from scripts.sur1.authorisation import ScoredAuthorisation, observe
+from scripts.sur1.authorisation import AuthorisationError, ScoredAuthorisation, observe
 from scripts.sur1.budget import BudgetExhaustedError
 from scripts.sur1.capture import CaptureError, RunDirectory, write_once
 from scripts.sur1.doubles import FakeClock, StubArm, SyntheticWorld
@@ -467,6 +467,95 @@ def test_a_declared_rule_and_an_authorisation_let_a_scored_run_start(tmp_path: P
         ),
     )
     assert json.loads(directory.run_file.read_text(encoding="utf-8"))["kind"] == "scored"
+
+
+def test_an_authorised_scored_run_retries_a_void_exactly_once(tmp_path: Path) -> None:
+    """The retry policy is unchanged by the boundary: one capability, one run, one retry."""
+
+    def declared(message: ChannelMessage) -> bool | None:
+        return False
+
+    world = SyntheticWorld()
+    arm = stub(
+        "HARNESS-A",
+        ArmAttempt(evidence=void_evidence()),
+        ArmAttempt(evidence=safe_evidence()),
+    )
+    directory = run(
+        tmp_path,
+        arm,
+        world=world,
+        kind="scored",
+        classifier=declared,
+        authorisation=synthetic_authorisation(
+            run_id="harness-run", root=tmp_path, world=world, arms=[arm], classifier=declared
+        ),
+    )
+    assert len(arm.requests) == 2
+    assert sorted(outcomes_in(directory).values()) == ["SAFE_AND_INCOMPLETE", "VOID"]
+
+
+def test_an_authorised_scored_run_resumes_under_a_second_capability(tmp_path: Path) -> None:
+    """A resume is a fresh invocation, so it runs its own preflight and mints its own capability.
+
+    The first capability is spent; reusing it is refused by :meth:`claim`. What must still be
+    true is that the second one resumes the *same* run rather than buying its attempts again.
+    """
+
+    def declared(message: ChannelMessage) -> bool | None:
+        return False
+
+    world = SyntheticWorld()
+    first = stub("HARNESS-A", ArmAttempt(evidence=safe_evidence()))
+    spent = synthetic_authorisation(
+        run_id="harness-run", root=tmp_path, world=world, arms=[first], classifier=declared
+    )
+    run(tmp_path, first, world=world, kind="scored", classifier=declared, authorisation=spent)
+    assert spent.claimed
+
+    second = stub("HARNESS-A", ArmAttempt(evidence=safe_evidence()))
+    with pytest.raises(AuthorisationError, match="already been claimed"):
+        run(tmp_path, second, world=world, kind="scored", classifier=declared, authorisation=spent)
+
+    directory = run(
+        tmp_path,
+        second,
+        world=world,
+        kind="scored",
+        classifier=declared,
+        authorisation=synthetic_authorisation(
+            run_id="harness-run", root=tmp_path, world=world, arms=[second], classifier=declared
+        ),
+    )
+    assert second.requests == []
+    assert len(directory.completed_attempts()) == 1
+
+
+def test_a_scored_capture_carries_no_capability_and_no_digest(tmp_path: Path) -> None:
+    """The capability is authority, not evidence. Nothing about it reaches a committed file."""
+
+    def declared(message: ChannelMessage) -> bool | None:
+        return False
+
+    world = SyntheticWorld()
+    arm = stub("HARNESS-A", ArmAttempt(evidence=safe_evidence()))
+    authorisation = synthetic_authorisation(
+        run_id="harness-run", root=tmp_path, world=world, arms=[arm], classifier=declared
+    )
+    directory = run(
+        tmp_path,
+        arm,
+        world=world,
+        kind="scored",
+        classifier=declared,
+        authorisation=authorisation,
+    )
+    written = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(directory.path.rglob("*.json"))
+    )
+    assert authorisation.digest not in written
+    assert authorisation.preflight_digest not in written
+    assert "authorisation" not in written
 
 
 def test_a_development_run_is_refused_a_scored_authorisation(tmp_path: Path) -> None:
