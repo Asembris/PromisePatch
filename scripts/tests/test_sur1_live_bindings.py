@@ -26,6 +26,7 @@ import pytest
 from scripts.sur1.adapters import AblationArm, PromisePatchArm
 from scripts.sur1.arms import AttemptRequest
 from scripts.sur1.bindings import is_real
+from scripts.sur1.bindings.events import Arming
 from scripts.sur1.bindings.promisepatch import (
     MCP_TOOLS,
     LiveWorkerSurface,
@@ -34,11 +35,13 @@ from scripts.sur1.bindings.promisepatch import (
 )
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
+    DatabaseReader,
     KitchenReceiver,
     OrderSystemReceiver,
 )
 from scripts.sur1.bindings.setup import UnprogrammedScenarioError, program_for, unprogrammed
 from scripts.sur1.bindings.world import ACTIONS, LiveScenarioWorld, WorldActionError
+from scripts.sur1.bindings.worldsink import MOVEMENT_KIND, LiveWorldSink
 from scripts.sur1.budget import AttemptBudget
 from scripts.sur1.doubles import FakeClock, ScriptedSurface, SyntheticWorld
 from scripts.sur1.evidence import (
@@ -525,6 +528,147 @@ def test_preparing_an_unprogrammed_scenario_raises_instead_of_leaving_a_half_set
 
     with pytest.raises(UnprogrammedScenarioError):
         world.prepare({"id": "C99"})
+
+
+# ------------------------------------------------------------------- the world settles itself
+
+
+@dataclass(slots=True)
+class LedgerOnlyChannel:
+    """``E2`` reduced to the harness's own transport, so a settle is provable with no database.
+
+    The real receiver unions this with the product's outbox and the accepted-reply record. Both
+    of those are rows, and what is under test here is that the world settles from *the channel
+    record* rather than from anything about who wrote to it -- which this shows with the half of
+    the record that needs no stack.
+    """
+
+    ledger: ChannelLedger
+
+    def read(self, *, since: datetime) -> tuple[ChannelMessage, ...]:
+        return tuple(self.ledger.since(since))
+
+
+def settling_world(scenario_id: str) -> LiveScenarioWorld:
+    """A world armed for one scenario, reading only the harness transport."""
+    contract = Contract.load()
+    ledger = ChannelLedger()
+    world = LiveScenarioWorld(
+        orders=OrderSystemReceiver(base_url="http://127.0.0.1:1"),
+        channel=LedgerOnlyChannel(ledger),  # type: ignore[arg-type]
+        kitchen=None,  # type: ignore[arg-type]
+        database=DatabaseReader(url="postgresql+asyncpg://unused/unused"),
+        ledger=ledger,
+        fixture=contract.document["fixture"]["orders"],
+    )
+    world.scenario_id = scenario_id
+    world.started_at = datetime.now(UTC) - timedelta(minutes=1)
+    world.arming = Arming.arm(program_for(scenario_id))
+    return world
+
+
+def test_an_ask_reaching_the_channel_is_what_delivers_the_stipulated_reply() -> None:
+    """The arm did the ordinary thing. What the world owes for it is the world's own business."""
+    world = settling_world("C01")
+
+    assert world.arming is not None and len(world.arming.planned) == 1
+
+    world.invoke("send_customer_message", {"channel_address": "tg:1002", "text": "may we?"})
+
+    assert world.arming.pending == ()
+    (ask, reply) = world.ledger.messages
+    assert ask.direction == OUTBOUND
+    assert reply.direction == INBOUND
+    assert reply.channel_address == "tg:1002"
+    assert reply.text == "YES"
+    assert reply.provider_event_id == "sur1-reply-C01-1"
+
+
+def test_a_delivered_reply_is_what_a_read_of_the_replies_returns() -> None:
+    world = settling_world("C01")
+    world.invoke("send_customer_message", {"channel_address": "tg:1002", "text": "may we?"})
+
+    replies = world.invoke("read_customer_replies", {})["replies"]
+
+    assert [reply["text"] for reply in replies] == ["YES"]
+
+
+def test_nothing_is_delivered_to_a_world_nobody_has_asked() -> None:
+    world = settling_world("C01")
+
+    world.invoke("get_incident", {})
+    world.invoke("read_customer_replies", {})
+
+    assert world.ledger.messages == []
+    assert world.arming is not None and world.arming.pending == world.arming.planned
+
+
+def test_the_world_settles_the_same_way_for_whoever_reached_the_channel() -> None:
+    """``invoke`` takes a name and arguments. There is no parameter an arm could arrive in."""
+    import inspect
+
+    assert list(inspect.signature(LiveScenarioWorld.invoke).parameters) == [
+        "self",
+        "name",
+        "arguments",
+    ]
+    assert list(inspect.signature(LiveScenarioWorld.settle).parameters) == ["self"]
+
+    first, second = settling_world("C02"), settling_world("C02")
+    for world in (first, second):
+        world.invoke("send_customer_message", {"channel_address": "tg:1002", "text": "one"})
+        world.invoke("send_customer_message", {"channel_address": "tg:1002", "text": "two"})
+
+    assert first.arming is not None and second.arming is not None
+    assert first.arming.log_digest() == second.arming.log_digest()
+    assert [message.text for message in first.ledger.messages] == [
+        message.text for message in second.ledger.messages
+    ]
+
+
+def test_c07_puts_one_provider_identity_on_the_channel_twice() -> None:
+    world = settling_world("C07")
+
+    world.invoke("send_customer_message", {"channel_address": "tg:1002", "text": "may we?"})
+
+    inbound = [message for message in world.ledger.messages if message.direction == INBOUND]
+    assert len(inbound) == 2
+    assert {message.provider_event_id for message in inbound} == {"sur1-reply-C07-1"}
+    assert world.arming is not None and len(world.arming.log) == 1
+
+
+def test_a_second_attempt_at_one_scenario_carries_nothing_from_the_first() -> None:
+    world = settling_world("C01")
+    world.invoke("send_customer_message", {"channel_address": "tg:1002", "text": "may we?"})
+
+    again = settling_world("C01")
+
+    assert again.ledger.messages == []
+    assert again.arming is not None and again.arming.log == ()
+
+
+def test_the_world_sink_records_a_direction_and_reads_no_text() -> None:
+    """The delivering half obeys the rule the recording half already obeys."""
+    ledger = ChannelLedger()
+    sink = LiveWorldSink(channel=ledger, ledger=None)  # type: ignore[arg-type]
+
+    receipt = sink.deliver_reply(
+        message_id="sur1-reply-C01-1",
+        channel="tg:1002",
+        order="ord-b",
+        text="YES",
+        delivery=1,
+        deliveries=1,
+    )
+
+    (message,) = ledger.messages
+    assert message.direction == INBOUND
+    assert message.text == "YES"
+    assert "sur1-reply-C01-1" in receipt
+
+
+def test_a_physical_movement_is_recorded_as_the_physical_fact_it_is() -> None:
+    assert str(MOVEMENT_KIND) == "EXCEPTION_FACT"
 
 
 # -------------------------------------------------------------------------- the blind bundle
