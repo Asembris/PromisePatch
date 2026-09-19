@@ -23,7 +23,7 @@ git status --short && git diff --stat HEAD
 
 Map each changed path to a row below. Run the union of the matched rows, nothing more.
 
-## Step 2 — always, on any changed Python
+## Step 2 — always, on any changed Python **or Markdown**
 
 Cheap enough to be unconditional. Scope it to the changed paths.
 
@@ -31,6 +31,29 @@ Cheap enough to be unconditional. Scope it to the changed paths.
 uv run ruff check <changed paths>
 uv run ruff format --check <changed paths>
 ```
+
+**Markdown counts, and this is the one people forget.** CI runs `ruff format --check .` over the
+*whole repository*, and since ruff 0.16 the formatter reaches inside fenced ` ```python ` blocks
+in `.md` files. A docs-only change that never runs Step 2 is the single most common way a green
+local run turns into a red push. `ruff check` (the linter) does **not** read Markdown — it
+reports *"No Python files found"* — so on a docs-only change run the format check alone:
+
+```bash
+uv run ruff format --check <changed .md paths>
+```
+
+**The trap inside the trap: a fenced fragment is not Python.** Lifting a few lines out of a call
+and fencing them as `python` makes the formatter parse them as top-level statements, and it
+rewrites them. Two bare keyword arguments become tuple assignments:
+
+```text
+exclude_cases=tuple(self._deferred),      →   exclude_cases = (tuple(self._deferred),)
+```
+
+Fence a **complete, parseable** snippet — the whole call, the whole function — or, when the
+extract genuinely cannot stand alone, fence it as ` ```text ` and leave the formatter out of it.
+Never silence this by excluding `docs/**` from ruff: formatted, parseable examples in the
+documentation are the point of the check.
 
 ## Step 3 — changed area to minimal validation
 
