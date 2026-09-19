@@ -1,0 +1,55 @@
+{
+  "baseline_prompt_sha": "not-applicable-to-a-rehearsal",
+  "benchmark_id": "DR-REHEARSAL",
+  "budgets": {
+    "input_tokens": 120000,
+    "model_calls": 24,
+    "output_tokens": 16000,
+    "tool_calls": 60,
+    "wall_clock_seconds": 300
+  },
+  "command": [
+    "dress-rehearsal",
+    "--run-id",
+    "dr01-g"
+  ],
+  "driver_version": "1.0.0",
+  "environment": {
+    "aws_credentials_configured": false,
+    "model_provider_configured": false,
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.0"
+  },
+  "finished_at": null,
+  "implementation_sha": "ee45cda4c6122c12ef7f7ebc038612b4552e576b",
+  "kind": "development",
+  "manifest_sha": "95b05fde5c3f008ee8ac8d4b0f4357a750742a0d7fb53e778f9fd81fc65be8e5",
+  "manifest_version": "1.0.0",
+  "model_configuration": {
+    "api": "scripts.sur1.doubles.ScriptedModel",
+    "model_id": "scripted-rehearsal-double",
+    "provider": "none",
+    "temperature": 0.0
+  },
+  "run_id": "dr01-g",
+  "scorer_version": "rehearsal-1.0.0",
+  "started_at": "2026-09-19T13:41:29.241713+00:00",
+  "tool_surface": {
+    "reads": [
+      "get_incident",
+      "get_orders",
+      "get_promise_graph",
+      "get_stock",
+      "get_tasks",
+      "read_customer_replies"
+    ],
+    "writes": [
+      "amend_order",
+      "send_customer_message",
+      "hold_task",
+      "release_task",
+      "report_outcome"
+    ]
+  },
+  "working_tree_dirty": true
+}
