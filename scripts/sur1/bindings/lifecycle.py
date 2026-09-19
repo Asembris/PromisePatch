@@ -22,7 +22,10 @@ processes that must not be writing at the same time, and the fix is to make sure
    that was just installed. An install that half-happened is refused here rather than measured.
 4. **Resume.** The worker comes back, and coming back is verified too. Arms B and C work
    through the product, and the product's durable work is the worker's -- an attempt driven at
-   a stopped worker would measure a system with no engine.
+   a stopped worker would measure a system with no engine. It comes back **without its
+   dependencies**: compose satisfies the worker's ``depends_on`` by re-running ``seed``, which
+   is ``pp reset-demo-state``, and a resume that did that would undo steps 2 and 3 immediately
+   after step 3 had confirmed them. See :meth:`ComposeWorkerControl.resume`.
 
 **Nothing waits on a guess.** Stopping and starting are synchronous operations that report
 what happened, the compose service carries a healthcheck so ``up --wait`` blocks on a real
@@ -139,8 +142,23 @@ class ComposeWorkerControl:
         return f"worker:{STOPPED}"
 
     def resume(self) -> str:
-        """Bring the worker back and wait on its healthcheck, not on a clock."""
-        self._compose("up", "--detach", "--wait", "--no-recreate", self.service)
+        """Bring the worker back and wait on its healthcheck, not on a clock.
+
+        ``--no-deps`` is load-bearing and is the whole reason this method is not one line
+        shorter. The worker declares ``depends_on: seed: service_completed_successfully``, and
+        compose satisfies that by **re-running** ``seed`` -- which is ``pp reset-demo-state``.
+        Without the flag, handing the worker back destroys the world quiesce and install had
+        just put in place and :meth:`InstallationLifecycle.verify` had just confirmed, and every
+        attempt is driven at the canonical demo fixture instead of at the scenario's world. The
+        dependency is not being bootstrapped here: the stack is already up and this is a service
+        that was stopped seconds ago by :meth:`quiesce`.
+
+        Nothing is weakened by skipping it. ``--wait`` still blocks on the worker's own
+        healthcheck, that healthcheck is a real query against the database, and :meth:`state`
+        reads the service back afterwards -- so a worker that could not come up is still caught
+        here rather than assumed.
+        """
+        self._compose("up", "--detach", "--wait", "--no-deps", "--no-recreate", self.service)
         state = self.state()
         if state != RUNNING:
             raise PreparationError(
