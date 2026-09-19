@@ -469,10 +469,12 @@ class LiveWorkerSurface:
 
         sleep = self.sleep or time.sleep
         clock = time.monotonic
+        # The attempt's remaining budget, or -- for a surface driven without ``report`` first,
+        # which is not how an attempt runs -- this one wait's own, so it still ends.
         until = (
             self.waiting_until
             if self.waiting_until is not None
-            else clock() + (self.deadline_seconds)
+            else clock() + self.deadline_seconds
         )
         seen = ""
         quiet = 0
