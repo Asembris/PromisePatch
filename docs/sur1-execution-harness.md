@@ -242,6 +242,11 @@ that is not that default. A development run may proceed without one; its outboun
 undetermined and the ambiguity rule voids those scenarios, which is the honest reading of a rule
 nobody has declared.
 
+> **Since declared.** A later session, which also took no run and saw no outcome, declared the
+> rule in [`benchmarks/sur1-execution-predeclaration.v1.md`](benchmarks/sur1-execution-predeclaration.v1.md)
+> and pinned its identity by hash. `UNDETERMINED` is still the harness's default and is still what
+> a development run uses.
+
 Inventing the rule here would be making a scoring determination while it is still possible to see
 what the rule would do to an outcome.
 
@@ -294,8 +299,11 @@ property that stops a caller scoring against a bound it would rather have.
   facts to a clean Hollow Oak fixture and reads the four receivers back, and an MCP/workspace client
   for arms B and C — belong to the execution session. Writing them here would mean shipping a
   Bedrock client this session is forbidden to call and a world adapter it could not exercise.
+  *Closed by a later session, which still took no run: see
+  [`sur1-execution-bindings.md`](sur1-execution-bindings.md).*
 - **The `asserts_change` rule was not declared.** See above. It is the execution session's
-  predeclaration.
+  predeclaration. *Declared by a later session, before any outcome existed, in
+  [`benchmarks/sur1-execution-predeclaration.v1.md`](benchmarks/sur1-execution-predeclaration.v1.md).*
 - **The effect sets are untouched.** `11/16` stands, the manifest hash is unchanged, `S12` stays
   committed failing.
 - **Both evaluation holdouts stay sealed**, and neither was consulted.
