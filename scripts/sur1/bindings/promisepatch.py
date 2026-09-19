@@ -28,6 +28,13 @@ deliberately not charged against the tool-call ceiling, which counts the eleven 
 contract froze. What bounds them is the attempt's wall-clock ceiling, which the arm's own budget
 enforces, and the binding's deadline, which is the smaller of the two.
 
+**The binding's deadline is the attempt's, not each wait's.** An attempt waits after ``report``,
+after each ``clarify`` and after ``confirm``. A deadline applied to one wait at a time bounded
+none of them together: three waits of 240s is 720s against a frozen 300s ceiling, so an attempt
+could cross the ceiling while every individual wait stayed inside a bound that was supposed to
+sit under it. The clock starts when the attempt opens its case and every later wait spends what
+is left of it.
+
 **Nothing here has been pointed at a ``SUR-1`` scenario.**
 """
 
@@ -48,6 +55,8 @@ different product."""
 
 CSRF_HEADER: Final = "X-CSRF-Token"
 SESSION_COOKIE: Final = "pp_session"
+LOGIN_PATH: Final = "/api/auth/login"
+"""The endpoint whose ``Origin`` rule decides whether a worker can sign in at all."""
 
 POLL_SECONDS: Final = 1.0
 """How long between two readings of a case that is still moving."""
@@ -58,6 +67,17 @@ QUIET_READINGS: Final = 3
 Three rather than one, because a durable worker between two steps briefly looks exactly like a
 worker that has finished, and reading the first of those as the end of the attempt would score an
 arm on a case that had not got there yet.
+"""
+
+NOT_THE_CASE: Final = frozenset({"correlation_id"})
+"""Fields on a ``status`` answer that belong to the call rather than to the case.
+
+``correlation_id`` is a fresh ``uuid4`` the MCP server mints per request, so two readings of a
+case that has not moved differ in exactly one field -- and a fingerprint over the whole answer
+therefore never repeats. :meth:`LiveWorkerSurface._settled` waited for three identical readings
+that could not happen, so every wait ran to its deadline: the dress rehearsal measured 243.5s
+and 244.7s for two arms whose work had finished in about three. Naming the field is the fix;
+the settling rule itself was right.
 """
 
 
@@ -172,6 +192,21 @@ class McpToolClient:
         return dict(parsed)
 
 
+def _fingerprint(reading: Mapping[str, Any]) -> str:
+    """What "the case has not moved" compares, which is the case and not the call.
+
+    Every field the product rendered about the case is in it. The fields in
+    :data:`NOT_THE_CASE` are left out because they are the transport's own identity for one
+    request: including them made two readings of a motionless case always differ, so a settled
+    case was never detected and every wait ran to its deadline.
+    """
+    return json.dumps(
+        {name: value for name, value in reading.items() if name not in NOT_THE_CASE},
+        sort_keys=True,
+        default=str,
+    )
+
+
 def _text_of(result: Any) -> str:
     blocks = getattr(result, "content", ()) or ()
     return "\n".join(str(getattr(block, "text", "")) for block in blocks)
@@ -211,11 +246,45 @@ class WorkspaceClient:
             return Probe("WORKSPACE", False, f"{type(failure).__name__}: {failure}")
         return Probe("WORKSPACE", True, f"{self.username} at {self.base_url}")
 
+    def origin_probe(self) -> Probe:
+        """Whether this deployment accepts the origin this client signs in with.
+
+        Asked of the API itself, through an ordinary CORS preflight: ``OPTIONS`` the login
+        endpoint with this origin and the method a sign-in uses. An origin the deployment serves
+        is echoed back in ``access-control-allow-origin``; one it does not is refused. It is a
+        read -- it signs nobody in, creates no session and sends no credential.
+
+        Separate from :meth:`probe` because it answers a different question. ``probe`` says
+        whether a worker can sign in; this says *why* one cannot, and the difference matters
+        because the ordinary reason is a configured origin the product refuses rather than a
+        workspace that is down. See ``api/routers/auth.py``, which matches ``Origin`` against
+        ``PP_CORS_ORIGINS`` by exact string.
+        """
+        import httpx2
+
+        try:
+            answer = httpx2.options(
+                f"{self.base_url}{LOGIN_PATH}",
+                headers={"Origin": self.origin, "Access-Control-Request-Method": "POST"},
+                timeout=self.timeout_seconds,
+            )
+        except Exception as failure:
+            return Probe("WORKSPACE_ORIGIN", False, f"{type(failure).__name__}: {failure}")
+        allowed = answer.headers.get("access-control-allow-origin", "")
+        if answer.status_code >= 400 or allowed not in (self.origin, "*"):
+            return Probe(
+                "WORKSPACE_ORIGIN",
+                False,
+                f"{self.base_url} does not accept {self.origin} as a sign-in origin "
+                f"(answered {answer.status_code})",
+            )
+        return Probe("WORKSPACE_ORIGIN", True, f"{self.base_url} accepts {self.origin}")
+
     def sign_in(self) -> None:
         import httpx2
 
         answer = httpx2.post(
-            f"{self.base_url}/api/auth/login",
+            f"{self.base_url}{LOGIN_PATH}",
             json={"username": self.username, "password": self.password},
             headers={"Origin": self.origin},
             timeout=self.timeout_seconds,
@@ -279,6 +348,11 @@ class LiveWorkerSurface:
     tools: McpToolClient
     workspace: WorkspaceClient
     deadline_seconds: float = 240.0
+    """The whole of one attempt's waiting, not one wait's.
+
+    Under the frozen 300s wall-clock ceiling, so a case that never settles ends this surface's
+    waiting before the budget ends the attempt.
+    """
     sleep: Any = None
     on_poll: Any = None
     """What the world does while this surface waits, called before every reading.
@@ -296,6 +370,13 @@ class LiveWorkerSurface:
     """
     case_id: str = ""
     case_ids: list[str] = field(default_factory=list)
+    waiting_until: float | None = None
+    """When this attempt's waiting budget runs out, on the monotonic clock.
+
+    Set when the attempt opens its case and cleared by :meth:`forget`. ``None`` means no attempt
+    has started, and a wait in that state bounds itself so a surface driven out of order still
+    ends.
+    """
     binding_kind: str = REAL
 
     def identity(self) -> Mapping[str, Any]:
@@ -311,14 +392,24 @@ class LiveWorkerSurface:
                 return Probe("PROMISEPATCH", False, f"{probe.source}: {probe.detail}")
         return Probe("PROMISEPATCH", True, self.tools.url)
 
+    def origin_probe(self) -> Probe:
+        """Whether the API accepts the origin this surface would sign in with."""
+        return self.workspace.origin_probe()
+
     def forget(self) -> None:
         """Between scenarios. The next attempt opens its own case and inherits none."""
         self.case_id = ""
         self.case_ids.clear()
+        self.waiting_until = None
 
     # -- the four verbs ------------------------------------------------------------------------
 
     def report_exception(self, utterance: str) -> Mapping[str, Any]:
+        import time
+
+        # The attempt's waiting budget starts here, before the first call, because this is the
+        # first thing an attempt does and everything it waits for afterwards is part of it.
+        self.waiting_until = time.monotonic() + self.deadline_seconds
         result = self.tools.call(
             "report", {"text": utterance, "client_request_id": f"sur1-{uuid4()}"}
         )
@@ -378,7 +469,11 @@ class LiveWorkerSurface:
 
         sleep = self.sleep or time.sleep
         clock = time.monotonic
-        until = clock() + self.deadline_seconds
+        until = (
+            self.waiting_until
+            if self.waiting_until is not None
+            else clock() + (self.deadline_seconds)
+        )
         seen = ""
         quiet = 0
         reading = self._read()
@@ -386,7 +481,7 @@ class LiveWorkerSurface:
             need = self._needs(reading)
             if need is not None:
                 return need
-            fingerprint = json.dumps(reading, sort_keys=True, default=str)
+            fingerprint = _fingerprint(reading)
             quiet = quiet + 1 if fingerprint == seen else 0
             seen = fingerprint
             if quiet >= QUIET_READINGS or clock() >= until:
@@ -452,7 +547,9 @@ def tool_names(surface: LiveWorkerSurface) -> Sequence[str]:
 
 
 __all__ = [
+    "LOGIN_PATH",
     "MCP_TOOLS",
+    "NOT_THE_CASE",
     "QUIET_READINGS",
     "LiveWorkerSurface",
     "McpToolClient",

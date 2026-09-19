@@ -29,6 +29,7 @@ from scripts.sur1.bindings import is_real
 from scripts.sur1.bindings.events import Arming
 from scripts.sur1.bindings.promisepatch import (
     MCP_TOOLS,
+    QUIET_READINGS,
     LiveWorkerSurface,
     McpToolClient,
     WorkspaceClient,
@@ -402,6 +403,87 @@ def surface_for(statuses: list[Mapping[str, Any]]) -> LiveWorkerSurface:
         ),
         sleep=lambda _seconds: None,
     )
+
+
+@dataclass
+class CorrelatedTools(McpToolClient):
+    """The MCP server's own behaviour: one case, and a fresh correlation id on every answer.
+
+    ``mcp/server.py`` mints a ``uuid4`` per request and returns it on the result, so two
+    readings of a case that has not moved are identical except in that one field. This double
+    exists because the earlier scripted one did not carry the field at all, which is precisely
+    why a settling rule that compared whole answers passed every test and then ran to its
+    deadline on every real attempt.
+    """
+
+    reading: Mapping[str, Any] = field(default_factory=dict)
+    status_calls: int = 0
+
+    def call(self, name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        self.calls.append(name)
+        if name != "status":
+            return {"case_id": "case-1"}
+        self.status_calls += 1
+        return {**self.reading, "correlation_id": str(uuid4())}
+
+
+def correlated_surface(reading: Mapping[str, Any]) -> LiveWorkerSurface:
+    tools = CorrelatedTools(url="http://127.0.0.1:1/mcp", bearer_token="t", reading=reading)
+    return LiveWorkerSurface(
+        tools=tools,
+        workspace=RecordingWorkspace(
+            base_url="http://127.0.0.1:1",
+            origin="http://localhost:55173",
+            username="u",
+            password="p",
+            log=tools.calls,
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+
+def test_a_settled_case_is_detected_although_every_answer_carries_a_new_correlation_id() -> None:
+    """The defect that made every arm-B and arm-C attempt wait out its whole deadline.
+
+    The case below never moves. Its answers differ only in the correlation id the transport
+    mints per call, so a fingerprint over the whole answer never repeated, three quiet readings
+    never happened and the wait ended only when the clock did -- 243.5s and 244.7s in the dress
+    rehearsal, for work that had finished in about three seconds. The reading settles after the
+    readings the rule asks for and not one more.
+    """
+    surface = correlated_surface({"case_id": "case-1", "headline": "Nothing is yours right now."})
+
+    answer = surface.report_exception("the raspberries did not arrive")
+
+    assert answer["needs"] is None
+    assert surface.tools.status_calls == QUIET_READINGS + 1
+
+
+def test_the_whole_attempt_shares_one_waiting_deadline_rather_than_one_per_wait() -> None:
+    """Three waits of the binding's deadline is 720s against a frozen 300s ceiling.
+
+    A deadline applied per wait bounded no attempt at all: each one started a fresh clock, so an
+    attempt could cross the wall-clock ceiling while every individual wait stayed inside a bound
+    that was supposed to sit under it.
+    """
+    surface = correlated_surface({"case_id": "case-1", "headline": "settled"})
+
+    surface.report_exception("the raspberries did not arrive")
+    opened = surface.waiting_until
+    surface.answer_clarification("about four kilos")
+
+    assert opened is not None
+    assert surface.waiting_until == opened, "a later wait did not start a second clock"
+
+
+def test_forgetting_a_scenario_forgets_its_waiting_budget_too() -> None:
+    """The next attempt opens its own case, and its waiting starts when that case does."""
+    surface = correlated_surface({"case_id": "case-1", "headline": "settled"})
+    surface.report_exception("the raspberries did not arrive")
+
+    surface.forget()
+
+    assert surface.waiting_until is None
 
 
 def request_for(world: SyntheticWorld) -> AttemptRequest:
