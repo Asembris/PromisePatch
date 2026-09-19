@@ -51,7 +51,7 @@ from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
-from _intake_support import BAKER, RASPBERRY_ONLY, Intake
+from _intake_support import BAKER, RASPBERRY_ONLY, UNREADABLE, Intake
 from _intake_support import physical as physical
 from _workflow_support import Workflow
 from sqlalchemy import select
@@ -71,6 +71,10 @@ from promisepatch.domain.model import (
     StepKind,
     StepResult,
 )
+from promisepatch.domain.observation import STEP_INTERPRET_SEMANTICALLY
+from promisepatch.semantic import FakeSemanticProvider
+from promisepatch.semantic.jobs import JobSpec
+from promisepatch.semantic.provider import Attempt
 
 pytestmark = pytest.mark.integration
 
@@ -80,6 +84,19 @@ CONTENDERS: Final = 4
 Four rather than two: two contenders can pass a broken ``SKIP LOCKED`` by luck often enough
 that a flake looks like a pass, and four costs four connections.
 """
+
+DELAY_SECONDS: Final = 5.0
+"""How long the provider is held open, and well inside ``steps.LEASE_DURATION``."""
+
+SAMPLING_INTERVAL: Final = 0.05
+"""The loop's idle wait under test, turned down so a sweep happens promptly."""
+
+SETTLE_BOUND: Final = 30.0
+POLL_SECONDS: Final = 0.02
+"""Every wait is bounded, so a regression fails rather than hangs."""
+
+READABLE: Final = "the deck oven is down"
+"""A sentence the deterministic lexicon resolves outright, so no model is asked for it."""
 
 
 @pytest_asyncio.fixture
@@ -377,3 +394,139 @@ async def _reload_request(intake_fixture: Intake, request_id: UUID) -> object:
                 select(ApprovalRequest).where(ApprovalRequest.id == request_id)
             )
         ).one()
+
+
+# ============================================ 4. deferred semantic work, on the same case
+
+
+class _DelayingProvider(FakeSemanticProvider):
+    """The ordinary fake, held open. ``entered`` fires on the way in.
+
+    A local copy rather than an import from ``test_worker_responsiveness.py``: that is a test
+    module, not a support module, and a test file that imports another test file makes the
+    two share fixtures, collection order and failures.
+    """
+
+    def __init__(self, delay_seconds: float) -> None:
+        super().__init__()
+        self.name = "same-case-contention"
+        self.delay_seconds = delay_seconds
+        self.entered = asyncio.Event()
+
+    async def invoke(self, spec: JobSpec, content: str, *, correction: str | None) -> Attempt:
+        self.entered.set()
+        await asyncio.sleep(self.delay_seconds)
+        return await super().invoke(spec, content, correction=correction)
+
+
+async def _step_row(intake_fixture: Intake, step_id: UUID) -> object:
+    async with intake_fixture.database.connect() as connection:
+        return (await connection.execute(select(CaseStep).where(CaseStep.id == step_id))).one()
+
+
+async def _semantic_step_of(intake_fixture: Intake, case_id: UUID) -> object | None:
+    async with intake_fixture.database.connect() as connection:
+        return (
+            await connection.execute(
+                select(CaseStep).where(
+                    CaseStep.case_id == case_id,
+                    CaseStep.kind == STEP_INTERPRET_SEMANTICALLY,
+                )
+            )
+        ).first()
+
+
+async def _first_step_of(intake_fixture: Intake, case_id: UUID) -> object:
+    async with intake_fixture.database.connect() as connection:
+        return (
+            await connection.execute(
+                select(CaseStep)
+                .where(CaseStep.case_id == case_id)
+                .order_by(CaseStep.created_at, CaseStep.id)
+                .limit(1)
+            )
+        ).one()
+
+
+async def _await_started(intake_fixture: Intake, step_id: UUID) -> object:
+    """Poll until the database says this step started. Bounded, so a regression fails."""
+
+    async def poll() -> object:
+        while True:
+            row = await _step_row(intake_fixture, step_id)
+            if row.started_at is not None:
+                return row
+            await asyncio.sleep(POLL_SECONDS)
+
+    return await asyncio.wait_for(poll(), SETTLE_BOUND)
+
+
+async def test_a_case_held_open_by_a_preparation_starts_no_second_step_beside_it(
+    physical: Intake,
+) -> None:
+    """initial: a case whose sentence the lexicon cannot read, with its semantic step
+    ``PENDING`` and unclaimed, and a worker loop about to pick it up.
+
+    race: the loop claims the semantic step and hands it to a task beside itself, where it sits
+    inside a five-second provider call. **While that call is open**, a second step of the *same*
+    case is enqueued, and then an unrelated case is opened. Both are ready work; both are
+    younger than the deferred step.
+    invariant: a deferred preparation holds its case. No second step of that case may run
+    beside it, because the two would reach
+    :func:`~promisepatch.domain.cases.lock_case` in an order nobody chose -- while cases that
+    have nothing to do with it must stay completely independent.
+    receiver: no provider is reached by the excluded step at all; the assertion is that it was
+    never even started.
+    fail-closed: the same-case step is passed over, not failed and not lost.
+
+    **The barrier is the claim order, not a sleep.** ``claim_step`` orders candidates by
+    ``created_at, id`` and takes one. The same-case step is created *first*, so it sorts ahead
+    of the unrelated case's step: if it were claimable at all, it would have been claimed
+    first. The unrelated step having started is therefore proof that a sweep ran, looked at the
+    same-case step, and skipped it -- which is exactly the property, established without timing
+    anything.
+    """
+    provider = _DelayingProvider(DELAY_SECONDS)
+    worker = physical.worker(semantic=provider)
+    worker.idle_interval = SAMPLING_INTERVAL
+
+    opened = await physical.report(UNREADABLE)
+    slow_case = opened.case_id
+    # Two cycles is intake up to the semantic step: begin, then resolve deterministically and
+    # fail. A third would claim it, and the claim belongs inside the window, not before it.
+    await physical.drain(worker=worker, limit=2)
+    staged = await _semantic_step_of(physical, slow_case)
+    assert staged is not None and staged.state == "PENDING"
+
+    stop = asyncio.Event()
+    loop = asyncio.create_task(worker.run_forever(stop))
+    try:
+        await asyncio.wait_for(provider.entered.wait(), SETTLE_BOUND)
+        assert worker.deferred == 1, "the preparation was not deferred beside the loop"
+
+        async with physical.database.begin() as connection:
+            beside = await steps.enqueue_step(
+                connection, case_id=slow_case, step_key="noop:beside", kind=StepKind.NOOP
+            )
+        assert beside is not None
+
+        unrelated = await physical.report(READABLE)
+        unrelated_first = await _first_step_of(physical, unrelated.case_id)
+        await _await_started(physical, unrelated_first.id)
+
+        # The loop is demonstrably sweeping, and it reached a *younger* row than this one.
+        held = await _step_row(physical, beside)
+        assert held.started_at is None, "a second step of a held case ran beside its preparation"
+        assert held.state == "PENDING"
+        assert held.attempts == 0
+    finally:
+        stop.set()
+        await asyncio.wait_for(loop, SETTLE_BOUND)
+
+    # Held, never lost: with the preparation finished the exclusion lapses and the row is
+    # ordinary claimable work again, to this process and to any other.
+    assert (await _semantic_step_of(physical, slow_case)).state == "DONE"
+    await physical.drain(limit=8)
+    resumed = await _step_row(physical, beside)
+    assert resumed.started_at is not None
+    assert resumed.attempts == 1
