@@ -16,15 +16,13 @@ same world afterwards.
 ``hold_task`` and ``release_task``, and something has to perform them for an arm that is not the
 system which owns the production tasks. It performs exactly those two actions and nothing else.
 
-**The nine scenario programs are not written here and this is the gap that remains.** The frozen
-contract states each scenario's stipulated facts as English sentences -- *the strawberry line is
-therefore attested received: 6.0 kg* -- and there is no machine-readable form of them in the
-document. Turning nine of those into world programs is scenario preparation, it is the execution
-session's own authoring, and it is deliberately not done in the session that also built the
-scoring path: a program written while its scenario's ground truth is visible is not
-distinguishable from one written towards it. :data:`PROGRAMS` is therefore empty,
-:func:`program_for` refuses a scenario it has no program for, and the preflight refuses a scored
-run for any scenario in that state. The mechanism is closed; the authoring is named.
+**The nine scenario programs are authored in their own module.** The frozen contract states each
+scenario's stipulated facts as English sentences -- *the strawberry line is therefore attested
+received: 6.0 kg* -- and turning nine of those into world steps is a reading of a document
+rather than a harness mechanism, so it lives in :mod:`~scripts.sur1.bindings.programs` and is
+frozen and hashed separately. This module keeps the mechanism: what a program may reach, and the
+refusal for a scenario that has none. :func:`program_for` still refuses a scenario with no
+program, and the preflight still refuses a scored run for any scenario in that state.
 
 **Nothing here has been run against a ``SUR-1`` scenario.**
 """
@@ -139,14 +137,22 @@ class WorldProgram:
         return tuple(applied)
 
 
-PROGRAMS: Final[dict[str, WorldProgram]] = {}
-"""The nine scenario programs, by identifier. Empty, and see this module's docstring for why."""
+def registry() -> Mapping[str, Any]:
+    """Every authored scenario program, by identifier.
+
+    Imported inside the call rather than at module scope: :mod:`scripts.sur1.bindings.programs`
+    reads the frozen contract to build them, and a module import that read a document from disk
+    would make importing the kitchen an act with a failure mode.
+    """
+    from scripts.sur1.bindings.programs import programs
+
+    return programs()
 
 
-def program_for(scenario_id: str) -> WorldProgram:
+def program_for(scenario_id: str) -> Any:
     """The program for one scenario, or a refusal naming what is missing."""
     try:
-        return PROGRAMS[scenario_id]
+        return registry()[scenario_id]
     except KeyError:
         raise UnprogrammedScenarioError(
             f"{scenario_id} has no world program: its stipulated facts are prose in the frozen "
@@ -157,7 +163,8 @@ def program_for(scenario_id: str) -> WorldProgram:
 
 def unprogrammed(scenario_ids: Sequence[str]) -> tuple[str, ...]:
     """Which of these scenarios could not be set up. The preflight refuses on a non-empty list."""
-    return tuple(scenario_id for scenario_id in scenario_ids if scenario_id not in PROGRAMS)
+    known = registry()
+    return tuple(scenario_id for scenario_id in scenario_ids if scenario_id not in known)
 
 
 # -------------------------------------------------------------------------- the kitchen facility
@@ -230,7 +237,6 @@ def _dsn(url: str) -> str:
 
 __all__ = [
     "HELD",
-    "PROGRAMS",
     "SCHEDULED",
     "KitchenWriter",
     "PreparationError",
@@ -239,5 +245,6 @@ __all__ = [
     "WorldProgram",
     "WorldStep",
     "program_for",
+    "registry",
     "unprogrammed",
 ]

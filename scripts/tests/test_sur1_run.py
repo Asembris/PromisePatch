@@ -18,7 +18,6 @@ import pytest
 from scripts.sur1 import predeclaration
 from scripts.sur1.bindings import is_real
 from scripts.sur1.bindings.config import BindingConfig
-from scripts.sur1.bindings.setup import PROGRAMS, WorldProgram
 from scripts.sur1.capture import CaptureError, write_once
 from scripts.sur1.doubles import FakeClock
 from scripts.sur1.driver import Clock
@@ -163,7 +162,6 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
     assert [check.name for check in report.failures] == [
         "receivers",
         "classifier_identity",
-        "world_programs",
     ], "a development run reports the undetermined rule rather than being refused for it"
 
 
@@ -192,12 +190,11 @@ def test_the_world_programs_are_the_remaining_blocker_and_the_preflight_names_th
         run_id="named",
         bindings=bindings,
         config=config(),
-        scenarios=["C01"],
+        scenarios=["C99"],
         root=tmp_path,
     )
     assert "world_programs" in [failed.name for failed in before.failures]
 
-    monkeypatch.setitem(PROGRAMS, "C01", WorldProgram(scenario_id="C01", steps=()))
     after = check(
         kind=SCORED,
         run_id="named",

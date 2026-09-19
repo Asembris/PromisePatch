@@ -22,7 +22,6 @@ from scripts.sur1 import predeclaration
 from scripts.sur1.bindings import REAL, Probe
 from scripts.sur1.bindings.bedrock import BedrockConverseClient, ModelIdentity
 from scripts.sur1.bindings.config import DEFAULT_PORTS, REQUIRED_FOR_SCORED, BindingConfig
-from scripts.sur1.bindings.setup import PROGRAMS, WorldProgram
 from scripts.sur1.doubles import ScriptedModel, ScriptedSurface, SyntheticWorld
 from scripts.sur1.evidence import UNDETERMINED, ChannelMessage
 from scripts.sur1.frozen import Contract
@@ -242,14 +241,16 @@ def test_a_moved_rule_refuses_the_run_even_though_the_function_is_the_declared_o
     assert "moved" in refused.detail
 
 
-def test_a_scenario_with_no_world_program_refuses_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_scenario_with_no_world_program_refuses_the_run() -> None:
+    """Every frozen scenario is programmed, and a scenario that is not still refuses the run."""
     contract = Contract.load()
 
-    assert not world_programs(contract.scenario_ids).passed
-
-    monkeypatch.setitem(PROGRAMS, "C01", WorldProgram(scenario_id="C01", steps=()))
+    assert world_programs(contract.scenario_ids).passed
     assert world_programs(["C01"]).passed
-    assert not world_programs(["C01", "C02"]).passed
+
+    refused = world_programs([*contract.scenario_ids, "C99"])
+    assert not refused.passed
+    assert "C99" in refused.detail
 
 
 def test_a_new_output_directory_passes_and_a_resumable_one_passes(tmp_path: Path) -> None:
@@ -310,11 +311,7 @@ def passing_preflight(tmp_path: Path, **overrides: Any) -> Any:
     )
 
 
-def test_a_run_with_every_precondition_true_is_permitted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setitem(PROGRAMS, "C01", WorldProgram(scenario_id="C01", steps=()))
-
+def test_a_run_with_every_precondition_true_is_permitted(tmp_path: Path) -> None:
     report = passing_preflight(tmp_path)
 
     assert report.passed, [check.as_payload() for check in report.failures]
@@ -329,6 +326,7 @@ def test_a_scored_run_is_refused_with_every_reason_named_rather_than_the_first(
         model=ScriptedModel(replies=[]),
         config=config(SUR1_AWS_REGION=""),
         classifier=UNDETERMINED,
+        scenarios=["C99"],
     )
 
     with pytest.raises(PreflightRefusedError) as refusal:
