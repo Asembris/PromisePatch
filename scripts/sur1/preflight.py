@@ -71,6 +71,7 @@ REQUIRED_CHECKS: Final = (
     "classifier_identity",
     "world_programs",
     "world_program_freeze",
+    "world_clock",
     "output_directory",
     "blinding",
     "event_blinding",
@@ -338,6 +339,53 @@ def world_program_freeze(contract: Contract | None) -> Check:
     )
 
 
+def world_clock(*, world: object) -> Check:
+    """This run is placed in time by a declared rule, and the capture will say which.
+
+    The check a scored run needs and the one the dress rehearsal's §13 showed was missing: a
+    world installed at the fixture's own March 2026 anchor is months in the past, both Valley
+    Produce deliveries fall outside the bakery day, the clarification collapses into two options
+    carrying the same words and every scenario ends ``NEEDS_HUMAN_INTERPRETATION``. That failure
+    produces a full set of numbers and none of them is about a scenario, which is exactly the
+    kind of failure a preflight exists to turn into a refusal.
+
+    So the question is not *is the anchor sensible* --
+    :func:`scripts.sur1.bindings.clock.run_anchor` already refuses an unusable one at the moment
+    it is chosen -- but *was any declared rule used at all*. An unrecognised strategy is refused
+    rather than trusted, because a world carrying a string nobody recognised is a world placed in
+    time by something this package did not write. See ADR-0019.
+    """
+    from scripts.sur1.bindings.clock import FIXTURE_ANCHOR, KNOWN_STRATEGIES, RunClock
+
+    clock = getattr(world, "clock", None)
+    if clock is None:
+        return Check(
+            "world_clock",
+            False,
+            "this world carries no run clock, so it would be installed at the fixture's own "
+            f"anchor ({FIXTURE_ANCHOR}). Every commitment would then fall outside the bakery day "
+            "and every scenario would end NEEDS_HUMAN_INTERPRETATION",
+        )
+    if not isinstance(clock, RunClock):
+        return Check(
+            "world_clock",
+            False,
+            f"a run clock is a RunClock, not a {type(clock).__name__}",
+        )
+    if not clock.declared:
+        return Check(
+            "world_clock",
+            False,
+            f"{clock.strategy!r} is not a declared clock strategy; this run may be driven under "
+            f"{sorted(KNOWN_STRATEGIES)} and nothing else",
+        )
+    return Check(
+        "world_clock",
+        True,
+        f"{clock.strategy}/{clock.version} at {clock.anchor.isoformat()} ({clock.timezone})",
+    )
+
+
 EVENT_MODULES: Final = ("events", "worldsink")
 """The modules that decide when a declared world event fires and what it does.
 
@@ -551,6 +599,7 @@ def preflight(
         classifier_identity(classifier),
         world_programs(selected),
         world_program_freeze(contract),
+        world_clock(world=world),
         output_directory(run_id, root=root, contract=contract),
         blinding(),
         event_blinding(),
@@ -631,6 +680,7 @@ __all__ = [
     "real_bindings",
     "receivers",
     "require",
+    "world_clock",
     "world_program_freeze",
     "world_programs",
 ]

@@ -189,6 +189,16 @@ class RunManifest:
     driver_version: str = DRIVER_VERSION
     finished_at: datetime | None = None
     environment: dict[str, Any] = field(default_factory=environment)
+    world_clock: dict[str, Any] | None = None
+    """Where in time this invocation installed its worlds, and which rule chose it.
+
+    Provenance rather than identity, which is why it is not in :attr:`identity_fields`. The
+    identity of a starting world is its digest, and a digest is rendered as offsets from the
+    anchor and is therefore invariant under it -- two invocations at two anchors that publish the
+    same digests started from the same worlds. What an absolute instant answers is *which day was
+    this attempt driven on*, and a run resumed on a later day should say so rather than leave it
+    to be assumed. See ADR-0019.
+    """
 
     def __post_init__(self) -> None:
         if self.kind not in ("scored", "development"):
@@ -213,6 +223,7 @@ class RunManifest:
             "budgets": self.ceilings.as_payload(),
             "tool_surface": {"reads": list(self.read_tools), "writes": list(self.write_tools)},
             "environment": dict(self.environment),
+            "world_clock": None if self.world_clock is None else dict(self.world_clock),
         }
 
     @property

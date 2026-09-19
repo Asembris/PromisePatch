@@ -293,6 +293,22 @@ def blind(
     )
 
 
+def _world_clock(world: object) -> dict[str, Any] | None:
+    """Where in time this world installs, read off the world rather than taken as a parameter.
+
+    Not a parameter on purpose. A recorded anchor that came in beside the world could name an
+    instant the world was not actually installed at, and a capture saying the wrong thing about
+    when a run happened is worse than one saying nothing. Read from the object that will do the
+    installing, so the two cannot disagree. See ADR-0019.
+    """
+    clock = getattr(world, "clock", None)
+    describes = getattr(clock, "describes", None)
+    if describes is None:
+        return None
+    recorded: dict[str, Any] = dict(describes())
+    return recorded
+
+
 def drive(
     *,
     arms: Sequence[ArmAdapter],
@@ -387,6 +403,7 @@ def drive(
         implementation_sha=head,
         working_tree_dirty=dirty,
         driver_version=DRIVER_VERSION,
+        world_clock=_world_clock(world),
     )
     directory, tokens = open_run(
         manifest,
