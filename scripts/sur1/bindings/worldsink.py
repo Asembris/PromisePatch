@@ -35,7 +35,7 @@ from decimal import Decimal
 from typing import Final
 
 from promise_graph.model import LedgerSourceKind
-from scripts.sur1.bindings.receivers import ChannelLedger
+from scripts.sur1.bindings.receivers import SCHEMA, ChannelLedger
 from scripts.sur1.evidence import INBOUND, ChannelMessage
 
 HARNESS_PREFIX: Final = "sur1"
@@ -73,6 +73,8 @@ class LedgerWriter:
     """
 
     url: str
+    schema: str = SCHEMA
+    """The product's schema. Set on the connection for the reason :data:`SCHEMA` gives."""
 
     def post(
         self, *, resource_id: str, delta: Decimal, source_id: str, recorded_at: datetime
@@ -94,6 +96,7 @@ class LedgerWriter:
 
         connection = await asyncpg.connect(dsn=_dsn(self.url), timeout=5)
         try:
+            await connection.execute(f'SET search_path TO "{self.schema}", public')
             await connection.execute(
                 "INSERT INTO inventory_ledger (resource_id, delta, source_kind, source_id,"
                 " recorded_at) VALUES ($1, $2, $3, $4, $5)",

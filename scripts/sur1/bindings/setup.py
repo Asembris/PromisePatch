@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any, Final, Protocol
 from uuid import UUID
 
-from scripts.sur1.bindings.receivers import DatabaseReader
+from scripts.sur1.bindings.receivers import SCHEMA, DatabaseReader
 
 ROOT: Final = Path(__file__).resolve().parents[3]
 
@@ -183,6 +183,8 @@ class KitchenWriter:
 
     url: str
     holder: UUID
+    schema: str = SCHEMA
+    """The product's schema. Set on the connection for the reason :data:`SCHEMA` gives."""
 
     def _execute(self, statement: str, parameters: Sequence[Any]) -> int:
         """One statement, and how many rows it actually moved.
@@ -198,6 +200,7 @@ class KitchenWriter:
 
         connection = await asyncpg.connect(dsn=_dsn(self.url), timeout=5)
         try:
+            await connection.execute(f'SET search_path TO "{self.schema}", public')
             moved = await connection.fetch(statement, *parameters)
         finally:
             await connection.close()

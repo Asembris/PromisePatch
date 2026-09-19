@@ -75,6 +75,20 @@ once, here, and is asserted in a test rather than remembered.
 MESSAGE_SEND: Final = "MESSAGE_SEND"
 """The outbox kind that is an outbound customer message. Read, never written."""
 
+SCHEMA: Final = "promisepatch"
+"""The schema the product's tables live in, named because ``asyncpg`` will not find them otherwise.
+
+``promisepatch.db.base`` declares every table under this schema, and the application's own engine
+is configured for it. A raw connection gets PostgreSQL's default ``search_path``, which does not
+include it, so every unqualified statement in this module would raise ``UndefinedTableError`` --
+which this module turns, correctly and uselessly, into "this evidence source could not be read".
+Every receiver read would then be unreadable and every scenario ``VOID``.
+
+It is a constant here rather than an import because reaching into ``promisepatch.db`` would make
+reading a receiver row pull in SQLAlchemy and the application's settings. It is a field on each
+reader and writer so a deployment that renamed it has somewhere to say so.
+"""
+
 
 class ReceiverUnreadableError(RuntimeError):
     """A declared evidence source could not be read at all.
@@ -251,9 +265,13 @@ class DatabaseReader:
 
     The URL is normalised rather than assumed: the application configures ``postgresql+asyncpg``
     and the driver wants the scheme without the suffix. That is a spelling, not a database.
+
+    The search path is set on every connection, for the reason :data:`SCHEMA` gives: the tables
+    are not on the default one and an unqualified statement would report them as unreadable.
     """
 
     url: str
+    schema: str = SCHEMA
 
     def dsn(self) -> str:
         scheme, separator, rest = self.url.partition("://")
@@ -281,6 +299,7 @@ class DatabaseReader:
 
         connection = await asyncpg.connect(dsn=self.dsn(), timeout=5)
         try:
+            await connection.execute(f'SET search_path TO "{self.schema}", public')
             records = await connection.fetch(statement)
         finally:
             await connection.close()
