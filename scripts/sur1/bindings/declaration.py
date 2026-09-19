@@ -40,6 +40,7 @@ from typing import Any, Final
 from scripts.sur1.bindings import clock as clock_module
 from scripts.sur1.bindings import consentdoor as consentdoor_module
 from scripts.sur1.bindings import events as events_module
+from scripts.sur1.bindings import governed as governed_module
 from scripts.sur1.bindings import programs as programs_module
 from scripts.sur1.bindings import realisation as realisation_module
 from scripts.sur1.bindings import setup as setup_module
@@ -82,6 +83,7 @@ IMPLEMENTATION_MODULES: Final = (
     worldsink_module,
     consentdoor_module,
     clock_module,
+    governed_module,
 )
 """Every module whose source decides what a program is or what its world looks like.
 
@@ -96,6 +98,11 @@ receive, while every world digest holds still, which is exactly the failure this
 for. They are also the modules the structural blindness checks walk, so listing them here is
 what makes a trigger that started reading an arm or an answer a parse failure rather than a
 review question.
+
+The governed writer is in it because it is how the world's two writes into PromisePatch's
+own tables are authorised. A change there decides whether a stipulated stock movement or a
+hold happens at all, while every world digest holds still -- the same failure the sink and
+the door are listed for.
 
 The clock is in it because *where in time* a world is installed decides whether its commitments
 fall inside the bakery day, and therefore which clarification a scenario asks and whether any

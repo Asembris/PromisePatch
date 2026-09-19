@@ -28,7 +28,6 @@ been delivered to a live channel and no movement has been posted to a live ledge
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -36,6 +35,7 @@ from typing import Final
 
 from promise_graph.model import LedgerSourceKind
 from scripts.sur1.bindings.consentdoor import ConsentDoor, ConsentDoorError
+from scripts.sur1.bindings.governed import STOCK_MOVEMENT, GovernedWriter
 from scripts.sur1.bindings.receivers import SCHEMA, ChannelLedger
 from scripts.sur1.evidence import INBOUND, ChannelMessage
 
@@ -80,35 +80,36 @@ class LedgerWriter:
     def post(
         self, *, resource_id: str, delta: Decimal, source_id: str, recorded_at: datetime
     ) -> str:
-        """Append one signed movement. A repeat of one source identity is refused by PostgreSQL."""
+        """Append one signed movement. A repeat of one source identity is refused by PostgreSQL.
+
+        Through the product's own governed write, because ``inventory_ledger`` is a governed
+        table and a bare ``INSERT`` on it is refused by the database's trigger -- which is
+        exactly what happened the first time this method was ever executed. See
+        :mod:`~scripts.sur1.bindings.governed`.
+        """
         marked = f"{HARNESS_PREFIX}:{source_id}"
         try:
-            asyncio.run(self._insert(resource_id, delta, marked, recorded_at))
+            GovernedWriter(url=self.url, schema=self.schema).write(
+                event_type=STOCK_MOVEMENT,
+                after={"resource_id": resource_id, "delta": str(delta), "source_id": marked},
+                statement=(
+                    "INSERT INTO inventory_ledger (resource_id, delta, source_kind, source_id,"
+                    " recorded_at) VALUES (:resource_id, :delta, :source_kind, :source_id,"
+                    " :recorded_at) RETURNING seq"
+                ),
+                parameters={
+                    "resource_id": resource_id,
+                    "delta": delta,
+                    "source_kind": str(MOVEMENT_KIND),
+                    "source_id": marked,
+                    "recorded_at": recorded_at,
+                },
+            )
         except Exception as failure:
             raise SinkUnavailableError(
                 f"the movement {marked} could not be posted: {type(failure).__name__}: {failure}"
             ) from failure
         return f"ledger:{marked}"
-
-    async def _insert(
-        self, resource_id: str, delta: Decimal, source_id: str, recorded_at: datetime
-    ) -> None:
-        import asyncpg
-
-        connection = await asyncpg.connect(dsn=_dsn(self.url), timeout=5)
-        try:
-            await connection.execute(f'SET search_path TO "{self.schema}", public')
-            await connection.execute(
-                "INSERT INTO inventory_ledger (resource_id, delta, source_kind, source_id,"
-                " recorded_at) VALUES ($1, $2, $3, $4, $5)",
-                resource_id,
-                delta,
-                str(MOVEMENT_KIND),
-                source_id,
-                recorded_at,
-            )
-        finally:
-            await connection.close()
 
 
 @dataclass(slots=True)
@@ -187,11 +188,6 @@ class LiveWorldSink:
             source_id=source_id,
             recorded_at=datetime.now(UTC),
         )
-
-
-def _dsn(url: str) -> str:
-    scheme, separator, rest = url.partition("://")
-    return f"{scheme.split('+')[0]}{separator}{rest}"
 
 
 __all__ = [

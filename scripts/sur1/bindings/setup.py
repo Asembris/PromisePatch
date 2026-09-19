@@ -29,7 +29,6 @@ program, and the preflight still refuses a scored run for any scenario in that s
 
 from __future__ import annotations
 
-import asyncio
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -37,6 +36,7 @@ from pathlib import Path
 from typing import Any, Final, Protocol
 from uuid import UUID
 
+from scripts.sur1.bindings.governed import TASK_HELD, TASK_RELEASED, GovernedWriter
 from scripts.sur1.bindings.receivers import SCHEMA, DatabaseReader
 
 ROOT: Final = Path(__file__).resolve().parents[3]
@@ -186,25 +186,13 @@ class KitchenWriter:
     schema: str = SCHEMA
     """The product's schema. Set on the connection for the reason :data:`SCHEMA` gives."""
 
-    def _execute(self, statement: str, parameters: Sequence[Any]) -> int:
-        """One statement, and how many rows it actually moved.
+    def _writer(self) -> GovernedWriter:
+        """The audited path. ``production_tasks`` is governed, so there is no other one.
 
-        ``RETURNING id`` rather than a status tag, because the two answers this class gives --
-        held, or refused because the work was not scheduled -- are the difference between zero
-        rows and one, and a parsed tag is a second place that could be got wrong.
+        A bare ``UPDATE`` on this table is refused by the database's own trigger, which is
+        correct and is what it is for. See :mod:`~scripts.sur1.bindings.governed`.
         """
-        return asyncio.run(self._run(statement, parameters))
-
-    async def _run(self, statement: str, parameters: Sequence[Any]) -> int:
-        import asyncpg
-
-        connection = await asyncpg.connect(dsn=_dsn(self.url), timeout=5)
-        try:
-            await connection.execute(f'SET search_path TO "{self.schema}", public')
-            moved = await connection.fetch(statement, *parameters)
-        finally:
-            await connection.close()
-        return len(moved)
+        return GovernedWriter(url=self.url, schema=self.schema)
 
     def hold(self, task_id: str) -> Mapping[str, Any]:
         """Hold one task so work cannot begin. Refused on work that has already started.
@@ -212,30 +200,42 @@ class KitchenWriter:
         The refusal is the product's own rule and is enforced here rather than left to an arm:
         releasing begun work would assert that it never began, so it may not be held in the
         first place. An arm that asks is told no, which is a reading about that arm.
+
+        ``RETURNING id`` rather than a status tag, because the two answers this method gives --
+        held, or refused because the work was not scheduled -- are the difference between zero
+        rows and one, and a parsed tag is a second place that could be got wrong.
         """
-        changed = self._execute(
-            "UPDATE production_tasks SET state = $1, held_by_case_id = $2"
-            " WHERE id = $3 AND state = $4 RETURNING id",
-            (HELD, self.holder, task_id, SCHEDULED),
+        changed = self._writer().write(
+            event_type=TASK_HELD,
+            after={"task_id": task_id, "state": HELD, "held_by": str(self.holder)},
+            statement=(
+                "UPDATE production_tasks SET state = :state, held_by_case_id = :holder"
+                " WHERE id = :task_id AND state = :scheduled RETURNING id"
+            ),
+            parameters={
+                "state": HELD,
+                "holder": self.holder,
+                "task_id": task_id,
+                "scheduled": SCHEDULED,
+            },
         )
         if changed == 0:
             return {"held": False, "task_id": task_id, "reason": "not scheduled work"}
         return {"held": True, "task_id": task_id}
 
     def release(self, task_id: str) -> Mapping[str, Any]:
-        changed = self._execute(
-            "UPDATE production_tasks SET state = $1, held_by_case_id = NULL"
-            " WHERE id = $2 AND held_by_case_id = $3 RETURNING id",
-            (SCHEDULED, task_id, self.holder),
+        changed = self._writer().write(
+            event_type=TASK_RELEASED,
+            after={"task_id": task_id, "state": SCHEDULED, "released_by": str(self.holder)},
+            statement=(
+                "UPDATE production_tasks SET state = :state, held_by_case_id = NULL"
+                " WHERE id = :task_id AND held_by_case_id = :holder RETURNING id"
+            ),
+            parameters={"state": SCHEDULED, "task_id": task_id, "holder": self.holder},
         )
         if changed == 0:
             return {"released": False, "task_id": task_id, "reason": "not held by this attempt"}
         return {"released": True, "task_id": task_id}
-
-
-def _dsn(url: str) -> str:
-    scheme, separator, rest = url.partition("://")
-    return f"{scheme.split('+')[0]}{separator}{rest}"
 
 
 __all__ = [
