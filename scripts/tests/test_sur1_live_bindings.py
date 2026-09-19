@@ -60,6 +60,7 @@ from scripts.sur1.evidence import (
 )
 from scripts.sur1.frozen import ARMS, Contract
 from scripts.sur1.manifest import AttemptIdentity
+from scripts.sur1.predeclaration import asserts_change
 
 NOW = datetime(2026, 9, 19, 8, 0, tzinfo=UTC)
 
@@ -862,6 +863,45 @@ def test_receiver_evidence_projects_to_a_bundle_that_carries_a_token_and_no_arm(
     outbound, inbound = bundle.messages
     assert outbound.asserts_change is False, "a question is not a statement"
     assert inbound.literal_decision == "YES"
+
+
+def test_an_amendment_read_from_the_endpoint_reaches_the_scorer_s_bundle_with_its_key(
+    order_system: OrderSystem,
+) -> None:
+    """The whole E1 path, end to end: a real order system to the blind bundle the scorer reads.
+
+    Rule ``B2`` attributes an amendment to an arm by the idempotency key on the order system's
+    own event, and rule ``B6`` says an external change is somebody else's command. Both live at
+    the far end of this chain, so proving the receiver parses a key is not by itself proving the
+    scorer can see one. This drives the real simulator, reads it through the receiver, projects
+    the reading, and asserts the key and the version arrived -- with no arm name anywhere in the
+    result.
+    """
+    since = datetime.now(UTC) - timedelta(seconds=5)
+    order_system.amend(
+        order="EXT-D",
+        line="ol-d",
+        was="rv-raspberry-lemon-2",
+        now="rv-lemon-curd-1",
+        key="pp-recovery-1",
+        version=1,
+    )
+    events = OrderSystemReceiver(base_url=order_system.base_url).read(since=since)
+
+    bundle = blind_bundle(
+        ReceiverEvidence(order_events=events, messages=(), tasks=(), report=None),
+        run_id="unit",
+        scenario_id="C01",
+        arm_token="tok-abc",
+        fixtures=FixtureMap.read(Contract.load().document),
+        classifier=asserts_change,
+    )
+
+    (amendment,) = bundle.amendments
+    assert amendment.idempotency_key == "pp-recovery-1"
+    assert amendment.to_version == "rv-lemon-curd-1", "the item the changed line now holds"
+    assert amendment.order == "ord-d"
+    assert not any(arm in repr(bundle) for arm in ARMS)
 
 
 def test_the_live_bindings_declare_themselves_real_and_the_doubles_do_not() -> None:
