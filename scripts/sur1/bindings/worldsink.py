@@ -35,6 +35,7 @@ from decimal import Decimal
 from typing import Final
 
 from promise_graph.model import LedgerSourceKind
+from scripts.sur1.bindings.consentdoor import ConsentDoor, ConsentDoorError
 from scripts.sur1.bindings.receivers import SCHEMA, ChannelLedger
 from scripts.sur1.evidence import INBOUND, ChannelMessage
 
@@ -121,6 +122,14 @@ class LiveWorldSink:
 
     channel: ChannelLedger
     ledger: LedgerWriter
+    door: ConsentDoor | None = None
+    """Where a declared reply additionally goes, when a running system asked for it.
+
+    Optional because the event model is provable without one: a unit test arms and fires every
+    declared event with no database, no API and no door at all. A run binds the real one, and
+    the preflight refuses a scored run whose world carries none -- so *optional here* and
+    *required there* are two different statements and both are enforced where they belong.
+    """
 
     def deliver_reply(
         self,
@@ -132,12 +141,18 @@ class LiveWorldSink:
         delivery: int,
         deliveries: int,
     ) -> str:
-        """Put one stipulated message on the channel, under the provider's own identity.
+        """Put one stipulated message on the channel, and offer it to the product's own door.
 
         ``message_id`` is the same string for every delivery of one message, which is what makes
         ``C07`` one decision seen twice rather than two decisions. The delivery ordinal is
         carried in the receipt and never in the identity, because a provider that redelivers does
         not mint a new message.
+
+        **The channel record is written first and unconditionally**, so the observable customer
+        event -- one inbound message, same address, same words, same point in the sequence -- is
+        identical for every attempt whether or not a door was open. The door is offered
+        afterwards and adds no evidence of its own: what it produces is the driven system's own
+        record of having been told, which is that system's fact exactly as its outbox rows are.
         """
         if delivery < 1 or delivery > deliveries:
             raise SinkUnavailableError(
@@ -153,7 +168,16 @@ class LiveWorldSink:
                 provider_event_id=message_id,
             )
         )
-        return f"reply:{message_id}:{delivery}/{deliveries}:{order}"
+        receipt = f"reply:{message_id}:{delivery}/{deliveries}:{order}"
+        if self.door is None:
+            return receipt
+        try:
+            answered = self.door.offer(channel=channel, order=order, text=text)
+        except ConsentDoorError as failure:
+            # A reply the product should have received and did not is the confound this door
+            # closes. Carrying on would record it as delivered and leave no trace of the gap.
+            raise SinkUnavailableError(str(failure)) from failure
+        return f"{receipt}:{answered['door']}"
 
     def move_stock(self, *, resource: str, delta: Decimal, source_id: str, order: str) -> str:
         """Post one physical movement, attributed to the world and to nobody's attempt."""

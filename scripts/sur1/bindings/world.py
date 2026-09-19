@@ -43,6 +43,7 @@ from uuid import UUID, uuid4
 from scripts.sur1 import predeclaration
 from scripts.sur1.bindings import REAL, Probe
 from scripts.sur1.bindings.clock import RunClock, strategy_of
+from scripts.sur1.bindings.consentdoor import ConsentDoor
 from scripts.sur1.bindings.events import Arming, FiredEvent, observe
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface
 from scripts.sur1.bindings.receivers import (
@@ -103,6 +104,17 @@ class LiveScenarioWorld:
     ledger: ChannelLedger
     fixture: Mapping[str, Mapping[str, Any]]
     worker_surface: LiveWorkerSurface | None = None
+    consent_door: ConsentDoor | None = None
+    """The production consent ingress a declared reply is additionally offered to.
+
+    One door for the whole run, held by the one world every attempt shares, and never chosen per
+    attempt: an object that bound a different door depending on who was driving would make the
+    later numbers a comparison between two worlds. It is blind by construction rather than by
+    care -- it presses the link the *driven system's own outbox* holds, so where nothing asked
+    the customer anything there is no link, the door stays shut, and the reply is on the channel
+    record alone. See :mod:`scripts.sur1.bindings.consentdoor`.
+    """
+
     environment: Mapping[str, str] = field(default_factory=dict)
 
     run_id: UUID = field(default_factory=uuid4)
@@ -145,6 +157,9 @@ class LiveScenarioWorld:
             "actions": list(ACTIONS),
             "programs": f"{self.program_lookup.__module__}.{self.program_lookup.__qualname__}",
             "clock": strategy_of(self.clock),
+            "consent_ingress": (
+                None if self.consent_door is None else dict(self.consent_door.identity())
+            ),
         }
 
     def probe(self) -> Probe:
@@ -173,6 +188,8 @@ class LiveScenarioWorld:
         self.arming = None
         self.world_digest = ""
         self.ledger.clear()
+        if self.consent_door is not None:
+            self.consent_door.begin()
         if self.worker_surface is not None:
             self.worker_surface.forget()
             # The world catches up while that surface waits. Arm A's world catches up when it
@@ -205,7 +222,11 @@ class LiveScenarioWorld:
         holds: an :class:`~scripts.sur1.arms.AttemptRequest` carries a world and a budget, and
         there is no path from either to this object.
         """
-        return LiveWorldSink(channel=self.ledger, ledger=LedgerWriter(url=self.database.url))
+        return LiveWorldSink(
+            channel=self.ledger,
+            ledger=LedgerWriter(url=self.database.url),
+            door=self.consent_door,
+        )
 
     # ------------------------------------------------------------------------- the actions
 

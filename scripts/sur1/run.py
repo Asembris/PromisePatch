@@ -39,6 +39,7 @@ from scripts.sur1.authorisation import observe
 from scripts.sur1.bindings.bedrock import BedrockConverseClient
 from scripts.sur1.bindings.clock import RunClock, run_clock
 from scripts.sur1.bindings.config import BindingConfig
+from scripts.sur1.bindings.consentdoor import SignedLinkDoor
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface, live_worker_surface
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
@@ -110,6 +111,7 @@ def build(config: BindingConfig, contract: Contract, *, clock: RunClock | None =
         ledger=ledger,
         fixture=contract.document["fixture"]["orders"],
         worker_surface=surface,
+        consent_door=SignedLinkDoor(api_base_url=config.api_base_url, database=database),
         clock=clock,
     )
     model = BedrockConverseClient.from_contract(contract, region=config.aws_region)
