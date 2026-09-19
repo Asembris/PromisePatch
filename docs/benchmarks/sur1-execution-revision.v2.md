@@ -231,7 +231,57 @@ revision touches it. Say it beside any `C02` safety count published from this be
 Neither affects a score. Both are restated here so the revision does not read as if the first
 run's smaller observations had been quietly closed.
 
-## 7. What this revision does not do
+## 7. The proofs
+
+Thirty-four of them, in two modules, none of which drives an arm, calls a model, opens a
+database or runs `docker`. `C01`–`C09` were not driven to produce any of this.
+
+`scripts/tests/test_sur1_harness_correction.py` — 24 checks:
+
+| Claim | How |
+|---|---|
+| both tables the world writes are governed by the product | read from `promisepatch.db.boundary.GOVERNED_TABLES` |
+| a hold, a release and a stock movement each carry an audit event | the writer records the call; every event type begins `BENCHMARK_WORLD_` |
+| neither world writer can open a bare connection any more | AST over `setup.py` and `worldsink.py`: no `asyncpg` import |
+| the audit claims no authority nobody gave | `AUTHORITY` is `NONE`, actor is the world facility |
+| a failed governed write is named, not leaked as a driver error | a refused connection raises `GovernedWriteError` |
+| a simulator too old to declare its projection is refused | `order_projection` against a reader that answers as a `404` build does |
+| a projection publishing no command is refused | the exact entry shape the stale container served |
+| a current order system passes | the declaration this build actually serves |
+| the preflight asks for exactly what this simulator declares | the two packages meet in one assertion and nowhere else |
+| the required fields are the ones the `E1` reader opens | AST over `receivers.py` |
+| a backend on another migration head is refused | `/readyz` answering a different `expected_revision` |
+| a backend whose database is behind its code is refused | `at_head: false` |
+| an API that cannot be read is refused, not assumed current | the surface raises |
+| a backend at this source revision passes | `HEAD_REVISION` on both sides |
+| the governed fixture load takes a stated world | the signature of the function that runs |
+| an `E1` row from a current projection survives its round trip | real reader → real payload → real strict reader, key intact |
+| an `E1` row from the stale projection is what broke the capture | same path, `EvidenceMalformedError` on the empty key |
+| the first scored run is byte-identical to what was published | 57 files, one pinned digest |
+| the published run still says what it said | 24 / 1 / 2, counted out of the verdict files |
+| every frozen benchmark identity is the published one | all five, recomputed, plus `differences() == ()` |
+
+`scripts/tests/test_sur1_world_lifecycle.py` — 10 checks:
+
+| Claim | How |
+|---|---|
+| the worker is down for the whole install and back up afterwards | the install observes the worker's state from inside itself |
+| a world that did not land is refused rather than measured | `fixture_state` still naming the previous world |
+| a database with no fixture row is refused | empty read |
+| a failed install still hands the worker back | the quiesce/resume pair completes |
+| a worker that will not come back is named beside the original failure | the note is attached, the original propagates |
+| a retry begins clean | two attempts in a row, each quiesce → resume |
+| a run that cannot control its worker is refused | `UncontrolledWorker` fails `worker_lifecycle` |
+| a world with no worker control at all is refused | the check names the deadlock |
+| a run binds the real worker control | `run.build` names `ComposeWorkerControl` |
+| the compose worker can be waited on | the service carries a healthcheck |
+
+**What is not proved here.** Nothing asserts that the corrected lifecycle survives a *live*
+`docker compose` cycle, or that a governed world write commits against a *live* PostgreSQL —
+both need the stack, and exercising them is the corrected run's preflight, not this session's.
+They are named in §9.
+
+## 8. What this revision does not do
 
 - **It takes no run.** No arm was driven, no model called, no evidence collected and no verdict
   written. `AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE` was spent on the first run and nothing
@@ -243,3 +293,26 @@ run's smaller observations had been quietly closed.
 - **It deploys nothing and pushes nothing.**
 - **It does not authorise the corrected run.** The session that changes the machinery is not the
   session that scores; that rule is unchanged.
+
+## 9. What stands between this revision and a corrected run
+
+None of it is a defect in the machinery, and none of it is this session's to clear.
+
+1. **A fresh paid-inference authorisation.** `AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE` was
+   spent on `20260919T2020Z-scored`. Nothing here re-authorises anything.
+2. **A rebuilt local stack.** The corrections only take effect in *running* processes:
+   `promisepatch-order-simulator:local` has to be rebuilt to serve `/admin/capabilities`, and
+   `promisepatch-backend:local` has to be rebuilt to carry the worker healthcheck `up --wait`
+   blocks on. The new preflight refuses a run against unrebuilt images, which is the point, but
+   it cannot rebuild them.
+3. **The lifecycle and the governed write against the live stack.** Neither has been executed
+   against a running `docker compose` or a live PostgreSQL in this session — §7 says so. The
+   first thing the corrected run's preflight does is exercise both; a smoke pass over one
+   scenario's install would retire the risk earlier, and would be a *development* run, not a
+   scored one.
+4. **All seventeen checks passing in one report against real bindings.** `model_identity` and
+   the AWS half of `configuration` have still never been asked of a real account.
+5. **A different session.** The session that changes the machinery does not take the run. That
+   rule is unchanged and this session is the one that changed the machinery.
+
+Both evaluation holdouts remain sealed.
