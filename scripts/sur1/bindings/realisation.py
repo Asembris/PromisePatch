@@ -115,8 +115,19 @@ class Installer(Protocol):
 class LiveInstaller:
     """The real writes: the product's own fixture load, and the order system's own surface."""
 
+    expected_database: str = ""
+    """The database the receivers read, so the load can refuse to write to a different one.
+
+    :func:`_write` resolves its connection from ``promisepatch.config.get_settings()``, which
+    falls back to the repository's own ``.env`` when nothing is exported. The receivers resolve
+    theirs from ``SUR1_DATABASE_URL``. Nothing joined the two, so a run started without the local
+    environment loaded would install its canonical world into whichever database ``.env`` names
+    and then read its evidence out of another -- and every reading would be about a world that was
+    never installed. :func:`_same_database` is what makes that a refusal instead.
+    """
+
     def load(self, program: ScenarioProgram) -> str:
-        return _load(program)
+        return _load(program, expected_database=self.expected_database)
 
     def cross(self, step: Any, handles: WorldHandles) -> str:
         return _cross(step, handles)
@@ -147,7 +158,7 @@ def realise(
         )
     digest = _verify(program, published_programs)
 
-    writer = installer or LiveInstaller()
+    writer = installer or LiveInstaller(expected_database=handles.database.url)
     applied = [writer.load(program)]
     for step in program.steps:
         if isinstance(step, ExternalRepin):
@@ -208,7 +219,24 @@ def _verify(program: ScenarioProgram, published: Mapping[str, Any] | None = None
     return digest
 
 
-def _load(program: ScenarioProgram) -> str:
+def _endpoint(url: str) -> tuple[str, str]:
+    """A connection string's host, port and database name. Never its credential.
+
+    Compared rather than the whole URL because the fixture load connects as the migration role
+    and the receivers connect as the application role: two roles on one database are the same
+    database, and two databases behind one role are not.
+    """
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(url)
+    return (f"{parsed.hostname or ''}:{parsed.port or ''}", parsed.path.lstrip("/"))
+
+
+def _same_database(migration_url: str, expected: str) -> bool:
+    return _endpoint(migration_url) == _endpoint(expected)
+
+
+def _load(program: ScenarioProgram, *, expected_database: str = "") -> str:
     """Write the canonical graph through the product's own governed fixture load.
 
     ``anchor`` is the fixture's own byte-stable anchor rather than the wall clock. A benchmark
@@ -222,7 +250,14 @@ def _load(program: ScenarioProgram) -> str:
     graph = program.world(anchor=anchor)
     fixture_name = f"hollow-oak+sur1-{program.scenario_id}"
     try:
-        asyncio.run(_write(graph, fixture_name=fixture_name, anchor=anchor))
+        asyncio.run(
+            _write(
+                graph,
+                fixture_name=fixture_name,
+                anchor=anchor,
+                expected_database=expected_database,
+            )
+        )
     except PreparationError:
         raise
     except Exception as failure:
@@ -233,7 +268,9 @@ def _load(program: ScenarioProgram) -> str:
     return f"load:{fixture_name}"
 
 
-async def _write(graph: Any, *, fixture_name: str, anchor: Any) -> None:
+async def _write(
+    graph: Any, *, fixture_name: str, anchor: Any, expected_database: str = ""
+) -> None:
     """One governed fixture load, in one transaction the harness owns and commits.
 
     Deliberately the same wiring the product's own ``pp reset-demo-state`` uses: the migration
@@ -256,11 +293,21 @@ async def _write(graph: Any, *, fixture_name: str, anchor: Any) -> None:
 
     settings = get_settings()
     ensure_reset_allowed(settings)
+    migration_url = settings.require_migration_database_url()
+    if expected_database and not _same_database(migration_url, expected_database):
+        raise PreparationError(
+            "the fixture load resolved "
+            f"{_endpoint(migration_url)[0]}/{_endpoint(migration_url)[1]} and the receivers read "
+            f"{_endpoint(expected_database)[0]}/{_endpoint(expected_database)[1]}; installing a "
+            "world into one database and reading evidence out of another would produce readings "
+            "about a world that was never installed. Load the local environment "
+            "(scripts/with_local_env.py) so both name the same database."
+        )
     passwords = {
         demo.BAKER_ROLE: settings.require_demo_worker_password(),
         demo.OWNER_ROLE: settings.require_demo_owner_password(),
     }
-    engine = build_engine(settings.require_migration_database_url(), pool_size=1)
+    engine = build_engine(migration_url, pool_size=1)
     try:
         async with engine.begin() as connection:
             await reset_demo_state(
