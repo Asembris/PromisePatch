@@ -48,6 +48,7 @@ from scripts.sur1.evidence import (
     INBOUND,
     OUTBOUND,
     ChannelMessage,
+    EvidenceMalformedError,
     FixtureMap,
     ReceiverEvidence,
     ReportedPromiseRow,
@@ -746,3 +747,38 @@ def test_the_live_bindings_declare_themselves_real_and_the_doubles_do_not() -> N
     assert is_real(surface_for([SETTLED]))
     assert not is_real(SyntheticWorld())
     assert not is_real(ScriptedSurface(script=[]))
+
+
+def test_an_outbound_row_names_the_channel_the_fixture_maps_and_the_arming_waits_on() -> None:
+    """The stored kind and address rejoin into the identity everything else speaks.
+
+    An outbound message's payload carries ``channel_kind='telegram'`` and
+    ``channel_address='1002'``, because that is how the database stores an approval channel. The
+    frozen fixture maps ``tg:1002`` to an order and knows nothing called ``1002``, and an arming
+    counts asks on ``tg:1002``. Reading the address alone therefore produced a row the projection
+    refuses **and** an event that never became due -- one root cause, two consequences, neither
+    visible until a real outbound message existed.
+    """
+    from scripts.sur1.bindings.receivers import CHANNEL_PREFIX_BY_KIND, channel_identity
+
+    from promisepatch.graph.channel import PREFIX_BY_KIND, split_channel
+
+    assert CHANNEL_PREFIX_BY_KIND == PREFIX_BY_KIND, "the restated codec has drifted"
+
+    fixtures = FixtureMap.read(Contract.load().document)
+    for channel, order in sorted(fixtures.by_channel.items()):
+        kind, address = split_channel(channel)
+        payload = {"channel_kind": kind, "channel_address": address, "text": "x"}
+        assert channel_identity(payload) == channel
+        assert fixtures.order_for_channel(channel_identity(payload)) == order
+
+
+def test_an_outbound_row_whose_kind_this_build_does_not_know_is_refused_not_guessed() -> None:
+    from scripts.sur1.bindings.receivers import channel_identity
+
+    fixtures = FixtureMap.read(Contract.load().document)
+    identity = channel_identity({"channel_kind": "carrier-pigeon", "channel_address": "1002"})
+
+    assert identity == "1002"
+    with pytest.raises(EvidenceMalformedError, match="names no order"):
+        fixtures.order_for_channel(identity)

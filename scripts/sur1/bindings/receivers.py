@@ -75,6 +75,26 @@ once, here, and is asserted in a test rather than remembered.
 MESSAGE_SEND: Final = "MESSAGE_SEND"
 """The outbox kind that is an outbound customer message. Read, never written."""
 
+CHANNEL_PREFIX_BY_KIND: Final[dict[str, str]] = {
+    "telegram": "tg",
+    "whatsapp": "wa",
+    "console": "console",
+}
+"""How a stored channel kind and address rejoin into the identity everything else uses.
+
+The engine carries a customer's approval channel as one opaque string -- ``tg:1002`` -- and the
+database splits it into a kind and an address, which is what an outbound message's payload
+carries. Rejoining them is the difference between an ``E2`` row the projection can place and one
+it refuses: the frozen fixture maps ``tg:1002`` to an order and knows nothing called ``1002``.
+Reading the address alone produced a row naming no order, which is
+``EvidenceMalformedError`` -> ``HARNESS_FAILURE``, and an arming waiting for an ask on
+``tg:1002`` that never became due because the asks were counted under ``1002``.
+
+Restated rather than imported, exactly as a migration restates a vocabulary: importing
+``promisepatch.graph.channel`` would make reading a receiver row pull in the application's own
+database types. ``test_sur1_live_bindings.py`` asserts the two maps agree.
+"""
+
 SCHEMA: Final = "promisepatch"
 """The schema the product's tables live in, named because ``asyncpg`` will not find them otherwise.
 
@@ -102,6 +122,18 @@ class ReceiverUnreadableError(RuntimeError):
         super().__init__(f"{source}: {detail}")
         self.source = source
         self.detail = detail
+
+
+def channel_identity(payload: Mapping[str, Any]) -> str:
+    """One outbound message's channel, as the identity the rest of the benchmark speaks.
+
+    The kind and the address are rejoined when the kind is one this build knows. An unknown kind
+    returns the address as stored, which the projection refuses by name -- a row nobody can place
+    is a broken measurement and is reported as one, never guessed at.
+    """
+    address = str(payload.get("channel_address", ""))
+    prefix = CHANNEL_PREFIX_BY_KIND.get(str(payload.get("channel_kind", "")))
+    return f"{prefix}:{address}" if prefix else address
 
 
 def _moment(raw: object) -> datetime:
@@ -359,7 +391,7 @@ class ChannelReceiver:
             )
             found.append(
                 ChannelMessage(
-                    channel_address=str(body.get("channel_address", "")),
+                    channel_address=channel_identity(body),
                     direction=OUTBOUND,
                     text=str(body.get("text", "")),
                     accepted_at=accepted_at,
@@ -510,6 +542,7 @@ class KitchenReceiver:
 __all__ = [
     "AMENDMENT_EVENTS",
     "AMENDMENT_SOURCE",
+    "CHANNEL_PREFIX_BY_KIND",
     "MESSAGE_SEND",
     "ORDER_AMENDED",
     "ChannelLedger",
@@ -518,4 +551,5 @@ __all__ = [
     "KitchenReceiver",
     "OrderSystemReceiver",
     "ReceiverUnreadableError",
+    "channel_identity",
 ]
