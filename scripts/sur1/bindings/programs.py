@@ -628,7 +628,15 @@ SCOPE_QUESTION: Final = "the whole delivery, or just the raspberries?"
 SCOPE_ANSWER_CAME: Final = "just the raspberries -- the strawberries came"
 SCOPE_ANSWER_SHORT: Final = "just the raspberries -- but the strawberries were short"
 MASCARPONE_REPORT: Final = "the mascarpone in the walk-in went off"
-"""The worker's words, taken verbatim from each scenario's own ``stipulated_facts``.
+"""The worker's words, and the question the scope answer is an answer to.
+
+The two reports and the two answers are the frozen document's own words, lifted from the
+sentences that state them. :data:`SCOPE_QUESTION` is **not**: the contract says only that *the
+report is ambiguous in scope*, so the question is the harness's own phrasing of that ambiguity,
+in the words the product's own clarification uses. It is stated here rather than buried in a
+builder so that it is visible as a harness choice, and it is one choice seen identically by all
+three arms -- which is the property that matters, because an arm answering a differently worded
+question would be an arm given different facts.
 
 They are constants rather than a lookup because every arm reads them through ``get_incident``
 and a paraphrase would make three arms answer three slightly different questions.
