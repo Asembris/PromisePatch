@@ -1,4 +1,4 @@
-"""Making one scenario's canonical world true in the live systems.
+"""Making one scenario's canonical world true in the live systems, and arming what it owes.
 
 :mod:`~scripts.sur1.bindings.programs` says what a scenario's world *is*. This module is the
 only place that says how it is *installed*, and it is separate because the first is a reading of
@@ -17,15 +17,27 @@ operator change to the order simulator's own surface and letting it commit its o
 graph already carries the re-pin, because the change happened before the world was prepared;
 what the post adds is the *event*, in the system of record, with its own version bump.
 
-**Every failure is a refusal.** A realisation that could not complete raises
+**A realisation is ``READY`` or it is a refusal, and there is nothing in between.** The order is
+deliberate and every stage of it can only fail closed:
+
+1. the firing plan is derived from what the program declares, which refuses a scenario whose
+   stipulated event no observable trigger can honestly fire;
+2. the world about to be installed is checked against the frozen declaration's own digest for
+   that scenario, so a program that drifted from the freeze refuses before it is written;
+3. the canonical graph is installed through the governed fixture load;
+4. each pre-incident external change crosses into the order system's own record;
+5. the declared events are armed, and only then is ``READY`` returned.
+
+A realisation that could not complete raises
 :class:`~scripts.sur1.bindings.setup.PreparationError`, the driver records ``HARNESS_FAILURE``
 and no arm is driven. A world that quietly missed a stipulated fact would produce a number that
-looks exactly like a number about the scenario, so a half-installed world is never reported as
-a prepared one.
+looks exactly like a number about the scenario, so a half-installed world is never reported as a
+prepared one -- and neither is an installed world whose events nothing could fire.
 
-**The armed events are not wired here.** They fire during an attempt, conditional on what an arm
-does, and the path that fires them does not exist. :func:`realise` refuses a program that carries
-one, which is why the preflight still refuses a scored run. See ``docs/sur1-world-programs.md``.
+**The arming is not the firing.** Nothing here delivers a reply or moves stock. It hands back an
+:class:`~scripts.sur1.bindings.events.Arming`, which fires only when the world's own records
+show the trigger has happened. The arm that reaches a channel is not firing a benchmark event;
+it is doing the ordinary thing the event was declared to be armed on.
 
 **What has been executed, exactly once.** ``C04``'s canonical world was installed into the local
 development PostgreSQL while a refusal message was being checked, and the local demo fixture was
@@ -37,21 +49,87 @@ nothing was read back and no capture exists. Recorded here and in
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Final
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from promise_graph.examples import hollow_oak
+from scripts.sur1.bindings.events import Arming, EventPlanError
 from scripts.sur1.bindings.setup import PreparationError
 
 if TYPE_CHECKING:
+    from scripts.sur1.bindings.events import WorldSink
     from scripts.sur1.bindings.programs import ScenarioProgram
     from scripts.sur1.bindings.setup import WorldHandles
 
 WORLD_SOURCE: Final = "operator"
 """What the order system records as the source of a change that is its own, not an amendment."""
 
+READY: Final = "READY"
+"""The only state a realisation reports. Everything else is raised rather than returned."""
 
-def realise(program: ScenarioProgram, handles: WorldHandles) -> tuple[str, ...]:
-    """Install one scenario's canonical world, and name every step that was applied.
+
+@dataclass(frozen=True, slots=True)
+class Realisation:
+    """One prepared scenario: what was installed, which world it is, and what it still owes.
+
+    Returned whole or not at all. ``arming`` is the live half -- the declared events that have
+    not happened yet and the triggers that will make them happen -- and it is carried on the
+    receipt rather than left to a caller to remember, because an installed world whose events
+    nobody armed is a world an attempt was not set up in.
+    """
+
+    scenario_id: str
+    state: str
+    digest: str
+    applied: tuple[str, ...]
+    arming: Arming
+
+    @property
+    def ready(self) -> bool:
+        return self.state == READY
+
+    def describes(self) -> dict[str, Any]:
+        return {
+            "scenario": self.scenario_id,
+            "state": self.state,
+            "world_digest": self.digest,
+            "applied": list(self.applied),
+            "armed": self.arming.describes(),
+        }
+
+
+class Installer(Protocol):
+    """The two writes a realisation makes, kept behind a name so their order can be proved.
+
+    A test can hand :func:`realise` an installer that refuses and assert that nothing reports
+    ``READY``, without a database, an order system, or a single row written. The default is the
+    live one and there is no configuration by which a run could choose another.
+    """
+
+    def load(self, program: ScenarioProgram) -> str: ...
+
+    def cross(self, step: Any, handles: WorldHandles) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class LiveInstaller:
+    """The real writes: the product's own fixture load, and the order system's own surface."""
+
+    def load(self, program: ScenarioProgram) -> str:
+        return _load(program)
+
+    def cross(self, step: Any, handles: WorldHandles) -> str:
+        return _cross(step, handles)
+
+
+def realise(
+    program: ScenarioProgram,
+    handles: WorldHandles,
+    *,
+    sink: WorldSink | None = None,
+    installer: Installer | None = None,
+) -> Realisation:
+    """Install one scenario's canonical world, arm what it owes, and report it ``READY``.
 
     The order is the program's own: the graph is loaded first, because an external change posted
     to the order system before the load would be a committed event about a world that was about
@@ -59,22 +137,76 @@ def realise(program: ScenarioProgram, handles: WorldHandles) -> tuple[str, ...]:
     """
     from scripts.sur1.bindings.programs import ExternalRepin
 
-    pending = [event.name for event in program.armed if type(event).must_fire]
-    if pending:
+    arming = _arm(program)
+    if arming.planned and sink is None:
         raise PreparationError(
-            f"{program.scenario_id} carries {len(pending)} armed world events the path that "
-            f"fires them does not exist for ({', '.join(pending)}); an attempt driven at this "
-            "world would be an attempt at a scenario whose stipulated events never happen"
+            f"{program.scenario_id} declares {len(arming.planned)} world events and no sink was "
+            "given to perform them; an attempt driven at this world would be an attempt at a "
+            "scenario whose stipulated events never happen"
         )
+    digest = _verify(program)
 
-    applied = [_load(program, handles)]
+    writer = installer or LiveInstaller()
+    applied = [writer.load(program)]
     for step in program.steps:
         if isinstance(step, ExternalRepin):
-            applied.append(_cross(step, handles))
-    return tuple(applied)
+            applied.append(writer.cross(step, handles))
+    return Realisation(
+        scenario_id=program.scenario_id,
+        state=READY,
+        digest=digest,
+        applied=tuple(applied),
+        arming=arming,
+    )
 
 
-def _load(program: ScenarioProgram, handles: WorldHandles) -> str:
+def _arm(program: ScenarioProgram) -> Arming:
+    """Derive the firing plan first, so an unfireable scenario refuses before anything is written.
+
+    A plan that cannot be built is the honest refusal this whole path exists to make: the world
+    would install perfectly and then owe a reply nothing could deliver.
+    """
+    try:
+        return Arming.arm(program)
+    except EventPlanError as failure:
+        raise PreparationError(str(failure)) from failure
+
+
+def _verify(program: ScenarioProgram) -> str:
+    """Check the world about to be installed against the frozen declaration's own digest.
+
+    This is the starting-world check, made before the write rather than after it: the object
+    handed to the fixture load is the object this digest was taken of, so a program that has
+    drifted away from the freeze refuses rather than installing a world nobody declared. It is
+    deliberately not a read-back of the committed rows -- that is a separate surface with its own
+    schema, and the freeze is about the canonical form.
+    """
+    from scripts.sur1.bindings.declaration import DeclarationMismatchError, published
+    from scripts.sur1.bindings.worldsnapshot import digest_of
+
+    digest = digest_of(program)
+    try:
+        declared = published()["programs"]
+    except (DeclarationMismatchError, KeyError) as failure:
+        raise PreparationError(
+            f"{program.scenario_id}'s starting world could not be checked against the frozen "
+            f"world-program declaration: {failure}"
+        ) from failure
+    entry = declared.get(program.scenario_id)
+    if entry is None:
+        raise PreparationError(
+            f"{program.scenario_id} is not in the frozen world-program declaration, so there is "
+            "no published world for the installed one to be checked against"
+        )
+    if entry.get("world_digest") != digest:
+        raise PreparationError(
+            f"{program.scenario_id}'s starting world is {digest} and the frozen declaration says "
+            f"{entry.get('world_digest')}; the world about to be installed is not the declared one"
+        )
+    return digest
+
+
+def _load(program: ScenarioProgram) -> str:
     """Write the canonical graph through the product's own governed fixture load.
 
     ``anchor`` is the fixture's own byte-stable anchor rather than the wall clock. A benchmark
@@ -186,4 +318,11 @@ def _external_id(order_id: str, handles: WorldHandles) -> str:
     raise PreparationError(f"{order_id} names no order in the frozen case universe")
 
 
-__all__ = ["WORLD_SOURCE", "realise"]
+__all__ = [
+    "READY",
+    "WORLD_SOURCE",
+    "Installer",
+    "LiveInstaller",
+    "Realisation",
+    "realise",
+]

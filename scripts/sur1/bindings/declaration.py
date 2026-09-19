@@ -37,9 +37,11 @@ import json
 from pathlib import Path
 from typing import Any, Final
 
+from scripts.sur1.bindings import events as events_module
 from scripts.sur1.bindings import programs as programs_module
 from scripts.sur1.bindings import realisation as realisation_module
 from scripts.sur1.bindings import setup as setup_module
+from scripts.sur1.bindings import worldsink as worldsink_module
 from scripts.sur1.bindings import worldsnapshot as snapshot_module
 from scripts.sur1.bindings.programs import (
     PROGRAM_SET_ID,
@@ -74,11 +76,19 @@ IMPLEMENTATION_MODULES: Final = (
     snapshot_module,
     realisation_module,
     setup_module,
+    events_module,
+    worldsink_module,
 )
 """Every module whose source decides what a program is or what its world looks like.
 
 Setup is in the list because it resolves the registry and defines what a step may reach; a
 change there can change what a program does without changing a line any program declares.
+
+The event model and the world sink are in it for the same reason and one more: they decide what
+a declared event observes and what it does, which is the rest of what a scenario's world is.
+They are also the modules the structural blindness checks walk, so listing them here is what
+makes a trigger that started reading an arm or an answer a parse failure rather than a review
+question.
 """
 
 

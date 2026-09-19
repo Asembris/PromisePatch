@@ -584,8 +584,12 @@ class ScenarioProgram:
             world = step.project(world, anchor=anchor)
         return world
 
-    def apply(self, handles: Any) -> tuple[str, ...]:
-        """Make the canonical world true in the live systems, and say what was applied.
+    def apply(self, handles: Any, *, sink: Any = None) -> Any:
+        """Make the canonical world true in the live systems, and hand back the whole receipt.
+
+        The receipt and not just the applied steps, because an installed world that owes a
+        stipulated event is only prepared once something is armed to deliver it, and a caller
+        given a list of step names would have no way to know that had happened.
 
         Imported where it is used rather than at module scope: this module is pure and is
         imported by the preflight, the declaration and the tests, none of which may reach a
@@ -593,7 +597,7 @@ class ScenarioProgram:
         """
         from scripts.sur1.bindings.realisation import realise
 
-        return realise(self, handles)
+        return realise(self, handles, sink=sink)
 
     def describes(self) -> dict[str, Any]:
         return {

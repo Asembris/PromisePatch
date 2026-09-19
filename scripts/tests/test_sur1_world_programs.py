@@ -593,15 +593,15 @@ def test_a_program_that_cannot_build_its_world_fails_the_preflight_check(
     assert "cl-nowhere" in refused.detail
 
 
-def test_a_world_carrying_unfired_armed_events_refuses_to_be_realised(
+def test_a_world_whose_events_nothing_could_perform_refuses_to_be_realised(
     built: dict[str, ScenarioProgram],
 ) -> None:
-    """The remaining blocker, asserted rather than described: the firing path is not wired."""
+    """An installed world that owes a reply nothing can deliver is not a prepared world."""
     with pytest.raises(PreparationError) as refusal:
-        realise(built["C01"], handles=None)  # type: ignore[arg-type]
+        realise(built["C01"], handles=None, sink=None)  # type: ignore[arg-type]
 
-    assert "armed" in str(refusal.value)
-    assert "reply 1 on tg:1002" in str(refusal.value)
+    assert "1 world events and no sink" in str(refusal.value)
+    assert "never happen" in str(refusal.value)
 
 
 def test_a_declared_scarcity_is_not_something_the_world_has_to_fire(
