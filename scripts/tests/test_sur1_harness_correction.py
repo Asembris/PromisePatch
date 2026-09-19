@@ -402,3 +402,86 @@ def test_the_governed_fixture_load_takes_the_world_the_harness_installs() -> Non
     accepted = set(inspect.signature(reset_demo_state).parameters)
 
     assert {"snapshot", "fixture_name"} <= accepted
+
+
+# ------------------------------------------------ the E1 round trip the stale projection broke
+
+
+def test_an_e1_row_read_from_a_current_projection_survives_its_own_round_trip() -> None:
+    """The exact disagreement that cost twenty attempts, held down from both ends.
+
+    ``receivers._event`` is tolerant -- an event with no command is read as having none -- and
+    ``replay._text`` is strict, refusing an empty string. Both are right. Against a projection
+    that publishes the command they agree, and this asserts that agreement over the real
+    reader, the real capture payload and the real strict reader, with nothing stubbed between
+    them.
+    """
+    from datetime import UTC, datetime
+
+    from scripts.sur1.bindings.receivers import OrderSystemReceiver
+    from scripts.sur1.evidence import ReceiverEvidence
+    from scripts.sur1.replay import evidence_from_payload
+
+    entry = {
+        "event_id": "8f0d2f4e-0000-4000-8000-000000000001",
+        "external_order_id": "EXT-A",
+        "type": "order.updated",
+        "previous_version": 1,
+        "version": 2,
+        "occurred_at": "2026-09-19T20:08:00+00:00",
+        "source": "amendment",
+        "delivery_state": "DELIVERED",
+        "attempts": 1,
+        "event": {
+            "command": {"idempotency_key": "pp:amend:one", "provider_ref": "ref-1"},
+            "changed_line_ids": ["LINE-A"],
+            "order": {"lines": [{"external_line_id": "LINE-A", "external_item_id": "ITEM-X"}]},
+        },
+    }
+
+    reader = OrderSystemReceiver(base_url="http://order-system.invalid")
+    event = reader._event(entry, datetime(2026, 9, 19, 20, 8, tzinfo=UTC))
+
+    assert event.idempotency_key == "pp:amend:one"
+    assert event.previous_version == 1
+    assert event.line_external_item_id == "ITEM-X"
+
+    payload = ReceiverEvidence(order_events=(event,)).as_payload()
+    replayed = evidence_from_payload(payload)
+
+    assert replayed.order_events[0].idempotency_key == "pp:amend:one"
+
+
+def test_an_e1_row_read_from_the_stale_projection_is_what_broke_the_capture() -> None:
+    """The failure mode itself, asserted rather than remembered.
+
+    This is what the running container actually published: no ``event`` key at all. The reader
+    writes an empty key, the capture's own round trip refuses it, and the driver calls that
+    ``HARNESS_FAILURE``. Nothing here is a bug to fix downstream -- it is why
+    ``order_projection`` has to ask first.
+    """
+    from datetime import UTC, datetime
+
+    from scripts.sur1.bindings.receivers import OrderSystemReceiver
+    from scripts.sur1.evidence import EvidenceMalformedError, ReceiverEvidence
+    from scripts.sur1.replay import evidence_from_payload
+
+    stale = {
+        "event_id": "8f0d2f4e-0000-4000-8000-000000000001",
+        "external_order_id": "EXT-A",
+        "type": "order.updated",
+        "version": 2,
+        "occurred_at": "2026-09-19T20:08:00+00:00",
+        "source": "amendment",
+        "delivery_state": "DELIVERED",
+        "attempts": 1,
+    }
+
+    reader = OrderSystemReceiver(base_url="http://order-system.invalid")
+    event = reader._event(stale, datetime(2026, 9, 19, 20, 8, tzinfo=UTC))
+
+    assert event.idempotency_key == ""
+
+    payload = ReceiverEvidence(order_events=(event,)).as_payload()
+    with pytest.raises(EvidenceMalformedError, match="idempotency_key"):
+        evidence_from_payload(payload)
