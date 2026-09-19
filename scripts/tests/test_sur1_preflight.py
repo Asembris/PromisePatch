@@ -359,6 +359,7 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "receivers",
         "classifier_identity",
         "world_programs",
+        "world_program_freeze",
         "output_directory",
         "blinding",
     ]

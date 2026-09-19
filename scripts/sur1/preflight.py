@@ -5,7 +5,7 @@ policy permits no second opinion. So everything that would make the resulting nu
 something other than what it appears to mean is asked **before** an arm is constructed, in one
 place, and any failure refuses the run.
 
-Nine checks, and each is a fact rather than a promise:
+Ten checks, and each is a fact rather than a promise:
 
 1. the three frozen identities recompute to their published values;
 2. all three bindings say they are real, so a run cannot be driven by a double;
@@ -13,9 +13,11 @@ Nine checks, and each is a fact rather than a promise:
 4. every credential and address a scored run needs is configured;
 5. every receiver answers, so no scenario is voided for an unreadable source afterwards;
 6. the ``asserts_change`` rule is the declared one and hashes to its published identity;
-7. every selected scenario has a world program, so no arm is driven at an unprepared world;
-8. the output directory is new, or is a resumable run of the same experiment;
-9. nothing on the scoring path can reach an arm's name.
+7. every selected scenario has a world program that builds the world it declares;
+8. the nine programs are the frozen nine, at their published hashes, and nothing on their
+   preparation path can name a field that says what a correct answer is;
+9. the output directory is new, or is a resumable run of the same experiment;
+10. nothing on the scoring path can reach an arm's name.
 
 **A preflight reads and never writes.** It opens clients, asks services whether they are ready
 and recomputes hashes. It creates no run directory, mints no token, prepares no world and calls
@@ -56,6 +58,17 @@ FORBIDDEN_ON_THE_SCORING_PATH: Final = (
 
 ARM_FIELD_NAMES: Final = frozenset({"arm", "arm_label", "label", "system", "adapter"})
 """Field names on the scorer's own bundle that would carry an arm's identity if they existed."""
+
+FORBIDDEN_SCENARIO_FIELDS: Final = frozenset(
+    {"ground_truth", "the_point", "expected_report", "ablation_target"}
+)
+"""Frozen scenario fields a world program may not read, because each says what an answer is.
+
+``ground_truth`` and ``the_point`` state the expected disposition outright. ``expected_report``
+is one scenario's expected run report and ``ablation_target`` names the check a scenario exists
+to remove, both of which a program could shape a world around. They stay in the manifest --
+removing them would edit a frozen document -- and nothing on the preparation path may name one.
+"""
 
 
 class PreflightRefusedError(RuntimeError):
@@ -217,6 +230,13 @@ def classifier_identity(classifier: OutboundClassifier) -> Check:
 
 
 def world_programs(scenario_ids: Sequence[str]) -> Check:
+    """Every selected scenario has a program, and every program builds the world it declares.
+
+    Building it is the check. A program that names a version the fixture does not have, or
+    stipulates a task state the fixture contradicts, raises while it is projected -- and it has
+    to raise here, before an attempt is bought, rather than inside the preparation of the third
+    arm's second scenario.
+    """
     missing = unprogrammed(scenario_ids)
     if missing:
         return Check(
@@ -225,7 +245,95 @@ def world_programs(scenario_ids: Sequence[str]) -> Check:
             f"no world program for {', '.join(missing)}; their stipulated facts are prose in the "
             "frozen contract and nobody has authored them into world steps",
         )
+    from scripts.sur1.bindings.setup import program_for
+    from scripts.sur1.bindings.worldsnapshot import digest_of
+
+    unprepared = []
+    for scenario_id in scenario_ids:
+        try:
+            digest_of(program_for(scenario_id))
+        except Exception as failure:  # a program that cannot build a world prepares nothing
+            unprepared.append(f"{scenario_id}: {type(failure).__name__}: {failure}")
+    if unprepared:
+        return Check("world_programs", False, "; ".join(unprepared))
     return Check("world_programs", True, f"{len(scenario_ids)} scenarios can be prepared")
+
+
+def world_program_freeze(contract: Contract | None) -> Check:
+    """The nine programs are the frozen nine, and nothing on their path can read an answer.
+
+    Four facts in one check because they fail together and are useless apart: a hash that
+    matches a declaration listing eight scenarios says nothing, and nine matching hashes
+    computed by code that had started branching on the expected disposition say less.
+    """
+    if contract is None:
+        return Check("world_program_freeze", False, "the frozen contract did not load")
+    from scripts.sur1.bindings.declaration import differences
+    from scripts.sur1.bindings.programs import programs
+
+    try:
+        built = programs()
+    except Exception as failure:
+        return Check("world_program_freeze", False, f"{type(failure).__name__}: {failure}")
+
+    expected = tuple(contract.scenario_ids)
+    if tuple(sorted(built)) != tuple(sorted(expected)):
+        return Check(
+            "world_program_freeze",
+            False,
+            f"the program set is {sorted(built)} and the contract's scenarios are "
+            f"{sorted(expected)}",
+        )
+
+    reachable = ground_truth_reachable()
+    if reachable:
+        return Check(
+            "world_program_freeze",
+            False,
+            f"a world program could read what a correct answer is: {'; '.join(reachable)}",
+        )
+
+    moved = differences()
+    if moved:
+        return Check("world_program_freeze", False, "; ".join(moved))
+    return Check(
+        "world_program_freeze",
+        True,
+        f"{len(built)} programs frozen at the published set and world digests",
+    )
+
+
+def ground_truth_reachable() -> tuple[str, ...]:
+    """Whether any module on the world-program path can name what a correct answer is.
+
+    Read from the syntax rather than from behaviour, the way :func:`blinding` reads the
+    scorer's imports. A program that branched on the expected disposition would produce a world
+    built towards its own answer, and the failure would be invisible in every number afterwards
+    -- so the guard is the one thing here that must not depend on a program choosing to be
+    honest at runtime.
+    """
+    from scripts.sur1.bindings import declaration as declaration_module
+
+    found: list[str] = []
+    for module in declaration_module.IMPLEMENTATION_MODULES:
+        path = Path(module.__file__ or "")
+        for name in sorted(_forbidden_names_in(path)):
+            found.append(f"{path.name} names {name!r}")
+    return tuple(found)
+
+
+def _forbidden_names_in(path: Path) -> set[str]:
+    """Every forbidden field name this file mentions, as an attribute, a key or a literal."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            found |= {name for name in FORBIDDEN_SCENARIO_FIELDS if name == node.value}
+        elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_SCENARIO_FIELDS:
+            found.add(node.attr)
+        elif isinstance(node, ast.Name) and node.id in FORBIDDEN_SCENARIO_FIELDS:
+            found.add(node.id)
+    return found
 
 
 def output_directory(run_id: str, *, root: Path = RUNS_ROOT, contract: Contract | None) -> Check:
@@ -340,6 +448,7 @@ def preflight(
         receivers(world=world, surface=surface),
         classifier_identity(classifier),
         world_programs(selected),
+        world_program_freeze(contract),
         output_directory(run_id, root=root, contract=contract),
         blinding(),
     ]
@@ -362,6 +471,7 @@ def require(report: PreflightReport) -> PreflightReport:
 
 
 __all__ = [
+    "FORBIDDEN_SCENARIO_FIELDS",
     "SCORED",
     "Check",
     "PreflightRefusedError",
@@ -370,11 +480,13 @@ __all__ = [
     "classifier_identity",
     "configuration",
     "frozen_identities",
+    "ground_truth_reachable",
     "model_identity",
     "output_directory",
     "preflight",
     "real_bindings",
     "receivers",
     "require",
+    "world_program_freeze",
     "world_programs",
 ]
