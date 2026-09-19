@@ -184,19 +184,37 @@ class PromisePatchArm:
         return ArmAttempt(evidence=self.drive_through_surface(request))
 
     def drive_through_surface(self, request: AttemptRequest) -> ReceiverEvidence:
+        """A worker's loop: say what happened, answer the one thing you are asked, confirm.
+
+        **The one thing you are asked, once.** The worker has exactly one answer -- the one they
+        already gave, which arrives with the incident -- and a product that asks again has not
+        accepted it. Saying the same words a second time is not a worker answering; it is a
+        client hammering, and the product's own answer ceiling turns a repeated answer into
+        ``NEEDS_HUMAN_INTERPRETATION``. So the answer is given once and a second request ends the
+        loop, with the status read as it stands. The attempt is scored on what the receivers saw,
+        which is the honest reading of a case the product could not resolve.
+        """
         incident = self._incident(request)
         request.budget.authorise_tool_call()
         response: Mapping[str, Any] = self.surface.report_exception(str(incident[REPORTED]))
 
+        answered = False
+        confirmed: set[str] = set()
         while True:
             request.budget.checkpoint()
             needs = response.get("needs")
-            if needs == "clarification":
+            if needs == "clarification" and not answered:
+                answered = True
                 request.budget.authorise_tool_call()
                 response = self.surface.answer_clarification(clarification_answer(incident))
-            elif needs == "confirmation":
+            elif needs == "confirmation" and str(response["plan_id"]) not in confirmed:
+                # A plan id is confirmed once. A product that reads the same plan back after it
+                # was confirmed is not asking for a second yes, and sending one would be spending
+                # an approval twice on one agreement.
+                plan_id = str(response["plan_id"])
+                confirmed.add(plan_id)
                 request.budget.authorise_tool_call()
-                response = self.surface.confirm_plan(str(response["plan_id"]))
+                response = self.surface.confirm_plan(plan_id)
             else:
                 break
 
