@@ -29,7 +29,8 @@ the driver records ``HARNESS_FAILURE``, and the preflight refuses the run before
 bought. A world missing a stipulated fact would produce a number that looks exactly like a number
 about the scenario.
 
-**Nothing here has been pointed at a ``SUR-1`` scenario.**
+**This world has been prepared for one scored run**, ``20260919T2020Z-scored``, which is published
+inconclusive and unaltered. See ``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations
@@ -45,6 +46,11 @@ from scripts.sur1.bindings import REAL, Probe
 from scripts.sur1.bindings.clock import RunClock, strategy_of
 from scripts.sur1.bindings.consentdoor import ConsentDoor
 from scripts.sur1.bindings.events import Arming, FiredEvent, observe
+from scripts.sur1.bindings.lifecycle import (
+    InstallationLifecycle,
+    UncontrolledWorker,
+    WorkerControl,
+)
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
@@ -137,6 +143,15 @@ class LiveScenarioWorld:
     ADR-0019.
     """
 
+    worker: WorkerControl = field(default_factory=UncontrolledWorker)
+    """What puts the durable worker down while a world is installed, and brings it back.
+
+    The default controls nothing and declares itself a stand-in, which is right for a unit test
+    and is refused for a scored run by :func:`~scripts.sur1.preflight.worker_lifecycle`. A run
+    binds the real one. See :mod:`scripts.sur1.bindings.lifecycle` for why an install beside a
+    live worker is a deadlock rather than a slow moment.
+    """
+
     program_lookup: Callable[[str], Any] = program_for
     """How this world finds the program for a scenario. The frozen registry, by default.
 
@@ -157,6 +172,7 @@ class LiveScenarioWorld:
             "actions": list(ACTIONS),
             "programs": f"{self.program_lookup.__module__}.{self.program_lookup.__qualname__}",
             "clock": strategy_of(self.clock),
+            "worker_control": type(self.worker).__name__,
             "consent_ingress": (
                 None if self.consent_door is None else dict(self.consent_door.identity())
             ),
@@ -199,14 +215,16 @@ class LiveScenarioWorld:
             self.worker_surface.on_poll = self.settle
 
         program = self.program_lookup(self.scenario_id)
-        realisation = program.apply(
-            WorldHandles(
-                order_system_base_url=self.orders.base_url,
-                database=self.database,
-                environment=self.environment,
-            ),
-            sink=self._sink(),
-            anchor=None if self.clock is None else self.clock.anchor,
+        handles = WorldHandles(
+            order_system_base_url=self.orders.base_url,
+            database=self.database,
+            environment=self.environment,
+        )
+        sink = self._sink()
+        anchor = None if self.clock is None else self.clock.anchor
+        realisation = InstallationLifecycle(worker=self.worker, database=self.database).around(
+            self.scenario_id,
+            lambda: program.apply(handles, sink=sink, anchor=anchor),
         )
         self.applied_steps = realisation.applied
         self.arming = realisation.arming

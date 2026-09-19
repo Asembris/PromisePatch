@@ -159,10 +159,41 @@ services:
     depends_on:
       seed:
         condition: service_completed_successfully
-    # No healthcheck and nothing to drain. A worker holds no server socket to probe, and
-    # everything it is doing is a row: `SIGTERM` ends the current cycle, and a hard kill leaves
-    # leases that expire. `restart: unless-stopped` is therefore a real recovery mechanism here
-    # rather than a way of hiding a crash -- restarting is what recovery looks like.
+    # Nothing to drain: everything the worker is doing is a row, `SIGTERM` ends the current
+    # cycle, and a hard kill leaves leases that expire. `restart: unless-stopped` is therefore
+    # a real recovery mechanism here rather than a way of hiding a crash.
+    #
+    # The healthcheck asks the only question a socketless process can honestly answer: can it
+    # reach the database it claims work from? It exists so that *stopping and starting this
+    # service is a deterministic operation* -- `docker compose up -d --wait worker` blocks
+    # until this passes, which is what lets the SUR-1 harness put the worker down around a
+    # fixture `TRUNCATE` and bring it back without a sleep. Before it existed, the only
+    # available signal was "compose says the container is running", and a benchmark attempt was
+    # lost to a deadlock against a worker nobody could quiesce. See
+    # `docs/sur1-first-scored-run-defect.md` §2.3.
+    #
+    # It connects, asks one question and closes, so it is one short-lived connection every few
+    # seconds and never a handle held beside the loop's own pool.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import asyncio, os
+          import asyncpg
+          async def main():
+              url = os.environ["PP_DATABASE_URL"].replace("+asyncpg", "")
+              connection = await asyncpg.connect(dsn=url, timeout=5)
+              try:
+                  await connection.fetchval("SELECT 1")
+              finally:
+                  await connection.close()
+          asyncio.run(main())
+      interval: 3s
+      timeout: 6s
+      retries: 20
+      start_period: 10s
     stop_grace_period: 20s
     restart: unless-stopped
 
