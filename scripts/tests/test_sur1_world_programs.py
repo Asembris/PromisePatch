@@ -629,6 +629,34 @@ def test_the_frozen_sur1_identities_have_not_moved(contract: Contract) -> None:
     assert contract.identity.manifest_version == "1.0.0"
 
 
+PUBLISHED_PROGRAM_SET_SHA = "88db566c13ef7a9865141583e5d918d43ff1b612b3311393c12af627ab1de649"
+PUBLISHED_WORLD_DIGESTS = {
+    "C01": "3fba40f0399c946a42c536298c03b7f6fd4821c01f533dc16368aa38909ad019",
+    "C02": "47754fcf576a7cbbd0a06123ca125c145b53a8c9815dacc5356673ebf8e75af2",
+    "C03": "561ed3c127b32972cafd1be9137aa8b7c9e2e4f0959d18883d10e930107a5950",
+    "C04": "d19f4c6afd34f3034bd488dbe0df196786fc84eeaf69c28c516ee6f83f105378",
+    "C05": "ab96bac143e5cba31b066f532946f2e7c3f0f68e72f771ac1fe2017944f6307c",
+    "C06": "37809b788de418c1e47e9880f802c3ca579f871cd3b3be0a0a6681d46a9d9b53",
+    "C07": "9af2aaa3fe06ca7ef9ebf98b4f8986fa1bebc7711a870333a1f2ab417b329454",
+    "C08": "434131b8c281d891ab953f7beabe3aca3a1bc75aa2864d4503f8c0eed9c5b289",
+    "C09": "8396cbdac5de3761c243744a53b004969f2bb8384686e4e36fd625abb0fd7f17",
+}
+"""The nine starting worlds and the set they belong to, written down rather than looked up.
+
+:func:`~scripts.sur1.bindings.declaration.differences` compares the code against the published
+document, which catches one of them moving and not both. These literals are the other half: a
+session that changed a world and re-froze the declaration to match still fails here, which is
+what makes "the programs were frozen before the outcome was seen" survive later work on the
+machinery around them.
+"""
+
+
+def test_the_nine_starting_worlds_have_not_moved(built: dict[str, ScenarioProgram]) -> None:
+    """Pinned in the test, so re-freezing the declaration cannot quietly ratify a new world."""
+    assert program_set_sha() == PUBLISHED_PROGRAM_SET_SHA
+    assert digests(built) == PUBLISHED_WORLD_DIGESTS
+
+
 def test_the_published_declaration_matches_the_code() -> None:
     assert declaration.differences() == ()
 
