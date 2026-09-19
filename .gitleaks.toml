@@ -1,0 +1,37 @@
+# Gitleaks configuration: the upstream ruleset, plus one narrow allowlist.
+#
+# `[extend] useDefault` is load-bearing. A config file at the source root *replaces* the default
+# ruleset, so a file that only carried an allowlist would silently disable every secret rule
+# gitleaks ships with — which is the opposite of what this file is for.
+
+[extend]
+useDefault = true
+
+# ------------------------------------------------------------------- the SUR-1 blinding token
+#
+# A benchmark run mints one opaque token per arm (`capture.mint_tokens`: `tok-` followed by
+# `secrets.token_hex(8)`) and writes it into every attempt capture, every verdict and the joined
+# result. It is deliberately random, because deriving it from the arm's name would make the
+# token-to-arm map invertible by anybody who knows the three candidate labels — and the whole
+# point of it is that a verdict is written before anything can say which system produced it.
+#
+# So a committed run artefact carries a field named `arm_token` holding a high-entropy value,
+# which is exactly the shape `generic-api-key` exists to catch. It caught eighteen of them in
+# `docs/rehearsals/runs/dr01-g/`, and it will catch the scored SUR-1 run's captures for the same
+# reason when those are published.
+#
+# It authorises nothing. It is an artefact identifier: no service accepts it, no request carries
+# it, and the file that turns one into an arm name (`arm_map.json`) is committed beside it in
+# plain text. Renaming the field is not available — `arm_token` is named by the frozen contract's
+# own `result_schema` — and lowering its entropy would defeat the blinding it exists for.
+#
+# The allowlist names the exact field and the exact minted shape rather than exempting a path.
+# A path allowlist would stop gitleaks reading those files at all, and a real credential must
+# never be able to hide inside a published capture. `regexTarget = "line"` is what lets the
+# pattern require the field name: a rule's captured secret is the value alone, and a bare
+# sixteen-hex allowlist would mask real secrets of that shape anywhere in the repository.
+
+[allowlist]
+description = "SUR-1 arm-blinding tokens in committed run captures; opaque ids, not credentials"
+regexTarget = "line"
+regexes = ['''"arm_token"\s*:\s*"tok-[0-9a-f]{16}"''']
