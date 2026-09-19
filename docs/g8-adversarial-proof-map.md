@@ -462,3 +462,31 @@ predeclared nine-capture protocol, and `scripts/run_head_of_line.py` is unchange
 `FAIL` against the gate is not softened, retracted or rescored by anything here. A reader who
 wants the corrected worker measured under that protocol needs a predeclared amendment first.
 **Nothing else on this page changes.**
+
+---
+
+## Amendment, 2026-09-19 — the races this page never audited
+
+**This page is left as it was written, and so is every amendment above it.** Nothing below
+contradicts a verdict above: §1's eleven faults, §2's stale plan and §3's protected-order zero
+are all re-read and all still stand. What follows is an addition, because the scope declared in
+§0 was *the faults the G8 gate names*, and contention between two actors at one instant is not
+among them. Those faults were audited separately and are recorded on their own page.
+
+| what exists now | where |
+|---|---|
+| the prior-coverage audit, the six new proofs and the boundary left unpinned | [adversarial-race-proofs.md](adversarial-race-proofs.md) |
+| the proofs themselves | `apps/backend/tests/test_adversarial_races.py` |
+
+**Three gaps were found and closed, and everything else was left alone.** Concurrent claim and
+lease fencing were already proved, but only *sequentially* and only *database-side*; a customer
+reply crossing a withdrawal in flight was proved by nothing; and the deferred semantic
+scheduling added at `46ad4e1` had its claim-time exclusion proved in isolation but never
+against the running loop. The stale-revalidation family and every duplicate-and-replay path
+were found already covered and were not duplicated for a count, per bullet one's own
+instruction.
+
+**No defect was found, and no production source was changed.** The one test that failed on its
+first run failed because its own baseline bracketed the wrong interval, which is recorded on
+that page beside the corrected assertion rather than quietly fixed. **Nothing else on this page
+changes.**
