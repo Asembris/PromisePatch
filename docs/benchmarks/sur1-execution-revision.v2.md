@@ -198,9 +198,9 @@ program hashes and all nine world digests are unmoved, which §4 shows.
 of those four are unmoved; the one that carries the correction is not. Checkable with
 `git rev-parse <sha>:<path>` rather than trusted:
 
-| Path | Tree / blob at the commit that bumped `DRIVER_VERSION` | |
+| Path | Tree / blob at this revision | |
 |---|---|---|
-| `scripts/sur1/` | `fef06e222af9a4bc9e230903c2ffd139a5c1544d` | moved |
+| `scripts/sur1/` | `2f92426a77091de2421b3f7573ebca1aed82b7a0` | moved |
 | `scripts/rehearsal/` | `01f14418bf7127c3ccfd4860d1acf086696573b3` | unchanged |
 | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` | **unchanged — the scorer** |
 | `scripts/check_sur1_realisation.py` | `997ada54ff4a3f22a8ea10aa0595a9a4f14f9a1c` | unchanged |
