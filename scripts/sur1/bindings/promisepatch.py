@@ -268,6 +268,20 @@ class LiveWorkerSurface:
     workspace: WorkspaceClient
     deadline_seconds: float = 240.0
     sleep: Any = None
+    on_poll: Any = None
+    """What the world does while this surface waits, called before every reading.
+
+    Arm A reaches the world through :meth:`~scripts.sur1.bindings.world.LiveScenarioWorld.invoke`,
+    which settles the world's declared events on either side of every action. Arms B and C invoke
+    one action -- ``get_incident`` -- and then work through this surface, so without this hook the
+    world never catches up after PromisePatch's ask reaches a channel: the stipulated reply is
+    never delivered, the case waits for a customer who was never asked to answer, and every
+    scenario with a consent fact ends incomplete.
+
+    It is arm-blind, because the settle is: it reads the channel record and answers the *message*,
+    not the sender. Arm A's world catches up when it acts and these arms' world catches up when
+    they look, which is the same rule stated for two shapes of arm.
+    """
     case_id: str = ""
     case_ids: list[str] = field(default_factory=list)
     binding_kind: str = REAL
@@ -355,7 +369,7 @@ class LiveWorkerSurface:
         until = clock() + self.deadline_seconds
         seen = ""
         quiet = 0
-        reading = self.status()
+        reading = self._read()
         while True:
             need = self._needs(reading)
             if need is not None:
@@ -366,7 +380,17 @@ class LiveWorkerSurface:
             if quiet >= QUIET_READINGS or clock() >= until:
                 return {"needs": None, "status": reading}
             sleep(POLL_SECONDS)
-            reading = self.status()
+            reading = self._read()
+
+    def _read(self) -> Mapping[str, Any]:
+        """Let the world catch up, then read the case. In that order, and never the reverse.
+
+        A reading taken before the world settled would be a reading of a case that is waiting for
+        something the world already owed it.
+        """
+        if self.on_poll is not None:
+            self.on_poll()
+        return self.status()
 
     @staticmethod
     def _needs(reading: Mapping[str, Any]) -> Mapping[str, Any] | None:

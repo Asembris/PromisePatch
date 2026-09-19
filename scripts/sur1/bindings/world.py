@@ -163,6 +163,11 @@ class LiveScenarioWorld:
         self.ledger.clear()
         if self.worker_surface is not None:
             self.worker_surface.forget()
+            # The world catches up while that surface waits. Arm A's world catches up when it
+            # acts, through ``invoke``; these arms invoke once and then work through the surface,
+            # so without this the declared reply is never delivered to an ask that did reach a
+            # channel. The settle itself is unchanged and stays arm-blind.
+            self.worker_surface.on_poll = self.settle
 
         program = self.program_lookup(self.scenario_id)
         realisation = program.apply(
@@ -418,7 +423,12 @@ class LiveScenarioWorld:
 
         A source that could not be read is carried through rather than assumed empty, because an
         empty receiver and an unreadable one are different facts and only one of them is a zero.
+
+        The world settles once more first, for the same reason :meth:`invoke` settles after an
+        action: an ask that reached a channel on the attempt's last act is still owed its reply,
+        and collecting before delivering it would record a customer who was never answered.
         """
+        self.settle()
         unreadable: set[str] = set()
         events: tuple[OrderEvent, ...] = ()
         messages: tuple[ChannelMessage, ...] = ()
