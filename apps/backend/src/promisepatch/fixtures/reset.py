@@ -39,6 +39,7 @@ from argon2 import PasswordHasher
 from sqlalchemy import Table, insert, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from promise_graph.snapshot import GraphSnapshot
 from promisepatch.config import Settings
 from promisepatch.db.base import SCHEMA, metadata
 from promisepatch.db.boundary import advisory_lock_key, resettable_tables
@@ -110,15 +111,25 @@ async def reset_demo_state(
     now: datetime,
     passwords: Mapping[str, str],
     actor: Actor,
+    snapshot: GraphSnapshot | None = None,
+    fixture_name: str = demo.FIXTURE_NAME,
 ) -> ResetOutcome:
     """Replace all demo-owned state with the fixture at ``anchor``, in one audited transaction.
 
     ``passwords`` is keyed by staff role. The caller owns the transaction, because a reset is a
     write like any other and the decision to commit it belongs to whoever asked for it.
+
+    ``snapshot`` and ``fixture_name`` exist for a caller that has to install a *stated variant*
+    of the demo world rather than the demo world -- the ``SUR-1`` benchmark harness prepares one
+    scenario's stipulated facts as a graph and needs the world an arm acts on to be exactly the
+    graph its digest describes, which a second loading path could not guarantee. Both default to
+    the demo fixture, so every existing caller loads exactly what it loaded before, and the
+    ``fixture_state`` row says which world is actually installed rather than always claiming the
+    demo one.
     """
     await connection.execute(_ADVISORY_LOCK, {"key": LOCK_KEY})
 
-    snapshot = demo.build_snapshot(anchor)
+    graph = demo.build_snapshot(anchor) if snapshot is None else snapshot
     hasher = PasswordHasher()
     # Only the two staff logins get a password hashed. The observer is seeded with a value
     # Argon2 cannot parse, so `POST /api/auth/login` can never admit it: the identity exists to
@@ -131,10 +142,10 @@ async def reset_demo_state(
     # otherwise identical reset different every time, which is precisely the property that
     # would make idempotency unprovable.
     tables = (
-        *project(snapshot, mirrored_at=anchor),
+        *project(graph, mirrored_at=anchor),
         project_staff(demo.SEEDED_WORKERS, password_hashes=hashes, created_at=anchor),
     )
-    fixture_digest = digest(fixture_name=demo.FIXTURE_NAME, anchor=anchor, tables=tables)
+    fixture_digest = digest(fixture_name=fixture_name, anchor=anchor, tables=tables)
 
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
@@ -144,7 +155,7 @@ async def reset_demo_state(
         # Recording that honestly is better than dressing it up as something it was not.
         authority="NONE",
         after={
-            "fixture": demo.FIXTURE_NAME,
+            "fixture": fixture_name,
             "anchor": anchor.isoformat(),
             "digest": fixture_digest,
         },
@@ -159,7 +170,7 @@ async def reset_demo_state(
                 id=FIXTURE_STATE_ID,
                 anchor_at=anchor,
                 loaded_at=now,
-                fixture_name=demo.FIXTURE_NAME,
+                fixture_name=fixture_name,
                 fixture_digest=fixture_digest,
             )
         )
@@ -171,14 +182,14 @@ async def reset_demo_state(
             correlation_id=write.correlation_id,
             occurred_at=now,
             payload={
-                "fixture": demo.FIXTURE_NAME,
+                "fixture": fixture_name,
                 "anchor": anchor.isoformat(),
                 "digest": fixture_digest,
             },
         )
 
         return ResetOutcome(
-            fixture_name=demo.FIXTURE_NAME,
+            fixture_name=fixture_name,
             anchor=anchor,
             loaded_at=now,
             digest=fixture_digest,
