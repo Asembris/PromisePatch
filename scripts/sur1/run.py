@@ -18,8 +18,9 @@ second surface to build a second one out of.
 
 **Nothing here has taken a run.** No arm has been driven against a ``SUR-1`` scenario, no model
 reached, no AWS resource read, and ``AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE`` is unspent.
-Running this module today refuses at the preflight, because the nine world programs are not
-written and the scenarios cannot be prepared.
+The nine world programs are written and frozen, so what stands between this module and a scored
+run is the preflight itself: a model this account can invoke, the spend authorisation, and every
+one of :data:`~scripts.sur1.preflight.REQUIRED_CHECKS` passing in one report.
 """
 
 from __future__ import annotations
@@ -221,11 +222,11 @@ def execute(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """The command line. ``--preflight`` is the only thing that is safe to run today.
+    """The command line. ``--preflight`` asks every question and drives nothing.
 
-    Driving anything refuses, because no scenario has a world program. That refusal is the
-    harness working: an arm driven at a world nobody prepared would produce a number that looks
-    exactly like a number about the scenario.
+    A scored run refuses at the preflight until every required check passes against real
+    bindings. That refusal is the harness working: a number produced around a failed check
+    would look exactly like a number about the scenario.
     """
     import time
 
