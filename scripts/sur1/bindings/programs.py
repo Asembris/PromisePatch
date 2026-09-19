@@ -38,8 +38,9 @@ which somebody answered a question nobody asked. They are carried on the program
 :class:`ArmedEvent` values -- ordered, named, and part of the snapshot -- and the firing path is
 not wired. See ``docs/sur1-world-programs.md``.
 
-**Nothing here has been run.** No arm has been driven, no model reached, no world realised
-against a live stack, and no comparative number exists.
+**Nothing here has been run.** No arm has been driven, no model reached, no evidence collected
+and no comparative number exists. What the realisation path did run is recorded in
+:mod:`~scripts.sur1.bindings.realisation` and in the freeze.
 """
 
 from __future__ import annotations
@@ -465,6 +466,14 @@ class ArmedEvent:
     trigger: str
     effect: str
 
+    must_fire: ClassVar[bool] = True
+    """Whether something has to happen during the attempt for this event to be true.
+
+    A declared scarcity is already true of the starting stock and fires nothing, which is a
+    real difference and not a naming one: a world that owes a customer reply is unprepared
+    until something can deliver it, and a world that is simply short of strawberries is not.
+    """
+
     def describes(self) -> dict[str, Any]:
         return {
             "event": type(self).__name__,
@@ -534,6 +543,8 @@ class Scarcity(ArmedEvent):
     snapshot states the contention the frozen document states, and so that a group whose
     membership moved moves a hash.
     """
+
+    must_fire: ClassVar[bool] = False
 
     group: str = ""
     members: tuple[str, ...] = ()

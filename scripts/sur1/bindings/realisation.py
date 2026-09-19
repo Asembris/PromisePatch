@@ -27,8 +27,11 @@ a prepared one.
 does, and the path that fires them does not exist. :func:`realise` refuses a program that carries
 one, which is why the preflight still refuses a scored run. See ``docs/sur1-world-programs.md``.
 
-**Nothing in this module has been executed.** No world has been installed, no order system
-posted to, and no database written by it.
+**What has been executed, exactly once.** ``C04``'s canonical world was installed into the local
+development PostgreSQL while a refusal message was being checked, and the local demo fixture was
+restored immediately afterwards. No arm was driven at that world, no order system was posted to,
+nothing was read back and no capture exists. Recorded here and in
+:data:`~scripts.sur1.bindings.declaration.REALISATION_EXERCISED` rather than left out.
 """
 
 from __future__ import annotations
@@ -56,11 +59,12 @@ def realise(program: ScenarioProgram, handles: WorldHandles) -> tuple[str, ...]:
     """
     from scripts.sur1.bindings.programs import ExternalRepin
 
-    if program.armed:
+    pending = [event.name for event in program.armed if type(event).must_fire]
+    if pending:
         raise PreparationError(
-            f"{program.scenario_id} carries {len(program.armed)} armed world events and the "
-            "path that fires them is not wired; an attempt driven at this world would be an "
-            "attempt at a scenario whose stipulated events never happen"
+            f"{program.scenario_id} carries {len(pending)} armed world events the path that "
+            f"fires them does not exist for ({', '.join(pending)}); an attempt driven at this "
+            "world would be an attempt at a scenario whose stipulated events never happen"
         )
 
     applied = [_load(program, handles)]
