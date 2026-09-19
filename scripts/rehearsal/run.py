@@ -393,6 +393,33 @@ def execute(
     )
 
 
+def joined(directory: RunDirectory) -> dict[str, Any]:
+    """The run's joined result: made once, and read rather than remade on a resume.
+
+    :func:`~scripts.sur1.driver.join` writes ``result.json`` and refuses to write it twice, which
+    is right -- a joined result is an artefact like every other one here, and the first
+    invocation's account is not the second's to revise. So a resumed rehearsal reads the result
+    that exists instead of failing at the last step.
+
+    A resume that produced verdicts the first join did not cover is reported rather than merged:
+    the keys are named, and whoever reads the report can join them deliberately. Rewriting the
+    result to include them would be the one edit this layout exists to refuse.
+    """
+    if not directory.result_file.exists():
+        return join(directory)
+
+    existing: dict[str, Any] = json.loads(directory.result_file.read_text(encoding="utf-8"))
+    covered = {
+        f"{attempt['arm_token']}-{attempt['scenario_id']}-a{2 if attempt['retried'] else 1}"
+        for attempt in existing["attempts"]
+    }
+    uncovered = sorted(directory.scored_attempts() - covered)
+    return existing | {
+        "joined": "read from the result an earlier invocation wrote; it was not rewritten",
+        "verdicts_this_result_does_not_cover": uncovered,
+    }
+
+
 def restore(config: BindingConfig) -> dict[str, Any]:
     """Put the Hollow Oak demo world back, in both systems, and read both back.
 
@@ -460,7 +487,7 @@ def rehearse(
     report["readback"] = readback(bench)
 
     directory = execute(run_id=run_id, bench=bench, command=command, root=root)
-    report["result"] = join(directory)
+    report["result"] = joined(directory)
     report["customer_deliveries"] = bench.world.receipts()
     if reset_at_exit:
         report["restore"] = restore(config)
