@@ -601,6 +601,22 @@ def test_a_world_carrying_unfired_armed_events_refuses_to_be_realised(
         realise(built["C01"], handles=None)  # type: ignore[arg-type]
 
     assert "armed" in str(refusal.value)
+    assert "reply 1 on tg:1002" in str(refusal.value)
+
+
+def test_a_declared_scarcity_is_not_something_the_world_has_to_fire(
+    built: dict[str, ScenarioProgram],
+) -> None:
+    """C09 is short of strawberries in its starting stock; nothing has to happen for that."""
+    scarcity = [event for event in built["C09"].armed if isinstance(event, Scarcity)]
+
+    assert scarcity and all(type(event).must_fire is False for event in scarcity)
+    assert all(type(event).must_fire for event in built["C09"].armed if event not in scarcity)
+
+    with pytest.raises(PreparationError) as refusal:
+        realise(built["C09"], handles=None)  # type: ignore[arg-type]
+
+    assert "g-strawberries" not in str(refusal.value)
 
 
 # ------------------------------------------------------------------------------ the freeze
@@ -636,6 +652,14 @@ def test_the_declaration_states_that_no_arm_was_executed() -> None:
 
     assert published["no_arm_executed"] == declaration.NO_ARM_EXECUTED
     assert "No arm was executed" in published["no_arm_executed"]
+
+
+def test_the_declaration_also_records_what_was_actually_run() -> None:
+    """A freeze that only said what had not happened would be a freeze nobody should trust."""
+    published = declaration.published()
+
+    assert published["realisation_exercised"] == declaration.REALISATION_EXERCISED
+    assert "C04" in published["realisation_exercised"]
 
 
 def test_the_freeze_check_passes_and_refuses_a_set_that_is_not_the_nine(
