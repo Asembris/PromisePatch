@@ -142,8 +142,12 @@ byte-identical to HEAD; no production source was changed by this work.
 `Worker._execute_one_step` passes two narrowings to `claim_step`:
 
 ```python
-exclude_cases=tuple(self._deferred),
-exclude_kinds=(() if not defer or self.deferred < self.deferred_limit else SEMANTIC_KINDS),
+claim = await steps.claim_step(
+    self.database,
+    worker=self.identity.value,
+    exclude_cases=tuple(self._deferred),
+    exclude_kinds=(() if not defer or self.deferred < self.deferred_limit else SEMANTIC_KINDS),
+)
 ```
 
 They are not symmetric, and the asymmetry is worth stating plainly.
