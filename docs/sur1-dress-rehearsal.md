@@ -172,6 +172,16 @@ the status read as it stands. One plan id is likewise confirmed once, because se
 would spend an approval twice on one agreement. The contract's own wording is *answer the one
 thing you are asked*.
 
+> **That was only half of the 240 seconds, and the other half is since fixed.** With the answer
+> loop bounded, two attempts in `dr01-g` still recorded 243.5s and 244.7s. The cause was in the
+> wait itself: it settled a case when three consecutive `status` answers were *identical*, and
+> the MCP server mints a fresh `correlation_id` on every one of them. Two readings of a case that
+> had not moved therefore never matched, three quiet readings could not happen, and every wait
+> ran to its deadline. The fingerprint now reads the case and not the call. A second defect in
+> the same place: the deadline was per wait rather than per attempt, so three waits stood at 720s
+> against a frozen 300s ceiling. Measured in
+> [`sur1-scored-environment.md`](sur1-scored-environment.md).
+
 ### 7. The workspace origin default is refused by the API — configuration
 
 `BindingConfig.workspace_origin` defaults to the API's own base URL. `api/routers/auth.py`
@@ -181,6 +191,12 @@ can never spend an approval. `SUR1_WORKSPACE_ORIGIN` is the escape hatch and wor
 in `REQUIRED_FOR_SCORED`, so `configuration()` passes without it and only the live workspace probe
 catches it. **Not changed here**: the field exists and the preflight does catch it. The rehearsal
 resolves the origin from the allowlist the API was configured with.
+
+> **Since closed.** `SUR1_WORKSPACE_ORIGIN` is in `REQUIRED_FOR_SCORED`, the default to the API's
+> own base URL is gone rather than replaced, and a `workspace_origin` preflight check asks the
+> deployment itself — through an ordinary CORS preflight on the login endpoint — whether it
+> accepts the configured origin. Unset, malformed and refused each fail the check by their own
+> name rather than surfacing as an unreachable workspace.
 
 ### 8. `SUR1_ORDER_SYSTEM_STORE` has no host path under the local stack — worked around
 
@@ -192,6 +208,11 @@ named volume with no host path, so there is nothing for `SUR1_ORDER_SYSTEM_STORE
 The rehearsal copies the file out with `docker cp` immediately before each read. It is the
 simulator's own committed record either way and it is read-only in both directions. **A scored run
 needs a real answer to this** — a bind mount, a published read path, or the field on the projection.
+
+> **Since closed, by the third of those.** `GET /admin/events` now publishes each event's
+> committed body, so rule `B2`'s key, the previous version and the changed line's item all arrive
+> on the endpoint the frozen contract already named. `docker cp` is gone, `ContainerOrderReceiver`
+> is gone, and `SUR1_ORDER_SYSTEM_STORE` is no longer a scored requirement.
 
 ### 9. The workspace session is destroyed by the very next install — fixed
 

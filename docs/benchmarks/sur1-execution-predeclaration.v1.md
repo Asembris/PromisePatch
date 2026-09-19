@@ -174,6 +174,34 @@ or inferred: an event with no command key is read as having none.
 The order simulator was **not** modified. Adding a read endpoint for this measurement would break
 the contract's own promise that no production file changes for it.
 
+> **Since closed, and the paragraph above is left standing because it was the reasoning at the
+> time.** `GET /admin/events` now publishes each event's committed body — the same
+> `order_contract.events.OrderEvent` document the order system already hands a webhook
+> subscriber, read out of the row it was committed on — so E1 is read from the two endpoints the
+> contract names and from nothing else. `receivers.py` no longer opens the simulator's SQLite
+> file. **No hash moved:** this predeclaration's rules SHA is over
+> `scripts/sur1/predeclaration.py`, which is untouched, and the manifest, the baseline prompt and
+> the scorer are byte-for-byte what they were.
+>
+> **Why the earlier reasoning was too wide.** The contract's constraint is on arm B — *"No
+> production file is modified **for this arm**"*, beside *"no benchmark-only behaviour and no code
+> path that exists for this measurement"*. That is a rule about what the **deciding system** is
+> given. The order simulator is not an arm; it is the world, and E1 is its own record. A
+> read-only widening of an audit projection it already publishes gives no arm anything: the
+> endpoint is not one of the eleven frozen actions, no arm can reach it through
+> `LiveScenarioWorld`, all three arms are measured through the same reader, and no mutation, no
+> version rule and no idempotency behaviour changed. Nothing under `packages/` or
+> `apps/backend/` was touched.
+>
+> **What the earlier handling cost, which is why it was not left alone.** Under
+> `docker-compose.yml` the simulator's store is inside a named volume with no host path, so
+> `SUR1_ORDER_SYSTEM_STORE` had nothing to name and the dress rehearsal extracted the file with
+> `docker cp` before every read. A scored run whose central attribution rule depends on copying a
+> file out of a container is a scored run resting on something that is not a supported read path,
+> and `SUR1_ORDER_SYSTEM_STORE` has been dropped from `REQUIRED_FOR_SCORED` rather than carried
+> as a requirement nothing can satisfy. See
+> [`sur1-scored-environment.md`](../sur1-scored-environment.md).
+
 ### The harness's channel is a second transport for arm A, never a second protocol
 
 E2 is *the outbound transport's delivery record and the inbound transport's accepted-reply record*.

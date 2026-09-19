@@ -74,6 +74,12 @@ polls are the transport waiting for the product; they are **not** frozen actions
 charged against the tool-call ceiling, which counts the eleven the contract froze. The attempt's
 wall-clock ceiling bounds them.
 
+> **Two defects in that sentence, both since fixed.** *Identical* compared the whole `status`
+> answer, and the MCP server mints a fresh `correlation_id` per request — so two readings of a
+> motionless case never matched, three quiet readings never happened, and every wait ran to its
+> deadline. And the deadline was per wait rather than per attempt, so three waits of 240s stood
+> against a frozen 300s ceiling. See [`sur1-scored-environment.md`](sur1-scored-environment.md).
+
 **Arm C is arm B's own object inside one context manager.** `three_arms()` builds one
 `PromisePatchArm` and hands it to `AblationArm`, so "drive PromisePatch" has exactly one
 implementation. `test_the_ablated_arm_drives_the_same_binding_and_adds_only_its_log` drives both
@@ -97,17 +103,24 @@ predeclaration.
 
 Two disclosed discrepancies are recorded in
 [the predeclaration](benchmarks/sur1-execution-predeclaration.v1.md#3--two-discrepancies-between-the-frozen-contract-and-the-systems-it-names)
-rather than repaired in the frozen document: E1 is read from the order system's own committed
-event log because `GET /admin/events` publishes none of the three fields rule `B2` depends on, and
-the harness's channel ledger is a second *transport* for arm A's outbound messages and never a
-second protocol. **The order simulator was not modified**; adding a read endpoint for this
-measurement would break the contract's own promise that no production file changes for it.
+rather than repaired in the frozen document: E1's read path, and the harness's channel ledger,
+which is a second *transport* for arm A's outbound messages and never a second protocol.
+
+> **The first of those is since closed.** `GET /admin/events` now publishes each event's committed
+> body — the same `OrderEvent` a webhook subscriber is handed — so E1 is read from the two
+> endpoints the contract names and `receivers.py` opens no file. `SUR1_ORDER_SYSTEM_STORE` is gone
+> from `REQUIRED_FOR_SCORED`, because under `docker-compose.yml` the simulator's store has no host
+> path and the requirement could only be met with `docker cp`. The argument for the change, and
+> why the earlier reasoning about "no production file" was too wide, is in
+> [`sur1-scored-environment.md`](sur1-scored-environment.md).
 
 ## The scored-run preflight
 
-Eleven checks, asked before an arm is constructed, a world is prepared or a transport is opened.
-Nine were asked when this record was written; `world_program_freeze` and `event_blinding` arrived
-with the world programs and the armed events.
+Thirteen checks, asked before an arm is constructed, a world is prepared or a transport is
+opened. Nine were asked when this record was written; `world_program_freeze` and `event_blinding`
+arrived with the world programs and the armed events, `world_clock` with
+[ADR-0019](adr/0019-a-benchmark-world-is-installed-at-a-run-local-anchor.md), and
+`workspace_origin` with [`sur1-scored-environment.md`](sur1-scored-environment.md).
 
 | # | check | refuses when |
 |---:|---|---|
@@ -115,13 +128,15 @@ with the world programs and the armed events.
 | 2 | `real_bindings` | any binding is a stand-in |
 | 3 | `model_identity` | the model is not the contract's, or names no region |
 | 4 | `configuration` | a required credential or address is unset |
-| 5 | `receivers` | a receiver does not answer |
-| 6 | `classifier_identity` | the rule is undeclared, is not the declared one, or has moved |
-| 7 | `world_programs` | a selected scenario cannot be prepared |
-| 8 | `world_program_freeze` | the programs are not the frozen nine at their published digests |
-| 9 | `output_directory` | the directory is neither new nor a resumable run of this experiment |
-| 10 | `blinding` | an arm name is reachable from a bundle or from the scorer |
-| 11 | `event_blinding` | a world event's firing path can name an arm, an answer or a reading |
+| 5 | `workspace_origin` | the sign-in origin is unset, malformed, or one this API refuses |
+| 6 | `receivers` | a receiver does not answer |
+| 7 | `classifier_identity` | the rule is undeclared, is not the declared one, or has moved |
+| 8 | `world_programs` | a selected scenario cannot be prepared |
+| 9 | `world_program_freeze` | the programs are not the frozen nine at their published digests |
+| 10 | `world_clock` | the world names no declared clock |
+| 11 | `output_directory` | the directory is neither new nor a resumable run of this experiment |
+| 12 | `blinding` | an arm name is reachable from a bundle or from the scorer |
+| 13 | `event_blinding` | a world event's firing path can name an arm, an answer or a reading |
 
 The names are pinned as `preflight.REQUIRED_CHECKS`, which is what a scored authorisation refuses
 to be minted without.
@@ -199,9 +214,9 @@ reached, and no run landed anywhere but `tmp_path`.
    scored run for any scenario in that state. **This is deliberately not done here**: a program
    written in the session that also built the scoring path, with the scenario's ground truth
    visible, is not distinguishable from one written towards it.
-2. **A prepared environment.** The local stack up on its published ports, a worker credential, an
-   MCP bearer token, a readable order-system event log and a region. Preflight checks 4 and 5 are
-   what say whether it is there.
+2. **A prepared environment.** The local stack up on its published ports, a worker credential,
+   an MCP bearer token, a sign-in origin the API accepts, a readable order-system event log and a
+   region. Preflight checks 4, 5 and 6 are what say whether it is there.
 3. **A model this account can invoke**, and the spend authorisation
    `AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE`, which is unspent.
 4. **A different session.** The contract's freeze block is explicit that the building session is
