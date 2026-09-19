@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Final
+from typing import Any, Final
 from uuid import UUID, uuid4
 
 import pytest
@@ -146,10 +146,7 @@ async def test_four_independent_sessions_racing_one_step_leave_exactly_one_owner
     await workflow.add_step(case_id, step_key="noop:1", kind=StepKind.NOOP)
 
     claims = await asyncio.gather(
-        *(
-            steps.claim_step(handle, worker=_worker(index))
-            for index, handle in enumerate(sessions)
-        )
+        *(steps.claim_step(handle, worker=_worker(index)) for index, handle in enumerate(sessions))
     )
 
     won = [claim for claim in claims if claim is not None]
@@ -182,10 +179,7 @@ async def test_racing_sessions_that_all_execute_deliver_one_effect_to_the_provid
     key = effect_key(case_id, "emit:1")
 
     claims = await asyncio.gather(
-        *(
-            steps.claim_step(handle, worker=_worker(index))
-            for index, handle in enumerate(sessions)
-        )
+        *(steps.claim_step(handle, worker=_worker(index)) for index, handle in enumerate(sessions))
     )
     executed = await asyncio.gather(
         *(
@@ -260,9 +254,7 @@ async def test_a_fenced_worker_causes_no_second_call_to_the_provider(
     assert len(before) == 1, "the effect B committed did not reach the provider exactly once"
 
     # A wakes up holding a claim that describes nobody, and tries to finish.
-    assert (
-        await steps.execute_step(sessions[0], claim=stalled, actor=_actor(0)) is StepResult.STALE
-    )
+    assert await steps.execute_step(sessions[0], claim=stalled, actor=_actor(0)) is StepResult.STALE
     while await _dispatch(sessions[0], adapter):
         pass
 
@@ -275,7 +267,7 @@ async def test_a_fenced_worker_causes_no_second_call_to_the_provider(
 # ======================================================= 3. a withdrawal racing a customer
 
 
-async def _the_request(intake_fixture: Intake) -> object:
+async def _the_request(intake_fixture: Intake) -> Any:
     requests = await intake_fixture.requests()
     assert len(requests) == 1, f"expected one approval request, found {len(requests)}"
     return requests[0]
@@ -297,12 +289,10 @@ async def _waiting_case(intake_fixture: Intake) -> UUID:
     return opened.case_id
 
 
-async def _amendments(intake_fixture: Intake, track_id: UUID) -> list[object]:
+async def _amendments(intake_fixture: Intake, track_id: UUID) -> list[Any]:
     """Order-system effects for one track. The approval message names the track too."""
     return [
-        row
-        for row in await intake_fixture.effects_for(track_id)
-        if row.kind == EFFECT_ORDER_AMEND
+        row for row in await intake_fixture.effects_for(track_id) if row.kind == EFFECT_ORDER_AMEND
     ]
 
 
@@ -385,7 +375,7 @@ async def test_a_superseded_request_records_no_customer_decision_at_all(
     assert [reply.raw_text for reply in await physical.replies()] == ["YES"]
 
 
-async def _reload_request(intake_fixture: Intake, request_id: UUID) -> object:
+async def _reload_request(intake_fixture: Intake, request_id: UUID) -> Any:
     from promisepatch.db.models import ApprovalRequest
 
     async with intake_fixture.database.connect() as connection:
@@ -419,12 +409,12 @@ class _DelayingProvider(FakeSemanticProvider):
         return await super().invoke(spec, content, correction=correction)
 
 
-async def _step_row(intake_fixture: Intake, step_id: UUID) -> object:
+async def _step_row(intake_fixture: Intake, step_id: UUID) -> Any:
     async with intake_fixture.database.connect() as connection:
         return (await connection.execute(select(CaseStep).where(CaseStep.id == step_id))).one()
 
 
-async def _semantic_step_of(intake_fixture: Intake, case_id: UUID) -> object | None:
+async def _semantic_step_of(intake_fixture: Intake, case_id: UUID) -> Any:
     async with intake_fixture.database.connect() as connection:
         return (
             await connection.execute(
@@ -436,7 +426,7 @@ async def _semantic_step_of(intake_fixture: Intake, case_id: UUID) -> object | N
         ).first()
 
 
-async def _first_step_of(intake_fixture: Intake, case_id: UUID) -> object:
+async def _first_step_of(intake_fixture: Intake, case_id: UUID) -> Any:
     async with intake_fixture.database.connect() as connection:
         return (
             await connection.execute(
@@ -448,10 +438,10 @@ async def _first_step_of(intake_fixture: Intake, case_id: UUID) -> object:
         ).one()
 
 
-async def _await_started(intake_fixture: Intake, step_id: UUID) -> object:
+async def _await_started(intake_fixture: Intake, step_id: UUID) -> Any:
     """Poll until the database says this step started. Bounded, so a regression fails."""
 
-    async def poll() -> object:
+    async def poll() -> Any:
         while True:
             row = await _step_row(intake_fixture, step_id)
             if row.started_at is not None:
