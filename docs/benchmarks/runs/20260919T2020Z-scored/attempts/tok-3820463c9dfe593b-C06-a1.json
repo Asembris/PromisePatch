@@ -1,0 +1,125 @@
+{
+  "attempt": {
+    "arm_token": "tok-3820463c9dfe593b",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 0
+    },
+    "evidence_ref": "tok-3820463c9dfe593b-C06-a1.json",
+    "finished_at": "2026-09-19T20:13:04.025940+00:00",
+    "latency_seconds": 1.5780000000013388,
+    "note": "PreparationError: C06's world could not be installed: DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DeadlockDetectedError'>: deadlock detected\nDETAIL:  Process 131199 waits for AccessExclusiveLock on relation 16412 of database 16384; blocked by process 93662.\nProcess 93662 waits for AccessShareLock on relation 16989 of database 16384; blocked by process 131199.\nHINT:  See server log for query details.\n[SQL: TRUNCATE TABLE promisepatch.\"approval_decisions\", promisepatch.\"approval_requests\", promisepatch.\"case_reports\", promisepatch.\"case_steps\", promisepatch.\"cases\", promisepatch.\"commitment_lines\", promisepatch.\"conversations\", promisepatch.\"customers\", promisepatch.\"equipment_alternatives\", promisepatch.\"equipment_outages\", promisepatch.\"exception_clarifications\", promisepatch.\"exception_facts\", promisepatch.\"exceptions\", promisepatch.\"fixture_state\", promisepatch.\"inbound_replies\", promisepatch.\"inbox_events\", promisepatch.\"inventory_ledger\", promisepatch.\"order_constraints\", promisepatch.\"order_line_mappings\", promisepatch.\"order_lines\", promisepatch.\"orders\", promisepatch.\"outbox_messages\", promisepatch.\"plan_approvals\", promisepatch.\"production_tasks\", promisepatch.\"promises\", promisepatch.\"recipe_version_equipment\", promisepatch.\"recipe_version_lines\", promisepatch.\"recipe_versions\", promisepatch.\"recipes\", promisepatch.\"recovery_options\", promisepatch.\"reservations\", promisepatch.\"resource_aliases\", promisepatch.\"resources\", promisepatch.\"sessions\", promisepatch.\"substitution_policies\", promisepatch.\"supplier_commitments\", promisepatch.\"suppliers\", promisepatch.\"timers\", promisepatch.\"track_paths\", promisepatch.\"track_watch\", promisepatch.\"tracks\", promisepatch.\"workers\" RESTART IDENTITY]\n(Background on this error at: https://sqlalche.me/e/20/dbapi)",
+    "retried": false,
+    "run_id": "20260919T2020Z-scored",
+    "scenario_id": "C06",
+    "started_at": "2026-09-19T20:13:02.437440+00:00",
+    "status": "HARNESS_FAILURE"
+  },
+  "diagnostics": {},
+  "evidence": {
+    "E1": [],
+    "E2": [
+      {
+        "accepted_at": "2026-09-19T20:12:55.789711+00:00",
+        "channel_address": "tg:1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "fake-7cb8152c2718",
+        "text": "Hello Tomas Lindqvist,\n\nAn ingredient for your order EXT-B, due 2026-09-20 07:30 (Africa/Tunis) did not arrive, so we cannot make it exactly as ordered.\n\nWe propose to make Raspberry Rose Cake (v3) instead of Raspberry Rose Cake (v2).\nThat change uses strawberries in place of raspberries.\n\nChange reference: OPT-7E55A6\n\nReply YES to approve this change or NO to decline it. If you decline, the bakery will follow up."
+      },
+      {
+        "accepted_at": "2026-09-19T20:12:56.909466+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "link:a4d5f5b1-0b3d-5d26-b5a2-f2dfd53f0244",
+        "text": "yes"
+      }
+    ],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": "3953081c-0391-57e2-bed6-b3a7242fd3a3",
+        "held_by_this_attempt": false,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": null,
+    "contradictions": [],
+    "unreadable_sources": [
+      "E4"
+    ]
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.0.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260919T2020Z-scored",
+    "scorer_version": "1.0.0"
+  }
+}

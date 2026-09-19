@@ -1,0 +1,63 @@
+{
+  "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+  "benchmark_id": "SUR-1",
+  "budgets": {
+    "input_tokens": 120000,
+    "model_calls": 24,
+    "output_tokens": 16000,
+    "tool_calls": 60,
+    "wall_clock_seconds": 300
+  },
+  "command": [
+    "sur1",
+    "--kind",
+    "scored",
+    "--run-id",
+    "20260919T2020Z-scored"
+  ],
+  "driver_version": "1.0.0",
+  "environment": {
+    "aws_credentials_configured": true,
+    "model_provider_configured": false,
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.0"
+  },
+  "finished_at": null,
+  "implementation_sha": "d4e590cc34ff67b0c41fc2d8db6dd6977a3db2e0",
+  "kind": "scored",
+  "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+  "manifest_version": "1.0.0",
+  "model_configuration": {
+    "api": "bedrock-runtime Converse",
+    "model_id": "us.amazon.nova-2-lite-v1:0",
+    "provider": "bedrock",
+    "temperature": 0.0
+  },
+  "run_id": "20260919T2020Z-scored",
+  "scorer_version": "1.0.0",
+  "started_at": "2026-09-19T20:07:33.407068+00:00",
+  "tool_surface": {
+    "reads": [
+      "get_incident",
+      "get_orders",
+      "get_promise_graph",
+      "get_stock",
+      "get_tasks",
+      "read_customer_replies"
+    ],
+    "writes": [
+      "amend_order",
+      "send_customer_message",
+      "hold_task",
+      "release_task",
+      "report_outcome"
+    ]
+  },
+  "working_tree_dirty": true,
+  "world_clock": {
+    "anchor": "2026-09-19T19:00:00+00:00",
+    "bakery_timezone": "Africa/Tunis",
+    "strategy": "run-local-bakery-anchor",
+    "strategy_version": "1"
+  }
+}

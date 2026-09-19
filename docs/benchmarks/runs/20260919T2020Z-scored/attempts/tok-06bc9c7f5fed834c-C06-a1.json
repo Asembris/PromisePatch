@@ -1,0 +1,60 @@
+{
+  "attempt": {
+    "arm_token": "tok-06bc9c7f5fed834c",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 3
+    },
+    "evidence_ref": "tok-06bc9c7f5fed834c-C06-a1.json",
+    "finished_at": "2026-09-19T20:11:37.733228+00:00",
+    "latency_seconds": 7.563000000001921,
+    "note": "EventFiringError: C06 could not perform C06:stock:1: SinkUnavailableError: the movement sur1:counter-sales:ord-b could not be posted: InsufficientPrivilegeError: ungoverned write: INSERT on promisepatch.inventory_ledger has no audit event in this transaction",
+    "retried": false,
+    "run_id": "20260919T2020Z-scored",
+    "scenario_id": "C06",
+    "started_at": "2026-09-19T20:11:30.179546+00:00",
+    "status": "HARNESS_FAILURE"
+  },
+  "diagnostics": {},
+  "evidence": {
+    "E1": [],
+    "E2": [],
+    "E3": [],
+    "E4": null,
+    "contradictions": [
+      "the receivers could not be read after: EventFiringError: C06 could not perform C06:stock:1: SinkUnavailableError: the movement sur1:counter-sales:ord-b could not be posted: InsufficientPrivilegeError: ungoverned write: INSERT on promisepatch.inventory_ledger has no audit event in this transaction"
+    ],
+    "unreadable_sources": [
+      "E1",
+      "E2",
+      "E3",
+      "E4"
+    ]
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.0.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260919T2020Z-scored",
+    "scorer_version": "1.0.0"
+  }
+}
