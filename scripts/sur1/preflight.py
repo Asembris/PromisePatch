@@ -303,6 +303,63 @@ def world_program_freeze(contract: Contract | None) -> Check:
     )
 
 
+EVENT_MODULES: Final = ("events", "worldsink")
+"""The modules that decide when a declared world event fires and what it does.
+
+Named here rather than inferred, because the whole value of the check below is that adding a
+module to the firing path and forgetting to list it is itself visible in a diff.
+"""
+
+SCORING_MODULE: Final = "scripts.score_safe_useful_recovery"
+"""What event code may never import. A trigger that could read a reading is not a trigger."""
+
+
+def event_blinding() -> Check:
+    """Nothing that fires a world event can name an arm, an answer or a scorer's reading.
+
+    The same argument :func:`blinding` makes about the scoring path, made about the firing path,
+    and for a sharper reason: a world whose events fired differently depending on which arm was
+    driving would make every later number a comparison between three different worlds, and the
+    failure would be invisible in all of them.
+
+    Three structural facts. What a trigger is allowed to read carries no field an arm label
+    could travel in; no module on the firing path names an arm, an expected disposition or a
+    scorer's own vocabulary as code; and none of them can import the scorer at all.
+    """
+    from scripts.sur1.bindings.events import Observation
+
+    leaking = sorted(set(Observation.__dataclass_fields__) & ARM_FIELD_NAMES)
+    if leaking:
+        return Check("event_blinding", False, f"a trigger's observation carries {leaking}")
+
+    forbidden = FORBIDDEN_SCENARIO_FIELDS | ARM_FIELD_NAMES | frozenset(ARMS)
+    found: list[str] = []
+    for path in _event_sources():
+        for name in sorted(_names_in(path, forbidden)):
+            found.append(f"{path.name} names {name!r}")
+        imported = _imports_of(path)
+        if any(
+            name == SCORING_MODULE or name.startswith(f"{SCORING_MODULE}.") for name in imported
+        ):
+            found.append(f"{path.name} imports the scorer")
+    if found:
+        return Check("event_blinding", False, "; ".join(found))
+    return Check(
+        "event_blinding",
+        True,
+        f"{len(EVENT_MODULES)} firing modules name no arm, no answer and no reading",
+    )
+
+
+def _event_sources() -> tuple[Path, ...]:
+    """The files the firing path is made of, resolved from the modules themselves."""
+    from scripts.sur1.bindings import events as events_module
+    from scripts.sur1.bindings import worldsink as worldsink_module
+
+    by_name = {"events": events_module, "worldsink": worldsink_module}
+    return tuple(Path(by_name[name].__file__ or "") for name in EVENT_MODULES)
+
+
 def ground_truth_reachable() -> tuple[str, ...]:
     """Whether any module on the world-program path can name what a correct answer is.
 
@@ -324,14 +381,24 @@ def ground_truth_reachable() -> tuple[str, ...]:
 
 def _forbidden_names_in(path: Path) -> set[str]:
     """Every forbidden field name this file mentions, as an attribute, a key or a literal."""
+    return _names_in(path, FORBIDDEN_SCENARIO_FIELDS)
+
+
+def _names_in(path: Path, forbidden: frozenset[str]) -> set[str]:
+    """Which of these names this file uses as code: a literal, an attribute or a name.
+
+    Exact equality, and never a substring of prose. A module that explains in its docstring why
+    a trigger must not consult an arm is doing the right thing; one with ``PROMISEPATCH`` in an
+    expression is not, and only the second is a name in the syntax.
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            found |= {name for name in FORBIDDEN_SCENARIO_FIELDS if name == node.value}
-        elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_SCENARIO_FIELDS:
+            found |= {name for name in forbidden if name == node.value}
+        elif isinstance(node, ast.Attribute) and node.attr in forbidden:
             found.add(node.attr)
-        elif isinstance(node, ast.Name) and node.id in FORBIDDEN_SCENARIO_FIELDS:
+        elif isinstance(node, ast.Name) and node.id in forbidden:
             found.add(node.id)
     return found
 
@@ -451,6 +518,7 @@ def preflight(
         world_program_freeze(contract),
         output_directory(run_id, root=root, contract=contract),
         blinding(),
+        event_blinding(),
     ]
     return PreflightReport(kind=kind, checks=tuple(checks))
 
@@ -471,6 +539,7 @@ def require(report: PreflightReport) -> PreflightReport:
 
 
 __all__ = [
+    "EVENT_MODULES",
     "FORBIDDEN_SCENARIO_FIELDS",
     "SCORED",
     "Check",
@@ -479,6 +548,7 @@ __all__ = [
     "blinding",
     "classifier_identity",
     "configuration",
+    "event_blinding",
     "frozen_identities",
     "ground_truth_reachable",
     "model_identity",

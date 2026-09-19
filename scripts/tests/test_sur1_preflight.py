@@ -362,6 +362,7 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "world_program_freeze",
         "output_directory",
         "blinding",
+        "event_blinding",
     ]
     json.dumps(payload)
 
