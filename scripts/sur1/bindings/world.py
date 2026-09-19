@@ -42,6 +42,7 @@ from uuid import UUID, uuid4
 
 from scripts.sur1 import predeclaration
 from scripts.sur1.bindings import REAL, Probe
+from scripts.sur1.bindings.clock import RunClock, strategy_of
 from scripts.sur1.bindings.events import Arming, FiredEvent, observe
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface
 from scripts.sur1.bindings.receivers import (
@@ -114,6 +115,16 @@ class LiveScenarioWorld:
     arming: Arming | None = None
     world_digest: str = ""
     binding_kind: str = REAL
+    clock: RunClock | None = None
+    """Where in time this run installs its worlds, decided once before any arm exists.
+
+    ``None`` is the fixture's own byte-stable anchor, which is right for a unit test and is
+    refused for a scored run by :func:`scripts.sur1.preflight.world_clock`. It is a field on the
+    world rather than on a program because it is a property of the *run*: one anchor serves every
+    scenario and every attempt, so an attempt and its retry are attempts at one world. See
+    ADR-0019.
+    """
+
     program_lookup: Callable[[str], Any] = program_for
     """How this world finds the program for a scenario. The frozen registry, by default.
 
@@ -133,6 +144,7 @@ class LiveScenarioWorld:
             "E3": self.kitchen.identity(),
             "actions": list(ACTIONS),
             "programs": f"{self.program_lookup.__module__}.{self.program_lookup.__qualname__}",
+            "clock": strategy_of(self.clock),
         }
 
     def probe(self) -> Probe:
@@ -177,6 +189,7 @@ class LiveScenarioWorld:
                 environment=self.environment,
             ),
             sink=self._sink(),
+            anchor=None if self.clock is None else self.clock.anchor,
         )
         self.applied_steps = realisation.applied
         self.arming = realisation.arming

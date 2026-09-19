@@ -37,6 +37,7 @@ from scripts.sur1.adapters import three_arms
 from scripts.sur1.arms import ArmAdapter
 from scripts.sur1.authorisation import observe
 from scripts.sur1.bindings.bedrock import BedrockConverseClient
+from scripts.sur1.bindings.clock import RunClock, run_clock
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface, live_worker_surface
 from scripts.sur1.bindings.receivers import (
@@ -74,13 +75,23 @@ class Bindings:
         }
 
 
-def build(config: BindingConfig, contract: Contract) -> Bindings:
+def build(config: BindingConfig, contract: Contract, *, clock: RunClock | None = None) -> Bindings:
     """Assemble every binding from one configuration. Opens no client and reaches nothing.
 
     The model's transport, the MCP session and both database connections are opened on first
     use, so building this object on a machine with no stack and no AWS account succeeds and the
     preflight is what says whether a run could be taken.
+
+    **This is where the run is placed in time**, and it is the only place. The anchor is chosen
+    once here -- before the preflight, before an arm is constructed and before a world is
+    prepared -- and carried on the world, so every scenario and every attempt of this run
+    installs from one instant and an attempt and its retry are attempts at one world. Nothing
+    downstream may choose a second one: there is no parameter on an arm, an adapter or the
+    driver by which it could. A caller passing ``clock`` is a test pinning the instant; a run
+    takes :func:`~scripts.sur1.bindings.clock.run_clock`, which refuses an hour at which the
+    scenarios would not be legible rather than moving them to fit. See ADR-0019.
     """
+    clock = clock if clock is not None else run_clock()
     database = DatabaseReader(url=config.database_url)
     ledger = ChannelLedger()
     surface = live_worker_surface(
@@ -101,6 +112,7 @@ def build(config: BindingConfig, contract: Contract) -> Bindings:
         ledger=ledger,
         fixture=contract.document["fixture"]["orders"],
         worker_surface=surface,
+        clock=clock,
     )
     model = BedrockConverseClient.from_contract(contract, region=config.aws_region)
     return Bindings(
