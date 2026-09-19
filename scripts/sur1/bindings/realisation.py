@@ -126,8 +126,19 @@ class LiveInstaller:
     never installed. :func:`_same_database` is what makes that a refusal instead.
     """
 
+    anchor: Any = None
+    """The instant the fixture's own offsets are measured from, or the fixture's own.
+
+    A parameter with no configuration behind it: nothing in a ``SUR-1`` run passes one, so a
+    scored install is at ``hollow_oak.ANCHOR`` exactly as before. It exists because the world
+    snapshot renders every instant as an *offset* from the anchor, so the published world digest
+    is the same whichever anchor a world is installed at -- which is what lets a rehearsal
+    install the declared world at an instant the engine's own bakery-day arithmetic can still
+    read, without describing a different world.
+    """
+
     def load(self, program: ScenarioProgram) -> str:
-        return _load(program, expected_database=self.expected_database)
+        return _load(program, expected_database=self.expected_database, anchor=self.anchor)
 
     def cross(self, step: Any, handles: WorldHandles) -> str:
         return _cross(step, handles)
@@ -140,6 +151,7 @@ def realise(
     sink: WorldSink | None = None,
     installer: Installer | None = None,
     published_programs: Mapping[str, Any] | None = None,
+    anchor: Any = None,
 ) -> Realisation:
     """Install one scenario's canonical world, arm what it owes, and report it ``READY``.
 
@@ -158,7 +170,7 @@ def realise(
         )
     digest = _verify(program, published_programs)
 
-    writer = installer or LiveInstaller(expected_database=handles.database.url)
+    writer = installer or LiveInstaller(expected_database=handles.database.url, anchor=anchor)
     applied = [writer.load(program)]
     for step in program.steps:
         if isinstance(step, ExternalRepin):
@@ -236,7 +248,7 @@ def _same_database(migration_url: str, expected: str) -> bool:
     return _endpoint(migration_url) == _endpoint(expected)
 
 
-def _load(program: ScenarioProgram, *, expected_database: str = "") -> str:
+def _load(program: ScenarioProgram, *, expected_database: str = "", anchor: Any = None) -> str:
     """Write the canonical graph through the product's own governed fixture load.
 
     ``anchor`` is the fixture's own byte-stable anchor rather than the wall clock. A benchmark
@@ -246,7 +258,7 @@ def _load(program: ScenarioProgram, *, expected_database: str = "") -> str:
     """
     import asyncio
 
-    anchor = hollow_oak.ANCHOR
+    anchor = anchor if anchor is not None else hollow_oak.ANCHOR
     graph = program.world(anchor=anchor)
     fixture_name = f"hollow-oak+sur1-{program.scenario_id}"
     try:

@@ -12,7 +12,7 @@
   ],
   "benchmark_id": "SUR-1",
   "fixture": "promise_graph.examples.hollow_oak",
-  "implementation_sha": "46ef915da706d3b157ccd384138d64c75611a4031e8bacc682dae2e6739d6078",
+  "implementation_sha": "4857fc105eef42a4f2d5c1964065a31782950ed667ec27deb7929e1cee08be6b",
   "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
   "manifest_version": "1.0.0",
   "no_arm_executed": "No arm was executed to produce this declaration. No BASELINE, PROMISEPATCH or ABLATION attempt has been driven at any SUR-1 scenario, no model has been called, no evidence has been collected, no capture has been written and no comparative result exists.",
