@@ -24,7 +24,11 @@ frozen and hashed separately. This module keeps the mechanism: what a program ma
 refusal for a scenario that has none. :func:`program_for` still refuses a scenario with no
 program, and the preflight still refuses a scored run for any scenario in that state.
 
-**Nothing here has been run against a ``SUR-1`` scenario.**
+**This module has been run against ``SUR-1`` scenarios**, in the one scored run
+``20260919T2020Z-scored``.
+:class:`KitchenWriter` is where two of its attempts failed: the hold was an ungoverned
+``UPDATE`` and the database refused it. It is now written through
+:mod:`~scripts.sur1.bindings.governed`. See ``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations

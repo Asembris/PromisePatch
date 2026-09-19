@@ -38,9 +38,10 @@ which somebody answered a question nobody asked. They are carried on the program
 :class:`ArmedEvent` values -- ordered, named, and part of the snapshot -- and the firing path is
 not wired. See ``docs/sur1-world-programs.md``.
 
-**Nothing here has been run.** No arm has been driven, no model reached, no evidence collected
-and no comparative number exists. What the realisation path did run is recorded in
-:mod:`~scripts.sur1.bindings.realisation` and in the freeze.
+**These programs have been installed for one scored run**, ``20260919T2020Z-scored``, which is
+published inconclusive and unaltered. No program declared here was changed by that run or by
+the correction after it: ``program_set_sha`` and all nine world digests are unmoved. See
+``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations

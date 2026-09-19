@@ -19,8 +19,8 @@ fixture construction and the receiver reads, which are the harness's own privile
 never reachable from an arm: an :class:`~scripts.sur1.arms.AttemptRequest` carries a world and a
 budget, and nothing in it exposes a setup helper.
 
-**Nothing here has been pointed at a ``SUR-1`` scenario.** No model has been called, no AWS
-resource read, and no comparative number produced by any of it.
+**These bindings have carried one scored run**, ``20260919T2020Z-scored``, which is published
+inconclusive and unaltered. See ``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations

@@ -34,8 +34,10 @@ attempt; an action that raises marks the whole arming ``FAILED`` and refuses eve
 because a half-fired world is a world an attempt was not set up in. The ledger's own uniqueness
 on ``(source_kind, source_id)`` is the second, independent guard on the stock movement.
 
-**Nothing here has been run against a driven arm.** This module is exercised entirely from
-controlled observations; no arm has been constructed, no model reached and no capture written.
+**This module has fired events at driven arms**, in the one scored run ``20260919T2020Z-scored``.
+Its declared events were armed on all 27 attempts; the one stock movement they reached was
+refused by the database, which is corrected in
+:mod:`~scripts.sur1.bindings.governed`. See ``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations

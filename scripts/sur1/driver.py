@@ -40,8 +40,9 @@ fingerprint recomputed from the world, the arms, the rule and the frozen documen
 actually handed. :func:`drive` stays callable for development and for the tests that prove these
 rules; what it stopped being able to do is produce a scored artefact around the preflight.
 
-**Nothing in this module has been run against a SUR-1 scenario.** No arm has been driven, no
-model reached and no comparative number produced.
+**This driver has run one scored SUR-1 run**, ``20260919T2020Z-scored``, which is published
+inconclusive and unaltered: 24 of its 27 attempts ended ``HARNESS_FAILURE`` for reasons that
+have nothing to do with what any arm decided. See ``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations

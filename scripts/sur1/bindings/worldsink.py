@@ -22,8 +22,10 @@ the ledger's own ``uq_inventory_ledger_source`` refuses a second posting under o
 identity. The two guards are independent on purpose: the first is this process's memory, which a
 crash could lose, and the second is a constraint in PostgreSQL, which it cannot.
 
-**Nothing here has been pointed at a driven arm.** No attempt has used this sink, no reply has
-been delivered to a live channel and no movement has been posted to a live ledger.
+**This sink has been used by driven arms**, in the one scored run ``20260919T2020Z-scored``. Replies
+were delivered to the live channel; the one stock movement it reached was refused by the
+database because the posting was ungoverned, which is corrected in
+:mod:`~scripts.sur1.bindings.governed`. See ``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations

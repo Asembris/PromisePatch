@@ -58,11 +58,19 @@ ROOT: Final = Path(__file__).resolve().parents[3]
 DECLARATION_PATH: Final = ROOT / "docs" / "benchmarks" / "sur1-world-programs.v1.json"
 
 NO_ARM_EXECUTED: Final = (
-    "No arm was executed to produce this declaration. No BASELINE, PROMISEPATCH or ABLATION "
-    "attempt has been driven at any SUR-1 scenario, no model has been called, no evidence has "
-    "been collected, no capture has been written and no comparative result exists."
+    "No arm was executed to produce this declaration: it is derived from frozen documents and "
+    "from the code that reads them, and nothing in it was learned from a run. One scored run "
+    "has since been driven under it -- 20260919T2020Z-scored, on 2026-09-19 -- and it is "
+    "published inconclusive and unaltered, with 24 of its 27 attempts HARNESS_FAILURE. No "
+    "program, program hash or world digest in this declaration was changed by that run or by "
+    "the correction after it."
 )
-"""The statement the freeze carries, asserted by a test rather than left as a sentence."""
+"""The statement the freeze carries, asserted by a test rather than left as a sentence.
+
+It said *no arm has been driven at any SUR-1 scenario* until 2026-09-19, when one was. The
+sentence was replaced rather than quietly kept, because a freeze whose honesty rests on a
+statement that has become false is not a freeze. What the freeze actually claims -- that the
+programs were fixed before any outcome was seen -- is unchanged and is the first sentence."""
 
 REALISATION_EXERCISED: Final = (
     "The realisation path was executed once, unintentionally, while checking a refusal message: "

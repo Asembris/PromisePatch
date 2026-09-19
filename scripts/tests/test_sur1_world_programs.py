@@ -676,10 +676,17 @@ def test_the_declaration_names_every_scenario_with_both_of_its_identities(
 
 
 def test_the_declaration_states_that_no_arm_was_executed() -> None:
+    """What the freeze claims: nothing in this declaration was learned from a run.
+
+    It is no longer the same sentence as *no arm has ever been driven*, because one has been --
+    ``20260919T2020Z-scored``, on 2026-09-19. The statement now carries both facts, and the
+    claim that matters is unchanged: the programs were fixed before any outcome was seen.
+    """
     published = declaration.published()
 
     assert published["no_arm_executed"] == declaration.NO_ARM_EXECUTED
-    assert "No arm was executed" in published["no_arm_executed"]
+    assert "No arm was executed to produce this declaration" in published["no_arm_executed"]
+    assert "20260919T2020Z-scored" in published["no_arm_executed"]
 
 
 def test_the_declaration_also_records_what_was_actually_run() -> None:
