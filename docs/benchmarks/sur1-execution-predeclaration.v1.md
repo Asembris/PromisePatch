@@ -214,6 +214,14 @@ rather than inferred, and `literal_decision` is decided by the scorer's own stru
 either transport. A reply carried on a signed customer link and a reply carried here are the same
 row shape and are scored identically.
 
+> **Recorded later, beside the paragraph above and not into it.** On the scored path a stipulated
+> reply is now delivered to the channel record first and then, where the driven system sent a
+> signed approval link, pressed through that link — so arms B and C carry the product's own
+> inbound row beside the channel's, and the baseline carries the channel's alone. The rule above
+> is unchanged and the two rows are scored as one reply; `scripts/tests/test_score_safe_useful_recovery.py`
+> asserts it. **No hash moved here:** the rules SHA is over `scripts/sur1/predeclaration.py`, which
+> is untouched. See [`sur1-consent-ingress.md`](../sur1-consent-ingress.md).
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any
@@ -225,6 +233,9 @@ row shape and are scored identically.
 - **It authors no scenario.** The nine world programs that turn each scenario's prose stipulated
   facts into a prepared world are not written, `scripts/sur1/bindings/setup.py::PROGRAMS` is empty,
   and the preflight refuses a scored run for any scenario in that state.
+  *Recorded later:* the nine programs have since been written and frozen, beside this document
+  and not into it, in [`sur1-world-programs.v1.json`](sur1-world-programs.v1.json); see
+  [`sur1-world-programs.md`](../sur1-world-programs.md).
 - **It touches no effect-set artefact.** `11/16` stands, the manifest hash is unchanged, `S12`
   stays committed failing.
 - **Both evaluation holdouts stay sealed**, and neither was consulted.

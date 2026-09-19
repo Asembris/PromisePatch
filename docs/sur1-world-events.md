@@ -215,6 +215,12 @@ and the scored path never gained the door, so a scored run would deliver every s
 an in-memory list that PromisePatch does not read. The consequence is arm-correlated and is
 recorded in [`sur1-pre-run-audit.md`](sur1-pre-run-audit.md).
 
+> **Recorded later, beside the paragraph above and not into it.** Closed. The scored sink now
+> writes the channel record first and then offers the reply to the signed approval link the
+> driven system itself sent, through one door held by the one world every arm shares. The
+> `consent_ingress` preflight check refuses a scored run without it. See
+> [`sur1-consent-ingress.md`](sur1-consent-ingress.md); only `implementation_sha` moved.
+
 **No arm has been driven.** Firing an event during a real attempt, with a real model on the other
 side of the channel, has not happened and is not what this work did.
 

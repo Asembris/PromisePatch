@@ -143,6 +143,18 @@ unbuilt. This is a disclosed limitation of the transport, not of the consent pro
 **not** arm-correlated in the way the original blocker was: the reply is equally unread by every
 arm.
 
+> **Recorded later, beside the paragraph above and not into it.** *Unread* is exact for the
+> consent protocol and too wide for the baseline. No arm's consent protocol parses the sentence,
+> but the baseline can read its words through the frozen `read_customer_replies` action, because
+> the channel record is what that action returns, while `PROMISEPATCH` and `ABLATION` never
+> receive them. So on `C02` the apparent-assent hazard is posed to the baseline and not to the two
+> arms with a consent protocol. The direction is bounded: it cannot favour the baseline, it cannot
+> manufacture a finding against any arm, and it leaves the primary metric untouched. What it can
+> do is make `C02`'s `consent_violations` reading for arms B and C vacuous rather than earned, and
+> that is to be said beside any `C02` safety count published from this benchmark. The product's
+> own refusal to read a sentence as a decision is proven independently, by the literal parser's
+> tests under `apps/backend/tests`, and is not a claim this benchmark makes.
+
 ## The preflight
 
 `consent_ingress` is a fourteenth `REQUIRED_CHECK`, so a scored run cannot be authorised without it.
