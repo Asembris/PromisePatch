@@ -33,6 +33,13 @@ unless it has been handed a classifier that is not the undetermined default. A d
 may proceed without one; its messages are undetermined and its scenarios void, which is the
 honest reading of a rule nobody has declared yet.
 
+**A scored run refuses to start without a capability.** ``kind="scored"`` is not a string this
+module will act on: it requires a :class:`~scripts.sur1.authorisation.ScoredAuthorisation`,
+which only a passing scored preflight mints, and it claims that capability -- once -- against a
+fingerprint recomputed from the world, the arms, the rule and the frozen documents this call was
+actually handed. :func:`drive` stays callable for development and for the tests that prove these
+rules; what it stopped being able to do is produce a scored artefact around the preflight.
+
 **Nothing in this module has been run against a SUR-1 scenario.** No arm has been driven, no
 model reached and no comparative number produced.
 """
@@ -55,6 +62,7 @@ from scripts.sur1.arms import (
     ScenarioWorld,
     scenario_without_ground_truth,
 )
+from scripts.sur1.authorisation import SCORED, ScoredAuthorisation, observe
 from scripts.sur1.budget import AttemptBudget, BudgetExhaustedError
 from scripts.sur1.capture import (
     RUNS_ROOT,
@@ -89,6 +97,15 @@ MAX_ATTEMPTS: Final = 2
 
 class PredeclarationError(RuntimeError):
     """A scored run was asked for under a rule nobody declared."""
+
+
+class UnauthorisedScoredRunError(RuntimeError):
+    """A scored run was asked for without the capability a passing preflight mints.
+
+    Separate from :class:`PredeclarationError` because they are different absences. One says the
+    rule that reads a message was never declared; this one says nobody checked whether the run
+    could honestly be taken at all.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,25 +274,64 @@ def drive(
     classifier: OutboundClassifier = UNDETERMINED,
     scenarios: Sequence[str] = (),
     root: Path = RUNS_ROOT,
+    authorisation: ScoredAuthorisation | None = None,
 ) -> RunDirectory:
     """Drive every arm over every scenario, resuming whatever already finished.
 
     The frozen identities are asserted before an arm is constructed. A scored run refuses to
     start under the undetermined default, because the rule that decides ``asserts_change`` has
     to be declared before a comparative outcome exists rather than chosen once one does.
+
+    **A scored run is driven under a capability or not at all.** ``kind="scored"`` requires a
+    :class:`~scripts.sur1.authorisation.ScoredAuthorisation`, which only a passing scored
+    preflight mints. The capability is claimed here against a fingerprint observed from the
+    objects this call was actually handed -- this world, these arms, this rule, this run id,
+    this root, these scenarios, and the frozen identities as they are on disk right now -- so a
+    capability minted against the real bindings cannot drive stubs, and one minted before a
+    manifest moved cannot drive after it. The claim is single-use; a resume runs its own
+    preflight and mints its own.
+
+    A development run takes no capability and is refused one. It produces no comparative number,
+    and letting it consume an authorisation would be the one way a scored capability could be
+    spent on something that is not a scored run.
     """
     contract = Contract.load()
-    if kind == "scored" and classifier is UNDETERMINED:
-        raise PredeclarationError(
-            "a scored run needs the rule by which asserts_change is set, declared in this "
-            "session's predeclaration before the first scored attempt; the harness ships the "
-            "undetermined default and will not invent one"
+    if kind == SCORED:
+        if classifier is UNDETERMINED:
+            raise PredeclarationError(
+                "a scored run needs the rule by which asserts_change is set, declared in this "
+                "session's predeclaration before the first scored attempt; the harness ships "
+                "the undetermined default and will not invent one"
+            )
+        if not isinstance(authorisation, ScoredAuthorisation):
+            raise UnauthorisedScoredRunError(
+                "a scored SUR-1 run is driven under an authorisation minted by a passing "
+                f"preflight; this call was handed {type(authorisation).__name__}. Run the "
+                "preflight through scripts.sur1.run.execute, which is where one comes from."
+            )
+    elif authorisation is not None:
+        raise UnauthorisedScoredRunError(
+            f"a {kind!r} run takes no scored authorisation; one authorises a scored run and "
+            "spending it here would consume it on something that is not one"
         )
 
     selected = tuple(scenarios) or contract.scenario_ids
     unknown = [scenario for scenario in selected if scenario not in contract.scenario_ids]
     if unknown:
         raise KeyError(f"not scenarios of {contract.identity.benchmark_id}: {unknown}")
+
+    if authorisation is not None:
+        authorisation.claim(
+            observe(
+                kind=kind,
+                run_id=run_id,
+                root=root,
+                scenarios=selected,
+                world=world,
+                arms=arms,
+                classifier=classifier,
+            )
+        )
 
     head, dirty = implementation()
     manifest = RunManifest(
@@ -292,7 +348,12 @@ def drive(
         working_tree_dirty=dirty,
         driver_version=DRIVER_VERSION,
     )
-    directory, tokens = open_run(manifest, labels=[arm.label for arm in arms], root=root)
+    directory, tokens = open_run(
+        manifest,
+        labels=[arm.label for arm in arms],
+        root=root,
+        authorisation=authorisation,
+    )
     fixtures = FixtureMap.read(contract.document)
 
     for arm in arms:

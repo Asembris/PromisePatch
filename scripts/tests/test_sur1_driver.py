@@ -15,16 +15,25 @@ bound it would rather have.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from scripts.sur1.arms import ArmAttempt, ArmVoidError, HarnessFailureError
+from scripts.sur1.authorisation import ScoredAuthorisation, observe
 from scripts.sur1.budget import BudgetExhaustedError
 from scripts.sur1.capture import CaptureError, RunDirectory, write_once
 from scripts.sur1.doubles import FakeClock, StubArm, SyntheticWorld
-from scripts.sur1.driver import Clock, PredeclarationError, drive, join
+from scripts.sur1.driver import (
+    Clock,
+    PredeclarationError,
+    UnauthorisedScoredRunError,
+    drive,
+    join,
+)
 from scripts.sur1.evidence import (
+    UNDETERMINED,
     ChannelMessage,
     ReceiverEvidence,
     ReportedPromiseRow,
@@ -32,6 +41,7 @@ from scripts.sur1.evidence import (
     WorkerReport,
 )
 from scripts.sur1.frozen import Contract, FrozenIdentityError
+from scripts.sur1.preflight import REQUIRED_CHECKS, SCORED, Check, PreflightReport, authorise
 
 CONTRACT = Contract.load()
 UNIVERSE = CONTRACT.case_universe
@@ -79,6 +89,39 @@ def invalid_evidence() -> ReceiverEvidence:
 
 def stub(label: str, *outcomes: ArmAttempt | BaseException) -> StubArm:
     return StubArm(label=label, outcomes=list(outcomes))
+
+
+def synthetic_authorisation(
+    *,
+    run_id: str,
+    root: Path,
+    world: object,
+    arms: Sequence[object],
+    classifier: object,
+) -> ScoredAuthorisation:
+    """A capability for a run made of stubs, minted through the one door that mints them.
+
+    The report is fabricated here -- these stubs would fail ``real_bindings`` and the loopback
+    receivers would fail ``receivers`` -- and that is the point: this file proves the driver's
+    rules, not the preflight's, so it forges the answer and still has to go through
+    :func:`~scripts.sur1.preflight.authorise` to turn it into authority. Nothing in the shipped
+    package can do what these five lines do, which is why the boundary holds outside this file.
+    """
+    report = PreflightReport(
+        kind=SCORED, checks=tuple(Check(name, True, "synthetic") for name in REQUIRED_CHECKS)
+    )
+    return authorise(
+        report,
+        observe(
+            kind=SCORED,
+            run_id=run_id,
+            root=root,
+            scenarios=("C01",),
+            world=world,
+            arms=arms,
+            classifier=classifier,
+        ),
+    )
 
 
 def run(
@@ -385,17 +428,57 @@ def test_a_scored_run_refuses_an_undeclared_outbound_rule(tmp_path: Path) -> Non
     assert arm.requests == []
 
 
-def test_a_declared_rule_lets_a_scored_run_start(tmp_path: Path) -> None:
+def test_a_scored_run_refuses_to_start_without_an_authorisation(tmp_path: Path) -> None:
+    """A declared rule is not enough. ``kind="scored"`` is a capability, not a string.
+
+    This is the bypass the boundary closed: before it, this exact call -- stub arms, a value for
+    a world, a rule declared inline in a test -- wrote a directory of scored artefacts that read
+    identically to an authorised run's, having asked none of the preflight's questions.
+    """
+
     def declared(message: ChannelMessage) -> bool | None:
         return False
 
+    arm = stub("HARNESS-A", ArmAttempt(evidence=safe_evidence()))
+    with pytest.raises(UnauthorisedScoredRunError, match="minted by a passing"):
+        run(tmp_path, arm, kind="scored", classifier=declared)
+    assert arm.requests == []
+    assert not (tmp_path / "harness-run").exists()
+
+
+def test_a_declared_rule_and_an_authorisation_let_a_scored_run_start(tmp_path: Path) -> None:
+    def declared(message: ChannelMessage) -> bool | None:
+        return False
+
+    world = SyntheticWorld()
+    arm = stub("HARNESS-A", ArmAttempt(evidence=safe_evidence()))
     directory = run(
         tmp_path,
-        stub("HARNESS-A", ArmAttempt(evidence=safe_evidence())),
+        arm,
+        world=world,
         kind="scored",
         classifier=declared,
+        authorisation=synthetic_authorisation(
+            run_id="harness-run",
+            root=tmp_path,
+            world=world,
+            arms=[arm],
+            classifier=declared,
+        ),
     )
     assert json.loads(directory.run_file.read_text(encoding="utf-8"))["kind"] == "scored"
+
+
+def test_a_development_run_is_refused_a_scored_authorisation(tmp_path: Path) -> None:
+    """Spending a scored capability on a run that produces no comparative number would spend it."""
+    world = SyntheticWorld()
+    arm = stub("HARNESS-A", ArmAttempt(evidence=safe_evidence()))
+    granted = synthetic_authorisation(
+        run_id="harness-run", root=tmp_path, world=world, arms=[arm], classifier=UNDETERMINED
+    )
+    with pytest.raises(UnauthorisedScoredRunError, match="takes no scored authorisation"):
+        run(tmp_path, arm, world=world, kind="development", authorisation=granted)
+    assert not granted.claimed
 
 
 def test_a_moved_manifest_refuses_before_any_arm_is_constructed(

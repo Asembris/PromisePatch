@@ -35,6 +35,7 @@ from typing import Any, Final
 from scripts.sur1 import predeclaration
 from scripts.sur1.adapters import three_arms
 from scripts.sur1.arms import ArmAdapter
+from scripts.sur1.authorisation import observe
 from scripts.sur1.bindings.bedrock import BedrockConverseClient
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface, live_worker_surface
@@ -50,7 +51,7 @@ from scripts.sur1.capture import RUNS_ROOT, RunDirectory
 from scripts.sur1.driver import Clock, drive
 from scripts.sur1.evidence import UNDETERMINED, OutboundClassifier
 from scripts.sur1.frozen import Contract
-from scripts.sur1.preflight import SCORED, PreflightReport, preflight, require
+from scripts.sur1.preflight import SCORED, PreflightReport, authorise, preflight, require
 
 DEVELOPMENT: Final = "development"
 
@@ -154,7 +155,13 @@ def execute(
     root: Path = RUNS_ROOT,
     preflight_only: bool = False,
 ) -> tuple[PreflightReport, RunDirectory | None]:
-    """Preflight, then drive. A scored run that failed any check never reaches the driver."""
+    """Preflight, then drive. A scored run that failed any check never reaches the driver.
+
+    The passing report is turned into the capability the driver asks for, here and nowhere else.
+    That is what makes this function's first sentence structural rather than a description of
+    the order the lines happen to be written in: a caller who skipped it has no capability, and
+    a scored run without one is refused by the driver and by the capture layer.
+    """
     contract = Contract.load()
     bindings = build(config, contract)
     report = require(
@@ -169,6 +176,23 @@ def execute(
     )
     if preflight_only:
         return report, None
+    classifier = _classifier(kind)
+    authorisation = (
+        authorise(
+            report,
+            observe(
+                kind=kind,
+                run_id=run_id,
+                root=root,
+                scenarios=tuple(scenarios) or contract.scenario_ids,
+                world=bindings.world,
+                arms=bindings.arms,
+                classifier=classifier,
+            ),
+        )
+        if kind == SCORED
+        else None
+    )
     directory = drive(
         arms=bindings.arms,
         world=bindings.world,
@@ -176,9 +200,10 @@ def execute(
         run_id=run_id,
         kind=kind,
         command=command,
-        classifier=_classifier(kind),
+        classifier=classifier,
         scenarios=scenarios,
         root=root,
+        authorisation=authorisation,
     )
     return report, directory
 

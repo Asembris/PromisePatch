@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from scripts.sur1.authorisation import SCORED, ScoredAuthorisation
 from scripts.sur1.evidence import ReceiverEvidence
 from scripts.sur1.frozen import ROOT
 from scripts.sur1.manifest import AttemptIdentity, AttemptManifest, RunManifest
@@ -143,7 +144,11 @@ class RunDirectory:
 
 
 def open_run(
-    manifest: RunManifest, *, labels: Sequence[str], root: Path = RUNS_ROOT
+    manifest: RunManifest,
+    *,
+    labels: Sequence[str],
+    root: Path = RUNS_ROOT,
+    authorisation: ScoredAuthorisation | None = None,
 ) -> tuple[RunDirectory, dict[str, str]]:
     """Start a run, or continue one, refusing to continue a different experiment.
 
@@ -151,7 +156,25 @@ def open_run(
     resume, so that an attempt identity survives a restart. The labels are passed in rather than
     read off the manifest, because a run manifest is written into every capture and an arm name
     in a capture is a leak waiting to be committed.
+
+    **A scored layout is opened only under a capability.** This is the one function that creates
+    ``run.json`` and the token map, so it is the narrowest place to stand between a caller and a
+    directory of scored artefacts. A caller reaching past :func:`~scripts.sur1.driver.drive`
+    straight to here still has to hold a :class:`~scripts.sur1.authorisation.ScoredAuthorisation`
+    minted for this run id at this root, which only a passing scored preflight produces.
     """
+    if manifest.kind == SCORED:
+        if not isinstance(authorisation, ScoredAuthorisation):
+            raise CaptureError(
+                f"a scored run directory is opened only under a scored authorisation; "
+                f"{manifest.run_id} was asked for with {type(authorisation).__name__}. A scored "
+                "SUR-1 run is authorised by a passing preflight and by nothing else."
+            )
+        if not authorisation.authorises_run(run_id=manifest.run_id, kind=manifest.kind, root=root):
+            raise CaptureError(
+                f"this authorisation is not about {manifest.run_id} at {root}: it authorises "
+                f"{authorisation.run_id}"
+            )
     directory = RunDirectory(root / manifest.run_id)
     if not directory.run_file.exists():
         directory.path.mkdir(parents=True, exist_ok=True)
