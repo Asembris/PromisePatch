@@ -9,8 +9,17 @@ This is that gap closed: nine executable world programs, frozen with their own h
 without driving an arm.
 
 **No arm has been executed.** No `BASELINE`, `PROMISEPATCH` or `ABLATION` attempt has been driven
-at any scenario, no model has been called, no world has been installed against a live stack, and
-no comparative result exists. The declaration carries that statement and a test asserts it.
+at any scenario, no model has been called, no evidence has been collected, no capture has been
+written and no comparative result exists. The declaration carries that statement and a test
+asserts it.
+
+**One thing was run, and the freeze says so.** While a refusal message was being checked, the
+realisation path executed once against the **local development** PostgreSQL: `C04`'s canonical
+world was installed through the governed fixture load, and the local demo fixture was restored
+immediately afterwards with `pp reset-demo-state`. No arm was driven at that world, no
+order-system change was posted, nothing was read back from it and no capture exists. It is
+recorded in the declaration as `realisation_exercised` rather than left out, because a freeze
+whose honesty rests on a sentence that is slightly false is not a freeze.
 
 ## What a program may read, and why that is the whole argument
 
@@ -183,10 +192,11 @@ reaches a channel, delivering it twice for `C07`, and moving the strawberry stoc
 decision for `C06` — all of which are interactions with a driven arm, and none of which this
 session may build or exercise.
 
-**No world has been installed.** The realisation path is written and unexecuted: installing one
-would require the local stack, and validating it would require reading back a world that only
-exists to be acted on. The programs are frozen on their canonical form, which is the form the
-freeze is about.
+**The realisation path is essentially unexercised.** It ran once, by accident, for `C04` against
+the local development database, and that is the whole of the evidence that it works: no world has
+been read back, no external change has been posted to the order system, and none of the eight
+scenarios that carry an armed event can be installed at all while `realise` refuses them. The
+programs are frozen on their canonical form, which is the form the freeze is about.
 
 So `SUR-1` scored execution is still refused, and now for a different and smaller reason than it
 was: the worlds exist, are frozen, and nothing fires their events yet.

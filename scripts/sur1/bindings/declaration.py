@@ -25,7 +25,9 @@ fact rather than a claim -- the same argument
 for the same reason.
 
 **No arm has been executed.** The declaration says so, the check asserts it says so, and it is
-true: this package has driven no arm, called no model and installed no world.
+true: this package has driven no arm, called no model, collected no evidence and produced no
+comparative result. What *was* run is recorded separately in :data:`REALISATION_EXERCISED`,
+because a freeze whose honesty rests on a sentence that is slightly false is not a freeze.
 """
 
 from __future__ import annotations
@@ -52,10 +54,20 @@ DECLARATION_PATH: Final = ROOT / "docs" / "benchmarks" / "sur1-world-programs.v1
 
 NO_ARM_EXECUTED: Final = (
     "No arm was executed to produce this declaration. No BASELINE, PROMISEPATCH or ABLATION "
-    "attempt has been driven at any SUR-1 scenario, no model has been called, no world has "
-    "been installed against a live stack, and no comparative result exists."
+    "attempt has been driven at any SUR-1 scenario, no model has been called, no evidence has "
+    "been collected, no capture has been written and no comparative result exists."
 )
 """The statement the freeze carries, asserted by a test rather than left as a sentence."""
+
+REALISATION_EXERCISED: Final = (
+    "The realisation path was executed once, unintentionally, while checking a refusal message: "
+    "C04's canonical world was installed into the local development PostgreSQL through the "
+    "governed fixture load, and the local demo fixture was restored immediately afterwards with "
+    "pp reset-demo-state. No arm was driven at it, no order-system change was posted, nothing "
+    "was read back from it and no capture exists. It is recorded here because a freeze that "
+    "said nothing had ever been run would be a freeze nobody should trust."
+)
+"""What was actually run, recorded beside what was not. Neither is inferred from the other."""
 
 IMPLEMENTATION_MODULES: Final = (
     programs_module,
@@ -122,6 +134,7 @@ def declaration() -> dict[str, Any]:
             for scenario_id in sorted(built)
         },
         "no_arm_executed": NO_ARM_EXECUTED,
+        "realisation_exercised": REALISATION_EXERCISED,
     }
 
 
@@ -176,6 +189,8 @@ def differences() -> tuple[str, ...]:
                 )
     if was.get("no_arm_executed") != NO_ARM_EXECUTED:
         found.append("the declaration no longer carries the statement that no arm was executed")
+    if was.get("realisation_exercised") != REALISATION_EXERCISED:
+        found.append("the declaration no longer records what was actually run")
     return tuple(found)
 
 
@@ -210,6 +225,7 @@ if __name__ == "__main__":
 __all__ = [
     "DECLARATION_PATH",
     "NO_ARM_EXECUTED",
+    "REALISATION_EXERCISED",
     "DeclarationMismatchError",
     "declaration",
     "differences",

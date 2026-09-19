@@ -12,10 +12,10 @@
   ],
   "benchmark_id": "SUR-1",
   "fixture": "promise_graph.examples.hollow_oak",
-  "implementation_sha": "a874243262456a45b821e23142ed7a2834eb141695fc9a172aa36f4b2757bda5",
+  "implementation_sha": "4c61c8dde0f1ffbcc007659ecf26b7dec41656e582ffaca85a158d9804f437a4",
   "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
   "manifest_version": "1.0.0",
-  "no_arm_executed": "No arm was executed to produce this declaration. No BASELINE, PROMISEPATCH or ABLATION attempt has been driven at any SUR-1 scenario, no model has been called, no world has been installed against a live stack, and no comparative result exists.",
+  "no_arm_executed": "No arm was executed to produce this declaration. No BASELINE, PROMISEPATCH or ABLATION attempt has been driven at any SUR-1 scenario, no model has been called, no evidence has been collected, no capture has been written and no comparative result exists.",
   "program_set_id": "SUR-1-WORLD-PROGRAMS",
   "program_set_sha": "88db566c13ef7a9865141583e5d918d43ff1b612b3311393c12af627ab1de649",
   "program_set_version": "1.0.0",
@@ -175,5 +175,6 @@
       "world_digest": "8396cbdac5de3761c243744a53b004969f2bb8384686e4e36fd625abb0fd7f17"
     }
   },
+  "realisation_exercised": "The realisation path was executed once, unintentionally, while checking a refusal message: C04's canonical world was installed into the local development PostgreSQL through the governed fixture load, and the local demo fixture was restored immediately afterwards with pp reset-demo-state. No arm was driven at it, no order-system change was posted, nothing was read back from it and no capture exists. It is recorded here because a freeze that said nothing had ever been run would be a freeze nobody should trust.",
   "snapshot_schema_version": "1"
 }
