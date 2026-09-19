@@ -485,3 +485,76 @@ def test_an_e1_row_read_from_the_stale_projection_is_what_broke_the_capture() ->
     payload = ReceiverEvidence(order_events=(event,)).as_payload()
     with pytest.raises(EvidenceMalformedError, match="idempotency_key"):
         evidence_from_payload(payload)
+
+
+# ----------------------------------------- the run this correction exists because of is untouched
+
+PRESERVED_RUN = Path("docs/benchmarks/runs/20260919T2020Z-scored")
+
+PRESERVED_RUN_DIGEST = "d599d644c6869fe527a32cfe240fe9a20433ed4a07679b02fbb597fecdc746ed"
+"""Every byte of the first scored run, hashed the way the freeze hashes a module set.
+
+Path, then bytes, in sorted order, with ``\r\n`` normalised so the digest is the same on every
+machine. Pinned here so *the run is immutable* is a check a later session runs rather than a
+sentence it reads. If this fails, something edited a published run, and the right response is to
+restore it -- never to update the constant.
+"""
+
+PRESERVED_RUN_FILES = 57
+"""27 attempts, 27 verdicts, ``run.json``, ``arm_map.json`` and ``result.json``."""
+
+
+def test_the_first_scored_run_is_byte_identical_to_what_was_published() -> None:
+    import hashlib
+
+    assert PRESERVED_RUN.is_dir(), "the first scored run is missing from the tree"
+    files = sorted(path for path in PRESERVED_RUN.rglob("*") if path.is_file())
+    hasher = hashlib.sha256()
+    for path in files:
+        hasher.update(path.relative_to(PRESERVED_RUN).as_posix().encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(path.read_bytes().replace(b"\r\n", b"\n"))
+        hasher.update(b"\0")
+
+    assert len(files) == PRESERVED_RUN_FILES
+    assert hasher.hexdigest() == PRESERVED_RUN_DIGEST
+
+
+def test_the_published_run_still_says_what_it_said() -> None:
+    """The headline, read out of the artefact rather than out of a document about it."""
+    import json
+    from collections import Counter
+
+    verdicts = Counter(
+        json.loads(path.read_text(encoding="utf-8"))["outcome"]
+        for path in sorted((PRESERVED_RUN / "verdicts").glob("*.json"))
+    )
+
+    assert sum(verdicts.values()) == 27
+    assert verdicts["HARNESS_FAILURE"] == 24
+    assert verdicts["INVALID"] == 1
+    assert verdicts["SAFE_AND_COMPLETE"] == 2
+
+
+def test_every_frozen_benchmark_identity_is_the_published_one() -> None:
+    """The four this correction must not have moved, recomputed from the bytes on disk."""
+    from scripts.sur1 import predeclaration
+    from scripts.sur1.bindings.declaration import differences, published
+    from scripts.sur1.frozen import Contract
+
+    identity = Contract.load().identity
+
+    assert identity.manifest_sha == (
+        "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c"
+    )
+    assert identity.baseline_prompt_sha == (
+        "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1"
+    )
+    assert identity.scorer_version == "1.0.0"
+    assert predeclaration.PREDECLARATION_SHA == (
+        "c53d267a0874d2e91456fdfacc23c86ebfc411f938cbe060ce958cb41d1e1927"
+    )
+    assert published()["program_set_sha"] == (
+        "88db566c13ef7a9865141583e5d918d43ff1b612b3311393c12af627ab1de649"
+    )
+    assert differences() == ()
