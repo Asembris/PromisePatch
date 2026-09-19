@@ -432,3 +432,33 @@ So the bullet's *measurement* requirement is discharged and its *conditional* is
 different sentence from "the gate passed", and neither this amendment nor the disposition softens
 the `FAIL`. **Nothing else on this page changes**: the other fourteen rows are unaffected, §1.3
 stands as the 2026-09-17 amendment left it, and the immutable 11/16 headline is untouched.
+
+---
+
+## Amendment, 2026-09-19 — the declined correction was afterwards made
+
+**This page is left as it was written, and so is every amendment above it.** The amendment of
+2026-09-18 was written at `8877fcf`, six hours before the correction landed, and its closing
+clause *"the roadmap's conditional 'smallest scheduling correction' is declined"* is an accurate
+record of the decision that stood when it was written. The project owner has since reversed that
+decision and the correction has been made, so that clause no longer describes the worker. It is
+superseded here and not edited.
+
+| what exists now | where |
+|---|---|
+| the correction, its root cause and its before/after | [head-of-line-correction.md](head-of-line-correction.md) |
+| the scheduling change | `apps/backend/src/promisepatch/worker.py`, `apps/backend/src/promisepatch/domain/steps.py` |
+| its regression tests | `apps/backend/tests/test_worker_responsiveness.py` |
+
+**The gate did not move.** `H <= 1000.0 ms` is still the threshold, is now imported by the
+regression rather than restated, and the nine published captures, the measurement and the
+disposition are all untouched. The correction was asked for, not triggered: none of the
+disposition's three revisiting conditions fired, and none of its reasoning is claimed to have
+been wrong.
+
+**What the correction is not offered as.** It is one regression test, not a re-run of the
+predeclared nine-capture protocol, and `scripts/run_head_of_line.py` is unchanged. The published
+`H_representative = 1545.8 ms` and `H_treatment = 8173.4 ms` stay exactly as measured, and their
+`FAIL` against the gate is not softened, retracted or rescored by anything here. A reader who
+wants the corrected worker measured under that protocol needs a predeclared amendment first.
+**Nothing else on this page changes.**
