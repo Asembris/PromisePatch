@@ -236,7 +236,7 @@ run's smaller observations had been quietly closed.
 Thirty-four of them, in two modules, none of which drives an arm, calls a model, opens a
 database or runs `docker`. `C01`–`C09` were not driven to produce any of this.
 
-`scripts/tests/test_sur1_harness_correction.py` — 24 checks:
+`scripts/tests/test_sur1_harness_correction.py` — 24 tests, grouped by claim:
 
 | Claim | How |
 |---|---|
@@ -261,7 +261,7 @@ database or runs `docker`. `C01`–`C09` were not driven to produce any of this.
 | the published run still says what it said | 24 / 1 / 2, counted out of the verdict files |
 | every frozen benchmark identity is the published one | all five, recomputed, plus `differences() == ()` |
 
-`scripts/tests/test_sur1_world_lifecycle.py` — 10 checks:
+`scripts/tests/test_sur1_world_lifecycle.py` — 10 tests, one per claim:
 
 | Claim | How |
 |---|---|
