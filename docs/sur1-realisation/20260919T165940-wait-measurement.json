@@ -1,0 +1,91 @@
+{
+  "binding_deadline_seconds": 240.0,
+  "frozen_wall_clock_ceiling_seconds": 300,
+  "measured_at": "2026-09-19T16:59:40.003997+00:00",
+  "not_a_benchmark": "This document measures how long the SUR-1 worker surface waits, on the ordinary Hollow Oak demo world. No SUR-1 scenario was prepared, no arm was driven, no model was called, no scorer ran and no comparative number exists. It is not a SUR-1 run.",
+  "runs": [
+    {
+      "case_id": "043aafea-5635-5696-87dd-9048a12590d9",
+      "correlation_id_in_the_fingerprint": false,
+      "deadline_seconds": 240.0,
+      "label": "with the fix",
+      "total_waited_seconds": 10.64,
+      "two_consecutive_readings_of_one_case_differ_in": [
+        "correlation_id"
+      ],
+      "waits": [
+        {
+          "after": "report",
+          "ended_with": "clarification",
+          "plan_id": null,
+          "status_calls": 2,
+          "waited_seconds": 2.45
+        },
+        {
+          "after": "clarify",
+          "ended_with": "confirmation",
+          "plan_id": "7cf14e85f30a1b84643179bb7a10357e03397fbfd175e7f84e6e307f8f285052",
+          "status_calls": 2,
+          "waited_seconds": 1.64
+        },
+        {
+          "after": "confirm",
+          "ended_with": null,
+          "plan_id": null,
+          "status_calls": 6,
+          "waited_seconds": 6.55
+        }
+      ]
+    },
+    {
+      "case_id": "0f395ff5-d860-5940-b234-48036597df6d",
+      "correlation_id_in_the_fingerprint": true,
+      "deadline_seconds": 30.0,
+      "label": "with the correlation id back in the fingerprint",
+      "total_waited_seconds": 31.24,
+      "two_consecutive_readings_of_one_case_differ_in": [
+        "correlation_id"
+      ],
+      "waits": [
+        {
+          "after": "report",
+          "ended_with": "clarification",
+          "plan_id": null,
+          "status_calls": 2,
+          "waited_seconds": 4.69
+        },
+        {
+          "after": "clarify",
+          "ended_with": "confirmation",
+          "plan_id": "27ac9c8fe1b18c2fead262d7b22cf5b10c4513c2c98c61cf4773be8ca627a6ff",
+          "status_calls": 2,
+          "waited_seconds": 1.41
+        },
+        {
+          "after": "confirm",
+          "ended_with": null,
+          "plan_id": null,
+          "status_calls": 16,
+          "waited_seconds": 25.14
+        }
+      ]
+    }
+  ],
+  "same_world_for_both": true,
+  "terminal_wait": {
+    "with_the_defect": {
+      "after": "confirm",
+      "ended_with": null,
+      "plan_id": null,
+      "status_calls": 16,
+      "waited_seconds": 25.14
+    },
+    "with_the_fix": {
+      "after": "confirm",
+      "ended_with": null,
+      "plan_id": null,
+      "status_calls": 6,
+      "waited_seconds": 6.55
+    }
+  }
+}
