@@ -42,6 +42,7 @@ from uuid import UUID, uuid4
 
 from scripts.sur1 import predeclaration
 from scripts.sur1.bindings import REAL, Probe
+from scripts.sur1.bindings.events import Arming, FiredEvent, observe
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
@@ -52,6 +53,7 @@ from scripts.sur1.bindings.receivers import (
     ReceiverUnreadableError,
 )
 from scripts.sur1.bindings.setup import KitchenWriter, WorldHandles, program_for
+from scripts.sur1.bindings.worldsink import LedgerWriter, LiveWorldSink
 from scripts.sur1.evidence import (
     OUTBOUND,
     ChannelMessage,
@@ -109,6 +111,8 @@ class LiveScenarioWorld:
     at_incident: Mapping[str, tuple[str, str | None]] = field(default_factory=dict)
     report: ReportRow | None = None
     applied_steps: tuple[str, ...] = ()
+    arming: Arming | None = None
+    world_digest: str = ""
     binding_kind: str = REAL
 
     # ------------------------------------------------------------------------------ identity
@@ -145,21 +149,36 @@ class LiveScenarioWorld:
         self.scenario_id = str(scenario["id"])
         self.run_id = uuid4()
         self.report = None
+        self.arming = None
+        self.world_digest = ""
         self.ledger.clear()
         if self.worker_surface is not None:
             self.worker_surface.forget()
 
         program = program_for(self.scenario_id)
-        self.applied_steps = program.apply(
+        realisation = program.apply(
             WorldHandles(
                 order_system_base_url=self.orders.base_url,
                 database=self.database,
                 environment=self.environment,
-            )
+            ),
+            sink=self._sink(),
         )
+        self.applied_steps = realisation.applied
+        self.arming = realisation.arming
+        self.world_digest = realisation.digest
         self.incident = dict(program.incident)
         self.started_at = datetime.now(UTC)
         self.at_incident = self.kitchen.sample()
+
+    def _sink(self) -> LiveWorldSink:
+        """The two powers the world needs to perform what this scenario stipulated it would do.
+
+        Built per attempt beside the arming that drives it, and reachable from nothing an arm
+        holds: an :class:`~scripts.sur1.arms.AttemptRequest` carries a world and a budget, and
+        there is no path from either to this object.
+        """
+        return LiveWorldSink(channel=self.ledger, ledger=LedgerWriter(url=self.database.url))
 
     # ------------------------------------------------------------------------- the actions
 
@@ -168,12 +187,39 @@ class LiveScenarioWorld:
         return {name: {"name": name} for name in ACTIONS}
 
     def invoke(self, name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Perform one frozen action and return what the receiver said about it."""
+        """Perform one frozen action and return what the receiver said about it.
+
+        The world catches up with itself on either side of the action. Before, because an ask
+        that reached a channel during PromisePatch's own work is due its reply before the next
+        read; after, because an ask this very call put on the channel is due one too. Neither is
+        a twelfth action and neither is an arm firing an event: the arm did the ordinary thing,
+        and what the world owes for it is decided by the world's own records.
+        """
         if name not in ACTIONS:
             raise WorldActionError(f"{name} is not one of the eleven actions this world offers")
+        self.settle()
         handler = getattr(self, f"_{name}")
         result: Mapping[str, Any] = handler(dict(arguments))
+        self.settle()
         return result
+
+    def settle(self) -> tuple[FiredEvent, ...]:
+        """Fire every declared event the world's own records now make due.
+
+        Arm-blind by construction: the observation is a count of outbound messages per channel
+        address taken from the channel receiver, which holds the product's own outbox and the
+        harness's own transport alike. An arm that is PromisePatch and an arm that is not both
+        reach a customer by putting a message on a channel, and this answers the message rather
+        than the sender.
+        """
+        arming = self.arming
+        if arming is None or not arming.pending:
+            return ()
+        try:
+            messages = self.channel.read(since=self.started_at)
+        except ReceiverUnreadableError:
+            return ()
+        return arming.pump(observe(messages, completed=arming.completed), self._sink())
 
     # -- reads ---------------------------------------------------------------------------------
 
