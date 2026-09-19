@@ -172,7 +172,9 @@ A run that rewrote its own declaration when it disagreed with it would have no f
   program hash, every world digest, the snapshot schema version and the implementation hash all
   match the published declaration.
 
-A scored run is refused if either fails, with every reason named.
+A scored run is refused if either fails, with every reason named. A third,
+`event_blinding`, was added beside them when the firing path was wired; it is described in
+[sur1-world-events.md](sur1-world-events.md).
 
 ## How a world is installed
 
@@ -191,22 +193,25 @@ The one thing that is not a fixture load is a pre-incident external change. The 
 separate application with its own record, rule `B6` turns on who committed an event, so `C05` and
 `C08` post the operator change to the simulator's own surface and let it commit its own event.
 
-## What is still open
+## What was still open, and what closed it
 
-**The armed events are not wired.** `realise` refuses any program that carries one, which is every
-program except `C04`. Firing them means the world delivering a scripted reply when an arm's ask
-reaches a channel, delivering it twice for `C07`, and moving the strawberry stock after `ord-b`'s
-decision for `C06` — all of which are interactions with a driven arm, and none of which this
-session may build or exercise.
+**The armed events were not wired.** `realise` refused any program that carried one, which was
+every program except `C04`. That is closed: each declared event now has an observable trigger, a
+single action, a one-shot identity and a place in order, all derived from the frozen scenario
+facts, and all nine programs realise. See [sur1-world-events.md](sur1-world-events.md) for the
+event model, the trigger inventory, the lifecycle and what it leaves open — including the one
+piece this record's own claim depends on, that a reply arrives on the harness transport for every
+arm.
 
-**The realisation path is essentially unexercised.** It ran once, by accident, for `C04` against
-the local development database, and that is the whole of the evidence that it works: no world has
-been read back, no external change has been posted to the order system, and none of the eight
-scenarios that carry an armed event can be installed at all while `realise` refuses them. The
+Only `implementation_sha` moved when that work landed. The program-set hash, all nine program
+hashes and all nine world digests are byte-identical, and they are now pinned as literals in the
+test as well as checked against the published document.
+
+**The realisation path is still essentially unexercised against live systems.** It ran once, by
+accident, for `C04` against the local development database, and that is still the whole of the
+evidence that its fixture load works: no world has been read back out of PostgreSQL, no external
+change has been posted to the order system, and no movement has been posted to a real ledger. The
 programs are frozen on their canonical form, which is the form the freeze is about.
-
-So `SUR-1` scored execution is still refused, and now for a different and smaller reason than it
-was: the worlds exist, are frozen, and nothing fires their events yet.
 
 ## Where the parts are
 
@@ -217,6 +222,8 @@ was: the worlds exist, are frozen, and nothing fires their events yet.
 | `scripts/sur1/bindings/realisation.py` | installing a canonical world in the live systems |
 | `scripts/sur1/bindings/declaration.py` | the freeze, and the check that code and document agree |
 | `scripts/sur1/bindings/setup.py` | the mechanism: what a step may reach, and the refusal |
-| `scripts/sur1/preflight.py` | `world_programs` and `world_program_freeze` |
+| `scripts/sur1/bindings/events.py` | what each declared event observes, does and may do once |
+| `scripts/sur1/bindings/worldsink.py` | the world's two powers, performed against the live systems |
+| `scripts/sur1/preflight.py` | `world_programs`, `world_program_freeze` and `event_blinding` |
 | `docs/benchmarks/sur1-world-programs.v1.json` | the frozen declaration |
 | `scripts/tests/test_sur1_world_programs.py` | every proof above, and no arm |
