@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ import pytest
 from scripts.sur1 import predeclaration
 from scripts.sur1.bindings import REAL, Probe
 from scripts.sur1.bindings.bedrock import BedrockConverseClient, ModelIdentity
+from scripts.sur1.bindings.clock import RunClock
 from scripts.sur1.bindings.config import DEFAULT_PORTS, REQUIRED_FOR_SCORED, BindingConfig
 from scripts.sur1.doubles import ScriptedModel, ScriptedSurface, SyntheticWorld
 from scripts.sur1.evidence import UNDETERMINED, ChannelMessage
@@ -61,6 +63,13 @@ class ReachableBinding:
     reachable: bool = True
     binding_kind: str = REAL
     payload: Mapping[str, Any] = field(default_factory=dict)
+    clock: RunClock | None = None
+    """A world binding's run clock. ``None`` for every binding that is not a world.
+
+    :func:`world` is what supplies one, because *every precondition true* now includes having
+    been placed in time by a declared rule -- a world without one installs at the fixture's own
+    March 2026 anchor and every scenario ends ``NEEDS_HUMAN_INTERPRETATION``. See ADR-0019.
+    """
 
     def identity(self) -> Mapping[str, Any]:
         return dict(self.payload)
@@ -76,6 +85,19 @@ def model() -> ReachableBinding:
     contract = Contract.load()
     return ReachableBinding(
         source="MODEL", payload=ModelIdentity.frozen(contract, region=REGION).as_payload()
+    )
+
+
+RUN_ANCHOR = datetime(2026, 9, 19, 13, 0, tzinfo=UTC)
+"""A fixed instant, so this file does not become a test of the hour it is run at."""
+
+
+def world(**overrides: Any) -> ReachableBinding:
+    """A world binding that reaches nothing and has been placed in time by the declared rule."""
+    return ReachableBinding(
+        source="WORLD",
+        clock=overrides.get("clock", RunClock(anchor=RUN_ANCHOR, timezone="Africa/Tunis")),
+        **{name: value for name, value in overrides.items() if name != "clock"},
     )
 
 
@@ -302,7 +324,7 @@ def passing_preflight(tmp_path: Path, **overrides: Any) -> Any:
         kind=overrides.get("kind", SCORED),
         run_id=overrides.get("run_id", "unit-run"),
         model=overrides.get("model", model()),
-        world=overrides.get("world", ReachableBinding(source="WORLD")),
+        world=overrides.get("world", world()),
         surface=overrides.get("surface", ReachableBinding(source="PROMISEPATCH")),
         config=overrides.get("config", config()),
         classifier=overrides.get("classifier", predeclaration.asserts_change),
@@ -316,6 +338,31 @@ def test_a_run_with_every_precondition_true_is_permitted(tmp_path: Path) -> None
 
     assert report.passed, [check.as_payload() for check in report.failures]
     assert require(report) is report
+
+
+def test_a_scored_run_is_refused_when_nothing_placed_its_world_in_time(tmp_path: Path) -> None:
+    """The dress rehearsal's §13, turned into a refusal instead of nine collapsed scenarios.
+
+    A world with no run clock installs at the fixture's own March 2026 anchor, every commitment
+    falls outside the bakery day and every scenario ends ``NEEDS_HUMAN_INTERPRETATION`` -- which
+    produces a full set of numbers, none of which is about a scenario. See ADR-0019.
+    """
+    report = passing_preflight(tmp_path, world=ReachableBinding(source="WORLD"))
+
+    assert not report.passed
+    with pytest.raises(PreflightRefusedError, match="world_clock"):
+        require(report)
+
+
+def test_a_scored_run_is_refused_under_a_clock_strategy_nobody_declared(tmp_path: Path) -> None:
+    """A world placed in time by something this package did not write is refused, not trusted."""
+    report = passing_preflight(
+        tmp_path,
+        world=world(clock=RunClock(anchor=RUN_ANCHOR, timezone="UTC", strategy="whenever")),
+    )
+
+    assert not report.passed
+    assert "whenever" in next(c for c in report.failures if c.name == "world_clock").detail
 
 
 def test_a_scored_run_is_refused_with_every_reason_named_rather_than_the_first(
@@ -360,6 +407,7 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "classifier_identity",
         "world_programs",
         "world_program_freeze",
+        "world_clock",
         "output_directory",
         "blinding",
         "event_blinding",

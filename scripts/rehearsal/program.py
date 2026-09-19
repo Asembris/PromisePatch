@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Final
 from zoneinfo import ZoneInfo
@@ -33,6 +33,7 @@ from promise_graph.examples import hollow_oak
 from promise_graph.model import ReceivedState
 from scripts.rehearsal import ROOT, SCENARIO
 from scripts.rehearsal.contract import scenario as rehearsal_scenario
+from scripts.sur1.bindings import clock
 from scripts.sur1.bindings.programs import AttestCommitmentLine, ScenarioProgram, ScriptedReply
 from scripts.sur1.bindings.setup import UnprogrammedScenarioError
 from scripts.sur1.bindings.worldsnapshot import digest_of
@@ -51,25 +52,15 @@ ARRIVED: Final = Decimal("6.0")
 BAKERY_TIMEZONE: Final = ZoneInfo("Africa/Tunis")
 """The calendar the engine buckets a commitment as today or tomorrow against."""
 
-SETTLED_BEFORE: Final = timedelta(hours=1)
-"""How far before the run the world's anchor is placed, and why it is placed at all.
+SETTLED_BEFORE: Final = clock.SETTLED_BEFORE
+"""How far before the run the world's anchor is placed. The harness's own rule, not a copy.
 
-``realisation._load`` installs at ``hollow_oak.ANCHOR`` -- a fixed instant in March 2026 -- and
-says why: two attempts at one scenario must be two attempts at one world, and an anchor that
-moved with the clock would make them two worlds. That is right and it is kept.
-
-What it collides with is that the engine does **not** read the anchor. ``physical.bakery_day``
-buckets a commitment as *today* or *tomorrow* against the **real** clock, so a world installed
-months after its anchor has both Valley Produce deliveries in the past, both clarification
-options carrying identical keywords, and a scope question that is never asked. The case then
-cannot be resolved by any answer and settles ``NEEDS_HUMAN_INTERPRETATION``. That is a live
-``SUR-1`` blocker and it is not this rehearsal's to decide -- see the rehearsal record.
-
-``DR01`` sidesteps it in the one way that changes no declared fact: the world snapshot renders
-every instant as an *offset* from the anchor, so the published world digest is identical at any
-anchor. The rehearsal therefore installs the declared world measured from an instant the
-engine's arithmetic can still read. It is computed **once per run**, not once per attempt, so a
-retry is a retry at the same world.
+``DR01`` found the defect this rule closes and stated the rule here first, because what ``SUR-1``
+should do about its own clock was not a rehearsal's to decide. `ADR-0019
+<../../docs/adr/0019-a-benchmark-world-is-installed-at-a-run-local-anchor.md>`_ decided it, and
+decided the same rule, so :mod:`scripts.sur1.bindings.clock` is now the one statement of how a
+benchmark world is placed in time and this name points at it. Two copies of that rule, one of
+which nobody re-reads, is exactly the drift the rehearsal record kept warning about.
 """
 
 
@@ -80,18 +71,13 @@ def bakery_anchor(now: datetime) -> datetime:
     minutes, so that delivery is between nought and sixty minutes in the past when the run
     starts -- which is what makes the report about a delivery that has already failed to arrive
     -- and every production task except the one the fixture declares ``STARTED`` is still ahead.
+
+    Delegated to :func:`scripts.sur1.bindings.clock.run_anchor`, which asks one question more
+    than this used to: that *tomorrow's* delivery has cleared the bakery day as well. A run just
+    after midnight passed here and would still have collapsed, because both deliveries then fall
+    inside one day and both options carry the same words.
     """
-    floored = now.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
-    anchor = floored - SETTLED_BEFORE
-    delivery = anchor + timedelta(minutes=60)
-    if delivery.astimezone(BAKERY_TIMEZONE).date() != now.astimezone(BAKERY_TIMEZONE).date():
-        raise UnprogrammedScenarioError(
-            f"DR01's today delivery would land on {delivery.astimezone(BAKERY_TIMEZONE).date()} "
-            f"and the run is on {now.astimezone(BAKERY_TIMEZONE).date()} in {BAKERY_TIMEZONE}. "
-            "The engine buckets a commitment by the bakery's own calendar day, so the two have "
-            "to agree or the scope question is never asked. Run the rehearsal at a working hour."
-        )
-    return anchor
+    return clock.run_anchor(now, zone=BAKERY_TIMEZONE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,10 +92,16 @@ class RehearsalProgram(ScenarioProgram):
     anchor: Any = None
     """The instant this world is installed from. ``None`` is the fixture's own."""
 
-    def apply(self, handles: Any, *, sink: Any = None) -> Any:
+    def apply(self, handles: Any, *, sink: Any = None, anchor: Any = None) -> Any:
         from scripts.sur1.bindings.realisation import realise
 
-        return realise(self, handles, sink=sink, published_programs=published(), anchor=self.anchor)
+        return realise(
+            self,
+            handles,
+            sink=sink,
+            published_programs=published(),
+            anchor=anchor if anchor is not None else self.anchor,
+        )
 
 
 def program(*, anchor: datetime | None = None) -> RehearsalProgram:
