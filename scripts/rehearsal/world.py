@@ -31,32 +31,26 @@ scorer reads. What differs is the door the message came through, which is a fact
 system was asked to carry it. The sink says which door it used in its receipt, so a capture says
 so too rather than leaving it to be assumed.
 
-**E1 is read from a copy of the simulator's own store, taken on demand.** Rule ``B2`` attributes
-an amendment by the ``idempotency_key`` on the order system's own event, and that field lives in
-the committed event body rather than in the ``/admin/events`` projection -- which is why
-:class:`~scripts.sur1.bindings.receivers.OrderSystemReceiver` reads the store directly. Under
-``docker-compose.yml`` that store is inside a named volume with no host path, so there is nothing
-for ``SUR1_ORDER_SYSTEM_STORE`` to name. :class:`ContainerOrderReceiver` copies the file out with
-``docker cp`` immediately before each read. It is the simulator's own committed record either
-way; only the route to it differs, and it is read-only in both directions.
+**E1 is read from the order system's own endpoint.** Rule ``B2`` attributes an amendment by the
+``idempotency_key`` on the order system's own event, and ``GET /admin/events`` now publishes each
+event's committed body, so :class:`~scripts.sur1.bindings.receivers.OrderSystemReceiver` reads it
+there. The rehearsal previously copied the simulator's SQLite store out of its named volume with
+``docker cp`` before every read, because the projection carried none of the fields the rule
+needed; that workaround is gone and ``ContainerOrderReceiver`` with it.
 """
 
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from pathlib import Path
 from typing import Any, Final
 from urllib.parse import parse_qs, urlsplit
 
-from scripts.sur1.bindings import Probe
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
     DatabaseReader,
-    OrderSystemReceiver,
     ReceiverUnreadableError,
     channel_identity,
 )
@@ -83,62 +77,6 @@ MESSAGE_SEND: Final = "MESSAGE_SEND"
 
 class RehearsalIngressError(RuntimeError):
     """The rehearsal could not deliver a stipulated reply through any honest door."""
-
-
-# ---------------------------------------------------------------------------- E1, from a volume
-
-
-@dataclass(slots=True)
-class ContainerOrderReceiver(OrderSystemReceiver):
-    """``E1``, read from a copy of the order simulator's own committed store.
-
-    The copy is taken immediately before every read, so the rows read are the rows the simulator
-    had committed at that moment. It is never written to, and the container's own file is never
-    written to either: ``docker cp`` out of a container is a read.
-    """
-
-    container: str = ""
-    container_path: str = "/data/order-simulator.sqlite3"
-
-    # ``@dataclass(slots=True)`` builds a replacement class, so a zero-argument ``super()`` in a
-    # method here closes over the pre-slots class and raises. The base is named explicitly for
-    # that reason and for no other; the calls below are ordinary inherited ones.
-
-    def identity(self) -> dict[str, Any]:
-        return {
-            "receiver": "E1",
-            "base_url": self.base_url,
-            "store": None if self.store_path is None else str(self.store_path),
-            "copied_from": f"{self.container}:{self.container_path}",
-        }
-
-    def refresh(self) -> None:
-        """Copy the simulator's committed store out of its volume, or say it is unreadable."""
-        if self.store_path is None:
-            raise ReceiverUnreadableError("E1", "no host path was given for the copied store")
-        self.store_path.parent.mkdir(parents=True, exist_ok=True)
-        completed = subprocess.run(
-            ["docker", "cp", f"{self.container}:{self.container_path}", str(self.store_path)],
-            capture_output=True,
-            text=True,
-            check=False,
-            env={"MSYS_NO_PATHCONV": "1"},
-        )
-        if completed.returncode != 0:
-            raise ReceiverUnreadableError(
-                "E1", f"the simulator's store could not be copied: {completed.stderr.strip()[:200]}"
-            )
-
-    def probe(self) -> Probe:
-        try:
-            self.refresh()
-        except ReceiverUnreadableError as failure:
-            return Probe("E1", False, failure.detail)
-        return OrderSystemReceiver.probe(self)
-
-    def read(self, *, since: datetime) -> tuple[Any, ...]:
-        self.refresh()
-        return OrderSystemReceiver.read(self, since=since)
 
 
 # ------------------------------------------------------------------- the customer's own door
@@ -304,17 +242,10 @@ class CustomerLinkSink:
         return f"reply:{order}:recorded:on-the-harness-transport"
 
 
-def scratch_store(root: Path) -> Path:
-    """Where the copied simulator store lives. Outside the repository, never committed."""
-    return root / "order-simulator.sqlite3"
-
-
 __all__ = [
     "ANSWER_FOR_TEXT",
     "APPROVE",
     "DECLINE",
-    "ContainerOrderReceiver",
     "CustomerLinkSink",
     "RehearsalIngressError",
-    "scratch_store",
 ]

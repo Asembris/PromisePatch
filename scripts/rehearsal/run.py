@@ -38,7 +38,7 @@ from scripts.rehearsal.baseline import RehearsalModel
 from scripts.rehearsal.program import bakery_anchor
 from scripts.rehearsal.program import registry as rehearsal_registry
 from scripts.rehearsal.scorer import REHEARSAL
-from scripts.rehearsal.world import ContainerOrderReceiver, CustomerLinkSink, scratch_store
+from scripts.rehearsal.world import CustomerLinkSink
 from scripts.sur1 import predeclaration
 from scripts.sur1.adapters import AblationArm, BaselineArm, PromisePatchArm
 from scripts.sur1.arms import ArmAdapter
@@ -49,6 +49,7 @@ from scripts.sur1.bindings.receivers import (
     ChannelReceiver,
     DatabaseReader,
     KitchenReceiver,
+    OrderSystemReceiver,
 )
 from scripts.sur1.bindings.world import LiveScenarioWorld
 from scripts.sur1.bindings.worldsink import LedgerWriter
@@ -59,7 +60,6 @@ from scripts.sur1.frozen import Contract
 KIND: Final = "development"
 """The only kind a rehearsal is driven as. Never ``scored``, and refused if asked for."""
 
-SIMULATOR_CONTAINER: Final = "promisepatch-order-simulator-1"
 HOST_ENV: Final = REPO / "docker" / "env" / "host.env"
 MIGRATE_ENV: Final = REPO / "docker" / "env" / "migrate.env"
 MCP_ENV: Final = REPO / "docker" / "env" / "mcp.env"
@@ -131,7 +131,6 @@ def stack(environ: Mapping[str, str] | None = None) -> BindingConfig:
         workspace_password=values.get("SUR1_WORKSPACE_PASSWORD")
         or migrate.get("PP_DEMO_WORKER_PASSWORD", ""),
         database_url=values.get("SUR1_DATABASE_URL") or host.get("PP_DATABASE_URL", ""),
-        order_system_store=None,
         aws_region="",
     )
 
@@ -201,7 +200,7 @@ class Bench:
         }
 
 
-def build(config: BindingConfig, *, store: Path, now: datetime | None = None) -> Bench:
+def build(config: BindingConfig, *, now: datetime | None = None) -> Bench:
     """Assemble the rehearsal. Opens no client and reaches nothing.
 
     The anchor is resolved here, once, and captured in the world-program registry's closure, so
@@ -220,11 +219,7 @@ def build(config: BindingConfig, *, store: Path, now: datetime | None = None) ->
         password=config.workspace_password,
     )
     world = RehearsalWorld(
-        orders=ContainerOrderReceiver(
-            base_url=config.order_system_base_url,
-            store_path=store,
-            container=SIMULATOR_CONTAINER,
-        ),
+        orders=OrderSystemReceiver(base_url=config.order_system_base_url),
         channel=ChannelReceiver(database=database, ledger=ledger),
         kitchen=KitchenReceiver(database=database),
         database=database,
@@ -520,13 +515,12 @@ def rehearse(
     *,
     run_id: str,
     config: BindingConfig,
-    store: Path,
     command: Sequence[str],
     root: Path = RUNS_ROOT,
     reset_at_exit: bool = True,
 ) -> dict[str, Any]:
     """The whole rehearsal, in the order the pipeline runs it."""
-    bench = build(config, store=store)
+    bench = build(config)
     report: dict[str, Any] = {
         "not_a_benchmark": NOT_A_BENCHMARK,
         "run_id": run_id,
@@ -579,21 +573,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--kind", default=KIND, choices=[KIND])
-    parser.add_argument("--store", default="")
     parser.add_argument("--no-reset", action="store_true")
     parser.add_argument("--readiness-only", action="store_true")
     arguments = parser.parse_args(argv)
 
     config = stack()
-    store = Path(arguments.store) if arguments.store else scratch_store(REPO / ".rehearsal")
     if arguments.readiness_only:
-        bench = build(config, store=store)
+        bench = build(config)
         print(json.dumps(readiness(bench), indent=2, sort_keys=True))
         return 0
     report = rehearse(
         run_id=arguments.run_id,
         config=config,
-        store=store,
         command=["dress-rehearsal", *(argv or sys.argv[1:])],
         reset_at_exit=not arguments.no_reset,
     )

@@ -103,9 +103,7 @@ def build(config: BindingConfig, contract: Contract, *, clock: RunClock | None =
         password=config.workspace_password,
     )
     world = LiveScenarioWorld(
-        orders=OrderSystemReceiver(
-            base_url=config.order_system_base_url, store_path=config.order_system_store
-        ),
+        orders=OrderSystemReceiver(base_url=config.order_system_base_url),
         channel=ChannelReceiver(database=database, ledger=ledger),
         kitchen=KitchenReceiver(database=database),
         database=database,

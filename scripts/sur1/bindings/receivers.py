@@ -7,7 +7,7 @@ about which arm was driving.
 
 | receiver | what it is | read here from |
 |---|---|---|
-| ``E1`` | the external order system | the simulator's committed event log, and ``GET /orders`` |
+| ``E1`` | the external order system | ``GET /admin/events`` and ``GET /orders`` |
 | ``E2`` | the customer channel | the outbound delivery record and the accepted-reply record |
 | ``E3`` | the kitchen | the ``production_tasks`` rows, sampled twice |
 | ``E4`` | the worker report | the single report the arm handed over, collected by the world |
@@ -18,18 +18,22 @@ ordinary product surfaces: an arm cannot reach these objects at all -- an
 :class:`~scripts.sur1.arms.AttemptRequest` carries a world and a budget and no reader -- and
 these objects cannot change what they observe.
 
-**One disclosed discrepancy about E1, and it is the contract's own.** The contract names
-``GET /orders`` and ``GET /admin/events`` as E1's read path and lists
-``event.command.idempotency_key`` among the fields it uses. The simulator's ``/admin/events``
-projection publishes the event's id, order, type, version, instant and source -- and not the
-command key, not the previous version and not the line's item. Rule ``B2`` attributes an
-amendment to an arm *by the idempotency key on the order system's own event*, so the named
-endpoint cannot support the rule that depends on it. This reader therefore reads the same events
-out of the order system's **own committed record**, where the whole event body including its
-command lives, and uses the HTTP endpoints for reachability and for the current snapshot. The
-source is still E1's own record; only the route to it is the one that actually carries the
-fields. The frozen document is **not** edited: it is a published hash, and a name is not worth
-moving one over. This is recorded in the execution predeclaration beside the other one.
+**E1 is read from the two endpoints the contract names, and from nothing else.** The
+predeclaration disclosed a discrepancy here: the contract lists
+``event.command.idempotency_key``, ``previous_version`` and ``line.external_item_id`` among E1's
+fields, and the simulator's ``/admin/events`` projection published none of them, so rule ``B2``
+-- which attributes an amendment to an arm *by the idempotency key on the order system's own
+event* -- could not be served by the named endpoint. The reader worked around it by opening the
+simulator's SQLite file directly, which under ``docker-compose.yml`` lives in a named volume
+with no host path and had to be extracted with ``docker cp`` before every read.
+
+That is closed. ``/admin/events`` now publishes each event's committed body -- the same
+:class:`~order_contract.events.OrderEvent` document the order system already hands a webhook
+subscriber, read out of the row it was committed on rather than re-derived. **The route is now
+the contract's own**, no field is inferred and an event with no command is read as having none.
+The change is a read-only widening of an existing audit projection; no arm can reach it, the
+eleven frozen actions do not include it, and nothing about a mutation moved. Recorded in the
+predeclaration beside the discrepancy it closes.
 
 **Nothing here has been pointed at a ``SUR-1`` scenario.**
 """
@@ -38,12 +42,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Final
 
 from scripts.sur1.bindings import REAL, Probe
@@ -156,33 +157,42 @@ def _moment(raw: object) -> datetime:
 # ------------------------------------------------------------------------------ E1, the orders
 
 
+EVENT_WINDOW: Final = 2000
+"""The largest event window one read asks the order system for.
+
+The endpoint says whether it cut the log short, and a cut log is read as unreadable rather than
+as a shorter one: a partial reading of a receiver is not a reading, and a benchmark that
+silently dropped the tail of an event log would conclude an amendment never happened when it
+simply was not fetched.
+"""
+
+
 @dataclass(slots=True)
 class OrderSystemReceiver:
     """``E1``: what the external order system committed, in its own record.
 
-    ``base_url`` is the contract's named HTTP surface and is what :meth:`probe` asks, because
-    reachability of the service is the fact the preflight needs. ``store_path`` is the order
-    system's own committed event log, which is where the fields rule ``B2`` depends on actually
-    live.
+    ``base_url`` is the contract's named HTTP surface and it is the whole read path: the
+    committed event log at ``GET /admin/events`` and the current snapshot at ``GET /orders``.
+    Nothing here opens a file, so a scored run needs no path into the order system's container
+    and no copy of its store.
     """
 
     base_url: str
-    store_path: Path | None = None
     binding_kind: str = REAL
 
     def identity(self) -> Mapping[str, Any]:
         return {
             "receiver": "E1",
             "base_url": self.base_url,
-            "store": None if self.store_path is None else str(self.store_path),
+            "records": ["/admin/events", "/orders"],
         }
 
     def probe(self) -> Probe:
-        """Ask the order system whether it is ready, and check the record is readable.
+        """Ask the order system whether it is ready, and whether its log reads.
 
-        Two questions because there are two facts: a service that answers with no readable event
-        log cannot support attribution, and a readable log belonging to a service that is down
-        is a stale file.
+        Two questions because there are two facts: a service that answers a readiness probe but
+        publishes no readable event log cannot support attribution, and rule ``B2`` needs the
+        log rather than the service.
         """
         import httpx2
 
@@ -192,80 +202,81 @@ class OrderSystemReceiver:
             return Probe("E1", False, f"{type(failure).__name__}: {failure}")
         if answer.status_code != 200:
             return Probe("E1", False, f"/readyz answered {answer.status_code}")
-        if self.store_path is None:
-            return Probe("E1", False, "no order-system event log is configured; see B2")
-        if not self.store_path.is_file():
-            return Probe("E1", False, f"{self.store_path} is not a file")
         try:
-            with self._connect() as connection:
-                connection.execute("SELECT 1 FROM order_events LIMIT 1").fetchone()
-        except sqlite3.Error as failure:
-            return Probe("E1", False, f"the event log did not read: {failure}")
+            self._log(since=None)
+        except ReceiverUnreadableError as failure:
+            return Probe("E1", False, failure.detail)
         return Probe("E1", True, self.base_url)
 
-    @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
-        """A read-only connection to the order system's record. It cannot write if it tried."""
-        if self.store_path is None:
-            raise ReceiverUnreadableError("E1", "no order-system event log is configured")
-        uri = f"file:{self.store_path.as_posix()}?mode=ro"
-        connection = sqlite3.connect(uri, uri=True, timeout=5.0)
-        connection.row_factory = sqlite3.Row
+    def _log(self, *, since: datetime | None) -> Sequence[Mapping[str, Any]]:
+        """The committed event log, from the endpoint the contract names.
+
+        A window the order system says it cut short is refused rather than returned: the events
+        beyond it are exactly the ones an attribution would be missing.
+        """
+        import httpx2
+
+        parameters: dict[str, Any] = {"limit": EVENT_WINDOW}
+        if since is not None:
+            parameters["since"] = since.isoformat()
         try:
-            yield connection
-        finally:
-            connection.close()
+            answer = httpx2.get(f"{self.base_url}/admin/events", params=parameters, timeout=10.0)
+            answer.raise_for_status()
+            body: Mapping[str, Any] = answer.json()
+        except Exception as failure:
+            raise ReceiverUnreadableError("E1", f"{type(failure).__name__}: {failure}") from failure
+        if body.get("truncated"):
+            raise ReceiverUnreadableError(
+                "E1",
+                f"the order system cut its event log short at {EVENT_WINDOW} events, so this "
+                "reading is missing the ones beyond it",
+            )
+        entries = body.get("events")
+        if not isinstance(entries, Sequence):
+            raise ReceiverUnreadableError("E1", "the event log answered no events array")
+        return [entry for entry in entries if isinstance(entry, Mapping)]
 
     def read(self, *, since: datetime) -> tuple[OrderEvent, ...]:
         """Every order event the system committed at or after this instant, in its own order.
 
         ``since`` is the attempt's own start. Everything before it was the fixture or somebody
         else's command -- a pre-incident external re-pin is exactly that -- and rule ``B6`` says
-        an arm owns neither.
+        an arm owns neither. It is asked of the endpoint and then asserted here, because a
+        filter the reader cannot check is a filter the reader is trusting.
         """
-        try:
-            with self._connect() as connection:
-                rows = connection.execute(
-                    "SELECT event_id, external_order_id, type, previous_version, version,"
-                    " occurred_at, source, payload FROM order_events ORDER BY seq"
-                ).fetchall()
-        except sqlite3.Error as failure:
-            raise ReceiverUnreadableError("E1", str(failure)) from failure
-
         events: list[OrderEvent] = []
-        for row in rows:
-            occurred_at = _moment(row["occurred_at"])
+        for entry in self._log(since=since):
+            occurred_at = _moment(entry.get("occurred_at"))
             if occurred_at < since:
                 continue
-            events.append(self._event(row, occurred_at))
+            events.append(self._event(entry, occurred_at))
         return tuple(events)
 
-    def _event(self, row: Mapping[str, Any], occurred_at: datetime) -> OrderEvent:
-        """One committed row, as the benchmark's own vocabulary.
+    def _event(self, entry: Mapping[str, Any], occurred_at: datetime) -> OrderEvent:
+        """One committed entry, as the benchmark's own vocabulary.
 
-        The body is read for the two things the projection does not carry: the command that
-        caused the change, and the item the changed line now holds. A body that carries neither
-        is an event about something other than an amendment, and reads as one.
+        The published body is read for the two things the summary does not carry: the command
+        that caused the change, and the item the changed line now holds. A body that carries
+        neither is an event about something other than an amendment, and reads as one.
         """
-        body: Mapping[str, Any] = json.loads(str(row["payload"]))
-        command = body.get("command") or {}
+        body: Mapping[str, Any] = entry.get("event") or {}
+        command: Mapping[str, Any] = body.get("command") or {}
         changed = tuple(str(line) for line in body.get("changed_line_ids") or ())
         item: str | None = None
         for line in (body.get("order") or {}).get("lines") or ():
             if not changed or str(line.get("external_line_id")) in changed:
                 item = str(line.get("external_item_id"))
                 break
-        source = str(row["source"])
+        source = str(entry.get("source", ""))
+        previous = entry.get("previous_version")
         return OrderEvent(
-            external_id=str(row["external_order_id"]),
-            event_type=ORDER_AMENDED if source == AMENDMENT_SOURCE else str(row["type"]),
+            external_id=str(entry.get("external_order_id", "")),
+            event_type=ORDER_AMENDED if source == AMENDMENT_SOURCE else str(entry.get("type", "")),
             event_source=source,
             idempotency_key=str(command.get("idempotency_key", "")),
             occurred_at=occurred_at,
-            version=int(row["version"]),
-            previous_version=(
-                None if row["previous_version"] is None else int(row["previous_version"])
-            ),
+            version=int(entry.get("version", 0)),
+            previous_version=None if previous is None else int(previous),
             line_external_item_id=item,
         )
 
@@ -543,6 +554,7 @@ __all__ = [
     "AMENDMENT_EVENTS",
     "AMENDMENT_SOURCE",
     "CHANNEL_PREFIX_BY_KIND",
+    "EVENT_WINDOW",
     "MESSAGE_SEND",
     "ORDER_AMENDED",
     "ChannelLedger",

@@ -14,13 +14,13 @@ manager**, asserted by driving both against one script and comparing the calls.
 
 from __future__ import annotations
 
-import json
-import sqlite3
-from collections.abc import Mapping
+import time
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from scripts.sur1.adapters import AblationArm, PromisePatchArm
@@ -38,6 +38,7 @@ from scripts.sur1.bindings.receivers import (
     DatabaseReader,
     KitchenReceiver,
     OrderSystemReceiver,
+    ReceiverUnreadableError,
 )
 from scripts.sur1.bindings.setup import UnprogrammedScenarioError, program_for, unprogrammed
 from scripts.sur1.bindings.world import ACTIONS, LiveScenarioWorld, WorldActionError
@@ -64,161 +65,188 @@ NOW = datetime(2026, 9, 19, 8, 0, tzinfo=UTC)
 
 # --------------------------------------------------------------------------- E1, from its record
 
-
-SIMULATOR_SCHEMA = """
-CREATE TABLE order_events (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id TEXT NOT NULL UNIQUE,
-    external_order_id TEXT NOT NULL,
-    type TEXT NOT NULL,
-    previous_version INTEGER,
-    version INTEGER NOT NULL,
-    occurred_at TEXT NOT NULL,
-    source TEXT NOT NULL,
-    payload TEXT NOT NULL
-)
-"""
-"""The simulator's own table, copied here so this test reads what the receiver will read."""
+# The order system is the real application, served on a loopback port, and E1 is read through
+# the endpoint the frozen contract names. Nothing here is shaped to look like the simulator's
+# record: what the receiver parses is what ``apps/order-simulator`` actually publishes, which is
+# the only way "the supported read path carries every field rule B2 needs" is evidence rather
+# than a restatement of the reader.
 
 
-def write_event(
-    path: Path,
-    *,
-    event_id: str,
-    order: str,
-    occurred_at: datetime,
-    source: str,
-    item: str,
-    key: str,
-    version: int = 2,
-) -> None:
-    body = {
-        "event_id": event_id,
-        "type": "order.updated",
-        "occurred_at": occurred_at.isoformat(),
-        "previous_version": version - 1,
-        "changed_line_ids": ["ol-a"],
-        "order": {
-            "external_id": order,
-            "version": version,
-            "lines": [{"external_line_id": "ol-a", "external_item_id": item}],
-        },
-        "command": {"idempotency_key": key, "provider_ref": "ref"},
-    }
-    connection = sqlite3.connect(path)
-    with connection:
-        connection.execute(
-            "INSERT INTO order_events (event_id, external_order_id, type, previous_version,"
-            " version, occurred_at, source, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                event_id,
-                order,
-                "order.updated",
-                version - 1,
-                version,
-                occurred_at.isoformat(),
-                source,
-                json.dumps(body),
-            ),
+@dataclass(slots=True)
+class OrderSystem:
+    """One real simulator, on a loopback port, with a store of its own."""
+
+    base_url: str
+
+    def amend(self, *, order: str, line: str, was: str, now: str, key: str, version: int) -> None:
+        import httpx2
+
+        from order_contract.amendments import AmendmentCorrelation, AmendmentRequest
+
+        request = AmendmentRequest(
+            external_order_id=order,
+            expected_version=version,
+            external_line_id=line,
+            from_item_id=was,
+            to_item_id=now,
+            correlation=AmendmentCorrelation(case_id=uuid4(), track_id=uuid4(), option_id=uuid4()),
         )
-    connection.close()
+        answer = httpx2.post(
+            f"{self.base_url}/orders/{order}/amendments",
+            content=request.model_dump_json(),
+            headers={"Content-Type": "application/json", "Idempotency-Key": key},
+            timeout=10.0,
+        )
+        assert answer.status_code == 200, answer.text
+
+    def operator_change(self, *, order: str, line: str, to_item: str) -> None:
+        import httpx2
+
+        answer = httpx2.post(
+            f"{self.base_url}/ui/orders/{order}/lines/{line}",
+            data={"to_item_id": to_item},
+            follow_redirects=False,
+            timeout=10.0,
+        )
+        assert answer.status_code in (200, 303), answer.text
 
 
 @pytest.fixture
-def order_store(tmp_path: Path) -> Path:
-    path = tmp_path / "orders.sqlite3"
-    connection = sqlite3.connect(path)
-    with connection:
-        connection.execute(SIMULATOR_SCHEMA)
-    connection.close()
-    return path
+def order_system(tmp_path: Path) -> Iterator[OrderSystem]:
+    """The real order simulator, served on loopback for the length of one test."""
+    import socket
+    import threading
+
+    import uvicorn
+
+    from order_simulator.app import create_app
+    from order_simulator.config import Settings
+
+    settings = Settings(database_path=tmp_path / "order-simulator.sqlite3")
+    app = create_app(settings, deliver=False)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error", lifespan="on")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 30.0
+    while not server.started and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert server.started, "the order simulator did not start"
+    try:
+        yield OrderSystem(base_url=f"http://127.0.0.1:{port}")
+    finally:
+        server.should_exit = True
+        thread.join(timeout=30.0)
 
 
-def test_the_order_receiver_reads_the_command_key_the_http_projection_does_not_publish(
-    order_store: Path,
+def test_the_order_receiver_reads_every_field_rule_b2_needs_from_the_named_endpoint(
+    order_system: OrderSystem,
 ) -> None:
     """Rule B2 attributes an amendment by the key on the order system's own event.
 
-    ``/admin/events`` publishes no command, which is the disclosed discrepancy this reader exists
-    to resolve. Reading the committed body recovers the key, the previous version and the item
-    the line now carries -- all three of which the contract's own ``fields_used`` names.
+    The command key, the previous version and the item the line now carries are all three named
+    in the contract's own ``fields_used``, and all three now arrive from ``GET /admin/events``.
+    This closes the disclosed discrepancy: the reader no longer opens the simulator's SQLite
+    file, so a scored run needs no path into its container.
     """
-    write_event(
-        order_store,
-        event_id="e1",
-        order="EXT-A",
-        occurred_at=NOW + timedelta(seconds=5),
-        source="amendment",
-        item="rv-raspberry-almond-4",
+    since = datetime.now(UTC) - timedelta(seconds=1)
+    order_system.amend(
+        order="EXT-D",
+        line="ol-d",
+        was="rv-raspberry-lemon-2",
+        now="rv-lemon-curd-1",
         key="pp-recovery-1",
+        version=1,
     )
-    receiver = OrderSystemReceiver(base_url="http://127.0.0.1:1", store_path=order_store)
+    receiver = OrderSystemReceiver(base_url=order_system.base_url)
 
-    (event,) = receiver.read(since=NOW)
+    (event,) = receiver.read(since=since)
 
-    assert event.external_id == "EXT-A"
+    assert event.external_id == "EXT-D"
     assert event.idempotency_key == "pp-recovery-1"
     assert event.previous_version == 1
-    assert event.line_external_item_id == "rv-raspberry-almond-4"
+    assert event.version == 2
+    assert event.line_external_item_id == "rv-lemon-curd-1"
     assert event.event_type == "ORDER_AMENDED"
+    assert event.event_source == "amendment"
 
 
 def test_an_event_before_the_attempt_started_is_not_read_as_this_attempt_s_effect(
-    order_store: Path,
+    order_system: OrderSystem,
 ) -> None:
     """Rule B6: an external change is somebody else's command, whenever it happened."""
-    write_event(
-        order_store,
-        event_id="before",
+    order_system.operator_change(order="EXT-D", line="ol-d", to_item="rv-lemon-curd-1")
+    time.sleep(0.01)
+    since = datetime.now(UTC)
+    time.sleep(0.01)
+    order_system.amend(
         order="EXT-D",
-        occurred_at=NOW - timedelta(minutes=5),
-        source="operator",
-        item="rv-raspberry-lemon-2",
-        key="",
-    )
-    write_event(
-        order_store,
-        event_id="during",
-        order="EXT-A",
-        occurred_at=NOW + timedelta(seconds=1),
-        source="amendment",
-        item="rv-raspberry-almond-4",
+        line="ol-d",
+        was="rv-lemon-curd-1",
+        now="rv-raspberry-lemon-2",
         key="pp-1",
+        version=2,
     )
-    receiver = OrderSystemReceiver(base_url="http://127.0.0.1:1", store_path=order_store)
+    receiver = OrderSystemReceiver(base_url=order_system.base_url)
 
-    read = receiver.read(since=NOW)
+    read = receiver.read(since=since)
 
-    assert [event.external_id for event in read] == ["EXT-A"]
+    assert [event.idempotency_key for event in read] == ["pp-1"]
 
 
 def test_an_operator_edit_during_the_attempt_is_read_and_keeps_its_own_source(
-    order_store: Path,
+    order_system: OrderSystem,
 ) -> None:
-    """It is evidence, not an effect. Dropping it would hide a fact about the world."""
-    write_event(
-        order_store,
-        event_id="operator",
-        order="EXT-D",
-        occurred_at=NOW + timedelta(seconds=2),
-        source="operator",
-        item="rv-blueberry-danish-1",
-        key="",
-    )
-    receiver = OrderSystemReceiver(base_url="http://127.0.0.1:1", store_path=order_store)
+    """It is evidence, not an effect. Dropping it would hide a fact about the world.
 
-    (event,) = receiver.read(since=NOW)
+    An operator change carries no command, and the reader says so rather than inventing one:
+    an empty key is what rule B6 turns on.
+    """
+    since = datetime.now(UTC) - timedelta(seconds=1)
+    order_system.operator_change(order="EXT-D", line="ol-d", to_item="rv-lemon-curd-1")
+    receiver = OrderSystemReceiver(base_url=order_system.base_url)
+
+    (event,) = receiver.read(since=since)
 
     assert event.event_source == "operator"
     assert event.event_type == "order.updated", "an operator edit is not an ORDER_AMENDED"
+    assert event.idempotency_key == ""
 
 
-def test_a_receiver_with_no_configured_record_says_so_rather_than_reading_nothing() -> None:
-    receiver = OrderSystemReceiver(base_url="http://127.0.0.1:1", store_path=None)
+def test_the_order_receiver_probes_the_endpoint_rather_than_a_file(
+    order_system: OrderSystem,
+) -> None:
+    """The probe is reachability plus a readable log, and it needs no store path at all."""
+    assert OrderSystemReceiver(base_url=order_system.base_url).probe().reachable
 
-    probe = receiver.probe()
+
+def test_an_order_system_that_does_not_answer_is_unreachable_rather_than_empty() -> None:
+    probe = OrderSystemReceiver(base_url="http://127.0.0.1:1").probe()
 
     assert not probe.reachable
+
+
+def test_a_log_the_order_system_cut_short_is_unreadable_rather_than_shorter(
+    order_system: OrderSystem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A partial reading of a receiver is not a reading.
+
+    A truncated log that read as a complete one would let an attribution conclude an amendment
+    never happened when it simply was not fetched, which is a silent zero on a safety ceiling.
+    """
+    order_system.operator_change(order="EXT-D", line="ol-d", to_item="rv-lemon-curd-1")
+    order_system.operator_change(order="EXT-D", line="ol-d", to_item="rv-raspberry-lemon-2")
+    monkeypatch.setattr("scripts.sur1.bindings.receivers.EVENT_WINDOW", 1)
+    receiver = OrderSystemReceiver(base_url=order_system.base_url)
+
+    with pytest.raises(ReceiverUnreadableError) as refused:
+        receiver.read(since=datetime.now(UTC) - timedelta(seconds=5))
+
+    assert "cut its event log short" in refused.value.detail
 
 
 # ----------------------------------------------------------------------------- E3, two samples
