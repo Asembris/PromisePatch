@@ -120,8 +120,8 @@ the installer was never called.
 
 Step 2 is deliberately a check of the object about to be written, not a read-back of the
 committed rows. Reading a canonical snapshot back out of PostgreSQL is a separate surface with
-its own schema, and the freeze is about the canonical form. That remains unbuilt and is named
-under *What is still open*.
+its own schema, and the freeze is about the canonical form. That readback was built afterwards;
+see *What is still open*.
 
 ## Reset and isolation
 
@@ -189,16 +189,19 @@ half, so a later session that changed a world and re-froze the declaration to ma
 
 ## What is still open
 
-**The realisation path is still essentially unexercised against live systems.** It has been
+**The realisation path is still essentially unexercised against live systems.** ~~It has been
 proved end to end against a fake installer and a recording sink, and its channel half has been
 proved through the world's own `invoke` with the harness transport. But no world has been
 installed for this work, no external change has been posted to the order system, and no movement
 has been posted to a real `inventory_ledger`. The `LedgerWriter` insert in particular has never
-run.
+run.~~ **Closed.** All nine worlds now install into the live local PostgreSQL and the order
+system, `LedgerWriter` included. See
+[`sur1-scored-environment.md`](sur1-scored-environment.md) §3.
 
-**The starting world is not read back out of the database.** Step 2 checks the object about to be
-installed. A row-level readback that re-derived the canonical snapshot from PostgreSQL would be a
-stronger check and is a separate piece of work.
+**The starting world is not read back out of the database.** ~~Step 2 checks the object about to
+be installed. A row-level readback that re-derived the canonical snapshot from PostgreSQL would be
+a stronger check and is a separate piece of work.~~ **Closed.** `scripts/check_sur1_realisation.py`
+reads the committed rows back and compares six facts against the canonical snapshot, for all nine.
 
 **A reply arrives on the harness transport, for every arm.** That is what makes the trigger and
 the delivery arm-blind, and it is a transport rather than a second protocol — nothing in it is
@@ -206,6 +209,11 @@ read as a decision. Whether the `PROMISEPATCH` arm additionally needs the reply 
 the product's own signed-possession-link path, so its consent protocol parses the words it
 actually parses in production, is a real question this work does **not** answer. It is the next
 thing to settle before a scored run, and it is not settled here.
+
+**Still open, and now a named blocker.** `DR01` answered this question in the rehearsal package
+and the scored path never gained the door, so a scored run would deliver every stipulated reply to
+an in-memory list that PromisePatch does not read. The consequence is arm-correlated and is
+recorded in [`sur1-pre-run-audit.md`](sur1-pre-run-audit.md).
 
 **No arm has been driven.** Firing an event during a real attempt, with a real model on the other
 side of the channel, has not happened and is not what this work did.
