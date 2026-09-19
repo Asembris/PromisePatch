@@ -509,20 +509,22 @@ def test_an_amendment_to_an_order_outside_the_case_universe_is_refused() -> None
 
 
 def test_a_scenario_with_no_world_program_is_refused_rather_than_approximated() -> None:
-    """The remaining gap, enforced rather than described."""
+    """Every frozen scenario is programmed, and the refusal still fails closed without one."""
     contract = Contract.load()
 
-    assert unprogrammed(contract.scenario_ids) == contract.scenario_ids
+    assert unprogrammed(contract.scenario_ids) == ()
+    assert program_for(contract.scenario_ids[0]).scenario_id == contract.scenario_ids[0]
+
+    assert unprogrammed(["C99"]) == ("C99",)
     with pytest.raises(UnprogrammedScenarioError):
-        program_for(contract.scenario_ids[0])
+        program_for("C99")
 
 
 def test_preparing_an_unprogrammed_scenario_raises_instead_of_leaving_a_half_set_world() -> None:
-    contract = Contract.load()
     world = live_world()
 
     with pytest.raises(UnprogrammedScenarioError):
-        world.prepare(contract.scenario(contract.scenario_ids[0]))
+        world.prepare({"id": "C99"})
 
 
 # -------------------------------------------------------------------------- the blind bundle
