@@ -220,6 +220,7 @@ read the source document rather than a paraphrase of it.
 | Started work and the hold contract | [started-work-contract.md](docs/started-work-contract.md) |
 | SUR-1 dress rehearsal (`DR01`, not a benchmark) | [sur1-dress-rehearsal.md](docs/sur1-dress-rehearsal.md) |
 | SUR-1 scored environment (still unrun) | [sur1-scored-environment.md](docs/sur1-scored-environment.md) |
+| SUR-1 phase 3 closeout (harness scope-frozen, still unrun) | [sur1-phase3-closeout.md](docs/sur1-phase3-closeout.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
