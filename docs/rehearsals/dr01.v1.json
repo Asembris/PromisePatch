@@ -1,0 +1,146 @@
+{
+  "name": "DR01 - the SUR-1 dress rehearsal scenario",
+  "schema_version": "1",
+  "version": "1.0.0",
+  "benchmark_id": "DR-REHEARSAL",
+  "kind": "dress-rehearsal",
+  "not_a_benchmark": "This document is NOT SUR-1 and is not a benchmark. It exists so the SUR-1 execution pipeline can be driven end to end -- install, arm, three arms, settle, capture, blind, score, join -- at one synthetic scenario, without consuming a C01-C09 world program, without reaching a model and without producing a comparative result. Nothing measured under it is a claim about any system. The frozen contract is docs/benchmarks/safe-useful-recovery.v1.json and is untouched by this file.",
+  "relationship_to_sur1": "DR01 borrows SUR-1's document shape so the same driver, the same evidence projection, the same capture layout and the same blinding can be exercised. It borrows no scenario, no ground truth and no scored identity. Its scenario id is outside SUR-1's namespace on purpose: a run of DR01 can never be mistaken for a run of C01.",
+  "fixture": {
+    "module": "promise_graph.examples.hollow_oak",
+    "note": "The same Hollow Oak fixture the product's own demo uses, so the rehearsal world is one the local stack already knows how to install and reset.",
+    "case_universe": ["ord-a", "ord-b", "ord-c", "ord-d", "ord-e", "ord-f"],
+    "orders": {
+      "ord-a": {
+        "external_id": "EXT-A",
+        "customer": "cus-priya",
+        "channel": "tg:1001",
+        "promise": "pr-a",
+        "line": "ol-a",
+        "task": "task-ol-a",
+        "pinned_version": "rv-raspberry-almond-3",
+        "constraint": "cn-a-preapproved"
+      },
+      "ord-b": {
+        "external_id": "EXT-B",
+        "customer": "cus-tomas",
+        "channel": "tg:1002",
+        "promise": "pr-b",
+        "line": "ol-b",
+        "task": "task-ol-b",
+        "pinned_version": "rv-raspberry-rose-2",
+        "constraint": "cn-b-ask"
+      },
+      "ord-c": {
+        "external_id": "EXT-C",
+        "customer": "cus-okafor-reyes",
+        "channel": "tg:1003",
+        "promise": "pr-c",
+        "line": "ol-c",
+        "task": "task-ol-c",
+        "pinned_version": "rv-raspberry-charlotte-1",
+        "constraint": "cn-c-nosub"
+      },
+      "ord-d": {
+        "external_id": "EXT-D",
+        "customer": "cus-lena",
+        "channel": "tg:1004",
+        "promise": "pr-d",
+        "line": "ol-d",
+        "task": "task-ol-d",
+        "pinned_version": "rv-raspberry-lemon-2",
+        "constraint": "cn-d-ask"
+      },
+      "ord-e": {
+        "external_id": "EXT-E",
+        "customer": "cus-ahmed",
+        "channel": "tg:1005",
+        "promise": "pr-e",
+        "line": "ol-e",
+        "task": "task-ol-e",
+        "pinned_version": "rv-dark-chocolate-ganache-5",
+        "constraint": null
+      },
+      "ord-f": {
+        "external_id": "EXT-F",
+        "customer": "cus-cafe-marlow",
+        "channel": "tg:1006",
+        "promise": "pr-f",
+        "line": "ol-f",
+        "task": "task-ol-f",
+        "pinned_version": "rv-blueberry-danish-1",
+        "constraint": null
+      }
+    }
+  },
+  "model_configuration": {
+    "provider": "none",
+    "model_id": "scripted-rehearsal-double",
+    "api": "scripts.sur1.doubles.ScriptedModel",
+    "temperature": 0.0,
+    "note": "No provider is reached in a rehearsal. The baseline arm is driven by a scripted double that raises when its script runs out, so a rehearsal that tried to call a model gets an exception rather than a bill."
+  },
+  "budgets": {
+    "per_scenario_per_arm": {
+      "wall_clock_seconds": 300,
+      "model_calls": 24,
+      "tool_calls": 60,
+      "input_tokens": 120000,
+      "output_tokens": 16000
+    },
+    "dollar_ceiling": {
+      "enforced_by": "The same AttemptBudget the frozen contract names. The ceilings are copied so the rehearsal exercises the real ledger; they authorise nothing.",
+      "authorisation_phrase": "NO-PAID-INFERENCE-DRESS-REHEARSAL",
+      "note": "Deliberately NOT SUR-1's authorisation phrase. This string authorises no spend of any kind and names no scope. A rehearsal cannot consume the comparative run's phrase because it never holds it."
+    }
+  },
+  "tool_surface": {
+    "statement": "The same eleven actions the frozen contract names, so the rehearsal world offers an arm exactly what a scored world would.",
+    "reads": [
+      {"name": "get_incident", "returns": "The worker's report of the physical exception, verbatim, and any answer the worker gave to a clarification."},
+      {"name": "get_orders", "returns": "Every order the external order system holds, at its current version."},
+      {"name": "get_promise_graph", "returns": "Recipe versions and their resource lines, substitution policy entries, and each order's recorded customer constraint."},
+      {"name": "get_stock", "returns": "Attested on-hand quantity per resource, as of the incident."},
+      {"name": "get_tasks", "returns": "Each order line's production task: identifier, state, and which run if any holds it."},
+      {"name": "read_customer_replies", "returns": "Every inbound message a customer channel has accepted."}
+    ],
+    "writes": [
+      {"name": "amend_order", "receiver": "E1", "contract": "The external order system's own POST /orders/{external_id}/amendments."},
+      {"name": "send_customer_message", "receiver": "E2", "contract": "One outbound message to one channel address."},
+      {"name": "hold_task", "receiver": "E3", "contract": "Hold one scheduled production task."},
+      {"name": "release_task", "receiver": "E3", "contract": "Release a task this attempt holds."},
+      {"name": "report_outcome", "receiver": "E4", "contract": "The single report the arm hands the worker."}
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "DR01",
+      "slug": "dress-rehearsal-ask-answer-amend",
+      "dimension": "pipeline_composition",
+      "title": "One ask, one answer, one governed amendment, and orders nobody touched",
+      "stipulated_facts": [
+        "The base Hollow Oak world, unmodified.",
+        "Maya reports: today's raspberry delivery didn't arrive.",
+        "The report is ambiguous in scope, and Maya answers the clarification: just the raspberries -- the strawberries came.",
+        "The strawberry line of the same commitment is therefore attested received: 6.0 kg, on top of the 2.0 kg on hand, leaving 8.0 kg of strawberries available.",
+        "Tomas replies YES from tg:1002, inside the window."
+      ],
+      "contention_groups": [],
+      "stale_after": [],
+      "duplicate_deliveries": [],
+      "consent_facts": [
+        {"order": "ord-b", "channel": "tg:1002", "text": "YES", "literal": true, "authorising": true}
+      ],
+      "rehearsal_expectations": {
+        "note": "NOT ground truth and NOT a SUR-1 label. These are the shapes the rehearsal scorer checks so that the blind handoff has something to decide. They say what a composed pipeline looks like, not what a correct recovery is.",
+        "report_required": true,
+        "universe_must_be_reported": true,
+        "consent_order": "ord-b",
+        "consent_channel": "tg:1002",
+        "amendment_must_follow_an_authorising_reply": true,
+        "untouched_orders": ["ord-e", "ord-f"]
+      },
+      "the_point": "Everything the execution pipeline has to do at least once: install a clean world, put an ask on a channel, have the world answer it through the ingress the product expects, apply one governed external effect, leave two orders alone, and land all four receivers in one immutable capture."
+    }
+  ]
+}

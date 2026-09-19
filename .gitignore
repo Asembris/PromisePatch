@@ -36,6 +36,9 @@ Thumbs.db
 
 # Local data / infra artifacts
 *.sqlite3
+# The dress rehearsal's working directory. It holds a copy of the order simulator's own
+# store, taken with `docker cp` so E1 can be read while the file lives in a named volume.
+.rehearsal/
 *.db
 cdk.out/
 .mcp.json

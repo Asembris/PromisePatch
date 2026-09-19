@@ -1,0 +1,11 @@
+{
+  "fixture": "promise_graph.examples.hollow_oak",
+  "not_a_benchmark": "DR01's starting world. This is a rehearsal declaration and is not part of the SUR-1 world-program freeze in docs/benchmarks/sur1-world-programs.v1.json.",
+  "program_sha": "f04154a96b93ba324d528e5994262f75537fdb76f0c437d2c1817941fe0992a1",
+  "programs": {
+    "DR01": {
+      "world_digest": "609857b7ed129cc10816a3936af98886b3442c9cd6d0beb42dcb8309813fb6d7"
+    }
+  },
+  "rehearsal_id": "DR-REHEARSAL"
+}

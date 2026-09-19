@@ -1,0 +1,151 @@
+"""Arm A's model, for a rehearsal: a fixed script that reaches no provider and can never become one.
+
+The rehearsal must not call a model. It must also drive arm A far enough to exercise every
+receiver, which means the baseline has to ask the world things, put a message on a channel, apply
+one governed amendment and hand over a report. A list of canned replies cannot do the last two,
+because an amendment needs the order's current version and a report needs the case universe --
+both of which are facts about the world that only arrive in a tool result.
+
+So :class:`RehearsalModel` is a **fixed plan** rather than a fixed transcript. Its steps are
+written here, in order, before any run; what it reads from a tool result is the version number
+and nothing else. It has no client, no endpoint, no credential and no branch on anything it was
+told. When the plan runs out it raises, exactly as
+:class:`~scripts.sur1.doubles.ScriptedModel` does, so a rehearsal that somehow needed another
+turn gets an exception rather than an invented one.
+
+**It is not a baseline agent and no reading of it is a reading about one.** ``SUR-1``'s arm A is
+a real model on the frozen prompt. This is a stand-in whose only job is to make the harness's own
+machinery run: the budget ledger, the eleven actions, the receivers, the capture. Nothing it does
+is evidence about what a model would do.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Final
+from uuid import uuid4
+
+from scripts.sur1.arms import ModelReply
+from scripts.sur1.doubles import ScriptExhaustedError
+
+CONSENT_ORDER: Final = "ord-b"
+CONSENT_EXTERNAL_ID: Final = "EXT-B"
+CONSENT_CHANNEL: Final = "tg:1002"
+TO_VERSION: Final = "rv-raspberry-rose-3"
+"""``DR01``'s one governed change, written here rather than derived, because a plan is a plan."""
+
+ASK: Final = (
+    "Your Raspberry Rose cake is affected by a delivery that did not arrive. "
+    "Would you like us to change it to the strawberry version? Please reply YES or NO."
+)
+"""A question and never a statement.
+
+Worded so the declared ``asserts_change`` rule reads it as a question: it carries a question
+marker and no marker of a completed change. That is a property of the plan, stated here, and not
+a tuning of the rule, which is fixed in :mod:`scripts.sur1.predeclaration` and untouched.
+"""
+
+UNIVERSE: Final = ("ord-a", "ord-b", "ord-c", "ord-d", "ord-e", "ord-f")
+
+
+@dataclass(slots=True)
+class RehearsalModel:
+    """A :class:`~scripts.sur1.arms.ModelClient` that replays a fixed plan and reaches nothing."""
+
+    scenario_id: str = "DR01"
+    calls: list[dict[str, Any]] = field(default_factory=list)
+    step: int = 0
+    version: int = 0
+    binding_kind: str = "rehearsal-double"
+
+    def identity(self) -> Mapping[str, Any]:
+        return {"model": "rehearsal-plan", "provider": "none", "reaches": "nothing"}
+
+    def converse(
+        self,
+        *,
+        system: str,
+        messages: Sequence[Mapping[str, Any]],
+        tools: Sequence[Mapping[str, Any]],
+    ) -> ModelReply:
+        """One turn of the plan. Reads the last tool result only for the order's version."""
+        self.calls.append({"turn": self.step, "tools": [str(tool["name"]) for tool in tools]})
+        self._read_version(messages)
+        plan = self._plan()
+        if self.step >= len(plan):
+            raise ScriptExhaustedError(
+                "the rehearsal plan has no further turn; a double never invents one"
+            )
+        call = plan[self.step]
+        self.step += 1
+        return ModelReply(
+            text=f"rehearsal plan step {self.step}: {call['name']}",
+            tool_calls=(call,),
+            input_tokens=0,
+            output_tokens=0,
+        )
+
+    def _read_version(self, messages: Sequence[Mapping[str, Any]]) -> None:
+        """Take ``EXT-B``'s current version out of the last ``get_orders`` result.
+
+        The one fact this double reads from the world. An amendment carries an
+        ``expected_version`` and the order system refuses a mismatched one, so a plan that
+        guessed it would be a plan that measured the guess.
+        """
+        for message in reversed(list(messages)):
+            if message.get("role") != "tool" or message.get("name") != "get_orders":
+                continue
+            content = message.get("content")
+            body = content if isinstance(content, Mapping) else json.loads(str(content))
+            for order in body.get("orders") or ():
+                if str(order.get("external_id")) == CONSENT_EXTERNAL_ID:
+                    self.version = int(order.get("version", 0))
+            return
+
+    def _plan(self) -> tuple[dict[str, Any], ...]:
+        return (
+            {"name": "get_incident", "arguments": {}},
+            {"name": "get_orders", "arguments": {}},
+            {"name": "get_promise_graph", "arguments": {}},
+            {"name": "get_stock", "arguments": {}},
+            {"name": "get_tasks", "arguments": {}},
+            {
+                "name": "send_customer_message",
+                "arguments": {"channel_address": CONSENT_CHANNEL, "text": ASK},
+            },
+            {"name": "read_customer_replies", "arguments": {}},
+            {
+                "name": "amend_order",
+                "arguments": {
+                    "external_id": CONSENT_EXTERNAL_ID,
+                    "expected_version": self.version,
+                    "to_item_id": TO_VERSION,
+                    "idempotency_key": f"dr01-baseline-{uuid4()}",
+                },
+            },
+            {"name": "report_outcome", "arguments": {"report": self._report()}},
+        )
+
+    def _report(self) -> dict[str, Any]:
+        """The one write that ends the attempt, covering the case universe exactly once."""
+        return {
+            "scenario_id": self.scenario_id,
+            "exception_recorded": True,
+            "promises": [
+                {
+                    "order": order,
+                    "outcome": "RECOVERED" if order == CONSENT_ORDER else "UNTOUCHED",
+                    "recovered_to_version": TO_VERSION if order == CONSENT_ORDER else None,
+                    "work_state": "UNKNOWN",
+                    "claimed_stopped": False,
+                    "reason": "rehearsal plan",
+                }
+                for order in UNIVERSE
+            ],
+            "acknowledged_stops": [],
+        }
+
+
+__all__ = ["ASK", "CONSENT_CHANNEL", "CONSENT_EXTERNAL_ID", "TO_VERSION", "RehearsalModel"]
