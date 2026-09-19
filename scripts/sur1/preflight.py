@@ -5,7 +5,7 @@ policy permits no second opinion. So everything that would make the resulting nu
 something other than what it appears to mean is asked **before** an arm is constructed, in one
 place, and any failure refuses the run.
 
-Fourteen checks, and each is a fact rather than a promise:
+Seventeen checks, and each is a fact rather than a promise:
 
 1. the three frozen identities recompute to their published values;
 2. all three bindings say they are real, so a run cannot be driven by a double;
@@ -13,16 +13,24 @@ Fourteen checks, and each is a fact rather than a promise:
 4. every credential and address a scored run needs is configured;
 5. the workspace origin is set, is well formed, and is one this API actually accepts;
 6. every receiver answers, so no scenario is voided for an unreadable source afterwards;
-7. the world holds a customer-consent door and the API behind it verifies signed links, so a
-   stipulated reply reaches the product and not only the channel record;
-8. the ``asserts_change`` rule is the declared one and hashes to its published identity;
-9. every selected scenario has a world program that builds the world it declares;
-10. the nine programs are the frozen nine, at their published hashes, and nothing on their
+7. the running order system publishes the ``E1`` fields an amendment is attributed by;
+8. the running PromisePatch is the revision this source tree is about to measure;
+9. the durable worker can be stopped while a world is installed, and started afterwards;
+10. the world holds a customer-consent door and the API behind it verifies signed links, so a
+    stipulated reply reaches the product and not only the channel record;
+11. the ``asserts_change`` rule is the declared one and hashes to its published identity;
+12. every selected scenario has a world program that builds the world it declares;
+13. the nine programs are the frozen nine, at their published hashes, and nothing on their
     preparation path can name a field that says what a correct answer is;
-11. the world names the clock its scenarios are installed at;
-12. the output directory is new, or is a resumable run of the same experiment;
-13. nothing on the scoring path can reach an arm's name;
-14. nothing that fires a world event can name an arm, an answer or a scorer's reading.
+14. the world names the clock its scenarios are installed at;
+15. the output directory is new, or is a resumable run of the same experiment;
+16. nothing on the scoring path can reach an arm's name;
+17. nothing that fires a world event can name an arm, an answer or a scorer's reading.
+
+Checks 7 to 9 are the three the first scored run was refused by nothing. Each of them asks a
+*capability* of a process that is already running -- what it publishes, what it was built for,
+whether it can be quiesced -- because reachability passed on all three while the run was lost.
+See ``docs/sur1-first-scored-run-defect.md`` and the correction record beside it.
 
 **A preflight reads and never writes.** It opens clients, asks services whether they are ready
 and recomputes hashes. It creates no run directory, mints no token, prepares no world and calls
@@ -37,7 +45,10 @@ than returning a boolean somebody has to remember to read.
 checked, and the driver and the capture layer ask for that object. This is the only place one is
 minted, so "the preflight ran" stopped being something a caller could be trusted to have done.
 
-**Nothing here has minted a capability against real bindings, and no run has been taken.**
+**This preflight has minted one capability against real bindings.** All fourteen of its
+questions passed and the run they authorised, ``20260919T2020Z-scored``, was still lost to three
+conditions none of them asked about. Checks 7 to 9 are what it asks now. See
+``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations
@@ -66,6 +77,41 @@ from scripts.sur1.frozen import ARMS, Contract, FrozenIdentityError
 
 SCORED: Final = "scored"
 
+ROOT: Final = Path(__file__).resolve().parents[2]
+
+REQUIRED_ORDER_CAPABILITIES: Final = (
+    "admin-events.committed-body",
+    "admin-events.command-idempotency-key",
+)
+"""What the order system has to say it publishes before a scored run reads its event log.
+
+Named rather than imported. ``scripts.sur1`` treats the order system as an external service
+and opens none of its code -- :class:`~scripts.sur1.bindings.receivers.OrderSystemReceiver`
+reads two endpoints and nothing else -- so a capability the harness depends on is written down
+here, and ``test_sur1_harness_correction`` asserts this list against what the simulator
+actually declares.
+"""
+
+REQUIRED_ORDER_ENTRY_FIELDS: Final = (
+    "event",
+    "external_order_id",
+    "occurred_at",
+    "previous_version",
+    "source",
+    "type",
+    "version",
+)
+"""Every key of an admin event entry that ``receivers.OrderSystemReceiver._event`` reads."""
+
+REQUIRED_ORDER_BODY_FIELDS: Final = ("changed_line_ids", "command", "order")
+"""Every key of the committed body that same reader opens, ``command`` above all.
+
+Rule ``B2`` attributes an amendment to an arm by the idempotency key on the order system's own
+event. A body with no command cannot serve it, and the reader's tolerance for one -- an event
+with no command is read as having none -- is correct for an operator's edit and catastrophic
+for a projection that publishes no commands at all.
+"""
+
 REQUIRED_CHECKS: Final = (
     "frozen_identities",
     "real_bindings",
@@ -73,6 +119,9 @@ REQUIRED_CHECKS: Final = (
     "configuration",
     "workspace_origin",
     "receivers",
+    "order_projection",
+    "backend_build",
+    "worker_lifecycle",
     "consent_ingress",
     "classifier_identity",
     "world_programs",
@@ -302,6 +351,201 @@ def receivers(*, world: object, surface: object) -> Check:
     return Check(
         "receivers", True, f"reachable: {', '.join(sorted(probe.source for probe in probes))}"
     )
+
+
+def order_projection(*, world: object) -> Check:
+    """The running order system publishes the ``E1`` fields rule ``B2`` attributes by.
+
+    :func:`receivers` asks whether the order system *answers*. This asks what it answers
+    *with*, and the two are not the same question: a container four days behind the commit
+    that added the committed event body answered ``/readyz``, ``/orders`` and ``/admin/events``
+    perfectly and published no ``event`` key at all. Twenty of the first scored run's
+    twenty-seven attempts died on that, downstream, one at a time, after the model had been
+    paid. See ``docs/sur1-first-scored-run-defect.md`` §2.1 and §3.
+
+    **Capability rather than a build date.** The order system is asked what it publishes and
+    has to say so; an image timestamp would be a proxy for the thing, and a proxy is what this
+    check exists to stop relying on. A build too old to answer the question fails here, which
+    is before anything is spent.
+
+    **Nothing downstream is relaxed to accommodate an old build.** ``receivers._event`` still
+    reads an event with no command as having none, and ``replay._text`` still refuses an empty
+    idempotency key. Those two are right as they are; what was missing was a question asked
+    early enough for the disagreement between them never to arise.
+    """
+    reader = getattr(world, "orders", None)
+    ask = getattr(reader, "published_projection", None)
+    if not callable(ask):
+        return Check(
+            "order_projection",
+            False,
+            "this world's E1 reader cannot be asked what the order system publishes, so "
+            "whether an amendment could be attributed to an arm at all is unknown",
+        )
+    try:
+        published: Mapping[str, Any] = ask()
+    except Exception as failure:
+        detail = getattr(failure, "detail", None) or f"{type(failure).__name__}: {failure}"
+        return Check("order_projection", False, str(detail))
+
+    declared = set(published.get("capabilities") or ())
+    entry = set(published.get("entry_fields") or ())
+    body = set(published.get("body_fields") or ())
+    observed = published.get("observed_entry_fields")
+
+    faults = [
+        f"capability {name!r} is not declared"
+        for name in REQUIRED_ORDER_CAPABILITIES
+        if name not in declared
+    ]
+    faults += [
+        f"an event entry does not carry {name!r}"
+        for name in REQUIRED_ORDER_ENTRY_FIELDS
+        if name not in entry
+    ]
+    faults += [
+        f"a committed event body does not carry {name!r}"
+        for name in REQUIRED_ORDER_BODY_FIELDS
+        if name not in body
+    ]
+    if isinstance(observed, Sequence) and not isinstance(observed, str):
+        faults += [
+            f"the entry this log actually published does not carry {name!r}"
+            for name in REQUIRED_ORDER_ENTRY_FIELDS
+            if name not in set(observed)
+        ]
+    if faults:
+        return Check(
+            "order_projection",
+            False,
+            "the running order system cannot serve rule B2: " + "; ".join(faults),
+        )
+    seen = "no event on the log yet" if observed is None else "checked against a published entry"
+    return Check("order_projection", True, f"E1 publishes the committed body; {seen}")
+
+
+def backend_build(*, surface: object) -> Check:
+    """The running PromisePatch is the revision the harness is about to measure.
+
+    Two facts, because two different processes are involved and each can be wrong on its own.
+
+    **The served API.** ``/readyz`` names the migration revision the *running image's own code*
+    was built for and whether the database is at it. A deployment serving an older build says
+    so here, in a value it computes from its own bytes rather than from a tag anybody chose. It
+    is asked of the worker surface, which already owns the API's address and its transport, for
+    the reason :func:`workspace_origin` asks that surface too.
+
+    **The in-process fixture load.** The harness does not install a world over HTTP: it imports
+    :func:`~promisepatch.fixtures.reset.reset_demo_state` and runs it in this process, so the
+    capability that matters is whether *the code on this path* takes a stated snapshot and
+    fixture name. That is asked of the function's own signature, and the package is required to
+    resolve inside this repository -- a harness running against an installed wheel of some
+    other revision would pass every HTTP check and install a world nobody declared.
+
+    **What it does not prove**, said plainly because the gap is real: an image stale only in
+    code that no migration accompanied reports the same revision as the source tree and passes.
+    Migration head is the strongest identity the product publishes about itself today, and it
+    is a capability claim rather than a timestamp, which is the property that matters here.
+    """
+    import inspect
+
+    faults: list[str] = []
+    detail = []
+
+    try:
+        from promisepatch import fixtures
+        from promisepatch.db import HEAD_REVISION
+        from promisepatch.fixtures.reset import reset_demo_state
+    except Exception as failure:
+        return Check(
+            "backend_build",
+            False,
+            f"the product's own fixture load could not be imported: "
+            f"{type(failure).__name__}: {failure}",
+        )
+
+    accepted = set(inspect.signature(reset_demo_state).parameters)
+    missing = sorted({"snapshot", "fixture_name"} - accepted)
+    if missing:
+        faults.append(
+            f"reset_demo_state on this path takes no {missing}; a scenario's canonical world "
+            "cannot be installed through the governed fixture load"
+        )
+    here = Path(fixtures.__file__ or "").resolve()
+    if ROOT not in here.parents:
+        faults.append(f"promisepatch resolves to {here}, which is outside this repository")
+
+    served = _served_readiness(surface, faults)
+    migrations: Mapping[str, Any] = (served or {}).get("migrations") or {}
+    if served is not None:
+        expected = str(migrations.get("expected_revision", ""))
+        if expected != HEAD_REVISION:
+            faults.append(
+                f"the running API was built for migration {expected or 'nothing'} and this "
+                f"source is at {HEAD_REVISION}; it is not the revision being measured"
+            )
+        elif not migrations.get("at_head"):
+            faults.append(
+                f"the database is at {migrations.get('actual_revision')} and the running API "
+                f"expects {expected}"
+            )
+        else:
+            detail.append(f"API and source both at migration {expected}")
+
+    if faults:
+        return Check("backend_build", False, "; ".join(faults))
+    detail.append("the governed fixture load takes a stated world")
+    return Check("backend_build", True, "; ".join(detail))
+
+
+def _served_readiness(surface: object, faults: list[str]) -> Mapping[str, Any] | None:
+    """What the running API says about itself, or ``None`` and a named reason it could not say.
+
+    A surface that cannot be asked and a surface that refused are two different failures and
+    both are recorded, because a caller repairing a refused run needs to know which it has.
+    """
+    ask = getattr(surface, "readiness", None)
+    if not callable(ask):
+        faults.append("this worker surface cannot be asked what the running API was built for")
+        return None
+    try:
+        served: Mapping[str, Any] = ask()
+    except Exception as failure:
+        faults.append(f"the running API could not be read: {type(failure).__name__}: {failure}")
+        return None
+    return served
+
+
+def worker_lifecycle(*, world: object) -> Check:
+    """The durable worker can be put down while a world is installed, and brought back.
+
+    ``reset_demo_state`` empties forty-two tables and takes an exclusive lock on each; the
+    worker's cycle holds shared locks on several of them in a different order. One attempt of
+    the first scored run died of exactly that deadlock. A run that cannot stop the worker
+    cannot remove the race, so it is refused rather than driven and hoped over.
+
+    Asked of the control the world actually holds, and refused for a stand-in by declared kind
+    -- the same rule :func:`real_bindings` and :func:`consent_ingress` use, for the same reason:
+    a protocol check only asks whether the methods exist.
+    """
+    control = getattr(world, "worker", None)
+    if control is None:
+        return Check(
+            "worker_lifecycle",
+            False,
+            "this world carries no worker control, so a fixture load would be issued beside a "
+            "live worker and can deadlock against it",
+        )
+    if not is_real(control):
+        return Check(
+            "worker_lifecycle",
+            False,
+            "a scored run cannot install its worlds beside a worker it only pretends to control",
+        )
+    probe = control.probe()
+    if not probe.reachable:
+        return Check("worker_lifecycle", False, probe.detail)
+    return Check("worker_lifecycle", True, probe.detail)
 
 
 def consent_ingress(*, world: object) -> Check:
@@ -709,6 +953,9 @@ def preflight(
         configuration(config),
         workspace_origin(config=config, surface=surface),
         receivers(world=world, surface=surface),
+        order_projection(world=world),
+        backend_build(surface=surface),
+        worker_lifecycle(world=world),
         consent_ingress(world=world),
         classifier_identity(classifier),
         world_programs(selected),
@@ -777,11 +1024,15 @@ __all__ = [
     "EVENT_MODULES",
     "FORBIDDEN_SCENARIO_FIELDS",
     "REQUIRED_CHECKS",
+    "REQUIRED_ORDER_BODY_FIELDS",
+    "REQUIRED_ORDER_CAPABILITIES",
+    "REQUIRED_ORDER_ENTRY_FIELDS",
     "SCORED",
     "Check",
     "PreflightRefusedError",
     "PreflightReport",
     "authorise",
+    "backend_build",
     "blinding",
     "classifier_identity",
     "configuration",
@@ -790,11 +1041,13 @@ __all__ = [
     "frozen_identities",
     "ground_truth_reachable",
     "model_identity",
+    "order_projection",
     "output_directory",
     "preflight",
     "real_bindings",
     "receivers",
     "require",
+    "worker_lifecycle",
     "world_clock",
     "world_program_freeze",
     "world_programs",

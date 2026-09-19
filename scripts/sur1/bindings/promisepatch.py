@@ -35,7 +35,8 @@ could cross the ceiling while every individual wait stayed inside a bound that w
 sit under it. The clock starts when the attempt opens its case and every later wait spends what
 is left of it.
 
-**Nothing here has been pointed at a ``SUR-1`` scenario.**
+**This surface carried arms B and C through one scored run**, ``20260919T2020Z-scored``, which is
+published inconclusive and unaltered. See ``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations
@@ -280,6 +281,29 @@ class WorkspaceClient:
             )
         return Probe("WORKSPACE_ORIGIN", True, f"{self.base_url} accepts {self.origin}")
 
+    def readiness(self) -> Mapping[str, Any]:
+        """``GET /readyz``: what the *running* API says about its own build and database.
+
+        Read here rather than in the preflight because this client already owns the API's
+        address and its transport, and a second module reaching the same base URL would be a
+        second place the address could be wrong. The document carries the migration revision
+        the running image's own code was built for, which is the strongest identity this
+        product publishes about which revision is actually serving.
+
+        A read: no credential is sent, no session is opened and nothing is written. An API
+        that cannot be reached raises, and the preflight reports that as the refusal it is.
+        """
+        import httpx2
+
+        try:
+            answer = httpx2.get(f"{self.base_url}/readyz", timeout=self.timeout_seconds)
+            body: Mapping[str, Any] = answer.json()
+        except Exception as failure:
+            raise SurfaceError(
+                f"{self.base_url}/readyz could not be read: {type(failure).__name__}: {failure}"
+            ) from failure
+        return body
+
     def sign_in(self) -> None:
         import httpx2
 
@@ -395,6 +419,10 @@ class LiveWorkerSurface:
     def origin_probe(self) -> Probe:
         """Whether the API accepts the origin this surface would sign in with."""
         return self.workspace.origin_probe()
+
+    def readiness(self) -> Mapping[str, Any]:
+        """What the running API says about its own build. Asked by the preflight, writes nothing."""
+        return self.workspace.readiness()
 
     def forget(self) -> None:
         """Between scenarios. The next attempt opens its own case and inherits none."""

@@ -35,7 +35,11 @@ The change is a read-only widening of an existing audit projection; no arm can r
 eleven frozen actions do not include it, and nothing about a mutation moved. Recorded in the
 predeclaration beside the discrepancy it closes.
 
-**Nothing here has been pointed at a ``SUR-1`` scenario.**
+**These receivers have read one scored run**, ``20260919T2020Z-scored``. ``E1`` is where that run
+failed: the running order system published no committed event body, so twenty attempts
+collected a row the capture then refused. The reading here was right and the projection was
+old; :func:`~scripts.sur1.preflight.order_projection` now asks before a run is bought. See
+``docs/sur1-first-scored-run-defect.md``.
 """
 
 from __future__ import annotations
@@ -207,6 +211,50 @@ class OrderSystemReceiver:
         except ReceiverUnreadableError as failure:
             return Probe("E1", False, failure.detail)
         return Probe("E1", True, self.base_url)
+
+    def published_projection(self) -> Mapping[str, Any]:
+        """What the *running* order system says it publishes, and what it actually published.
+
+        Two halves, because a declaration and a document are different evidence and a reader
+        needs both. ``GET /admin/capabilities`` is this build's own statement of the projection
+        it serves; ``observed_entry_fields`` is the keys of a real entry when the log holds one,
+        which on a freshly reset order book it does not. A build too old to carry the route at
+        all answers ``404``, and that is read as the fact it is rather than as a transport
+        failure.
+
+        It exists because reachability is not capability. In the first scored run every probe
+        in this class passed against a container four days behind the commit that added the
+        committed event body, and twenty attempts were spent discovering it downstream. The
+        preflight asks this instead.
+
+        A read like every other read here: three ``GET``s and nothing written.
+        """
+        import httpx2
+
+        try:
+            answer = httpx2.get(f"{self.base_url}/admin/capabilities", timeout=5.0)
+        except Exception as failure:
+            raise ReceiverUnreadableError("E1", f"{type(failure).__name__}: {failure}") from failure
+        if answer.status_code == 404:
+            raise ReceiverUnreadableError(
+                "E1",
+                "this order system publishes no /admin/capabilities, so it predates the "
+                "projection the contract's E1 fields are read from; what its event log carries "
+                "cannot be established before a run rather than after one",
+            )
+        if answer.status_code != 200:
+            raise ReceiverUnreadableError(
+                "E1", f"/admin/capabilities answered {answer.status_code}"
+            )
+        declared: Mapping[str, Any] = answer.json()
+        projection: Mapping[str, Any] = (declared.get("projection") or {}).get("admin_events") or {}
+        sample = self._log(since=None)
+        return {
+            "capabilities": [str(name) for name in declared.get("capabilities") or ()],
+            "entry_fields": [str(name) for name in projection.get("entry_fields") or ()],
+            "body_fields": [str(name) for name in projection.get("body_fields") or ()],
+            "observed_entry_fields": None if not sample else sorted(sample[0]),
+        }
 
     def _log(self, *, since: datetime | None) -> Sequence[Mapping[str, Any]]:
         """The committed event log, from the endpoint the contract names.

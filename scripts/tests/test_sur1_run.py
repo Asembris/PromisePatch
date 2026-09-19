@@ -159,9 +159,16 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
 
     assert directory is None
     assert not (tmp_path / "just-asking").exists()
-    assert [check.name for check in report.failures] == [
+    # ``worker_lifecycle`` is left out of the comparison and only of this one: it asks
+    # ``docker compose`` about *this machine*, so its answer depends on whether the local stack
+    # happens to be up, which is not a fact about the preflight. Every other check here answers
+    # the same way on a machine with no stack at all.
+    failures = [check.name for check in report.failures if check.name != "worker_lifecycle"]
+    assert failures == [
         "workspace_origin",
         "receivers",
+        "order_projection",
+        "backend_build",
         "consent_ingress",
         "classifier_identity",
     ], "a development run reports the undetermined rule rather than being refused for it"

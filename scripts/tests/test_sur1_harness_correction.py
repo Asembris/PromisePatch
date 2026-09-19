@@ -8,7 +8,7 @@ that, and this module is where each one is held down so it cannot come back quie
 |---|---|---|
 | no committed event body on the order log | 20 | the preflight refuses a build not declaring it |
 | the world's two writes were ungoverned | 3 | both go through the product's governed write |
-| the fixture ``TRUNCATE`` raced the worker | 1 | the worker is stopped around an install |
+| the fixture ``TRUNCATE`` raced the worker | 1 | ``test_sur1_world_lifecycle.py`` |
 
 **No arm is driven here and no model is called.** Every proof is structural, or is made against
 a stand-in that records what it was asked to do. Nothing in this module opens a PostgreSQL
@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -178,3 +179,226 @@ def test_a_failed_governed_write_is_named_rather_than_leaking_a_driver_error() -
             statement="SELECT 1",
             parameters={},
         )
+
+
+# ------------------------------------------- a stale build is refused before anything is spent
+
+
+@dataclass(slots=True)
+class DeclaringOrderSystem:
+    """An ``E1`` reader that answers what a build of the order system would publish."""
+
+    projection: Mapping[str, Any] | None
+    binding_kind: str = "real"
+
+    def published_projection(self) -> Mapping[str, Any]:
+        from scripts.sur1.bindings.receivers import ReceiverUnreadableError
+
+        if self.projection is None:
+            raise ReceiverUnreadableError(
+                "E1",
+                "this order system publishes no /admin/capabilities, so it predates the "
+                "projection the contract's E1 fields are read from",
+            )
+        return dict(self.projection)
+
+
+@dataclass(slots=True)
+class WorldWith:
+    """Only what the three new checks reach. It is not a world and drives nothing."""
+
+    orders: Any = None
+    worker: Any = None
+
+
+def a_current_projection(**overrides: Any) -> dict[str, Any]:
+    from scripts.sur1.preflight import (
+        REQUIRED_ORDER_BODY_FIELDS,
+        REQUIRED_ORDER_CAPABILITIES,
+        REQUIRED_ORDER_ENTRY_FIELDS,
+    )
+
+    published: dict[str, Any] = {
+        "capabilities": list(REQUIRED_ORDER_CAPABILITIES),
+        "entry_fields": list(REQUIRED_ORDER_ENTRY_FIELDS),
+        "body_fields": list(REQUIRED_ORDER_BODY_FIELDS),
+        "observed_entry_fields": sorted(REQUIRED_ORDER_ENTRY_FIELDS),
+    }
+    published.update(overrides)
+    return published
+
+
+def test_a_simulator_too_old_to_declare_its_projection_is_refused() -> None:
+    """The 20-attempt defect, refused at the gate instead of twenty times downstream."""
+    from scripts.sur1.preflight import order_projection
+
+    refused = order_projection(world=WorldWith(orders=DeclaringOrderSystem(projection=None)))
+
+    assert not refused.passed
+    assert "/admin/capabilities" in refused.detail
+
+
+def test_a_projection_that_publishes_no_command_is_refused() -> None:
+    """The exact shape the stale container served: an event log with no command on it."""
+    from scripts.sur1.preflight import order_projection
+
+    stale = a_current_projection(
+        capabilities=["admin-events.committed-body"],
+        body_fields=["changed_line_ids", "order"],
+        observed_entry_fields=[
+            "attempts",
+            "delivery_state",
+            "event_id",
+            "external_order_id",
+            "occurred_at",
+            "source",
+            "type",
+            "version",
+        ],
+    )
+
+    refused = order_projection(world=WorldWith(orders=DeclaringOrderSystem(projection=stale)))
+
+    assert not refused.passed
+    assert "command" in refused.detail
+    assert "event" in refused.detail
+
+
+def test_a_current_order_system_passes_the_projection_check() -> None:
+    from scripts.sur1.preflight import order_projection
+
+    allowed = order_projection(
+        world=WorldWith(orders=DeclaringOrderSystem(projection=a_current_projection()))
+    )
+
+    assert allowed.passed, allowed.detail
+
+
+def test_the_preflight_asks_for_exactly_what_this_simulator_declares() -> None:
+    """The two ends are tied together, so neither can drift away from the other quietly.
+
+    The harness names the capability it needs and the order system names the capability it
+    serves, in two packages that never import one another. This is the only place they meet.
+    """
+    from scripts.sur1.preflight import (
+        REQUIRED_ORDER_BODY_FIELDS,
+        REQUIRED_ORDER_CAPABILITIES,
+        REQUIRED_ORDER_ENTRY_FIELDS,
+    )
+
+    from order_simulator import capabilities
+
+    declared = capabilities.declaration()
+    projection = declared["projection"]["admin_events"]
+
+    assert set(REQUIRED_ORDER_CAPABILITIES) <= set(declared["capabilities"])
+    assert set(REQUIRED_ORDER_ENTRY_FIELDS) <= set(projection["entry_fields"])
+    assert set(REQUIRED_ORDER_BODY_FIELDS) <= set(projection["body_fields"])
+
+
+def test_the_required_entry_fields_are_the_ones_the_e1_reader_actually_opens() -> None:
+    """The preflight's list is checked against the reader's own source, not against memory."""
+    from scripts.sur1.bindings import receivers as receivers_module
+    from scripts.sur1.preflight import REQUIRED_ORDER_BODY_FIELDS, REQUIRED_ORDER_ENTRY_FIELDS
+
+    tree = ast.parse(Path(receivers_module.__file__).read_text(encoding="utf-8"))
+    read = {
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
+
+    for name in (*REQUIRED_ORDER_ENTRY_FIELDS, *REQUIRED_ORDER_BODY_FIELDS):
+        assert name in read, f"the preflight requires {name!r} and no E1 reader opens it"
+
+
+@dataclass(slots=True)
+class ServingApi:
+    """A worker surface that answers what a running PromisePatch was built for."""
+
+    payload: Mapping[str, Any] | None
+
+    def readiness(self) -> Mapping[str, Any]:
+        if self.payload is None:
+            raise RuntimeError("the API could not be reached")
+        return dict(self.payload)
+
+
+def test_a_backend_serving_another_migration_head_is_refused() -> None:
+    """The stale-image question, asked of a value the running process computes about itself."""
+    from scripts.sur1.preflight import backend_build
+
+    refused = backend_build(
+        surface=ServingApi({"migrations": {"expected_revision": "0007_old", "at_head": True}})
+    )
+
+    assert not refused.passed
+    assert "0007_old" in refused.detail
+
+
+def test_a_backend_whose_database_is_behind_its_code_is_refused() -> None:
+    from scripts.sur1.preflight import backend_build
+
+    from promisepatch.db import HEAD_REVISION
+
+    refused = backend_build(
+        surface=ServingApi(
+            {
+                "migrations": {
+                    "expected_revision": HEAD_REVISION,
+                    "actual_revision": "0007_old",
+                    "at_head": False,
+                }
+            }
+        )
+    )
+
+    assert not refused.passed
+    assert "0007_old" in refused.detail
+
+
+def test_an_api_that_cannot_be_read_is_refused_rather_than_assumed_current() -> None:
+    from scripts.sur1.preflight import backend_build
+
+    refused = backend_build(surface=ServingApi(None))
+
+    assert not refused.passed
+    assert "could not be read" in refused.detail
+
+
+def test_a_backend_at_this_source_revision_passes() -> None:
+    """Including the capability the harness's own in-process world install depends on."""
+    from scripts.sur1.preflight import backend_build
+
+    from promisepatch.db import HEAD_REVISION
+
+    allowed = backend_build(
+        surface=ServingApi(
+            {
+                "migrations": {
+                    "expected_revision": HEAD_REVISION,
+                    "actual_revision": HEAD_REVISION,
+                    "at_head": True,
+                }
+            }
+        )
+    )
+
+    assert allowed.passed, allowed.detail
+    assert "governed fixture load" in allowed.detail
+
+
+def test_the_governed_fixture_load_takes_the_world_the_harness_installs() -> None:
+    """Defect 2.2 as the record stated it, checked directly against the code that runs."""
+    import inspect
+
+    from promisepatch.fixtures.reset import reset_demo_state
+
+    accepted = set(inspect.signature(reset_demo_state).parameters)
+
+    assert {"snapshot", "fixture_name"} <= accepted

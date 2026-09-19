@@ -24,10 +24,14 @@ from scripts.sur1.bindings import REAL, Probe
 from scripts.sur1.bindings.bedrock import BedrockConverseClient, ModelIdentity
 from scripts.sur1.bindings.clock import RunClock
 from scripts.sur1.bindings.config import DEFAULT_PORTS, REQUIRED_FOR_SCORED, BindingConfig
+from scripts.sur1.bindings.receivers import ReceiverUnreadableError
 from scripts.sur1.doubles import ScriptedModel, ScriptedSurface, SyntheticWorld
 from scripts.sur1.evidence import UNDETERMINED, ChannelMessage
 from scripts.sur1.frozen import Contract
 from scripts.sur1.preflight import (
+    REQUIRED_ORDER_BODY_FIELDS,
+    REQUIRED_ORDER_CAPABILITIES,
+    REQUIRED_ORDER_ENTRY_FIELDS,
     SCORED,
     PreflightRefusedError,
     blinding,
@@ -82,8 +86,40 @@ class ReachableBinding:
     -- which is the one kind of defect a comparative number cannot show.
     """
 
+    orders: ReachableBinding | None = None
+    """A world binding's ``E1`` reader, which is what is asked what the order system publishes.
+
+    *Every precondition true* now includes the running order system publishing the committed
+    event body: without it an amendment cannot be attributed to an arm, and the first scored
+    run lost twenty attempts finding that out downstream. See ``order_projection``.
+    """
+
+    worker: ReachableBinding | None = None
+    """A world binding's control over the durable worker. ``None`` is *no control at all*.
+
+    *Every precondition true* now also includes being able to put the worker down while a world
+    is installed. A fixture ``TRUNCATE`` issued beside a live worker deadlocks against it, which
+    is what ended one attempt of the first scored run.
+    """
+
+    projection: Mapping[str, Any] | None = None
+    """What this stand-in says the order system publishes. A value; nothing here reaches one."""
+
+    readiness_payload: Mapping[str, Any] | None = None
+    """What this stand-in says the running API was built for. A value, for the same reason."""
+
     def identity(self) -> Mapping[str, Any]:
         return dict(self.payload)
+
+    def published_projection(self) -> Mapping[str, Any]:
+        if self.projection is None:
+            raise ReceiverUnreadableError("E1", "this order system declares no projection")
+        return dict(self.projection)
+
+    def readiness(self) -> Mapping[str, Any]:
+        if self.readiness_payload is None:
+            raise RuntimeError("this API could not be read")
+        return dict(self.readiness_payload)
 
     def probe(self) -> Probe:
         return Probe(self.source, self.reachable, "" if self.reachable else "did not answer")
@@ -118,13 +154,52 @@ RUN_ANCHOR = datetime(2026, 9, 19, 13, 0, tzinfo=UTC)
 """A fixed instant, so this file does not become a test of the hour it is run at."""
 
 
+PUBLISHED_PROJECTION: Mapping[str, Any] = {
+    "capabilities": list(REQUIRED_ORDER_CAPABILITIES),
+    "entry_fields": list(REQUIRED_ORDER_ENTRY_FIELDS),
+    "body_fields": list(REQUIRED_ORDER_BODY_FIELDS),
+    "observed_entry_fields": sorted(REQUIRED_ORDER_ENTRY_FIELDS),
+}
+"""An order system that publishes exactly what rule ``B2`` needs, and nothing is inferred."""
+
+
+def served_readiness(**overrides: Any) -> Mapping[str, Any]:
+    """What a running API at this source revision answers to ``/readyz``."""
+    from promisepatch.db import HEAD_REVISION
+
+    migrations = {
+        "expected_revision": HEAD_REVISION,
+        "actual_revision": HEAD_REVISION,
+        "at_head": True,
+        **overrides,
+    }
+    return {"migrations": migrations}
+
+
+def orders(**overrides: Any) -> ReachableBinding:
+    return ReachableBinding(
+        source="E1", projection=overrides.get("projection", PUBLISHED_PROJECTION)
+    )
+
+
+def surface(**overrides: Any) -> ReachableBinding:
+    """A worker surface that answers about the origin and about the build it is serving."""
+    return ReachableBinding(
+        source="PROMISEPATCH",
+        readiness_payload=overrides.get("readiness_payload", served_readiness()),
+        **{name: value for name, value in overrides.items() if name != "readiness_payload"},
+    )
+
+
 def world(**overrides: Any) -> ReachableBinding:
     """A world binding that reaches nothing and has been placed in time by the declared rule."""
-    fixed = {"clock", "consent_door"}
+    fixed = {"clock", "consent_door", "orders", "worker"}
     return ReachableBinding(
         source="WORLD",
         clock=overrides.get("clock", RunClock(anchor=RUN_ANCHOR, timezone="Africa/Tunis")),
         consent_door=overrides.get("consent_door", ReachableBinding(source="CONSENT")),
+        orders=overrides.get("orders", orders()),
+        worker=overrides.get("worker", ReachableBinding(source="WORKER")),
         **{name: value for name, value in overrides.items() if name not in fixed},
     )
 
@@ -353,7 +428,7 @@ def passing_preflight(tmp_path: Path, **overrides: Any) -> Any:
         run_id=overrides.get("run_id", "unit-run"),
         model=overrides.get("model", model()),
         world=overrides.get("world", world()),
-        surface=overrides.get("surface", ReachableBinding(source="PROMISEPATCH")),
+        surface=overrides.get("surface", surface()),
         config=overrides.get("config", config()),
         classifier=overrides.get("classifier", predeclaration.asserts_change),
         scenarios=overrides.get("scenarios", ["C01"]),
@@ -433,6 +508,9 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "configuration",
         "workspace_origin",
         "receivers",
+        "order_projection",
+        "backend_build",
+        "worker_lifecycle",
         "consent_ingress",
         "classifier_identity",
         "world_programs",

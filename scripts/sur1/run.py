@@ -16,11 +16,12 @@ exactly one implementation of *drive PromisePatch* and the ablation cannot drift
 second one. :func:`~scripts.sur1.adapters.three_arms` is what builds them, and it is not given a
 second surface to build a second one out of.
 
-**Nothing here has taken a run.** No arm has been driven against a ``SUR-1`` scenario, no model
-reached, no AWS resource read, and ``AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE`` is unspent.
-The nine world programs are written and frozen, so what stands between this module and a scored
-run is the preflight itself: a model this account can invoke, the spend authorisation, and every
-one of :data:`~scripts.sur1.preflight.REQUIRED_CHECKS` passing in one report.
+**This module has taken one run.** ``20260919T2020Z-scored`` was driven on 2026-09-19,
+``AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE`` was spent on it, and it is published
+inconclusive and unaltered. Nothing here supersedes it: a later run is a corrected execution
+beside it. What stands between this module and one is a fresh authorisation and every one of
+:data:`~scripts.sur1.preflight.REQUIRED_CHECKS` -- now seventeen -- passing in one report. See
+``docs/sur1-first-scored-run-defect.md`` and ``docs/benchmarks/sur1-execution-revision.v2.md``.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from scripts.sur1.bindings.bedrock import BedrockConverseClient
 from scripts.sur1.bindings.clock import RunClock, run_clock
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.consentdoor import SignedLinkDoor
+from scripts.sur1.bindings.lifecycle import ComposeWorkerControl
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface, live_worker_surface
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
@@ -114,6 +116,7 @@ def build(config: BindingConfig, contract: Contract, *, clock: RunClock | None =
         worker_surface=surface,
         consent_door=SignedLinkDoor(api_base_url=config.api_base_url, database=database),
         clock=clock,
+        worker=ComposeWorkerControl(),
     )
     model = BedrockConverseClient.from_contract(contract, region=config.aws_region)
     return Bindings(
