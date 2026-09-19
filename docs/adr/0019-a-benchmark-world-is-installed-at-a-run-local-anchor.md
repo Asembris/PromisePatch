@@ -200,8 +200,9 @@ moving the anchor.
 
 * `SUR-1` becomes temporally executable on any day, which it was not.
 * One new module on the harness path, and small edits to thread one value through it.
-* A run started within an hour either side of the bakery's midnight is refused rather than run.
-  That is two hours in twenty-four, it is deliberate, and the refusal names the reason.
+* A run started in the two hours after the bakery's midnight — local `00:00` to `01:59`, swept at
+  five-minute resolution — is refused rather than run. That is two hours in twenty-four, it is
+  deliberate, and the refusal names which of the two facts failed.
 * The harness now reads `get_settings().bakery_tz`. A harness run against a backend configured to
   a different zone than the harness's own environment is refused by the day check rather than
   producing a quietly wrong world.
