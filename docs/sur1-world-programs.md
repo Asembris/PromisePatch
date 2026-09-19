@@ -207,6 +207,22 @@ Only `implementation_sha` moved when that work landed. The program-set hash, all
 hashes and all nine world digests are byte-identical, and they are now pinned as literals in the
 test as well as checked against the published document.
 
+**The worlds were installed at a fixed instant the engine could no longer read.** `realise`
+loaded every world at `hollow_oak.ANCHOR`, March 2026, while `physical.bakery_day` buckets a
+commitment against the real clock. Read on any later day, both Valley Produce deliveries are in
+the past, the `today` narrowing selects nothing and is skipped, both clarification options carry
+the keywords `["valley", "produce", "tomorrow"]`, and no answer resolves the case. The dress
+rehearsal found it and left it open; [ADR-0019](adr/0019-a-benchmark-world-is-installed-at-a-run-local-anchor.md)
+closed it. A run is now placed in time once, before any arm acts, by
+`scripts/sur1/bindings/clock.py`, and a scored preflight refuses a world that carries no declared
+clock strategy.
+
+`implementation_sha` moved a second time when that landed, and the clock module was added to the
+modules it hashes — a change to where a world is placed in time cannot show up in a world digest,
+because a digest is rendered as offsets from the anchor and is invariant under it by design. The
+program-set hash, all nine program hashes and all nine world digests are byte-identical, recomputed
+at the run-local anchor and checked against the published document.
+
 **The realisation path is still essentially unexercised against live systems.** It ran once, by
 accident, for `C04` against the local development database, and that is still the whole of the
 evidence that its fixture load works: no world has been read back out of PostgreSQL, no external
@@ -221,6 +237,7 @@ programs are frozen on their canonical form, which is the form the freeze is abo
 | `scripts/sur1/bindings/worldsnapshot.py` | the canonical snapshot and its digest |
 | `scripts/sur1/bindings/realisation.py` | installing a canonical world in the live systems |
 | `scripts/sur1/bindings/declaration.py` | the freeze, and the check that code and document agree |
+| `scripts/sur1/bindings/clock.py` | where in time a run installs its worlds, and the refusal |
 | `scripts/sur1/bindings/setup.py` | the mechanism: what a step may reach, and the refusal |
 | `scripts/sur1/bindings/events.py` | what each declared event observes, does and may do once |
 | `scripts/sur1/bindings/worldsink.py` | the world's two powers, performed against the live systems |

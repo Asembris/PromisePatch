@@ -273,6 +273,13 @@ The seam added for that (`realise(anchor=...)`, default `hollow_oak.ANCHOR`) cha
 `SUR-1`: no scored path passes one. **It is a mechanism, not a decision.** What `SUR-1` does about
 its own clock belongs in an amendment, not in this session.
 
+> **Recorded later, beside the finding above and not into it.** The amendment this asked for is
+> [ADR-0019](adr/0019-a-benchmark-world-is-installed-at-a-run-local-anchor.md), accepted
+> 2026-09-19. It decided the same rule the rehearsal used, moved it into
+> `scripts/sur1/bindings/clock.py` so there is one statement of it rather than two, and made a
+> scored preflight refuse a world that carries no declared clock. The finding above is what the
+> rehearsal found on the day it ran and is left exactly as it was.
+
 ## What was proved
 
 `docs/rehearsals/runs/dr01-g/` is the run these statements are about. Seven runs were taken;
