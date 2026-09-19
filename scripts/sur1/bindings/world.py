@@ -211,6 +211,12 @@ class LiveScenarioWorld:
         harness's own transport alike. An arm that is PromisePatch and an arm that is not both
         reach a customer by putting a message on a channel, and this answers the message rather
         than the sender.
+
+        An unreadable channel leaves every event pending rather than being treated as *no ask
+        yet*: the two look alike here and are told apart where it matters, because
+        :meth:`collect` reads ``E2`` again and an unreadable source voids the attempt. Events
+        still pending at the end are not a failure -- an arm that never asked is owed no reply,
+        which is the whole of what one of these scenarios measures.
         """
         arming = self.arming
         if arming is None or not arming.pending:
