@@ -128,7 +128,7 @@ def test_the_baseline_acts_on_the_world_and_ends_at_its_report() -> None:
             calling("report_outcome"),
         ]
     )
-    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"utterance": "hi"}})
+    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "hi"}})
     attempt = BaselineArm(model=model).run(request_for(world))
 
     assert [name for name, _ in world.invoked] == ["get_incident", "amend_order", "report_outcome"]
@@ -185,7 +185,12 @@ def test_promisepatch_is_driven_through_the_worker_surface_and_nothing_else() ->
     )
     world = SyntheticWorld(
         evidence=EVIDENCE,
-        responses={"get_incident": {"utterance": "no raspberries", "clarification": "just those"}},
+        responses={
+            "get_incident": {
+                "reported": "no raspberries",
+                "clarification": {"question": "which line?", "answer": "just those"},
+            }
+        },
     )
     request = request_for(world)
     attempt = PromisePatchArm(surface=surface).run(request)
@@ -205,7 +210,7 @@ def test_promisepatch_is_driven_through_the_worker_surface_and_nothing_else() ->
 def test_promisepatch_reads_the_incident_from_the_same_tool_the_baseline_does() -> None:
     """Identical facts, from one read, so 'the same world' is structural."""
     surface = ScriptedSurface(script=[{"needs": None}])
-    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"utterance": "spoiled"}})
+    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "spoiled"}})
     PromisePatchArm(surface=surface).run(request_for(world))
     assert world.invoked[0][0] == "get_incident"
 
@@ -218,7 +223,7 @@ def test_an_incident_nobody_reported_is_a_harness_failure_and_not_a_verdict() ->
 
 def test_the_worker_surface_conversation_is_charged_to_the_ledger() -> None:
     surface = ScriptedSurface(script=[{"needs": None}])
-    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"utterance": "x"}})
+    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "x"}})
     request = request_for(world)
     PromisePatchArm(surface=surface).run(request)
     assert request.budget.spend.tool_calls == 3
@@ -235,7 +240,7 @@ def test_the_ablated_arm_does_exactly_what_the_full_arm_does_plus_a_log() -> Non
         surface = ScriptedSurface(
             script=[{"needs": "confirmation", "plan_id": "p1"}, {"needs": None}]
         )
-        world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"utterance": "x"}})
+        world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "x"}})
         inner = PromisePatchArm(surface=surface)
         arm = inner if build == "full" else AblationArm(inner=inner)
         attempt = arm.run(request_for(world))
@@ -250,7 +255,7 @@ def test_the_ablated_arm_does_exactly_what_the_full_arm_does_plus_a_log() -> Non
 
 def test_the_ablated_arm_records_which_check_it_dropped() -> None:
     surface = ScriptedSurface(script=[{"needs": None}])
-    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"utterance": "x"}})
+    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "x"}})
     attempt = AblationArm(inner=PromisePatchArm(surface=surface)).run(request_for(world))
     assert attempt.diagnostics["ablated_check"] == 5
     assert attempt.diagnostics["ablation"] == []
@@ -258,7 +263,7 @@ def test_the_ablated_arm_records_which_check_it_dropped() -> None:
 
 def test_the_full_arm_carries_no_ablation_diagnostics() -> None:
     surface = ScriptedSurface(script=[{"needs": None}])
-    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"utterance": "x"}})
+    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "x"}})
     attempt = PromisePatchArm(surface=surface).run(request_for(world))
     assert attempt.diagnostics == {}
 
@@ -273,8 +278,32 @@ def test_the_ablation_is_installed_only_while_arm_c_is_running() -> None:
             return {}
 
     surface = Watching(script=[{"needs": None}])
-    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"utterance": "x"}})
+    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "x"}})
     AblationArm(inner=PromisePatchArm(surface=surface)).run(request_for(world))
 
     assert seen and seen[0] is not original
     assert installed_evaluator() is original
+
+
+def test_the_incident_arms_b_and_c_read_is_the_one_a_world_program_writes() -> None:
+    """The field names, pinned against a real program rather than against a hand-written payload.
+
+    This assertion is the one that was missing. Every test above builds its own ``get_incident``
+    payload, so the arms and the world programs could disagree about what an incident is called
+    and no test would notice -- which is exactly what happened: the programs wrote ``reported``
+    and the arm read ``utterance``, so arms B and C raised ``HarnessFailureError`` on every one
+    of the nine scenarios. Reading the shape off a program is what stops that drifting again.
+    """
+    from scripts.sur1.adapters import CLARIFICATION, REPORTED, clarification_answer
+    from scripts.sur1.bindings.programs import programs
+
+    for scenario_id, program in sorted(programs().items()):
+        incident = dict(program.incident)
+        assert str(incident.get(REPORTED, "")).strip(), f"{scenario_id} reports nothing"
+        assert set(incident) <= {REPORTED, CLARIFICATION}, f"{scenario_id} writes a third field"
+        block = incident.get(CLARIFICATION)
+        if block is None:
+            assert clarification_answer(incident) == ""
+        else:
+            assert clarification_answer(incident) == block["answer"]
+            assert clarification_answer(incident) != block["question"]

@@ -61,6 +61,17 @@ carrying no fact about any of them. The incident arrives through ``get_incident`
 REPORT_TOOL: Final = "report_outcome"
 """The one write that ends an attempt. Every arm produces exactly one."""
 
+REPORTED: Final = "reported"
+CLARIFICATION: Final = "clarification"
+ANSWER: Final = "answer"
+"""The three field names ``get_incident`` answers with, read here and written by one place.
+
+A world program builds the incident -- see ``programs._incident`` -- and these arms read it.
+There is exactly one producer and these are its field names, so they are named as constants
+rather than spelled inline twice. An arm that read a field the programs do not write would raise
+``HarnessFailureError`` on every scenario, which is not a reading about that arm.
+"""
+
 ARGUMENTS: Final[dict[str, dict[str, Any]]] = {
     "get_incident": {},
     "get_orders": {},
@@ -84,6 +95,20 @@ ARGUMENTS: Final[dict[str, dict[str, Any]]] = {
 Not frozen by the contract, because arms B and C never see one. Written here so that the one
 arm that does see them sees the same set on every scenario and on every run.
 """
+
+
+def clarification_answer(incident: Mapping[str, Any]) -> str:
+    """The answer the worker gave, or nothing, from the shape a world program writes.
+
+    ``clarification`` is ``None`` where the report was not ambiguous and is otherwise the
+    question and the answer together. Only the answer is said back: the question is the
+    product's own to ask, and repeating it to a clarification endpoint would be answering with
+    a question.
+    """
+    block = incident.get(CLARIFICATION)
+    if not isinstance(block, Mapping):
+        return ""
+    return str(block.get(ANSWER, ""))
 
 
 def tool_specifications(request: AttemptRequest) -> tuple[Mapping[str, Any], ...]:
@@ -161,14 +186,14 @@ class PromisePatchArm:
     def drive_through_surface(self, request: AttemptRequest) -> ReceiverEvidence:
         incident = self._incident(request)
         request.budget.authorise_tool_call()
-        response: Mapping[str, Any] = self.surface.report_exception(str(incident["utterance"]))
+        response: Mapping[str, Any] = self.surface.report_exception(str(incident[REPORTED]))
 
         while True:
             request.budget.checkpoint()
             needs = response.get("needs")
             if needs == "clarification":
                 request.budget.authorise_tool_call()
-                response = self.surface.answer_clarification(str(incident.get("clarification", "")))
+                response = self.surface.answer_clarification(clarification_answer(incident))
             elif needs == "confirmation":
                 request.budget.authorise_tool_call()
                 response = self.surface.confirm_plan(str(response["plan_id"]))
@@ -183,9 +208,9 @@ class PromisePatchArm:
         """The same words arm A reads, from the same read, so the facts are identical."""
         request.budget.authorise_tool_call()
         incident = request.world.invoke("get_incident", {})
-        if "utterance" not in incident:
+        if not str(incident.get(REPORTED, "")).strip():
             raise HarnessFailureError(
-                f"get_incident returned no utterance for {request.scenario_id}; no arm can be "
+                f"get_incident returned no {REPORTED!r} for {request.scenario_id}; no arm can be "
                 "driven from an incident nobody reported"
             )
         return incident

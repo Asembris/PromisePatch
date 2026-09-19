@@ -396,7 +396,7 @@ SETTLED = {
 
 def test_the_promisepatch_arm_touches_only_the_five_mcp_tools_and_the_workspace_approval() -> None:
     """The whole of arm B's contact with the product, recorded rather than reviewed."""
-    world = SyntheticWorld(responses={"get_incident": {"utterance": "the delivery did not come"}})
+    world = SyntheticWorld(responses={"get_incident": {"reported": "the delivery did not come"}})
     surface = surface_for([PLANNED, SETTLED, SETTLED, SETTLED, SETTLED, SETTLED])
 
     PromisePatchArm(surface=surface).run(request_for(world))
@@ -437,8 +437,8 @@ def test_the_surface_waits_until_the_case_has_stopped_moving() -> None:
 
 def test_the_ablated_arm_drives_the_same_binding_and_adds_only_its_log() -> None:
     """Arm C composes arm B, so 'drive PromisePatch' has exactly one implementation."""
-    full_world = SyntheticWorld(responses={"get_incident": {"utterance": "no raspberries"}})
-    ablated_world = SyntheticWorld(responses={"get_incident": {"utterance": "no raspberries"}})
+    full_world = SyntheticWorld(responses={"get_incident": {"reported": "no raspberries"}})
+    ablated_world = SyntheticWorld(responses={"get_incident": {"reported": "no raspberries"}})
     full_surface = surface_for([PLANNED, SETTLED, SETTLED, SETTLED, SETTLED])
     ablated_surface = surface_for([PLANNED, SETTLED, SETTLED, SETTLED, SETTLED])
 
