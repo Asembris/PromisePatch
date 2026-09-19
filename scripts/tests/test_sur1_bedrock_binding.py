@@ -16,7 +16,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import pytest
-
 from scripts.sur1.adapters import ARGUMENTS, KICKOFF, BaselineArm, tool_specifications
 from scripts.sur1.arms import AttemptRequest, ModelReply
 from scripts.sur1.bindings import is_real
@@ -318,7 +317,7 @@ def sent_tool_names(request: Mapping[str, Any]) -> Sequence[str]:
 
 
 def test_a_scripted_reply_cannot_be_mistaken_for_a_provider() -> None:
-    from scripts.sur1.doubles import ScriptExhaustedError, ScriptedModel
+    from scripts.sur1.doubles import ScriptedModel, ScriptExhaustedError
 
     model = ScriptedModel(replies=[ModelReply(text="one")])
     model.converse(system="s", messages=[], tools=[])
