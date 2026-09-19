@@ -210,3 +210,59 @@ def test_the_compose_worker_can_be_waited_on() -> None:
 
     assert "healthcheck" in worker, "the worker has no signal `docker compose up --wait` can use"
     assert worker["healthcheck"]["test"][0] == "CMD"
+
+
+# ------------------------------------- handing the worker back must not re-seed the database
+
+
+@dataclass(slots=True)
+class RecordedCompose:
+    """Stands in for ``docker compose``, recording every argv and answering ``ps`` as running."""
+
+    calls: list[list[str]] = field(default_factory=list)
+
+    def __call__(self, argv: list[str], **_: Any) -> Any:
+        import subprocess
+
+        self.calls.append(list(argv))
+        stdout = '{"Service": "worker", "State": "running"}' if "ps" in argv else ""
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+    def argv_for(self, verb: str) -> list[str]:
+        return next(argv for argv in self.calls if verb in argv)
+
+
+def test_resuming_the_worker_does_not_rerun_the_services_it_depends_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--no-deps``, without which handing the worker back destroys the installed world.
+
+    The worker declares ``depends_on: seed``, and compose satisfies that by *re-running* seed --
+    which is ``pp reset-demo-state``. Observed live on 2026-09-20: a sentinel written into
+    ``fixture_state`` was replaced by ``hollow-oak`` by the resume alone, after the install had
+    landed and ``verify`` had passed. Every attempt would have been driven at the canonical demo
+    fixture rather than at its scenario's world.
+    """
+    import subprocess
+
+    from scripts.sur1.bindings import lifecycle
+
+    compose = RecordedCompose()
+    monkeypatch.setattr(subprocess, "run", compose)
+
+    assert lifecycle.ComposeWorkerControl().resume() == "worker:running"
+
+    argv = compose.argv_for("up")
+    assert "--no-deps" in argv, f"resume would re-run the worker's dependencies: {argv}"
+    assert "--wait" in argv, "resume must still block on the worker's own healthcheck"
+
+
+def test_the_service_a_resume_must_not_rerun_is_the_one_that_resets_the_database() -> None:
+    """Why ``--no-deps`` is load-bearing, read from compose rather than asserted in prose."""
+    import yaml
+
+    document = yaml.safe_load(Path("docker-compose.yml").read_text(encoding="utf-8"))
+
+    depends = document["services"]["worker"]["depends_on"]
+    assert "seed" in depends, "this test is about a dependency the worker no longer declares"
+    assert document["services"]["seed"]["command"] == ["pp", "reset-demo-state"]
