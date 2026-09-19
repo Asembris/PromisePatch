@@ -91,10 +91,17 @@ class EventFiringError(RuntimeError):
 
 
 class ObservedMessage(Protocol):
-    """The two fields of a channel record a trigger is allowed to see."""
+    """The two fields of a channel record a trigger is allowed to see.
 
-    channel_address: str
-    direction: str
+    Read-only members, so a frozen record satisfies it. The channel receiver hands back immutable
+    messages and a trigger has no business being able to write to one anyway.
+    """
+
+    @property
+    def channel_address(self) -> str: ...
+
+    @property
+    def direction(self) -> str: ...
 
 
 @dataclass(frozen=True, slots=True)
