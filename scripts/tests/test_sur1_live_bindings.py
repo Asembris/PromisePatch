@@ -77,6 +77,14 @@ class OrderSystem:
     """One real simulator, on a loopback port, with a store of its own."""
 
     base_url: str
+    timeout_seconds: float = 60.0
+    """Generous, because this is a setup step and not the thing under test.
+
+    The server is on loopback and answers in milliseconds when the machine is idle; a developer
+    box whose virus scanner has just noticed a new SQLite file has taken fifteen seconds. A
+    tight timeout here turns that into a failing assertion about the receiver, which is the one
+    thing this file must not report falsely.
+    """
 
     def amend(self, *, order: str, line: str, was: str, now: str, key: str, version: int) -> None:
         import httpx2
@@ -95,7 +103,7 @@ class OrderSystem:
             f"{self.base_url}/orders/{order}/amendments",
             content=request.model_dump_json(),
             headers={"Content-Type": "application/json", "Idempotency-Key": key},
-            timeout=10.0,
+            timeout=self.timeout_seconds,
         )
         assert answer.status_code == 200, answer.text
 
@@ -106,7 +114,7 @@ class OrderSystem:
             f"{self.base_url}/ui/orders/{order}/lines/{line}",
             data={"to_item_id": to_item},
             follow_redirects=False,
-            timeout=10.0,
+            timeout=self.timeout_seconds,
         )
         assert answer.status_code in (200, 303), answer.text
 
@@ -180,9 +188,12 @@ def test_an_event_before_the_attempt_started_is_not_read_as_this_attempt_s_effec
 ) -> None:
     """Rule B6: an external change is somebody else's command, whenever it happened."""
     order_system.operator_change(order="EXT-D", line="ol-d", to_item="rv-lemon-curd-1")
-    time.sleep(0.01)
+    # Wider than the system clock's own granularity, which is about 16ms on Windows: two
+    # ``now()`` calls either side of a shorter pause can return the same instant, and the
+    # earlier event would then sit exactly on the boundary rather than before it.
+    time.sleep(0.1)
     since = datetime.now(UTC)
-    time.sleep(0.01)
+    time.sleep(0.1)
     order_system.amend(
         order="EXT-D",
         line="ol-d",
