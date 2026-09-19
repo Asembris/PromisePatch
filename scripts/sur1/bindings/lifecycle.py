@@ -69,7 +69,15 @@ T = TypeVar("T")
 class WorkerControl(Protocol):
     """Whatever can put the durable worker down and bring it back, and say which it is."""
 
-    binding_kind: str
+    @property
+    def binding_kind(self) -> str:
+        """Read-only, so an implementation may be frozen. A control is configuration, not state.
+
+        Declared as a property rather than as an attribute -- which is how
+        :class:`~scripts.sur1.bindings.consentdoor.ConsentDoor` declares the same member -- so
+        that a frozen dataclass satisfies it. A mutable attribute satisfies it too, so nothing
+        that already exists is excluded.
+        """
 
     def state(self) -> str: ...
 
