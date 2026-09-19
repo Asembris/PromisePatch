@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Final
 
-DRIVER_VERSION: Final = "1.1.0"
+DRIVER_VERSION: Final = "1.1.1"
 """Bumped whenever the driving or the evidence collection changes. Recorded in every capture.
 
 ``1.0.0`` drove the first scored run, ``20260919T2020Z-scored``, which is preserved exactly as
@@ -34,4 +34,10 @@ install and the installed world is read back before an arm is driven, and three 
 checks were added to the preflight. No frozen benchmark element moved -- not the manifest, the
 prompt, the scorer, the ground truth, the budgets or the retry rules. See
 ``docs/benchmarks/sur1-execution-revision.v2.md``.
+
+``1.1.1`` is that revision with one defect removed, found by exercising it against the live
+stack rather than against stand-ins: handing the worker back re-ran the service the worker
+depends on, which is ``pp reset-demo-state``, so the resume destroyed the world the install had
+just landed and ``verify`` had just confirmed. Neither run was taken under ``1.1.0``, so nothing
+is reinterpreted. See ``docs/benchmarks/sur1-revision-v2-live-validation.md``.
 """
