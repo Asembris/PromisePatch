@@ -222,10 +222,26 @@ row shape and are scored identically.
 > asserts it. **No hash moved here:** the rules SHA is over `scripts/sur1/predeclaration.py`, which
 > is untouched. See [`sur1-consent-ingress.md`](../sur1-consent-ingress.md).
 
+> **Recorded later, beside this document and not into it — execution revision `v2`.** One scored
+> run has since been taken under this predeclaration, `20260919T2020Z-scored`, and it is
+> inconclusive: 24 of its 27 attempts ended `HARNESS_FAILURE` for reasons that have nothing to do
+> with what any arm decided. Three measurement-system defects were corrected afterwards — the
+> order system's published event projection is now asked for before a run is bought, the world's
+> two writes into PromisePatch's own tables are now audited, and the durable worker is now stopped
+> while a world is installed. **Nothing this predeclaration declares moved**: the `asserts_change`
+> rule, the `E4` projection, the reading rules and `PREDECLARATION_SHA` are all untouched, and so
+> are the manifest, the prompt, the scorer, the ground truth, the budgets and the retry policy.
+> What moved is named in
+> [`sur1-execution-revision.v2.md`](sur1-execution-revision.v2.md). Any later run is a **corrected
+> execution beside** `20260919T2020Z-scored`, never its replacement.
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any
   `SUR-1` attempt, and no verdict exists.
+  *Recorded later:* one has. `20260919T2020Z-scored` was driven on 2026-09-19, spent
+  `AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE`, and is published inconclusive and unaltered. See
+  [`sur1-first-scored-run-defect.md`](../sur1-first-scored-run-defect.md).
 - **It calls no model**, reads no AWS resource, and spends no part of
   `AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE`.
 - **It edits no frozen document.** The manifest, the baseline prompt and the scorer are unchanged

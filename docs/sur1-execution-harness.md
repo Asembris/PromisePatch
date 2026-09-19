@@ -23,6 +23,13 @@ pointed at a `SUR-1` scenario.
 | Scorer | `scripts/score_safe_useful_recovery.py` v1.0.0, unchanged |
 | Runs taken | **none** |
 
+> **Recorded later, beside the table above and not into it.** One run has since been taken —
+> `20260919T2020Z-scored`, on 2026-09-19, under driver `1.0.0` — and it is published inconclusive
+> and unaltered: [`sur1-first-scored-run-defect.md`](sur1-first-scored-run-defect.md). Three
+> measurement-system defects it exposed were corrected afterwards and the driver is now `1.1.0`;
+> the benchmark, the prompt and the scorer are unchanged. See
+> [`sur1-execution-revision.v2.md`](benchmarks/sur1-execution-revision.v2.md).
+
 ## Why it lives in `scripts/`
 
 Beside the frozen scorer and verifier, and outside every application.

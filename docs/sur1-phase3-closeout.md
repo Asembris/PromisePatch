@@ -191,6 +191,14 @@ recorded as git tree identities at the closeout commit, so a later reader can ch
 Beneath those trees the finer identities of §3 continue to be recomputed by the preflight on every
 scored run, and `DRIVER_VERSION` is `1.0.0`.
 
+> **Recorded later, beside this block and not into it.** The four requirements below were
+> exercised for the first time after the first scored run came back inconclusive. The named
+> defects, the disclosure, the re-frozen identities and the separation of sessions are all in
+> [`sur1-execution-revision.v2.md`](benchmarks/sur1-execution-revision.v2.md). Under that
+> revision `DRIVER_VERSION` is `1.1.0` and `implementation_sha` is `9a80ce0d…3990e1`; every other
+> identity in §3 is unchanged, and the scope-freeze tree hashes above are the `f4618c9` ones and
+> are history rather than the current tree.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an
