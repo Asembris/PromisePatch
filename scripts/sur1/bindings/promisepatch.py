@@ -232,23 +232,35 @@ class WorkspaceClient:
 
         This is the durable human approval ADR-0018 says a confirmation spends and cannot
         create. Recording it twice records it once, so a retry is safe and is not a second
-        authority for one agreement.
+        authority for one agreement -- which is what makes signing in again and re-posting a
+        recovery rather than a second yes.
         """
-        import httpx2
-
         if not self._csrf:
             self.sign_in()
-        answer = httpx2.post(
+        answer = self._post(case_id=case_id, plan_id=plan_id)
+        if answer.status_code == 401:
+            # The session this client held is gone, and the ordinary reason is the one that
+            # matters here: preparing a scenario's world runs the product's own governed fixture
+            # load, which truncates ``sessions``. So the worker signs in again and approves
+            # again. It is the same credential and the same person; what expired was a cookie.
+            # Once, and only for a 401: a refusal for any other reason is a refusal.
+            self.sign_in()
+            answer = self._post(case_id=case_id, plan_id=plan_id)
+        if answer.status_code not in (200, 201):
+            raise SurfaceError(f"the workspace refused the approval: {answer.status_code}")
+        body: Mapping[str, Any] = answer.json()
+        return body
+
+    def _post(self, *, case_id: str, plan_id: str) -> Any:
+        import httpx2
+
+        return httpx2.post(
             f"{self.base_url}/api/conversation/approve",
             json={"case_id": case_id, "plan_id": plan_id},
             headers={"Origin": self.origin, CSRF_HEADER: self._csrf},
             cookies=self._cookies,
             timeout=self.timeout_seconds,
         )
-        if answer.status_code not in (200, 201):
-            raise SurfaceError(f"the workspace refused the approval: {answer.status_code}")
-        body: Mapping[str, Any] = answer.json()
-        return body
 
 
 # --------------------------------------------------------------------------- the worker surface
