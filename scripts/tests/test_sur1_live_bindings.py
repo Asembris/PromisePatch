@@ -455,8 +455,10 @@ def test_a_settled_case_is_detected_although_every_answer_carries_a_new_correlat
 
     answer = surface.report_exception("the raspberries did not arrive")
 
+    tools = surface.tools
+    assert isinstance(tools, CorrelatedTools)
     assert answer["needs"] is None
-    assert surface.tools.status_calls == QUIET_READINGS + 1
+    assert tools.status_calls == QUIET_READINGS + 1
 
 
 def test_the_whole_attempt_shares_one_waiting_deadline_rather_than_one_per_wait() -> None:
