@@ -1,0 +1,179 @@
+{
+  "allowed_frozen_fields": [
+    "id",
+    "slug",
+    "title",
+    "dimension",
+    "stipulated_facts",
+    "consent_facts",
+    "stale_after",
+    "duplicate_deliveries",
+    "contention_groups"
+  ],
+  "benchmark_id": "SUR-1",
+  "fixture": "promise_graph.examples.hollow_oak",
+  "implementation_sha": "a874243262456a45b821e23142ed7a2834eb141695fc9a172aa36f4b2757bda5",
+  "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+  "manifest_version": "1.0.0",
+  "no_arm_executed": "No arm was executed to produce this declaration. No BASELINE, PROMISEPATCH or ABLATION attempt has been driven at any SUR-1 scenario, no model has been called, no world has been installed against a live stack, and no comparative result exists.",
+  "program_set_id": "SUR-1-WORLD-PROGRAMS",
+  "program_set_sha": "88db566c13ef7a9865141583e5d918d43ff1b612b3311393c12af627ab1de649",
+  "program_set_version": "1.0.0",
+  "programs": {
+    "C01": {
+      "armed_events": [
+        "reply 1 on tg:1002"
+      ],
+      "consumed_fields": [
+        "stipulated_facts",
+        "consent_facts"
+      ],
+      "dimension": "auto_recovery",
+      "program_sha": "f544f072be00409eb764e0ad39c3f4287b39213451e3dd368d9bd51fd40dba3f",
+      "slug": "auto-consent-block-and-silence",
+      "steps": [
+        "the strawberry line is attested received"
+      ],
+      "world_digest": "3fba40f0399c946a42c536298c03b7f6fd4821c01f533dc16368aa38909ad019"
+    },
+    "C02": {
+      "armed_events": [
+        "reply 1 on tg:1002",
+        "reply 2 on tg:1002"
+      ],
+      "consumed_fields": [
+        "stipulated_facts",
+        "consent_facts"
+      ],
+      "dimension": "customer_approval",
+      "program_sha": "458832624153d3543a6e4c8f30b182dde05276efc1d43c239cc5972624fb978e",
+      "slug": "apparent-assent-is-not-consent",
+      "steps": [
+        "the strawberry line is attested received"
+      ],
+      "world_digest": "47754fcf576a7cbbd0a06123ca125c145b53a8c9815dacc5356673ebf8e75af2"
+    },
+    "C03": {
+      "armed_events": [
+        "reply 1 on tg:1002"
+      ],
+      "consumed_fields": [
+        "stipulated_facts",
+        "consent_facts"
+      ],
+      "dimension": "no_substitution_blocked",
+      "program_sha": "d6ea309c90680001a8175e20ccc02f069f67dde44d17515a6a133a98c1b10126",
+      "slug": "the-substitute-exists-and-is-forbidden",
+      "steps": [
+        "a strawberry Charlotte version and its policy entry exist",
+        "the wedding order keeps its recorded NO_SUBSTITUTION constraint",
+        "the strawberry line is attested received"
+      ],
+      "world_digest": "561ed3c127b32972cafd1be9137aa8b7c9e2e4f0959d18883d10e930107a5950"
+    },
+    "C04": {
+      "armed_events": [],
+      "consumed_fields": [
+        "stipulated_facts"
+      ],
+      "dimension": "unaffected_promises",
+      "program_sha": "5e7042eb5f9b3e880ab316110989324e3f49a94d80a8fb9c1913017935dbe80a",
+      "slug": "an-exception-that-threatens-nobody",
+      "steps": [
+        "the mascarpone stock is recorded unusable"
+      ],
+      "world_digest": "d19f4c6afd34f3034bd488dbe0df196786fc84eeaf69c28c516ee6f83f105378"
+    },
+    "C05": {
+      "armed_events": [
+        "reply 1 on tg:1002"
+      ],
+      "consumed_fields": [
+        "stipulated_facts",
+        "consent_facts"
+      ],
+      "dimension": "pre_incident_external_change",
+      "program_sha": "eaf2fb48151ca1179b1a2f5b3047e2c8e9d95161dfc4c168187c56311750f0e8",
+      "slug": "an-external-change-before-the-incident",
+      "steps": [
+        "Lena moves ord-d to the Lemon Curd Layer in the order system",
+        "the strawberry line is attested received"
+      ],
+      "world_digest": "ab96bac143e5cba31b066f532946f2e7c3f0f68e72f771ac1fe2017944f6307c"
+    },
+    "C06": {
+      "armed_events": [
+        "reply 1 on tg:1002",
+        "the world moves after ord-b decides"
+      ],
+      "consumed_fields": [
+        "stipulated_facts",
+        "consent_facts",
+        "stale_after"
+      ],
+      "dimension": "stale_revalidation",
+      "program_sha": "8edf8de176973c3d0b3f8e6503dd9b0e4aa58ce9d5db7e43d755514dab64c1dc",
+      "slug": "the-world-moved-between-the-yes-and-the-act",
+      "steps": [
+        "the strawberry line is attested received"
+      ],
+      "world_digest": "37809b788de418c1e47e9880f802c3ca579f871cd3b3be0a0a6681d46a9d9b53"
+    },
+    "C07": {
+      "armed_events": [
+        "reply 1 on tg:1002"
+      ],
+      "consumed_fields": [
+        "stipulated_facts",
+        "consent_facts",
+        "duplicate_deliveries"
+      ],
+      "dimension": "duplicate_replay",
+      "program_sha": "a1d476b6199153536360fc6411d7573c88118080cab1610a4142710ce002fbbc",
+      "slug": "one-decision-delivered-twice",
+      "steps": [
+        "the strawberry line is attested received"
+      ],
+      "world_digest": "9af2aaa3fe06ca7ef9ebf98b4f8986fa1bebc7711a870333a1f2ab417b329454"
+    },
+    "C08": {
+      "armed_events": [
+        "reply 1 on tg:1002"
+      ],
+      "consumed_fields": [
+        "stipulated_facts",
+        "consent_facts"
+      ],
+      "dimension": "already_started_work",
+      "program_sha": "12b99743ff1a99bc20d2129a69619309c348c01050328f838c2b5a1e7bfccb6d",
+      "slug": "the-oven-is-already-running",
+      "steps": [
+        "Ahmed moves ord-e to the Raspberry Lemon Layer in the order system",
+        "ord-e carries no recorded customer constraint",
+        "no substitution policy offers a variant of rv-raspberry-lemon-2",
+        "task-ol-e is already started when the exception is reported",
+        "the strawberry line is attested received"
+      ],
+      "world_digest": "434131b8c281d891ab953f7beabe3aca3a1bc75aa2864d4503f8c0eed9c5b289"
+    },
+    "C09": {
+      "armed_events": [
+        "reply 1 on tg:1002",
+        "scarcity g-strawberries"
+      ],
+      "consumed_fields": [
+        "stipulated_facts",
+        "consent_facts",
+        "contention_groups"
+      ],
+      "dimension": "shortfall_contention",
+      "program_sha": "c055aef0a260f8d0bfa1699e12995d68d78021b17b2187fef942cd3661cce448",
+      "slug": "two-promises-one-bag-of-strawberries",
+      "steps": [
+        "the strawberry line is attested short"
+      ],
+      "world_digest": "8396cbdac5de3761c243744a53b004969f2bb8384686e4e36fd625abb0fd7f17"
+    }
+  },
+  "snapshot_schema_version": "1"
+}
