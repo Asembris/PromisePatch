@@ -105,7 +105,9 @@ measurement would break the contract's own promise that no production file chang
 
 ## The scored-run preflight
 
-Nine checks, asked before an arm is constructed, a world is prepared or a transport is opened.
+Eleven checks, asked before an arm is constructed, a world is prepared or a transport is opened.
+Nine were asked when this record was written; `world_program_freeze` and `event_blinding` arrived
+with the world programs and the armed events.
 
 | # | check | refuses when |
 |---:|---|---|
@@ -116,8 +118,13 @@ Nine checks, asked before an arm is constructed, a world is prepared or a transp
 | 5 | `receivers` | a receiver does not answer |
 | 6 | `classifier_identity` | the rule is undeclared, is not the declared one, or has moved |
 | 7 | `world_programs` | a selected scenario cannot be prepared |
-| 8 | `output_directory` | the directory is neither new nor a resumable run of this experiment |
-| 9 | `blinding` | an arm name is reachable from a bundle or from the scorer |
+| 8 | `world_program_freeze` | the programs are not the frozen nine at their published digests |
+| 9 | `output_directory` | the directory is neither new nor a resumable run of this experiment |
+| 10 | `blinding` | an arm name is reachable from a bundle or from the scorer |
+| 11 | `event_blinding` | a world event's firing path can name an arm, an answer or a reading |
+
+The names are pinned as `preflight.REQUIRED_CHECKS`, which is what a scored authorisation refuses
+to be minted without.
 
 **It reads and never writes.** It opens clients and recomputes hashes; it creates no run
 directory, mints no token, prepares no world and calls no model. Invoking the model to find out
@@ -144,6 +151,14 @@ driver to the bindings package or duplicating the check somewhere it could only 
 the gate lives in one place and `run.py` is the way a run is taken. A caller who imports the
 driver and bypasses `run.py` has bypassed the preflight, and that is a fact about the entry point
 rather than a property of the gate.
+
+> **Since closed, and by neither of those two means.** A passing scored preflight now returns a
+> capability bound to the inputs it checked, and `drive()` and `open_run()` ask for the object.
+> The driver did not gain a dependency on the bindings package and the checks were not duplicated:
+> it re-observes a fingerprint from the objects it was handed and claims the capability against it,
+> once. `driver.drive()` stays callable for development and for the tests that prove its rules;
+> what it stopped being able to do is produce a scored artefact around the preflight. See
+> [`sur1-scored-authorisation.md`](sur1-scored-authorisation.md).
 
 ## How this was validated without consuming `SUR-1`
 
