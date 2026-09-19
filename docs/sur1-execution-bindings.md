@@ -136,6 +136,15 @@ unusable during the work that prepares a scored run.
 uv run python -m scripts.sur1.run --run-id <id> --preflight
 ```
 
+**The boundary this leaves, named rather than implied.** `driver.drive()` is still callable
+directly, and called that way it enforces only what it always did — the frozen identities, and its
+refusal of a scored run under an undeclared rule. It is not given the bindings and cannot ask the
+other seven questions. Tightening it to demand a passing preflight would mean either coupling the
+driver to the bindings package or duplicating the check somewhere it could only be approximate, so
+the gate lives in one place and `run.py` is the way a run is taken. A caller who imports the
+driver and bypasses `run.py` has bypassed the preflight, and that is a fact about the entry point
+rather than a property of the gate.
+
 ## How this was validated without consuming `SUR-1`
 
 Four new modules under `scripts/tests/`, 101 tests, beneath the directory's existing `conftest.py`,
