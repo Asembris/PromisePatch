@@ -449,9 +449,70 @@ def restore(config: BindingConfig) -> dict[str, Any]:
     return {
         "reset_demo_state": {
             "returncode": completed.returncode,
+            "stdout": completed.stdout.strip()[-400:],
             "stderr": completed.stderr.strip()[-400:],
         },
         "order_system_reset": simulator,
+    }
+
+
+def restored(bench: Bench) -> dict[str, Any]:
+    """Read the restored world back and say whether it is the Hollow Oak demo again.
+
+    Read from the live systems rather than from the reset's own return value, for the reason
+    :func:`readback` gives: a reset that reported success while writing nothing would pass a
+    check made of its own answer.
+
+    ``cases`` is expected to be empty. ``reset_demo_state`` replaces every domain row the product
+    owns, and the canonical demo case is provisioned by the worker at start-up, so it returns on
+    the next ``docker compose restart worker`` or ``pp ensure-demo-case`` and not before. An empty
+    case table is the honest post-reset state and is reported rather than corrected here.
+    """
+    database = bench.world.database
+    settled = database.rows(
+        "WORLD",
+        "SELECT id FROM commitment_lines WHERE received_state <> 'EXPECTED' ORDER BY id",
+    )
+    strawberries = database.rows(
+        "WORLD",
+        "SELECT sum(delta) FROM inventory_ledger WHERE resource_id = 'res-strawberries'",
+    )
+    harness_rows = database.rows(
+        "WORLD",
+        "SELECT source_id FROM inventory_ledger WHERE source_id LIKE 'sur1:%' ORDER BY source_id",
+    )
+    cases = database.rows("WORLD", "SELECT count(*) FROM cases")
+    replies = database.rows("WORLD", "SELECT count(*) FROM inbound_replies")
+    orders = bench.world.orders.snapshot()
+    versions = {
+        str(order["external_id"]): int(order["version"]) for order in orders.get("orders") or ()
+    }
+    pinned = {
+        str(entry["external_id"]): str(entry["pinned_version"])
+        for entry in bench.contract.document["fixture"]["orders"].values()
+    }
+    items = {
+        str(order["external_id"]): [
+            str(line.get("external_item_id")) for line in order.get("lines") or ()
+        ]
+        for order in orders.get("orders") or ()
+    }
+    checks = {
+        "no_settled_commitment_line": [str(row[0]) for row in settled] == [],
+        "strawberries_back_to_fixture": str(strawberries[0][0]) == "2.000",
+        "no_harness_ledger_postings": [str(row[0]) for row in harness_rows] == [],
+        "no_cases": int(cases[0][0]) == 0,
+        "no_inbound_replies": int(replies[0][0]) == 0,
+        "every_order_at_version_one": set(versions.values()) == {1},
+        "every_line_back_to_its_pinned_version": all(
+            items.get(external) == [version] for external, version in pinned.items()
+        ),
+    }
+    return {
+        "checks": checks,
+        "restored": all(checks.values()),
+        "strawberries_on_hand": str(strawberries[0][0]),
+        "order_versions": versions,
     }
 
 
@@ -491,6 +552,7 @@ def rehearse(
     report["customer_deliveries"] = bench.world.receipts()
     if reset_at_exit:
         report["restore"] = restore(config)
+        report["restored"] = restored(bench)
     report["finished_at"] = datetime.now(UTC).isoformat()
     write_once(directory.path / _report_name(directory), report)
     return report
