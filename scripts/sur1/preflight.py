@@ -5,7 +5,7 @@ policy permits no second opinion. So everything that would make the resulting nu
 something other than what it appears to mean is asked **before** an arm is constructed, in one
 place, and any failure refuses the run.
 
-Thirteen checks, and each is a fact rather than a promise:
+Fourteen checks, and each is a fact rather than a promise:
 
 1. the three frozen identities recompute to their published values;
 2. all three bindings say they are real, so a run cannot be driven by a double;
@@ -13,14 +13,16 @@ Thirteen checks, and each is a fact rather than a promise:
 4. every credential and address a scored run needs is configured;
 5. the workspace origin is set, is well formed, and is one this API actually accepts;
 6. every receiver answers, so no scenario is voided for an unreadable source afterwards;
-7. the ``asserts_change`` rule is the declared one and hashes to its published identity;
-8. every selected scenario has a world program that builds the world it declares;
-9. the nine programs are the frozen nine, at their published hashes, and nothing on their
-   preparation path can name a field that says what a correct answer is;
-10. the world names the clock its scenarios are installed at;
-11. the output directory is new, or is a resumable run of the same experiment;
-12. nothing on the scoring path can reach an arm's name;
-13. nothing that fires a world event can name an arm, an answer or a scorer's reading.
+7. the world holds a customer-consent door and the API behind it verifies signed links, so a
+   stipulated reply reaches the product and not only the channel record;
+8. the ``asserts_change`` rule is the declared one and hashes to its published identity;
+9. every selected scenario has a world program that builds the world it declares;
+10. the nine programs are the frozen nine, at their published hashes, and nothing on their
+    preparation path can name a field that says what a correct answer is;
+11. the world names the clock its scenarios are installed at;
+12. the output directory is new, or is a resumable run of the same experiment;
+13. nothing on the scoring path can reach an arm's name;
+14. nothing that fires a world event can name an arm, an answer or a scorer's reading.
 
 **A preflight reads and never writes.** It opens clients, asks services whether they are ready
 and recomputes hashes. It creates no run directory, mints no token, prepares no world and calls
@@ -71,6 +73,7 @@ REQUIRED_CHECKS: Final = (
     "configuration",
     "workspace_origin",
     "receivers",
+    "consent_ingress",
     "classifier_identity",
     "world_programs",
     "world_program_freeze",
@@ -301,6 +304,43 @@ def receivers(*, world: object, surface: object) -> Check:
     )
 
 
+def consent_ingress(*, world: object) -> Check:
+    """The world can deliver a stipulated reply to the product, not only to the record.
+
+    Without this, a run takes every reading it would otherwise take and the customer replies
+    reach a Python list: no approval request is bound, no sender is compared against the channel
+    the request was sent to, no deadline is checked and the literal parser never runs. The
+    baseline is unaffected -- it has no consent protocol and needs the reply only to exist -- so
+    the damage is arm-correlated and invisible in the numbers. That is what makes this a refusal
+    rather than a warning.
+
+    Asked in two parts, because two different things can be wrong. A world carrying no door
+    cannot deliver at all. A process that mints no customer link signs nothing and therefore
+    verifies nothing, and answers ``503`` to every token -- so the probe presents a token that
+    cannot verify and requires the surface to say ``404``, which is the answer of a surface that
+    read a link and refused it. Nothing is written by either part.
+    """
+    door = getattr(world, "consent_door", None)
+    if door is None:
+        return Check(
+            "consent_ingress",
+            False,
+            "this world carries no customer-consent door, so a stipulated reply would reach the "
+            "channel record and never reach PromisePatch; every scenario needing a literal yes "
+            "would understate recovery, and only for the arms that have a consent protocol",
+        )
+    if not is_real(door):
+        return Check(
+            "consent_ingress",
+            False,
+            "a scored run cannot deliver consent through a stand-in door",
+        )
+    answer = door.probe()
+    if not answer.reachable:
+        return Check("consent_ingress", False, answer.detail)
+    return Check("consent_ingress", True, answer.detail)
+
+
 def classifier_identity(classifier: OutboundClassifier) -> Check:
     """The ``asserts_change`` rule is declared, and is the one whose identity was published."""
     if classifier is UNDETERMINED:
@@ -453,7 +493,7 @@ def world_clock(*, world: object) -> Check:
     )
 
 
-EVENT_MODULES: Final = ("events", "worldsink")
+EVENT_MODULES: Final = ("events", "worldsink", "consentdoor")
 """The modules that decide when a declared world event fires and what it does.
 
 Named here rather than inferred, because the whole value of the check below is that adding a
@@ -503,10 +543,15 @@ def event_blinding() -> Check:
 
 def _event_sources() -> tuple[Path, ...]:
     """The files the firing path is made of, resolved from the modules themselves."""
+    from scripts.sur1.bindings import consentdoor as consentdoor_module
     from scripts.sur1.bindings import events as events_module
     from scripts.sur1.bindings import worldsink as worldsink_module
 
-    by_name = {"events": events_module, "worldsink": worldsink_module}
+    by_name = {
+        "events": events_module,
+        "worldsink": worldsink_module,
+        "consentdoor": consentdoor_module,
+    }
     return tuple(Path(by_name[name].__file__ or "") for name in EVENT_MODULES)
 
 
@@ -664,6 +709,7 @@ def preflight(
         configuration(config),
         workspace_origin(config=config, surface=surface),
         receivers(world=world, surface=surface),
+        consent_ingress(world=world),
         classifier_identity(classifier),
         world_programs(selected),
         world_program_freeze(contract),
@@ -739,6 +785,7 @@ __all__ = [
     "blinding",
     "classifier_identity",
     "configuration",
+    "consent_ingress",
     "event_blinding",
     "frozen_identities",
     "ground_truth_reachable",

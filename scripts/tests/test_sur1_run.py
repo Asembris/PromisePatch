@@ -162,6 +162,7 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
     assert [check.name for check in report.failures] == [
         "workspace_origin",
         "receivers",
+        "consent_ingress",
         "classifier_identity",
     ], "a development run reports the undetermined rule rather than being refused for it"
 

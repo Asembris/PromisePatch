@@ -73,6 +73,15 @@ class ReachableBinding:
     March 2026 anchor and every scenario ends ``NEEDS_HUMAN_INTERPRETATION``. See ADR-0019.
     """
 
+    consent_door: ReachableBinding | None = None
+    """A world binding's customer-consent door. ``None`` for every binding that is not a world.
+
+    *Every precondition true* also includes being able to deliver a stipulated reply to the
+    product rather than only to the channel record. A world without a door leaves the arms with
+    a consent protocol waiting on a customer who was never asked, and leaves the baseline whole
+    -- which is the one kind of defect a comparative number cannot show.
+    """
+
     def identity(self) -> Mapping[str, Any]:
         return dict(self.payload)
 
@@ -111,10 +120,12 @@ RUN_ANCHOR = datetime(2026, 9, 19, 13, 0, tzinfo=UTC)
 
 def world(**overrides: Any) -> ReachableBinding:
     """A world binding that reaches nothing and has been placed in time by the declared rule."""
+    fixed = {"clock", "consent_door"}
     return ReachableBinding(
         source="WORLD",
         clock=overrides.get("clock", RunClock(anchor=RUN_ANCHOR, timezone="Africa/Tunis")),
-        **{name: value for name, value in overrides.items() if name != "clock"},
+        consent_door=overrides.get("consent_door", ReachableBinding(source="CONSENT")),
+        **{name: value for name, value in overrides.items() if name not in fixed},
     )
 
 
@@ -422,6 +433,7 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "configuration",
         "workspace_origin",
         "receivers",
+        "consent_ingress",
         "classifier_identity",
         "world_programs",
         "world_program_freeze",
