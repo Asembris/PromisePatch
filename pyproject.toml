@@ -143,6 +143,12 @@ ignore_missing_imports = true
 module = ["jmespath.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# The SUR-1 receivers read PostgreSQL rows over psycopg, which ships no stubs. Reads only: the
+# two evidence sources that are rows are read through it, and nothing in `scripts/sur1` writes.
+module = ["psycopg.*"]
+ignore_missing_imports = true
+
 # The OpenAI SDK does ship `py.typed`, and this override is not about its types: it is an
 # evaluation-group dependency, so the job that type-checks the backend alone installs none of
 # the evaluation tree and would otherwise fail on a missing stub for a module that is deferred
