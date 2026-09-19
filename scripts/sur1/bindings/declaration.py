@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from scripts.sur1.bindings import clock as clock_module
+from scripts.sur1.bindings import consentdoor as consentdoor_module
 from scripts.sur1.bindings import events as events_module
 from scripts.sur1.bindings import programs as programs_module
 from scripts.sur1.bindings import realisation as realisation_module
@@ -79,6 +80,7 @@ IMPLEMENTATION_MODULES: Final = (
     setup_module,
     events_module,
     worldsink_module,
+    consentdoor_module,
     clock_module,
 )
 """Every module whose source decides what a program is or what its world looks like.
@@ -86,11 +88,14 @@ IMPLEMENTATION_MODULES: Final = (
 Setup is in the list because it resolves the registry and defines what a step may reach; a
 change there can change what a program does without changing a line any program declares.
 
-The event model and the world sink are in it for the same reason and one more: they decide what
-a declared event observes and what it does, which is the rest of what a scenario's world is.
-They are also the modules the structural blindness checks walk, so listing them here is what
-makes a trigger that started reading an arm or an answer a parse failure rather than a review
-question.
+The event model, the world sink and the consent door are in it for the same reason and one
+more: they decide what a declared event observes and what it does, which is the rest of what a
+scenario's world is. The door is in the list because it decides whether a stipulated reply
+reaches the deciding system at all -- a change there moves what arms with a consent protocol
+receive, while every world digest holds still, which is exactly the failure this hash exists
+for. They are also the modules the structural blindness checks walk, so listing them here is
+what makes a trigger that started reading an arm or an answer a parse failure rather than a
+review question.
 
 The clock is in it because *where in time* a world is installed decides whether its commitments
 fall inside the bakery day, and therefore which clarification a scenario asks and whether any
