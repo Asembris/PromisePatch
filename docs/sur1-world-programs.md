@@ -79,6 +79,13 @@ The arithmetic the contract states is what the ledger actually holds: 8.0 kg of 
 every receipt scenario (2.0 on hand plus 6.0 arriving), 3.0 kg for `C09` (2.0 plus 1.0), and zero
 mascarpone for `C04`. A test asserts each one off the prepared world rather than off the prose.
 
+One piece of wording is the harness's and not the document's. Each program carries the incident
+every arm reads through `get_incident`: the report and the scope answer are the contract's own
+words, but the contract says only that the report is *ambiguous in scope* and never writes the
+question down. `SCOPE_QUESTION` is therefore the harness's phrasing of that ambiguity, stated as a
+module constant so it is visible as a choice, and it is one wording seen identically by all three
+arms — which is the property that matters.
+
 ### Two kinds of step, and the difference matters
 
 **A step that changes the world** — `AttestCommitmentLine`, `SpoilStock`, `AuthorVariant`,
