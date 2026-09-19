@@ -19,7 +19,7 @@
  * and the reads behind the screen are the real ones throughout.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { analysedCase } from './stack'
+import { analysedCase, lookAroundRealCase } from './stack'
 
 const CANONICAL_REPORT = "today's raspberry delivery didn't arrive"
 const RASPBERRY_ONLY = 'just raspberries - the strawberries came'
@@ -35,8 +35,7 @@ test.beforeAll(async () => {
 
 /** Arrive the way a judge arrives: one press, no credentials. */
 async function lookAround(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
 }
 
 /** The case the address bar names. */

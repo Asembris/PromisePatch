@@ -19,6 +19,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
   caseStatus,
+  lookAroundRealCase,
   promisePatchAPI,
   reportCase,
   resetDemoState,
@@ -73,10 +74,8 @@ async function csrfToken(page: Page): Promise<string> {
 test('a judge reaches a real case in one action, with nothing typed', async ({ page }) => {
   await page.goto('/')
 
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
+  await lookAroundRealCase(page)
 
-  const workspace = page.getByTestId('case-workspace')
-  await expect(workspace).toBeVisible()
   // A case, not a list -- and the case id is in the address bar, so a reload returns to it.
   await expect(page).toHaveURL(/\?case=/)
   await expect(page.getByTestId('band-what-happened')).toBeVisible()
@@ -86,8 +85,7 @@ test('a judge reaches a real case in one action, with nothing typed', async ({ p
 
 test('a judge is offered no control that would change the case', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
 
   await expect(page.getByTestId('conversation-read-only')).toBeVisible()
   await expect(page.getByTestId('conversation-confirm')).toHaveCount(0)
@@ -96,8 +94,7 @@ test('a judge is offered no control that would change the case', async ({ page }
 
 test('a judge is refused by the domain even reaching past the screen', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
   const before = await caseStatus(caseId)
 
   // Past the screen entirely, with this browser's own session and its own CSRF token: the
@@ -114,8 +111,7 @@ test('a judge is refused by the domain even reaching past the screen', async ({ 
 
 test('a judge holding no CSRF token is refused before the domain is asked', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
 
   const refused = await page.request.post('/api/conversation/clarify', {
     data: { command_id: crypto.randomUUID(), case_id: caseId, text: RASPBERRY_ONLY },
@@ -129,8 +125,7 @@ test('the internal intent API is not published on the origin a browser is sent t
   page,
 }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
 
   const refused = await page.request.post('/internal/intents/report', {
     headers: { 'X-CSRF-Token': await csrfToken(page) },
@@ -145,8 +140,7 @@ test('the internal intent API is not published on the origin a browser is sent t
 
 test('a browser session is not a service token, at the API itself', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
 
   // Straight at the API, where `/internal` genuinely is served, carrying this browser's own
   // session cookie -- cookies ignore ports, so it really does arrive. The two doors stay
@@ -190,8 +184,7 @@ test('a judge can tell the four outcomes apart on one screen', async ({ page }) 
   // The canonical landing state: planned, nothing done, and every band populated at once.
   await waitForHeadline(caseId, 'PLANNED')
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
 
   // One incident, drawn once, above every path out of it.
   await expect(page.getByTestId('incident-source')).toHaveCount(1)

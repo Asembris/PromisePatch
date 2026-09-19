@@ -16,7 +16,7 @@
  * `tests/accessibility.test.tsx`.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { analysedCase } from './stack'
+import { analysedCase, lookAroundRealCase } from './stack'
 
 const SIZES = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -59,8 +59,7 @@ test.beforeAll(async ({ browser }, testInfo) => {
   })
   const page = await context.newPage()
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
   await context.storageState({ path: JUDGE_SESSION })
   await context.close()
 })

@@ -14,6 +14,7 @@ import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { expect, type Page } from '@playwright/test'
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const OPERATOR_ENV = resolve(REPOSITORY_ROOT, 'docker', 'env', 'migrate.env')
@@ -98,6 +99,32 @@ export function resetOrderSystem(): void {
     { cwd: REPOSITORY_ROOT },
   )
   void response
+}
+
+/**
+ * Press the judge entry and land on a case, or fail saying what the backend actually refused.
+ *
+ * Every spec here that arrives as a judge does these two lines, and done literally they hide
+ * their own failure: the screen draws `judge-entry-error` with the endpoint's message in it,
+ * the workspace never appears, and `toBeVisible()` waits the full expect timeout and then
+ * reports that an element was not found. A minute spent proving nothing, and a CI log that
+ * names no cause.
+ *
+ * So both outcomes are waited for, and the refusal is read out. Nothing is tolerated that was
+ * not tolerated before -- the workspace must still open, and a refused press still fails the
+ * test -- it fails immediately and with the reason instead of silently and without one.
+ */
+export async function lookAroundRealCase(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Look around a real case' }).click()
+
+  const workspace = page.getByTestId('case-workspace')
+  const refused = page.getByTestId('judge-entry-error')
+  await expect(workspace.or(refused).first()).toBeVisible()
+
+  if (await refused.isVisible()) {
+    throw new Error(`the judge entry was refused: ${(await refused.innerText()).trim()}`)
+  }
+  await expect(workspace).toBeVisible()
 }
 
 // ------------------------------------------------- opening a case, from outside the browser

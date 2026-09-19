@@ -110,6 +110,38 @@ function retryTransportFailures(failureCount: number, error: Error): boolean {
   return failureCount < 2
 }
 
+/**
+ * React Query's own backoff, restated for the one request that is not behind a query.
+ *
+ * Immediate is the wrong interval here. The failure this covers is a backend that has not
+ * finished waking up, and asking it again in the same millisecond is asking the same question
+ * of the same unready process.
+ */
+function backoffFor(failureCount: number): number {
+  return Math.min(1_000 * 2 ** (failureCount - 1), 30_000)
+}
+
+/**
+ * Run one request under the retry policy every read in this file already has.
+ *
+ * `useQuery` gets that policy from `retry` and `useMutation` can only apply one to its whole
+ * body, which is no use when half the body opens a session and the other half must not be
+ * repeated for a reason the server has already given. So the one request that needs it says so
+ * directly, with the same predicate and the same backoff, and the decision about what is worth
+ * retrying stays in `retryTransportFailures` rather than being made twice.
+ */
+async function withTransportRetry<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let failures = 0; ; ) {
+    try {
+      return await attempt()
+    } catch (error) {
+      failures += 1
+      if (!(error instanceof Error) || !retryTransportFailures(failures, error)) throw error
+      await new Promise((settle) => setTimeout(settle, backoffFor(failures)))
+    }
+  }
+}
+
 export function useMe(): UseQueryResult<WorkerResponse | null, Error> {
   return useQuery({
     queryKey: meKey,
@@ -229,6 +261,13 @@ export const NO_CASE_TO_OPEN =
  * first would strand a judge on the sign-in screen with the button enabled, no error and nothing
  * happening, which is exactly the silent failure `recoverFromFailure` above exists to prevent.
  *
+ * **Both halves, and that now includes the first one.** Giving the list read a retry left the
+ * request *before* it -- the one that opens the session at all -- as the only step in the whole
+ * path with nothing behind it: the queries recover every two seconds while they are failing,
+ * `useCase` recovers after the workspace opens, and a single unlucky `POST /api/auth/demo-session`
+ * recovered never, because a mutation has no such timer and nobody presses a button twice when
+ * the screen already shows an error. `withTransportRetry` closes that, under the same predicate.
+ *
  * It also throws rather than resolving to nothing when there is no case to open. A deployment
  * with an empty list cannot honour this button, and saying so is the only honest answer -- the
  * alternative is a press that visibly does nothing, which reads as a broken product rather than
@@ -238,7 +277,13 @@ export function useDemoSession(): UseMutationResult<string, Error, void> {
   const client = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const worker = await openDemoSession()
+      // Under the same retry as the read below, and for the same reason. This is the first
+      // request the product makes on anybody's behalf, it is the only one with nothing in
+      // front of it, and a mutation has no `refetchInterval` to recover on -- so a single
+      // transport failure here left a judge looking at an error beside an enabled button with
+      // nothing retrying anything, which is the exact silence this pair of retries exists to
+      // prevent. A 429 and a 401 are still answers and are still not retried.
+      const worker = await withTransportRetry(openDemoSession)
       // The list is read before the principal is seeded, and the order is the whole behaviour.
       // Seeding `me` is what moves the shell off this screen, so doing it first would carry a
       // judge away from the only place the failure below can be drawn -- and strand them on a

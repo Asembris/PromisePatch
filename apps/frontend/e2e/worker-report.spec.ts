@@ -20,7 +20,7 @@
  *   button's.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { workerCredentials } from './stack'
+import { lookAroundRealCase, workerCredentials } from './stack'
 
 const credentials = workerCredentials()
 
@@ -70,8 +70,7 @@ test('a worker with no case open reports what happened, and the case is the back
 
 test('the landing surface offers a judge no way to report anything', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
 
   // Back to the surface that carries the control, as the observer.
   await page.getByRole('button', { name: '← All cases' }).click()
@@ -83,8 +82,7 @@ test('the landing surface offers a judge no way to report anything', async ({ pa
 
 test('a judge reaching past the screen is refused the report by the domain', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Look around a real case' }).click()
-  await expect(page.getByTestId('case-workspace')).toBeVisible()
+  await lookAroundRealCase(page)
 
   const cookies = await page.context().cookies()
   const csrf = cookies.find((cookie) => cookie.name === 'pp_csrf')?.value

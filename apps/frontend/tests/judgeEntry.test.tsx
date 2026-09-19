@@ -215,6 +215,63 @@ describe('the judge entry', () => {
     stream.close()
   })
 
+  it('opens the session again when the first attempt fails on a cold backend', async () => {
+    // The symmetric half of the test above, and the one that was missing. Giving the case list
+    // a retry left the request in front of it -- the one that opens the session at all -- as
+    // the only step in the whole path with nothing behind it: the queries recover every two
+    // seconds while they fail and `useCase` recovers once the workspace is open, but a mutation
+    // has no such timer, so a single unlucky POST stranded a judge in front of an error beside
+    // an enabled button for as long as they cared to look at it.
+    let attempts = 0
+    const stream = new FakeStream()
+    mockBackend(
+      signedOut({
+        [DEMO_SESSION]: () => {
+          attempts += 1
+          if (attempts === 1) return apiError(503, 'UNAVAILABLE', 'not ready yet')
+          return json(JUDGE)
+        },
+        '/api/promises': () => json(PROMISES),
+        '/api/resources': () => json(RESOURCES),
+        '/api/cases': () => json(CASES),
+        [CASE_PATH]: () => json(OBSERVED_CASE),
+        '/events': () => streamResponse(stream),
+      }),
+    )
+    renderApp()
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: /look around a real case/i }))
+
+    expect(
+      await screen.findByTestId('case-workspace', undefined, { timeout: 10_000 }),
+    ).toHaveAttribute('data-case-id', CASE_ID)
+    expect(attempts).toBeGreaterThan(1)
+    stream.close()
+  })
+
+  it('does not open a second session when the first was refused by an answer', async () => {
+    // A 429 and a 401 are decisions. Retrying one spends a second request confirming what the
+    // first said -- and on this endpoint in particular, a retry of "too many demo sessions"
+    // would be the screen making the thing it is being refused for slightly worse.
+    let attempts = 0
+    mockBackend(
+      signedOut({
+        [DEMO_SESSION]: () => {
+          attempts += 1
+          return apiError(429, 'TOO_MANY_ATTEMPTS', 'too many demo sessions from this client')
+        },
+      }),
+    )
+    renderApp()
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: /look around a real case/i }))
+
+    expect(await screen.findByTestId('judge-entry-error')).toBeInTheDocument()
+    expect(attempts).toBe(1)
+  })
+
   it('says there is nothing to look at rather than pressing into an empty list', async () => {
     mockBackend(
       signedOut({
