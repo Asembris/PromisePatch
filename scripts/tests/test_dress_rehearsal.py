@@ -377,7 +377,7 @@ def sink(*payloads: dict[str, object]) -> CustomerLinkSink:
 
 def test_the_reply_goes_to_the_harness_record_only_when_no_link_was_sent() -> None:
     """An arm that opened no approval request has no link, so there is no ingress to reach."""
-    made = sink({"channel_address": "tg:1002", "approval_url": None})
+    made = sink({"channel_kind": "telegram", "channel_address": "1002", "approval_url": None})
     receipt = made.deliver_reply(
         message_id="m-1", channel="tg:1002", order="ord-b", text="YES", delivery=1, deliveries=1
     )
@@ -389,7 +389,13 @@ def test_the_reply_goes_to_the_harness_record_only_when_no_link_was_sent() -> No
 
 
 def test_a_link_on_another_channel_is_not_used_for_this_one() -> None:
-    made = sink({"channel_address": "tg:1005", "approval_url": "http://x/?approve=v1.aaa.bbb"})
+    made = sink(
+        {
+            "channel_kind": "telegram",
+            "channel_address": "1005",
+            "approval_url": "http://x/?approve=v1.aaa.bbb",
+        }
+    )
     made.deliver_reply(
         message_id="m-1", channel="tg:1002", order="ord-b", text="YES", delivery=1, deliveries=1
     )
@@ -397,7 +403,13 @@ def test_a_link_on_another_channel_is_not_used_for_this_one() -> None:
 
 
 def test_a_reply_that_is_not_a_literal_decision_has_no_button_and_is_refused() -> None:
-    made = sink({"channel_address": "tg:1002", "approval_url": "http://x/?approve=v1.aaa.bbb"})
+    made = sink(
+        {
+            "channel_kind": "telegram",
+            "channel_address": "1002",
+            "approval_url": "http://x/?approve=v1.aaa.bbb",
+        }
+    )
     with pytest.raises(RehearsalIngressError, match="no button"):
         made.deliver_reply(
             message_id="m-1",
@@ -520,3 +532,31 @@ def test_the_worker_surface_calls_each_mcp_tool_by_the_name_it_publishes() -> No
         published = published_parameters(name)
         assert arguments <= published, f"{name} was called with {sorted(arguments - published)}"
     assert {name for name, _ in tools.sent} == {"report", "clarify", "confirm", "status"}
+
+
+def test_the_link_is_found_under_the_identity_the_arming_and_the_fixture_speak() -> None:
+    """The row stores a kind and a bare address; everything else speaks the joined identity.
+
+    Read the other way round this matched nothing, every reply quietly took the fallback door,
+    and PromisePatch waited for a customer whose answer had been recorded somewhere it could
+    never see. The fallback is correct for an arm with no request and wrong for one with a link,
+    and the only thing telling them apart is this comparison.
+    """
+    made = sink(
+        {
+            "channel_kind": "telegram",
+            "channel_address": "1002",
+            "approval_url": "http://x/?approve=v1.aaa.bbb",
+        }
+    )
+
+    with pytest.raises(RehearsalIngressError, match="unreachable"):
+        made.deliver_reply(
+            message_id="m-1",
+            channel="tg:1002",
+            order="ord-b",
+            text="YES",
+            delivery=1,
+            deliveries=1,
+        )
+    assert made.channel.messages == [], "the link was found, so the fallback door was not used"

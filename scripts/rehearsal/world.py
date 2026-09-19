@@ -58,6 +58,7 @@ from scripts.sur1.bindings.receivers import (
     DatabaseReader,
     OrderSystemReceiver,
     ReceiverUnreadableError,
+    channel_identity,
 )
 from scripts.sur1.bindings.worldsink import LedgerWriter
 from scripts.sur1.evidence import INBOUND, ChannelMessage
@@ -222,7 +223,10 @@ class CustomerLinkSink:
             return None
         for (payload,) in rows:
             body = payload if isinstance(payload, dict) else json.loads(payload)
-            if str(body.get("channel_address", "")) != channel:
+            # The identity the arming and the fixture speak, not the bare address the row
+            # stores. Read the other way round, this matched nothing and every reply quietly
+            # took the fallback door -- which is a reply PromisePatch never receives.
+            if channel_identity(body) != channel:
                 continue
             url = body.get("approval_url")
             if not url:
