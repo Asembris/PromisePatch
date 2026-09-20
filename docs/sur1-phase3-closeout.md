@@ -266,7 +266,7 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > | `scripts/rehearsal/` | `f1f1d195114b92f443c43f1f375dab38fd443d2d` |
 > | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
 > | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
-> | `docs/benchmarks/` | `c49c1eb7834f6a736ec16baeac28d1b011be39e6` — **unchanged** by this work |
+> | `docs/benchmarks/` | `bac50288bb8bb8cca2726c1c349a2e1780ec9a41` — moved only by this change's own disclosure beside the predeclaration; `PREDECLARATION_SHA` hashes the rules in code and is unmoved |
 >
 > Requirement 4 holds: no run was taken. `DR01` is still owed — it did not complete, and what it
 > therefore does not say is listed in that record's section 5.
