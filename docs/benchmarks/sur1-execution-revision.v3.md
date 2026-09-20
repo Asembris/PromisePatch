@@ -197,6 +197,26 @@ rests on a statement that has become false is not a freeze. What the freeze actu
 the nine programs were fixed before any outcome was seen — is unchanged and is still its first
 sentence. `program_set_sha`, all nine program hashes and all nine world digests are unmoved.
 
+### 5.2 The scope freeze, re-recorded
+
+`sur1-phase3-closeout.md` §8 records the scope freeze as git tree identities; `v2` §4.2 re-recorded
+them. Two of the four have moved under this revision and two have not. Checkable with
+`git rev-parse <sha>:<path>` rather than trusted:
+
+| Path | Tree / blob at this revision | |
+|---|---|---|
+| `scripts/sur1/` | `7a31faa35e76ada8efe5a6f6c8a05558dbf15e23` | moved |
+| `scripts/rehearsal/` | `b64d6a64114b3770b7f43c4b7c6ae530b6511d1f` | moved — one line, the installer target |
+| `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` | **unchanged — the scorer** |
+| `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` | moved — the installer target |
+
+The scorer blob is byte-identical to the one `v2` §4.2 recorded, which is the identity that matters
+most here: nothing in this revision can have changed how anything is scored.
+
+`docs/benchmarks/` is deliberately not listed, for the reason `v2` §4.2 gives: this document lives
+in it. The identities that matter beneath it are in §5 and the preflight recomputes every one of
+them on every scored run.
+
 ## 6. Both prior runs are byte-identical
 
 Hashed the way the freeze hashes a module set — path, then bytes, sorted, `\r\n` normalised:
