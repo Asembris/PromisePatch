@@ -1,0 +1,116 @@
+{
+  "attempt": {
+    "arm_token": "tok-488452dcdecae3f8",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 0
+    },
+    "evidence_ref": "tok-488452dcdecae3f8-DR01-a1.json",
+    "finished_at": "2026-09-20T22:19:04.843431+00:00",
+    "latency_seconds": 5.046999999998661,
+    "note": "KeyError: 'run_report_schema'",
+    "retried": false,
+    "run_id": "dr01-h",
+    "scenario_id": "DR01",
+    "started_at": "2026-09-20T22:18:59.795425+00:00",
+    "status": "HARNESS_FAILURE"
+  },
+  "diagnostics": {
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [],
+      "worker": "DESKTOP-OKFJLHE:11956:560de435"
+    }
+  },
+  "evidence": {
+    "E1": [],
+    "E2": [],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": null,
+    "contradictions": [],
+    "unreadable_sources": [
+      "E4"
+    ]
+  },
+  "run": {
+    "baseline_prompt_sha": "not-applicable-to-a-rehearsal",
+    "benchmark_id": "DR-REHEARSAL",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.4.2",
+    "kind": "development",
+    "manifest_sha": "95b05fde5c3f008ee8ac8d4b0f4357a750742a0d7fb53e778f9fd81fc65be8e5",
+    "model_configuration": {
+      "api": "scripts.sur1.doubles.ScriptedModel",
+      "model_id": "scripted-rehearsal-double",
+      "provider": "none",
+      "temperature": 0.0
+    },
+    "run_id": "dr01-h",
+    "scorer_version": "rehearsal-1.0.0"
+  }
+}

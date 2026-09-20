@@ -1,0 +1,256 @@
+{
+  "attempt": {
+    "arm_token": "tok-1d1037dd3ab18e3f",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 4
+    },
+    "evidence_ref": "tok-1d1037dd3ab18e3f-DR01-a1.json",
+    "finished_at": "2026-09-20T22:19:23.992635+00:00",
+    "latency_seconds": 19.14100000000326,
+    "note": "",
+    "retried": false,
+    "run_id": "dr01-h",
+    "scenario_id": "DR01",
+    "started_at": "2026-09-20T22:19:04.849652+00:00",
+    "status": "PENDING_SCORE"
+  },
+  "diagnostics": {
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [
+        {
+          "check": 1,
+          "name": "track and case are waiting",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 2,
+          "name": "order state and version unchanged",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 3,
+          "name": "pinned recipe version unchanged",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 4,
+          "name": "constraint snapshot unchanged",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 5,
+          "name": "substitute still available",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 6,
+          "name": "production task not started and still ahead",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 7,
+          "name": "approval deadline not passed",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 8,
+          "name": "sender is the order's approval channel",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 9,
+          "name": "decision came from the literal parser",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        },
+        {
+          "check": 10,
+          "name": "one unspent decision, bound to this plan",
+          "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+        }
+      ],
+      "worker": "DESKTOP-OKFJLHE:11956:435e86f6"
+    },
+    "settled": "quiescent after 2 idle cycles"
+  },
+  "evidence": {
+    "E1": [
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-A",
+        "idempotency_key": "pp:amend:02dda990-28b5-5484-9320-1462fc0c21d0:5231680d-c00d-5d1d-b2f0-ac5577902660:1",
+        "line_external_item_id": "rv-raspberry-almond-4",
+        "occurred_at": "2026-09-20T22:19:13.776402+00:00",
+        "previous_version": 1,
+        "version": 2
+      },
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-B",
+        "idempotency_key": "pp:amend:770b997c-dd00-5185-942d-23497cb5228f:e6e706ef-f421-52c5-b038-6378badfe0be:1",
+        "line_external_item_id": "rv-raspberry-rose-3",
+        "occurred_at": "2026-09-20T22:19:16.574429+00:00",
+        "previous_version": 1,
+        "version": 2
+      }
+    ],
+    "E2": [
+      {
+        "accepted_at": "2026-09-20T22:19:13.514818+00:00",
+        "channel_address": "tg:1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "fake-f09b62bb03f7",
+        "text": "Hello Tomas Lindqvist,\n\nAn ingredient for your order EXT-B, due 2026-09-21 09:30 (Africa/Tunis) did not arrive, so we cannot make it exactly as ordered.\n\nWe propose to make Raspberry Rose Cake (v3) instead of Raspberry Rose Cake (v2).\nThat change uses strawberries in place of raspberries.\n\nChange reference: OPT-E6E706\n\nReply YES to approve this change or NO to decline it. If you decline, the bakery will follow up."
+      },
+      {
+        "accepted_at": "2026-09-20T22:19:14.674495+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "link:697bca57-0f35-5249-bea6-64054728b3dc",
+        "text": "yes"
+      }
+    ],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": "f37dce76-a1c6-5691-8d91-379d81128b73",
+        "held_by_this_attempt": true,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": "f37dce76-a1c6-5691-8d91-379d81128b73",
+        "held_by_this_attempt": true,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": {
+      "acknowledged_stops": [],
+      "exception_recorded": true,
+      "promises": [
+        {
+          "claimed_stopped": false,
+          "order": "ord-a",
+          "outcome": "RECOVERED",
+          "reason": "changed",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-b",
+          "outcome": "RECOVERED",
+          "reason": "changed",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-c",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-d",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-e",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-f",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        }
+      ],
+      "scenario_id": "DR01"
+    },
+    "contradictions": [],
+    "unreadable_sources": []
+  },
+  "run": {
+    "baseline_prompt_sha": "not-applicable-to-a-rehearsal",
+    "benchmark_id": "DR-REHEARSAL",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.4.2",
+    "kind": "development",
+    "manifest_sha": "95b05fde5c3f008ee8ac8d4b0f4357a750742a0d7fb53e778f9fd81fc65be8e5",
+    "model_configuration": {
+      "api": "scripts.sur1.doubles.ScriptedModel",
+      "model_id": "scripted-rehearsal-double",
+      "provider": "none",
+      "temperature": 0.0
+    },
+    "run_id": "dr01-h",
+    "scorer_version": "rehearsal-1.0.0"
+  }
+}
