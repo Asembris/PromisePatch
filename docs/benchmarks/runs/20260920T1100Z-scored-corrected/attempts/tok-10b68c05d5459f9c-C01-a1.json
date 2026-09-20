@@ -1,0 +1,55 @@
+{
+  "attempt": {
+    "arm_token": "tok-10b68c05d5459f9c",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 0
+    },
+    "evidence_ref": "tok-10b68c05d5459f9c-C01-a1.json",
+    "finished_at": "2026-09-20T11:02:22.752503+00:00",
+    "latency_seconds": 7.484000000000378,
+    "note": "PreparationError: the fixture load resolved aws-1-eu-west-1.pooler.supabase.com:5432/postgres and the receivers read 127.0.0.1:55432/promisepatch; installing a world into one database and reading evidence out of another would produce readings about a world that was never installed. Load the local environment (scripts/with_local_env.py) so both name the same database.",
+    "retried": false,
+    "run_id": "20260920T1100Z-scored-corrected",
+    "scenario_id": "C01",
+    "started_at": "2026-09-20T11:02:15.271406+00:00",
+    "status": "HARNESS_FAILURE"
+  },
+  "diagnostics": {},
+  "evidence": {
+    "E1": [],
+    "E2": [],
+    "E3": [],
+    "E4": null,
+    "contradictions": [],
+    "unreadable_sources": [
+      "E4"
+    ]
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.1.1",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260920T1100Z-scored-corrected",
+    "scorer_version": "1.0.0"
+  }
+}
