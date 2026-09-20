@@ -269,6 +269,7 @@ layers = [
     "promisepatch.api",
     "promisepatch.orchestrator",
     "promisepatch.mcp",
+    "promisepatch.runtime_identity",
     "promisepatch.integrations",
     "promisepatch.provisioning",
     "promisepatch.domain",

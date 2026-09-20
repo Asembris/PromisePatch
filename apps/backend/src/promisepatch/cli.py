@@ -41,8 +41,7 @@ from promisepatch.domain import (
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 from promisepatch.integrations import build_semantic_provider
-from promisepatch.integrations.bedrock import CONVERSE_API as BEDROCK_CONVERSE_API
-from promisepatch.integrations.bedrock import TEMPERATURE as BEDROCK_TEMPERATURE
+from promisepatch.runtime_identity import runtime_identity
 from promisepatch.semantic import ClassifyReplyIntentRequest, SemanticError, UntrustedText
 
 app = typer.Typer(
@@ -283,31 +282,20 @@ def runtime_identity_command() -> None:
     It is printed by the process that holds the configuration, so it is the answer for
     **this** container -- which for ``worker`` is the process that executes semantic jobs.
 
+    **It also says which code it is running.** ``source_digest`` is computed over the bytes of
+    the three packages this process actually imported, so two processes that publish the same
+    digest are running the same behaviour and a stale image cannot report a fresh one. An image
+    built before the code being measured served a scored run once already.
+
     **No secret can appear here.** The Region, the model id and the provider are configuration
     rather than credentials; whether a credential *resolves* is reported as a boolean and the
-    credential itself is never read into the output. Nothing is called: resolving a provider
+    credential itself is never read into the output. The database is reported as
+    ``user@host:port/dbname`` with no password in it. Nothing is called: resolving a provider
     reads settings, and the AWS credential chain is asked whether it resolves, not used.
     """
     settings = get_settings()
-    identity: dict[str, object] = {
-        "service": "promisepatch",
-        "env": settings.env,
-        "llm_provider": settings.llm_provider.value,
-        "demo_session_enabled": settings.demo_session_enabled,
-        "explanation_verbalisation": settings.explanation_verbalisation,
-    }
-    if settings.llm_provider is LlmProvider.BEDROCK:
-        identity.update(
-            {
-                "api": BEDROCK_CONVERSE_API,
-                "model_id": settings.bedrock_model_id.strip(),
-                "region": settings.aws_region.strip(),
-                "temperature": BEDROCK_TEMPERATURE,
-                "max_attempts": settings.bedrock_max_attempts,
-                "timeout_seconds": settings.bedrock_timeout_seconds,
-                "credential_resolves": _credential_resolves(),
-            }
-        )
+    resolves = _credential_resolves() if settings.llm_provider is LlmProvider.BEDROCK else None
+    identity = runtime_identity(settings, credential_resolves=resolves)
     typer.echo(json.dumps(identity, sort_keys=True))
 
 
