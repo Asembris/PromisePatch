@@ -394,13 +394,24 @@ PRESERVED_RUNS = {
         57,
         "e2a46c35b53902c817b9602999bb84f3df82cd3c7b425cb813551e7817364bca",
     ),
+    "20260920T1215Z-scored-v3": (
+        57,
+        "403622ecd45a34723517556570d1b154c3f11f0e1fcaf9201856eeff6b9e18ca",
+    ),
 }
-"""Both scored runs, hashed the way the freeze hashes a module set: path, then bytes, sorted.
+"""All three scored runs, hashed the way the freeze hashes a module set: path, then bytes, sorted.
 
 If one of these fails, something edited a published run. The right response is to restore it and
-never to update the constant. The second run is pinned here for the first time; the first was
-already pinned in ``test_sur1_harness_correction`` and is pinned again beside it deliberately,
-because the claim this correction has to make is about *both*.
+never to update the constant. The third is pinned here for the first time, and this is where the
+pin stops being about corrections and starts being about a run that was **invalid**: the session
+that proves a run meaningless is exactly the session most likely to tidy it away. It is preserved
+because a benchmark that deletes its failures publishes a number about a history that no longer
+exists.
+
+Restated here rather than imported from :data:`scripts.sur1.preflight.PUBLISHED_RUNS`, which is
+where the run's own preflight asks the same question before spending again. Two independent
+copies is the point -- a single edit to either is caught by the other, and
+:func:`test_the_preflight_pins_the_same_runs_this_file_does` is what holds them together.
 """
 
 
@@ -420,6 +431,34 @@ def test_a_published_scored_run_is_byte_identical_to_what_was_taken(run_id: str)
 
     assert len(files) == expected_files
     assert hasher.hexdigest() == expected_digest
+
+
+def test_the_preflight_pins_the_same_runs_this_file_does() -> None:
+    """Two copies of the pin, so editing one is caught by the other."""
+    from scripts.sur1.preflight import PUBLISHED_RUNS
+
+    assert dict(PUBLISHED_RUNS) == PRESERVED_RUNS
+
+
+def test_the_third_scored_run_is_preserved_exactly_as_it_came_out() -> None:
+    """Read out of the artefact. It is invalid, it is unaltered, and it stays that way.
+
+    Its baseline addressed every message to a bare address nothing could place, its other two
+    arms were driven at a world the worker's own start-up had contaminated against a product
+    holding the deterministic fake, and its ablated arm was arm B by construction. None of that
+    is repaired here or anywhere. See ``docs/sur1-v3-forensic-audit.md``.
+    """
+    import json
+    from collections import Counter
+
+    root = Path("docs/benchmarks/runs/20260920T1215Z-scored-v3")
+    verdicts = Counter(
+        json.loads(path.read_text(encoding="utf-8"))["outcome"]
+        for path in sorted((root / "verdicts").glob("*.json"))
+    )
+
+    assert sum(verdicts.values()) == 27
+    assert verdicts["HARNESS_FAILURE"] == 8, "the baseline could not be placed on eight scenarios"
 
 
 def test_the_second_scored_run_still_says_it_reached_no_model() -> None:
