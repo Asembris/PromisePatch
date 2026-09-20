@@ -14,18 +14,22 @@ production file changes for arm C.
 **The session that builds this is not the session that runs it.** Nothing here has been driven
 against a ``SUR-1`` scenario, no model has been reached, and no comparative number exists.
 
-Recorded later: two scored runs have since been taken. ``20260919T2020Z-scored`` on 2026-09-19 is
-published inconclusive and unaltered -- 24 of its 27 attempts ended ``HARNESS_FAILURE``.
-``20260920T1100Z-scored-corrected`` on 2026-09-20 failed in preparation on all 27 attempts,
-reached no model and spent nothing. Nothing here supersedes either. See
-``docs/sur1-first-scored-run-defect.md`` and ``docs/sur1-corrected-scored-run-refusal.md``.
+Recorded later: three scored runs have since been taken and all three are preserved exactly as
+they came out. ``20260919T2020Z-scored`` on 2026-09-19 is published inconclusive -- 24 of its 27
+attempts ended ``HARNESS_FAILURE``. ``20260920T1100Z-scored-corrected`` on 2026-09-20 failed in
+preparation on all 27 attempts, reached no model and spent nothing.
+``20260920T1215Z-scored-v3`` on 2026-09-20 is published **invalid**: five arm-correlated defects
+were later proved in it, none of which any preflight question asked about. Nothing here
+supersedes any of them. See ``docs/sur1-first-scored-run-defect.md``,
+``docs/sur1-corrected-scored-run-refusal.md``, ``docs/sur1-v3-forensic-audit.md`` and
+``docs/sur1-parity-correction.md``.
 """
 
 from __future__ import annotations
 
 from typing import Final
 
-DRIVER_VERSION: Final = "1.2.0"
+DRIVER_VERSION: Final = "1.3.0"
 """Bumped whenever the driving or the evidence collection changes. Recorded in every capture.
 
 ``1.0.0`` drove the first scored run, ``20260919T2020Z-scored``, which is preserved exactly as
@@ -53,4 +57,18 @@ and receivers name different databases before the run is authorised. No frozen b
 moved -- not the manifest, the prompt, the scorer, the ground truth, the budgets or the retry
 rules. Neither published run was taken under ``1.2.0``, so neither is reinterpreted. See
 ``docs/benchmarks/sur1-execution-revision.v3.md``.
+
+``1.2.0`` drove the third scored run, ``20260920T1215Z-scored-v3``, which is preserved exactly as
+it came out. It is published **invalid**: its baseline was never answered on any scenario, its
+other two arms were driven at a contaminated world against a product holding the deterministic
+fake, and its ablated arm was arm B by construction.
+
+``1.3.0`` is the parity correction. The harness transport resolves one channel identity instead
+of recording whichever spelling it was handed; the report tool publishes the frozen ``RunReport``
+schema instead of a bare object; arm A's tool calls are captured as bounded diagnostics; the
+installation lifecycle re-reads the world after the worker returns and refuses an undeclared
+change; and the preflight grew seven questions, one of which -- ``ablation_reach`` -- refuses
+every topology that exists today. No frozen benchmark element moved: not the manifest, the
+prompt, the scorer, the ground truth, the budgets, the retry rules or a world program. No run has
+been taken under it. See ``docs/sur1-parity-correction.md``.
 """

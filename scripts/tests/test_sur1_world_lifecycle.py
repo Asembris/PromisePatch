@@ -68,23 +68,108 @@ class ScriptedWorker:
 
 @dataclass(slots=True)
 class ReadsFixtureState:
-    """A database reader that answers one query: which world the product says is loaded."""
+    """A database reader answering the queries the lifecycle asks of an installed world.
+
+    Which world the product says is loaded, the counts of the tables only a case's own work
+    writes into, and the two tables a world program legitimately writes. ``opened_cases`` is how
+    a test says "something wrote into this world while the worker was coming back" -- which is
+    exactly what the worker's demo provisioning did on all 27 attempts of the third scored run.
+    """
 
     fixture_name: str | None
     url: str = "postgresql://reader@127.0.0.1:55432/promisepatch"
     seen: list[str] = field(default_factory=list)
+    opened_cases: int = 0
+    task_state: str = "SCHEDULED"
 
     def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
         self.seen.append(statement)
-        if self.fixture_name is None:
-            return []
-        return [(self.fixture_name, "a-digest")]
+        if "fixture_state" in statement:
+            if self.fixture_name is None:
+                return []
+            return [(self.fixture_name, "a-digest")]
+        if "count(*) FROM cases" in statement:
+            return [(self.opened_cases,)]
+        if "count(*)" in statement:
+            return [(0,)]
+        if "commitment_lines" in statement:
+            return [("cl-vp-today-raspberries", "EXPECTED")]
+        if "production_tasks" in statement:
+            return [("task-ol-a", self.task_state, None)]
+        return []
 
 
 def lifecycle(worker: Any, database: Any) -> Any:
     from scripts.sur1.bindings.lifecycle import InstallationLifecycle
 
     return InstallationLifecycle(worker=worker, database=database)
+
+
+def test_a_world_that_changed_while_the_worker_came_back_refuses_the_attempt() -> None:
+    """The defect that lost 27 attempts: provisioning opened a case inside the installed world.
+
+    ``verify`` ran before ``resume`` and nothing read the world again, so an arm was driven at a
+    world holding an undeclared case, an undeclared exception and an undeclared attestation. See
+    ``docs/sur1-v3-forensic-audit.md`` section 2.
+    """
+    from scripts.sur1.bindings.setup import PreparationError
+
+    database = ReadsFixtureState(fixture_name="hollow-oak+sur1-C01")
+    worker = ContaminatingWorker(database=database)
+
+    with pytest.raises(PreparationError, match="nobody declared"):
+        lifecycle(worker, database).around("C01", lambda: "installed")
+
+    assert worker.log == ["quiesce", "resume"], "the worker is still handed back"
+
+
+def test_a_world_nothing_touched_while_the_worker_came_back_is_driven() -> None:
+    database = ReadsFixtureState(fixture_name="hollow-oak+sur1-C01")
+
+    assert lifecycle(ScriptedWorker(), database).around("C01", lambda: "installed") == "installed"
+
+
+def test_the_world_is_read_once_before_the_worker_returns_and_once_after() -> None:
+    """A single verify is what a contaminated world passes; two reads are what catch it."""
+    database = ReadsFixtureState(fixture_name="hollow-oak+sur1-C01")
+
+    lifecycle(ScriptedWorker(), database).around("C01", lambda: "installed")
+
+    assert database.seen.count("SELECT count(*) FROM cases") == 2
+
+
+@dataclass(slots=True)
+class ContaminatingWorker:
+    """A worker whose own start-up writes into the world it was just handed back.
+
+    Written out rather than subclassing :class:`ScriptedWorker`: a ``slots=True`` dataclass is
+    rebuilt by the decorator, so the zero-argument ``super()`` inside a subclass of one resolves
+    against a class that no longer exists.
+    """
+
+    database: ReadsFixtureState
+    log: list[str] = field(default_factory=list)
+    running: bool = True
+    binding_kind: str = "real"
+
+    def state(self) -> str:
+        from scripts.sur1.bindings.lifecycle import RUNNING, STOPPED
+
+        return RUNNING if self.running else STOPPED
+
+    def quiesce(self) -> str:
+        self.running = False
+        self.log.append("quiesce")
+        return "worker:stopped"
+
+    def resume(self) -> str:
+        self.running = True
+        self.log.append("resume")
+        self.database.opened_cases += 1
+        return "worker:running"
+
+    def probe(self) -> Probe:
+        return Probe("WORKER", True, "worker can be stopped and started")
 
 
 def test_the_worker_is_down_for_the_whole_install_and_back_up_afterwards() -> None:

@@ -210,11 +210,13 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
 
     assert directory is None
     assert not (tmp_path / "just-asking").exists()
-    # ``worker_lifecycle`` is left out of the comparison and only of this one: it asks
-    # ``docker compose`` about *this machine*, so its answer depends on whether the local stack
-    # happens to be up, which is not a fact about the preflight. Every other check here answers
-    # the same way on a machine with no stack at all.
-    failures = [check.name for check in report.failures if check.name != "worker_lifecycle"]
+    # Four checks are left out of the comparison and only of this one. Each asks ``docker
+    # compose`` about *this machine* -- whether the worker can be quiesced, what it is
+    # configured to call, and whether it opens a demo case -- so their answers depend on whether
+    # the local stack happens to be up, which is not a fact about the preflight. Every other
+    # check here answers the same way on a machine with no stack at all.
+    stack_dependent = {"worker_lifecycle", "demo_provisioning", "product_model_identity"}
+    failures = [check.name for check in report.failures if check.name not in stack_dependent]
     assert failures == [
         "workspace_origin",
         "receivers",
@@ -222,6 +224,10 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
         "backend_build",
         "consent_ingress",
         "classifier_identity",
+        # Not stack-dependent, and not a gap in this test: the ablation reaches no evaluator on
+        # any topology that exists today, so this check refuses with the stack up as readily as
+        # with it down. See ``docs/sur1-parity-correction.md``.
+        "ablation_reach",
     ], "a development run reports the undetermined rule rather than being refused for it"
 
 

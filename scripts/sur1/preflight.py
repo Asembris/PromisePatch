@@ -5,7 +5,7 @@ policy permits no second opinion. So everything that would make the resulting nu
 something other than what it appears to mean is asked **before** an arm is constructed, in one
 place, and any failure refuses the run.
 
-Eighteen checks, and each is a fact rather than a promise:
+Twenty-five checks, and each is a fact rather than a promise:
 
 1. the three frozen identities recompute to their published values;
 2. all three bindings say they are real, so a run cannot be driven by a double;
@@ -26,7 +26,14 @@ Eighteen checks, and each is a fact rather than a promise:
 15. the world names the clock its scenarios are installed at;
 16. the output directory is new, or is a resumable run of the same experiment;
 17. nothing on the scoring path can reach an arm's name;
-18. nothing that fires a world event can name an arm, an answer or a scorer's reading.
+18. nothing that fires a world event can name an arm, an answer or a scorer's reading;
+19. every previously published scored run is byte-identical to what was taken;
+20. every spelling of a customer channel the world shows resolves to the identity it places;
+21. the frozen report schema yields a report the projection accepts;
+22. the worker opens no demo case inside the world an arm is about to act on;
+23. the lifecycle re-reads the world after the worker comes back, and refuses a change;
+24. the product's own semantic boundary is configured for the model the contract froze;
+25. the process deciding revalidation is the one arm C's wrapper is installed in.
 
 Checks 8 to 10 are the three the first scored run was refused by nothing. Each of them asks a
 *capability* of a process that is already running -- what it publishes, what it was built for,
@@ -36,6 +43,15 @@ See ``docs/sur1-first-scored-run-defect.md`` and the correction record beside it
 Check 7 is what the *second* scored run was refused by nothing. All seventeen questions passed
 while the fixture load was pointed at a hosted database and the receivers at the local one, and
 all 27 attempts then failed at the write. See ``docs/sur1-corrected-scored-run-refusal.md``.
+
+Checks 19 to 25 are what the *third* scored run was refused by nothing. All eighteen questions
+passed while the baseline's messages were recorded on an address nothing could place, the
+worker's own start-up opened a case inside every installed world, the product answered semantic
+jobs with the deterministic fake, arm C's ablation reached no evaluator at all, and the report
+tool published no fields for the one arm that had to fill them. Five of those are conditions
+nothing asked about; one -- ``ablation_reach`` -- refuses every topology that exists today, and
+that refusal is the point. See ``docs/sur1-v3-forensic-audit.md`` and
+``docs/sur1-parity-correction.md``.
 
 **A preflight reads and never writes.** It opens clients, asks services whether they are ready
 and recomputes hashes. It creates no run directory, mints no token, prepares no world and calls
@@ -50,20 +66,25 @@ than returning a boolean somebody has to remember to read.
 checked, and the driver and the capture layer ask for that object. This is the only place one is
 minted, so "the preflight ran" stopped being something a caller could be trusted to have done.
 
-**This preflight has minted two capabilities against real bindings.** All fourteen of its
-questions passed and the run they authorised, ``20260919T2020Z-scored``, was still lost to three
-conditions none of them asked about; all seventeen passed and ``20260920T1100Z-scored-corrected``
-was still lost to a split database target none of them asked about either. Checks 7 to 10 are
-what it asks now. See ``docs/sur1-first-scored-run-defect.md`` and
-``docs/sur1-corrected-scored-run-refusal.md``.
+**This preflight has minted three capabilities against real bindings, and every run it
+authorised was lost.** All fourteen of its questions passed and ``20260919T2020Z-scored`` was
+lost to three conditions none of them asked about; all seventeen passed and
+``20260920T1100Z-scored-corrected`` was lost to a split database target none of them asked about
+either; all eighteen passed and ``20260920T1215Z-scored-v3`` was lost to five more. Checks 7 to
+10 and 19 to 25 are what it asks now, and the pattern is worth naming: each time, the questions
+it did ask were true and the run still meant something other than it appeared to. See
+``docs/sur1-first-scored-run-defect.md``, ``docs/sur1-corrected-scored-run-refusal.md`` and
+``docs/sur1-v3-forensic-audit.md``.
 """
 
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
@@ -79,7 +100,7 @@ from scripts.sur1.bindings import is_real
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.setup import unprogrammed
 from scripts.sur1.capture import RUNS_ROOT, RunDirectory
-from scripts.sur1.evidence import UNDETERMINED, OutboundClassifier
+from scripts.sur1.evidence import UNDETERMINED, OutboundClassifier, blind_bundle
 from scripts.sur1.frozen import ARMS, Contract, FrozenIdentityError
 
 SCORED: Final = "scored"
@@ -119,6 +140,34 @@ with no command is read as having none -- is correct for an operator's edit and 
 for a projection that publishes no commands at all.
 """
 
+PUBLISHED_RUNS: Final[dict[str, tuple[int, str]]] = {
+    "20260919T2020Z-scored": (
+        57,
+        "d599d644c6869fe527a32cfe240fe9a20433ed4a07679b02fbb597fecdc746ed",
+    ),
+    "20260920T1100Z-scored-corrected": (
+        57,
+        "e2a46c35b53902c817b9602999bb84f3df82cd3c7b425cb813551e7817364bca",
+    ),
+    "20260920T1215Z-scored-v3": (
+        57,
+        "403622ecd45a34723517556570d1b154c3f11f0e1fcaf9201856eeff6b9e18ca",
+    ),
+}
+"""Every scored run that has been taken, by file count and digest, so an edit is detectable.
+
+A scored run may be taken once and its headline is whatever it says. All three of these are
+published inconclusive or invalid, and **all three stay exactly as they were taken**: the
+correct response to one of these digests moving is to restore the run, never to update the
+constant. ``20260920T1215Z-scored-v3`` is pinned here for the first time; the other two were
+pinned in ``scripts/tests`` and are pinned again here, because the preflight has to be able to
+refuse a fourth run whose predecessors have quietly changed.
+
+Hashed the way the freeze hashes a module set: the relative path, a NUL, the bytes with
+CRLF normalised to LF, another NUL, over the paths in sorted order. That is the algorithm
+``test_sur1_database_target`` pins, restated here rather than imported out of a test.
+"""
+
 REQUIRED_CHECKS: Final = (
     "frozen_identities",
     "real_bindings",
@@ -138,6 +187,13 @@ REQUIRED_CHECKS: Final = (
     "output_directory",
     "blinding",
     "event_blinding",
+    "historical_runs",
+    "channel_transport",
+    "report_projection",
+    "demo_provisioning",
+    "world_integrity",
+    "product_model_identity",
+    "ablation_reach",
 )
 """Every question a scored run must have been asked, named so a partial report cannot mint.
 
@@ -361,6 +417,109 @@ def receivers(*, world: object, surface: object) -> Check:
     )
 
 
+def channel_transport(*, world: object, contract: Contract | None) -> Check:
+    """Every spelling the world shows of a customer channel resolves to the identity it places.
+
+    The question that lost the baseline on two scored runs and that nothing asked. ``get_orders``
+    is the order system's own snapshot and shows a split ``{"kind": "telegram", "address":
+    "1002"}``; ``get_promise_graph`` shows the engine's joined ``tg:1002``. The frozen fixture,
+    the arming and ``FixtureMap`` know only the joined one. The harness transport recorded
+    whichever string it was handed, so an ask landed under a name no armed event watched, no
+    stipulated reply ever fired, and the ``E2`` row was refused at placement. See
+    ``docs/sur1-v3-forensic-audit.md`` section 1.
+
+    Three things are required of each of the world's own channels, and a fourth of an address
+    that names nobody:
+
+    1. both spellings resolve, through the transport's own resolver, to the joined identity;
+    2. ``FixtureMap`` can put that identity on an order;
+    3. ``observe`` counts an outbound message on it under that same name, which is what makes a
+       declared reply become due;
+    4. an address naming no channel in this world is refused rather than recorded.
+
+    Read-only: it resolves strings and reduces synthetic messages. Nothing is sent, no ledger is
+    written and the world is not mutated.
+    """
+    from scripts.sur1.bindings.events import observe
+    from scripts.sur1.bindings.receivers import (
+        KIND_BY_CHANNEL_PREFIX,
+        UnresolvableChannelError,
+        resolve_channel_address,
+    )
+    from scripts.sur1.evidence import OUTBOUND, ChannelMessage, EvidenceMalformedError, FixtureMap
+
+    if contract is None:
+        return Check("channel_transport", False, "the frozen contract did not load")
+    universe = getattr(world, "channel_universe", None)
+    if not callable(universe):
+        return Check(
+            "channel_transport",
+            False,
+            "this world cannot say which customer channels it holds, so nothing can check that "
+            "the address an arm is shown is the identity its message is placed on",
+        )
+
+    known = tuple(universe())
+    fixtures = FixtureMap.read(contract.document)
+    if sorted(known) != sorted(fixtures.by_channel):
+        return Check(
+            "channel_transport",
+            False,
+            f"the world holds {sorted(known)} and the frozen fixture places "
+            f"{sorted(fixtures.by_channel)}",
+        )
+
+    faults: list[str] = []
+    for channel in known:
+        prefix, separator, address = channel.partition(":")
+        if not separator or prefix not in KIND_BY_CHANNEL_PREFIX:
+            faults.append(f"{channel!r} is not a joined channel identity")
+            continue
+        spellings = (channel, address, f"{KIND_BY_CHANNEL_PREFIX[prefix]}:{address}")
+        for spelling in spellings:
+            try:
+                resolved = resolve_channel_address(spelling, known=known)
+            except UnresolvableChannelError as unknown:
+                faults.append(f"{spelling!r} does not resolve: {unknown}")
+                continue
+            if resolved != channel:
+                faults.append(f"{spelling!r} resolves to {resolved!r} rather than {channel!r}")
+                continue
+            try:
+                fixtures.order_for_channel(resolved)
+            except EvidenceMalformedError as unplaceable:
+                faults.append(f"{spelling!r} resolves to a row nothing can place: {unplaceable}")
+                continue
+            counted = observe(
+                [
+                    ChannelMessage(
+                        channel_address=resolved,
+                        direction=OUTBOUND,
+                        text="",
+                        accepted_at=datetime.now(UTC),
+                    )
+                ]
+            )
+            if counted.asks_on(channel) != 1:
+                faults.append(f"an ask on {spelling!r} is not counted under {channel!r}")
+
+    stranger = "no-such-address-" + "0" * 4
+    try:
+        resolve_channel_address(stranger, known=known)
+    except UnresolvableChannelError:
+        pass
+    else:
+        faults.append(f"{stranger!r} names no channel here and was accepted anyway")
+
+    if faults:
+        return Check("channel_transport", False, "; ".join(faults[:6]))
+    return Check(
+        "channel_transport",
+        True,
+        f"{len(known)} channels resolve, place and count identically from every spelling shown",
+    )
+
+
 def database_identity(*, world: object, config: BindingConfig) -> Check:
     """The world is installed into the database its evidence is read out of. One target.
 
@@ -501,6 +660,109 @@ def order_projection(*, world: object) -> Check:
         )
     seen = "no event on the log yet" if observed is None else "checked against a published entry"
     return Check("order_projection", True, f"E1 publishes the committed body; {seen}")
+
+
+def report_projection(*, contract: Contract | None) -> Check:
+    """A report built only from the schema arm A is given survives the whole projection.
+
+    ``E4`` came back with no promises on every baseline attempt of two scored runs. The Converse
+    tool published ``report`` as a bare object with no properties and the frozen prompt names no
+    field, so nothing told arm A what to fill. See ``docs/sur1-v3-forensic-audit.md`` section 5,
+    F6.
+
+    The check is the whole path taken dry: derive the schema from the frozen manifest, build one
+    report *by walking that schema and nothing else*, read it with the same ``_report_row`` an
+    arm's call is read with, project it through ``blind_bundle``, and require what comes out to
+    satisfy the frozen ``invalid_report_rule`` -- one entry per order in the case universe, every
+    enumerated value drawn from the frozen enumerations.
+
+    The rule is read out of the frozen document rather than out of the scorer. The scorer is
+    reached through one blind seam and a preflight that opened its internals would be a second
+    copy of the metric. ``scripts/tests/test_sur1_report_contract.py`` is where the agreement
+    between the two is proved.
+
+    No model, no socket, no write: the report is synthetic, ``_report_row`` is pure, and no
+    world's own report field is touched.
+    """
+    from scripts.sur1.adapters import ReportSchemaError, run_report_schema
+    from scripts.sur1.bindings.world import _report_row
+    from scripts.sur1.evidence import EvidenceMalformedError, FixtureMap, ReceiverEvidence
+
+    if contract is None:
+        return Check("report_projection", False, "the frozen contract did not load")
+
+    scenario = contract.scenario_ids[0] if contract.scenario_ids else "C01"
+    try:
+        schema = run_report_schema(contract)
+    except ReportSchemaError as unreadable:
+        return Check(
+            "report_projection", False, f"the frozen report schema is unreadable: {unreadable}"
+        )
+
+    entry = schema["properties"].get("promises", {}).get("items", {}).get("properties")
+    if not entry:
+        return Check(
+            "report_projection",
+            False,
+            "the published report schema describes no promise entry, which is the shape arm A "
+            "was given when it filled none",
+        )
+
+    universe = contract.case_universe
+    synthetic = {
+        "scenario_id": scenario,
+        "exception_recorded": True,
+        "promises": [
+            {
+                "order": order,
+                "outcome": entry["outcome"]["enum"][0],
+                "recovered_to_version": None,
+                "work_state": entry["work_state"]["enum"][0],
+                "claimed_stopped": False,
+                "reason": "preflight projection, never scored",
+            }
+            for order in universe
+        ],
+    }
+
+    try:
+        projected = _report_row(synthetic, scenario_id=scenario)
+        bundle = blind_bundle(
+            ReceiverEvidence(report=projected),
+            run_id="preflight",
+            scenario_id=scenario,
+            arm_token="preflight",
+            fixtures=FixtureMap.read(contract.document),
+        )
+    except EvidenceMalformedError as malformed:
+        return Check(
+            "report_projection", False, f"the projection refused its own report: {malformed}"
+        )
+
+    report = bundle.report
+    if report is None:
+        return Check("report_projection", False, "the projection produced no report at all")
+    reported = sorted(promise.order for promise in report.promises)
+    if reported != sorted(universe):
+        return Check(
+            "report_projection",
+            False,
+            f"the projected report names {reported} and the case universe is {sorted(universe)}",
+        )
+    outcomes = set(entry["outcome"]["enum"])
+    states = set(entry["work_state"]["enum"])
+    strays = [
+        f"{promise.order}: {promise.outcome}/{promise.work_state}"
+        for promise in report.promises
+        if promise.outcome not in outcomes or promise.work_state not in states
+    ]
+    if strays:
+        return Check("report_projection", False, "; ".join(strays))
+    return Check(
+        "report_projection",
+        True,
+        f"the published schema yields a report of {len(reported)} promises the projection accepts",
+    )
 
 
 def backend_build(*, surface: object) -> Check:
@@ -952,6 +1214,280 @@ def output_directory(run_id: str, *, root: Path = RUNS_ROOT, contract: Contract 
     return Check("output_directory", True, f"{run_id} resumes with {completed} attempts captured")
 
 
+def historical_runs(*, root: Path = RUNS_ROOT) -> Check:
+    """Every previously published scored run is byte-identical to what was taken.
+
+    Reads :data:`~scripts.sur1.capture.RUNS_ROOT` rather than the run's own output root: the
+    published runs are history and live in the tree, wherever this run happens to be writing.
+
+    A comparative benchmark whose earlier runs can be edited publishes a number about a history
+    that no longer exists. Three runs have been taken, none of them conclusive, and each is
+    evidence about this harness rather than about the product -- which is exactly why a later
+    session correcting the harness is the moment one of them is most likely to be tidied.
+
+    Asked in the preflight rather than only in the test suite because this is the last gate
+    before spend, and because a run taken against a rewritten history would be uncheckable
+    afterwards.
+    """
+    moved = []
+    for run_id, (expected_files, expected_digest) in sorted(PUBLISHED_RUNS.items()):
+        directory = root / run_id
+        if not directory.is_dir():
+            moved.append(f"{run_id} is missing from the tree")
+            continue
+        files = sorted(path for path in directory.rglob("*") if path.is_file())
+        if len(files) != expected_files:
+            moved.append(f"{run_id} holds {len(files)} files rather than {expected_files}")
+            continue
+        found = _run_digest(directory, files)
+        if found != expected_digest:
+            moved.append(f"{run_id} hashes to {found[:12]} rather than {expected_digest[:12]}")
+    if moved:
+        return Check(
+            "historical_runs",
+            False,
+            "a published scored run has been edited: "
+            + "; ".join(moved)
+            + ". Restore it; never update the pin",
+        )
+    return Check(
+        "historical_runs",
+        True,
+        f"{len(PUBLISHED_RUNS)} published scored runs are byte-identical to what was taken",
+    )
+
+
+def _run_digest(directory: Path, files: Sequence[Path]) -> str:
+    hasher = hashlib.sha256()
+    for path in files:
+        hasher.update(path.relative_to(directory).as_posix().encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(path.read_bytes().replace(b"\r\n", b"\n"))
+        hasher.update(b"\0")
+    return hasher.hexdigest()
+
+
+def _worker_control(world: object) -> object | None:
+    """The thing that puts the durable worker down, if this world holds one."""
+    return getattr(world, "worker", None)
+
+
+def _published_runtime_identity(world: object) -> tuple[Mapping[str, Any] | None, str]:
+    """What the worker process says it is configured to do, and why if it said nothing."""
+    control = _worker_control(world)
+    ask = getattr(control, "runtime_identity", None)
+    if not callable(ask):
+        return None, "this world's worker control cannot be asked what it is configured for"
+    try:
+        published = ask()
+    except Exception as failure:
+        return None, f"the worker could not be asked: {type(failure).__name__}: {failure}"
+    if not published:
+        return None, (
+            "the worker published no runtime identity; a scored run may not proceed on the "
+            "assumption that it holds the configuration the contract froze"
+        )
+    return published, ""
+
+
+def product_model_identity(*, world: object, contract: Contract | None) -> Check:
+    """The product's own semantic boundary is configured for the model the contract froze.
+
+    The constraint is the contract's own: *its semantic boundary calls the same model, with the
+    same parameters, as the baseline arm*, applying to all three arms. Nothing asked. All three
+    scored runs were driven at ``api``, ``worker`` and ``mcp`` containers carrying no
+    ``PP_LLM_PROVIDER``, no ``PP_BEDROCK_*`` and no AWS variable at all, so the product resolved
+    the deterministic fake while arm A called Nova. ``run.json`` did record a
+    ``model_provider_configured`` flag -- read in the **harness** process, about the wrong
+    process, gated on by nothing. See ``docs/sur1-v3-forensic-audit.md`` section 3.
+
+    Asked of the process that executes semantic jobs, in the words that process computes from
+    its own settings, and compared with the frozen block. A credential is reported as a boolean
+    by that process and never read here.
+    """
+    if contract is None:
+        return Check("product_model_identity", False, "the frozen contract did not load")
+    published, why = _published_runtime_identity(world)
+    if published is None:
+        return Check("product_model_identity", False, why)
+
+    configured = contract.model_configuration
+    faults = [
+        f"{field}: contract {expected!r}, product {published.get(key)!r}"
+        for field, key, expected in (
+            ("provider", "llm_provider", configured.provider),
+            ("model_id", "model_id", configured.model_id),
+            ("api", "api", configured.api),
+            ("temperature", "temperature", configured.temperature),
+        )
+        if published.get(key) != expected
+    ]
+    if not published.get("region"):
+        faults.append("no region is named, so where a semantic job would run is unrecorded")
+    if published.get("credential_resolves") is not True:
+        faults.append(
+            "no credential resolves in that process, so a semantic job would fail rather than "
+            "reach the model the contract froze"
+        )
+    if faults:
+        return Check("product_model_identity", False, "; ".join(faults))
+    return Check(
+        "product_model_identity",
+        True,
+        f"the worker calls {published['model_id']} at temperature {published['temperature']} "
+        f"in {published['region']}, and a credential resolves there",
+    )
+
+
+def demo_provisioning(*, world: object) -> Check:
+    """The scored stack's worker does not open a demo case inside the world it was handed.
+
+    ``provisioning.ensure_demo_case`` runs at every worker start, gated only on
+    ``PP_DEMO_SESSION_ENABLED``. The per-attempt worker lifecycle restarts the worker around
+    every install, so on all 27 attempts of the third scored run it opened a case in the
+    freshly installed world and attested today's raspberry line ``NOT_RECEIVED`` *before the arm
+    reported anything*. The arm's identical report then bound to the wrong delivery and every
+    raspberry scenario stopped at a clarification. See ``docs/sur1-v3-forensic-audit.md``
+    section 2.
+
+    The product behaves as documented and needs no change. What is refused is a **scored stack**
+    configured to do it.
+    """
+    published, why = _published_runtime_identity(world)
+    if published is None:
+        return Check("demo_provisioning", False, why)
+    if published.get("demo_session_enabled") is not False:
+        return Check(
+            "demo_provisioning",
+            False,
+            "the worker has PP_DEMO_SESSION_ENABLED on, so ensure_demo_case opens a case inside "
+            "every installed world before any arm acts; set it false for a scored stack and "
+            "recreate the container",
+        )
+    return Check(
+        "demo_provisioning", True, "the worker opens no demo case inside an installed world"
+    )
+
+
+def world_integrity(*, world: object) -> Check:
+    """The installation lifecycle reads the world again *after* the worker comes back.
+
+    Proved by driving it, not by reading it. A stand-in worker whose own resume writes into the
+    world is handed to a real :class:`~scripts.sur1.bindings.lifecycle.InstallationLifecycle`,
+    and the lifecycle has to refuse. A lifecycle that verified once, before ``resume``, passes
+    every other question in this file and is exactly what drove 27 attempts at a world nobody
+    declared.
+
+    In-process and read-only: the stand-ins are dictionaries, no database is opened and the run's
+    own world is not touched.
+    """
+    from scripts.sur1.bindings.lifecycle import InstallationLifecycle
+    from scripts.sur1.bindings.setup import PreparationError
+
+    installed = "hollow-oak+sur1-preflight"
+
+    class _Reader:
+        url = "preflight://in-memory"
+
+        def __init__(self) -> None:
+            self.cases = 0
+            self.seen: list[str] = []
+
+        def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
+            self.seen.append(statement)
+            if "fixture_state" in statement:
+                return [(installed, "a-digest")]
+            if "count(*) FROM cases" in statement:
+                return [(self.cases,)]
+            if "count(*)" in statement:
+                return [(0,)]
+            return []
+
+    reader = _Reader()
+
+    class _WritesOnResume:
+        binding_kind = "stand-in"
+
+        def state(self) -> str:
+            return "running"
+
+        def quiesce(self) -> str:
+            return "worker:stopped"
+
+        def resume(self) -> str:
+            reader.cases += 1
+            return "worker:running"
+
+        def probe(self) -> Any:
+            raise NotImplementedError
+
+    lifecycle = InstallationLifecycle(
+        worker=_WritesOnResume(),  # type: ignore[arg-type]
+        database=reader,  # type: ignore[arg-type]
+    )
+    try:
+        lifecycle.around("preflight", lambda: "installed")
+    except PreparationError:
+        return Check(
+            "world_integrity",
+            True,
+            "the lifecycle re-reads the world after the worker returns and refuses an "
+            "undeclared change",
+        )
+    except Exception as failure:
+        return Check(
+            "world_integrity",
+            False,
+            f"the lifecycle could not be exercised: {type(failure).__name__}: {failure}",
+        )
+    return Check(
+        "world_integrity",
+        False,
+        "the lifecycle accepted a world that changed while the worker was coming back; an "
+        "attempt driven here would measure a world nobody declared",
+    )
+
+
+def ablation_reach(*, world: object) -> Check:
+    """Arm C's wrapper is reached by the process that decides revalidation.
+
+    Arm C is defined as PromisePatch with revalidation check 5 dropped and nothing else, removed
+    by rebinding ``promisepatch.domain.revalidation.revalidate`` at the benchmark boundary. The
+    rebinding happens in the harness process. When the durable worker is a separate process, the
+    evaluator that decides runs over there and the wrapper is never called: ``diagnostics
+    .ablation`` is empty on all nine third-run ablation captures and all eight of the first
+    run's, and arm C is arm B by construction. That is unmeasurable rather than merely
+    unmeasured, so it refuses the run rather than being noted in it. See
+    ``docs/sur1-v3-forensic-audit.md`` section 5 and ``docs/sur1-parity-correction.md``.
+    """
+    control = _worker_control(world)
+    ask = getattr(control, "evaluates_in_process", None)
+    if not callable(ask):
+        return Check(
+            "ablation_reach",
+            False,
+            "this world's worker control cannot say which process decides revalidation, so "
+            "whether arm C differs from arm B at all is unknown",
+        )
+    try:
+        reached = bool(ask())
+    except Exception as failure:
+        return Check("ablation_reach", False, f"{type(failure).__name__}: {failure}")
+    if not reached:
+        return Check(
+            "ablation_reach",
+            False,
+            "the durable worker that decides revalidation is a separate process, and arm C's "
+            "wrapper is installed in this one; arm C would be arm B and the ablation would "
+            "measure nothing. See docs/sur1-parity-correction.md",
+        )
+    return Check(
+        "ablation_reach",
+        True,
+        "the process that decides revalidation is the one arm C's wrapper is installed in",
+    )
+
+
 def blinding() -> Check:
     """Nothing on the scoring path can reach an arm's name.
 
@@ -1044,6 +1580,13 @@ def preflight(
         output_directory(run_id, root=root, contract=contract),
         blinding(),
         event_blinding(),
+        historical_runs(),
+        channel_transport(world=world, contract=contract),
+        report_projection(contract=contract),
+        demo_provisioning(world=world),
+        world_integrity(world=world),
+        product_model_identity(world=world, contract=contract),
+        ablation_reach(world=world),
     ]
     return PreflightReport(kind=kind, checks=tuple(checks))
 

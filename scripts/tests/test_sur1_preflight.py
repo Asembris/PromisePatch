@@ -126,8 +126,39 @@ class ReachableBinding:
     run actually looks like and a check that refused it would refuse every run.
     """
 
+    identity_payload: Mapping[str, Any] | None = None
+    """What a worker control says the worker process is configured to do.
+
+    *Every precondition true* now includes the product's own semantic boundary being pointed at
+    the model the contract froze. All three scored runs were driven at containers holding no
+    provider configuration at all, so the product answered every semantic job with the
+    deterministic fake while arm A called Nova.
+    """
+
+    in_process: bool = True
+    """Whether the process deciding revalidation is the one arm C's wrapper is installed in.
+
+    ``True`` here is the world a scored run would need. Against the containerised stack the real
+    control answers ``False``, which is why arm C was arm B on every attempt ever taken.
+    """
+
+    channels: tuple[str, ...] | None = None
+    """A world binding's own customer channels, as the frozen fixture names them."""
+
     def identity(self) -> Mapping[str, Any]:
         return dict(self.payload)
+
+    def runtime_identity(self) -> Mapping[str, Any]:
+        return dict(self.identity_payload or {})
+
+    def evaluates_in_process(self) -> bool:
+        return self.in_process
+
+    def channel_universe(self) -> tuple[str, ...]:
+        if self.channels is not None:
+            return self.channels
+        orders_block = Contract.load().document["fixture"]["orders"]
+        return tuple(sorted(str(entry["channel"]) for entry in orders_block.values()))
 
     def published_projection(self) -> Mapping[str, Any]:
         if self.projection is None:
@@ -159,6 +190,22 @@ class ReachableBinding:
             if self.origin_accepted
             else "this API does not accept that sign-in origin",
         )
+
+
+def published_worker_identity(**overrides: Any) -> dict[str, Any]:
+    """What ``pp runtime-identity`` prints in a worker configured the way a scored run needs."""
+    configured = Contract.load().model_configuration
+    return {
+        "service": "promisepatch",
+        "llm_provider": configured.provider,
+        "model_id": configured.model_id,
+        "api": configured.api,
+        "temperature": configured.temperature,
+        "region": REGION,
+        "credential_resolves": True,
+        "demo_session_enabled": False,
+        **overrides,
+    }
 
 
 def model() -> ReachableBinding:
@@ -225,7 +272,10 @@ def world(**overrides: Any) -> ReachableBinding:
         clock=overrides.get("clock", RunClock(anchor=RUN_ANCHOR, timezone="Africa/Tunis")),
         consent_door=overrides.get("consent_door", ReachableBinding(source="CONSENT")),
         orders=overrides.get("orders", orders()),
-        worker=overrides.get("worker", ReachableBinding(source="WORKER")),
+        worker=overrides.get(
+            "worker",
+            ReachableBinding(source="WORKER", identity_payload=published_worker_identity()),
+        ),
         database=overrides.get("database", DatabaseReader(url=CONFIGURED["SUR1_DATABASE_URL"])),
         installer=overrides.get("installer", InstallerTarget(url=LOCAL_MIGRATION_URL)),
         **{name: value for name, value in overrides.items() if name not in fixed},
@@ -548,8 +598,149 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "output_directory",
         "blinding",
         "event_blinding",
+        "historical_runs",
+        "channel_transport",
+        "report_projection",
+        "demo_provisioning",
+        "world_integrity",
+        "product_model_identity",
+        "ablation_reach",
     ]
     json.dumps(payload)
+
+
+def test_a_worker_that_publishes_no_runtime_identity_refuses_a_scored_run(
+    tmp_path: Path,
+) -> None:
+    """The gap that let three runs be driven at a product holding the deterministic fake."""
+    report = passing_preflight(
+        tmp_path, world=world(worker=ReachableBinding(source="WORKER", identity_payload=None))
+    )
+
+    assert not report.passed
+    with pytest.raises(PreflightRefusedError, match="product_model_identity"):
+        require(report)
+
+
+def test_a_product_pointed_at_another_provider_refuses_a_scored_run(tmp_path: Path) -> None:
+    """Arm A on Nova and arms B and C on the fake is a comparison between two models."""
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER",
+                identity_payload=published_worker_identity(llm_provider="fake"),
+            )
+        ),
+    )
+
+    refused = next(c for c in report.failures if c.name == "product_model_identity")
+    assert "provider" in refused.detail
+
+
+def test_a_product_at_another_temperature_refuses_a_scored_run(tmp_path: Path) -> None:
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER", identity_payload=published_worker_identity(temperature=0.7)
+            )
+        ),
+    )
+
+    refused = next(c for c in report.failures if c.name == "product_model_identity")
+    assert "temperature" in refused.detail
+
+
+def test_a_product_whose_credential_does_not_resolve_refuses_a_scored_run(tmp_path: Path) -> None:
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER",
+                identity_payload=published_worker_identity(credential_resolves=False),
+            )
+        ),
+    )
+
+    refused = next(c for c in report.failures if c.name == "product_model_identity")
+    assert "credential" in refused.detail
+
+
+def test_a_worker_that_opens_a_demo_case_refuses_a_scored_run(tmp_path: Path) -> None:
+    """The contamination that bound 24 arm reports to the wrong delivery."""
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER",
+                identity_payload=published_worker_identity(demo_session_enabled=True),
+            )
+        ),
+    )
+
+    refused = next(c for c in report.failures if c.name == "demo_provisioning")
+    assert "PP_DEMO_SESSION_ENABLED" in refused.detail
+
+
+def test_a_worker_the_ablation_cannot_reach_refuses_a_scored_run(tmp_path: Path) -> None:
+    """Arm C is arm B when the evaluator runs in another process, and that is unmeasurable."""
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER",
+                identity_payload=published_worker_identity(),
+                in_process=False,
+            )
+        ),
+    )
+
+    assert not report.passed
+    with pytest.raises(PreflightRefusedError, match="ablation_reach"):
+        require(report)
+
+
+def test_the_containerised_worker_is_exactly_what_ablation_reach_refuses() -> None:
+    """Not a hypothetical: the control every run has used answers False."""
+    from scripts.sur1.bindings.lifecycle import ComposeWorkerControl
+
+    assert ComposeWorkerControl().evaluates_in_process() is False
+
+
+def test_a_world_whose_channels_are_not_the_fixture_s_refuses_a_scored_run(
+    tmp_path: Path,
+) -> None:
+    """An ``E2`` row on a channel the fixture cannot place is a broken measurement."""
+    report = passing_preflight(tmp_path, world=world(channels=("tg:9999",)))
+
+    refused = next(c for c in report.failures if c.name == "channel_transport")
+    assert "tg:9999" in refused.detail
+
+
+def test_every_published_scored_run_is_checked_before_another_is_bought() -> None:
+    """Three runs are taken and pinned; the correct response to a move is to restore the run."""
+    from scripts.sur1.preflight import PUBLISHED_RUNS, historical_runs
+
+    assert set(PUBLISHED_RUNS) == {
+        "20260919T2020Z-scored",
+        "20260920T1100Z-scored-corrected",
+        "20260920T1215Z-scored-v3",
+    }
+    assert historical_runs().passed
+
+
+def test_an_edited_published_run_refuses_a_scored_run(tmp_path: Path) -> None:
+    from scripts.sur1.preflight import PUBLISHED_RUNS, historical_runs
+
+    for run_id in PUBLISHED_RUNS:
+        (tmp_path / run_id).mkdir()
+        (tmp_path / run_id / "run.json").write_text("{}", encoding="utf-8")
+
+    refused = historical_runs(root=tmp_path)
+
+    assert not refused.passed
+    assert "never update the pin" in refused.detail
 
 
 def test_the_preflight_opens_no_run_directory(tmp_path: Path) -> None:

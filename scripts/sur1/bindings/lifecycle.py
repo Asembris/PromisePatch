@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Protocol, TypeVar
@@ -64,6 +64,23 @@ FIXTURE_PREFIX: Final = "hollow-oak+sur1-"
 The same string :func:`~scripts.sur1.bindings.realisation._load` builds. Restated here rather
 than imported because this module verifies the *result* and importing the installer to check
 its own work would make the two agree by construction.
+"""
+
+QUIET_TABLES: Final = (
+    "cases",
+    "exceptions",
+    "exception_facts",
+    "exception_clarifications",
+    "approval_requests",
+    "plan_approvals",
+    "outbox_messages",
+    "inbound_replies",
+)
+"""Tables an installed world leaves alone and only a case's own work writes into.
+
+Counted rather than required empty. The fingerprint compares a count with the one the install
+left behind, so a world program that legitimately wrote one of these is compared against itself;
+what refuses is a row appearing while no arm is acting.
 """
 
 T = TypeVar("T")
@@ -89,6 +106,26 @@ class WorkerControl(Protocol):
     def resume(self) -> str: ...
 
     def probe(self) -> Probe: ...
+
+    def runtime_identity(self) -> Mapping[str, Any]:
+        """What the worker process says it is configured to do, read out of that process.
+
+        Not out of a compose file, not out of an environment this one happens to carry, and not
+        out of a copy of its configuration the harness would have to keep. The three scored runs
+        were driven at a worker holding no provider configuration at all, and nothing anywhere
+        asked -- ``run.json`` recorded ``model_provider_configured`` from the *harness* process.
+        See ``docs/sur1-v3-forensic-audit.md`` section 3.
+        """
+
+    def evaluates_in_process(self) -> bool:
+        """Whether the process that decides revalidation is this one.
+
+        Arm C removes revalidation check 5 by rebinding
+        ``promisepatch.domain.revalidation.revalidate`` *in the harness process*. When the
+        durable worker is a separate process, that rebinding reaches nothing and arm C is arm B
+        by construction -- which is what all 17 ablation captures across two scored runs show,
+        with an empty ablation log every time. See section 5 of the same record.
+        """
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +219,37 @@ class ComposeWorkerControl:
             )
         return Probe("WORKER", True, f"{self.service} is {state} and can be stopped and started")
 
+    def runtime_identity(self) -> Mapping[str, Any]:
+        """``pp runtime-identity``, run inside the worker container itself.
+
+        ``exec`` rather than ``run``: the question is what *this* container is configured for,
+        and a fresh one started from the same image would answer for a process that is not the
+        one doing the work. ``-T`` because there is no terminal here.
+
+        A container that cannot answer returns an empty mapping rather than raising, so the
+        preflight reports "this worker publishes no identity" as the refusal it is instead of
+        turning it into an exception somewhere up the stack.
+        """
+        try:
+            completed = self._compose("exec", "-T", self.service, "pp", "runtime-identity")
+        except PreparationError:
+            return {}
+        for line in reversed(completed.stdout.splitlines()):
+            body = line.strip()
+            if not body.startswith("{"):
+                continue
+            try:
+                published = json.loads(body)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(published, dict):
+                return published
+        return {}
+
+    def evaluates_in_process(self) -> bool:
+        """No: the durable worker is a container, and this harness is not inside it."""
+        return False
+
     def _compose(self, *arguments: str) -> subprocess.CompletedProcess[str]:
         completed = subprocess.run(
             ["docker", "compose", "--project-name", self.project, *arguments],
@@ -231,16 +299,86 @@ class InstallationLifecycle:
     database: DatabaseReader
 
     def around(self, scenario_id: str, install: Callable[[], T]) -> T:
-        """Run one install with the worker down, and hand the worker back afterwards."""
+        """Run one install with the worker down, and hand the worker back afterwards.
+
+        **The world is read twice: once when the install says it is done, and once after the
+        worker is back.** Verifying before ``resume`` and never again is what let all 27 attempts
+        of the third scored run be driven at a contaminated world. The worker's own start-up
+        provisioning opened a case inside the freshly installed world and attested today's
+        raspberry line ``NOT_RECEIVED`` before any arm reported anything, and nothing re-read the
+        world after that. See ``docs/sur1-v3-forensic-audit.md`` section 2.
+
+        The second read is a comparison rather than a rule about what a world may contain. The
+        fingerprint is taken of the world the install produced, whatever that is, and any
+        difference after ``resume`` is an undeclared mutation that refuses the attempt. A rule
+        naming which tables must be empty would have to know what every world program writes;
+        this only has to know that nothing should be writing while no arm is acting.
+        """
         self.worker.quiesce()
         try:
             installed = install()
             self.verify(scenario_id)
+            installed_world = self.fingerprint()
         except BaseException as failure:
             self._resume_beside(failure)
             raise
         self.worker.resume()
+        self.require_untouched(scenario_id, installed_world)
         return installed
+
+    def fingerprint(self) -> dict[str, Any]:
+        """Everything about the installed world an arm's reading depends on, as plain values.
+
+        Counts for the tables only a case's own work writes into, and the ordered states of the
+        two a world program legitimately writes. Small enough to read twice per attempt and
+        specific enough that the contamination which lost the last run -- one case row, one
+        exception row, one attested fact -- moves it.
+        """
+        counts = {
+            table: int(self.database.rows("WORLD", f"SELECT count(*) FROM {table}")[0][0])
+            for table in QUIET_TABLES
+        }
+        return {
+            "fixture_state": [
+                tuple(str(column) for column in row)
+                for row in self.database.rows(
+                    "WORLD", "SELECT fixture_name, fixture_digest FROM fixture_state"
+                )
+            ],
+            "counts": counts,
+            "commitment_lines": [
+                (str(identifier), str(state))
+                for identifier, state in self.database.rows(
+                    "WORLD", "SELECT id, state FROM commitment_lines ORDER BY id"
+                )
+            ],
+            "production_tasks": [
+                (str(identifier), str(state), "" if holder is None else str(holder))
+                for identifier, state, holder in self.database.rows(
+                    "WORLD",
+                    "SELECT id, state, held_by_case_id FROM production_tasks ORDER BY id",
+                )
+            ],
+        }
+
+    def require_untouched(self, scenario_id: str, installed: Mapping[str, Any]) -> None:
+        """Refuse an attempt whose world changed between the install and the arm acting."""
+        try:
+            now = self.fingerprint()
+        except ReceiverUnreadableError as failure:
+            raise PreparationError(
+                f"{scenario_id}'s world could not be re-read after the worker came back: "
+                f"{failure.detail}"
+            ) from failure
+        differences = [
+            f"{area} moved" for area, found in sorted(now.items()) if installed.get(area) != found
+        ]
+        if differences:
+            raise PreparationError(
+                f"{scenario_id}'s world was changed between the install and the arm acting by "
+                "something that is not the install, so an attempt here would measure a world "
+                "nobody declared: " + ", ".join(differences)
+            )
 
     def verify(self, scenario_id: str) -> str:
         """Read the product's own statement of which world is loaded, and require this one.
@@ -304,10 +442,17 @@ class UncontrolledWorker:
     def probe(self) -> Probe:
         return Probe("WORKER", False, "this run controls no durable worker")
 
+    def runtime_identity(self) -> Mapping[str, Any]:
+        return {}
+
+    def evaluates_in_process(self) -> bool:
+        return False
+
 
 __all__ = [
     "ABSENT",
     "FIXTURE_PREFIX",
+    "QUIET_TABLES",
     "RUNNING",
     "STOPPED",
     "ComposeWorkerControl",
