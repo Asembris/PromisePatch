@@ -310,6 +310,25 @@ def _world_clock(world: object) -> dict[str, Any] | None:
     return recorded
 
 
+def _product_runtime(world: object) -> dict[str, Any] | None:
+    """What the process that executes semantic jobs says it is configured to call.
+
+    Read off the worker control for the same reason :func:`_world_clock` is read off the world:
+    a value that arrived beside the run could name a configuration the product does not have.
+    ``None`` is *nothing could be asked*, which is what a run against a stand-in records and
+    what every run taken so far would have recorded. A scored run is refused for it by
+    :func:`~scripts.sur1.preflight.product_model_identity` long before this is written.
+    """
+    ask = getattr(getattr(world, "worker", None), "runtime_identity", None)
+    if not callable(ask):
+        return None
+    try:
+        published = dict(ask())
+    except Exception:
+        return None
+    return published or None
+
+
 def drive(
     *,
     arms: Sequence[ArmAdapter],
@@ -405,6 +424,7 @@ def drive(
         working_tree_dirty=dirty,
         driver_version=DRIVER_VERSION,
         world_clock=_world_clock(world),
+        product_runtime=_product_runtime(world),
     )
     directory, tokens = open_run(
         manifest,

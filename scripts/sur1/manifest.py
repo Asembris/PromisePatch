@@ -85,16 +85,24 @@ def implementation() -> tuple[str, bool]:
 
 
 def environment() -> dict[str, Any]:
-    """What ran it, and whether anything that could spend money was configured.
+    """What ran it, and whether anything that could spend money was configured **here**.
 
     Names and booleans only. A capture is committed, so it holds no value of any variable it
     reports on.
+
+    **Every key here is about the harness process and about nothing else**, which is now said in
+    the key rather than left to be inferred. The third scored run recorded
+    ``model_provider_configured: false`` and it was read in this process, about this process,
+    while the question anybody reading it would have asked -- what the *product* was configured
+    to call -- went unrecorded and unasked. The product's own answer is
+    :attr:`RunManifest.product_runtime`, read out of the process that executes semantic jobs.
+    See ``docs/sur1-v3-forensic-audit.md`` section 3.
     """
     return {
         "python": platform.python_version(),
         "platform": platform.platform(),
-        "model_provider_configured": bool(os.environ.get("PP_LLM_PROVIDER")),
-        "aws_credentials_configured": any(
+        "harness_model_provider_configured": bool(os.environ.get("PP_LLM_PROVIDER")),
+        "harness_aws_credentials_configured": any(
             os.environ.get(name) for name in ("AWS_PROFILE", "AWS_ACCESS_KEY_ID")
         ),
     }
@@ -189,6 +197,21 @@ class RunManifest:
     driver_version: str = DRIVER_VERSION
     finished_at: datetime | None = None
     environment: dict[str, Any] = field(default_factory=environment)
+    product_runtime: dict[str, Any] | None = None
+    """What the process that executes semantic jobs said it was configured to do.
+
+    Read out of that process, by ``pp runtime-identity``, at run start. Provenance rather than
+    identity, for the reason :attr:`world_clock` is: a run is the same run when it resumes, and
+    a configuration that changed underneath it is caught by
+    :func:`~scripts.sur1.preflight.product_model_identity` before an attempt is bought rather
+    than by a resume comparison afterwards.
+
+    ``None`` means nothing could be asked, which is what every run taken so far would have
+    recorded. The contract requires the product's semantic boundary to call the same model with
+    the same parameters as the baseline arm, and until this field existed a published run made
+    no statement about it at all. See ``docs/sur1-v3-forensic-audit.md`` section 3.
+    """
+
     world_clock: dict[str, Any] | None = None
     """Where in time this invocation installed its worlds, and which rule chose it.
 
@@ -223,6 +246,9 @@ class RunManifest:
             "budgets": self.ceilings.as_payload(),
             "tool_surface": {"reads": list(self.read_tools), "writes": list(self.write_tools)},
             "environment": dict(self.environment),
+            "product_runtime": (
+                None if self.product_runtime is None else dict(self.product_runtime)
+            ),
             "world_clock": None if self.world_clock is None else dict(self.world_clock),
         }
 
