@@ -5,7 +5,7 @@ policy permits no second opinion. So everything that would make the resulting nu
 something other than what it appears to mean is asked **before** an arm is constructed, in one
 place, and any failure refuses the run.
 
-Seventeen checks, and each is a fact rather than a promise:
+Eighteen checks, and each is a fact rather than a promise:
 
 1. the three frozen identities recompute to their published values;
 2. all three bindings say they are real, so a run cannot be driven by a double;
@@ -13,24 +13,29 @@ Seventeen checks, and each is a fact rather than a promise:
 4. every credential and address a scored run needs is configured;
 5. the workspace origin is set, is well formed, and is one this API actually accepts;
 6. every receiver answers, so no scenario is voided for an unreadable source afterwards;
-7. the running order system publishes the ``E1`` fields an amendment is attributed by;
-8. the running PromisePatch is the revision this source tree is about to measure;
-9. the durable worker can be stopped while a world is installed, and started afterwards;
-10. the world holds a customer-consent door and the API behind it verifies signed links, so a
+7. the world is installed into the database its evidence is read out of;
+8. the running order system publishes the ``E1`` fields an amendment is attributed by;
+9. the running PromisePatch is the revision this source tree is about to measure;
+10. the durable worker can be stopped while a world is installed, and started afterwards;
+11. the world holds a customer-consent door and the API behind it verifies signed links, so a
     stipulated reply reaches the product and not only the channel record;
-11. the ``asserts_change`` rule is the declared one and hashes to its published identity;
-12. every selected scenario has a world program that builds the world it declares;
-13. the nine programs are the frozen nine, at their published hashes, and nothing on their
+12. the ``asserts_change`` rule is the declared one and hashes to its published identity;
+13. every selected scenario has a world program that builds the world it declares;
+14. the nine programs are the frozen nine, at their published hashes, and nothing on their
     preparation path can name a field that says what a correct answer is;
-14. the world names the clock its scenarios are installed at;
-15. the output directory is new, or is a resumable run of the same experiment;
-16. nothing on the scoring path can reach an arm's name;
-17. nothing that fires a world event can name an arm, an answer or a scorer's reading.
+15. the world names the clock its scenarios are installed at;
+16. the output directory is new, or is a resumable run of the same experiment;
+17. nothing on the scoring path can reach an arm's name;
+18. nothing that fires a world event can name an arm, an answer or a scorer's reading.
 
-Checks 7 to 9 are the three the first scored run was refused by nothing. Each of them asks a
+Checks 8 to 10 are the three the first scored run was refused by nothing. Each of them asks a
 *capability* of a process that is already running -- what it publishes, what it was built for,
 whether it can be quiesced -- because reachability passed on all three while the run was lost.
 See ``docs/sur1-first-scored-run-defect.md`` and the correction record beside it.
+
+Check 7 is what the *second* scored run was refused by nothing. All seventeen questions passed
+while the fixture load was pointed at a hosted database and the receivers at the local one, and
+all 27 attempts then failed at the write. See ``docs/sur1-corrected-scored-run-refusal.md``.
 
 **A preflight reads and never writes.** It opens clients, asks services whether they are ready
 and recomputes hashes. It creates no run directory, mints no token, prepares no world and calls
@@ -45,10 +50,12 @@ than returning a boolean somebody has to remember to read.
 checked, and the driver and the capture layer ask for that object. This is the only place one is
 minted, so "the preflight ran" stopped being something a caller could be trusted to have done.
 
-**This preflight has minted one capability against real bindings.** All fourteen of its
+**This preflight has minted two capabilities against real bindings.** All fourteen of its
 questions passed and the run they authorised, ``20260919T2020Z-scored``, was still lost to three
-conditions none of them asked about. Checks 7 to 9 are what it asks now. See
-``docs/sur1-first-scored-run-defect.md``.
+conditions none of them asked about; all seventeen passed and ``20260920T1100Z-scored-corrected``
+was still lost to a split database target none of them asked about either. Checks 7 to 10 are
+what it asks now. See ``docs/sur1-first-scored-run-defect.md`` and
+``docs/sur1-corrected-scored-run-refusal.md``.
 """
 
 from __future__ import annotations
@@ -119,6 +126,7 @@ REQUIRED_CHECKS: Final = (
     "configuration",
     "workspace_origin",
     "receivers",
+    "database_identity",
     "order_projection",
     "backend_build",
     "worker_lifecycle",
@@ -350,6 +358,77 @@ def receivers(*, world: object, surface: object) -> Check:
         return Check("receivers", False, "; ".join(unreachable))
     return Check(
         "receivers", True, f"reachable: {', '.join(sorted(probe.source for probe in probes))}"
+    )
+
+
+def database_identity(*, world: object, config: BindingConfig) -> Check:
+    """The world is installed into the database its evidence is read out of. One target.
+
+    The question the second scored run needed and nobody asked. Seventeen checks passed while the
+    governed fixture load was pointed at a hosted database by the repository's ``.env`` and the
+    receivers were pointed at the local one by ``SUR1_DATABASE_URL``; all 27 attempts then failed
+    in preparation, at the write, which is far too late to be a gate. See
+    ``docs/sur1-corrected-scored-run-refusal.md`` §3.
+
+    **Three readings, because three objects could disagree and any two agreeing proves nothing.**
+    The scored configuration says which database this run is *for*; the world's own receivers say
+    which one they will actually read; and the installer target says which one the fixture load
+    will actually write to. All three have to name one database.
+
+    **It opens nothing.** Every value here is parsed from a string or read from settings, which is
+    what lets this refuse before authorisation, before a run directory exists, before a connection
+    is dialled and before a model is reached -- rather than after a ``TRUNCATE`` has been aimed.
+
+    **Unknown is a refusal.** A URL this package cannot read is not a URL whose target can be
+    compared with another, so a malformed or unrecognised one fails rather than being treated as
+    agreement.
+    """
+    from scripts.sur1.bindings.database import (
+        DatabaseIdentityError,
+        InstallerTarget,
+        disagreement,
+        identity_of,
+        receiver_identity,
+    )
+
+    reader = getattr(world, "database", None)
+    if reader is None or not isinstance(getattr(reader, "url", None), str):
+        return Check(
+            "database_identity",
+            False,
+            "this world does not say which database its receivers read, so nothing can be "
+            "checked against the database its world would be installed into",
+        )
+    target = getattr(world, "installer", None)
+    if not isinstance(target, InstallerTarget):
+        return Check(
+            "database_identity",
+            False,
+            "this world carries no installer target, so the fixture load has no database it was "
+            "handed and no run may be driven at it",
+        )
+
+    try:
+        scored = receiver_identity(config.database_url)
+        observed = identity_of(reader.url, what="the world's own receiver database URL")
+        installing = target.identity()
+    except DatabaseIdentityError as failure:
+        return Check("database_identity", False, str(failure))
+
+    if scored != observed:
+        return Check(
+            "database_identity",
+            False,
+            f"this run is configured for {scored} and its receivers would read {observed}",
+        )
+    split = disagreement(installing, observed)
+    if split:
+        return Check("database_identity", False, split)
+    return Check(
+        "database_identity",
+        True,
+        f"the world installs into and is read out of {observed}; the load resolves it from "
+        f"{target.source}",
     )
 
 
@@ -953,6 +1032,7 @@ def preflight(
         configuration(config),
         workspace_origin(config=config, surface=surface),
         receivers(world=world, surface=surface),
+        database_identity(world=world, config=config),
         order_projection(world=world),
         backend_build(surface=surface),
         worker_lifecycle(world=world),
@@ -1037,6 +1117,7 @@ __all__ = [
     "classifier_identity",
     "configuration",
     "consent_ingress",
+    "database_identity",
     "event_blinding",
     "frozen_identities",
     "ground_truth_reachable",
