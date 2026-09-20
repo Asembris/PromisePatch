@@ -20,12 +20,22 @@ from typing import Any, Final
 
 import pytest
 from scripts.score_safe_useful_recovery import _report_is_valid
-from scripts.sur1.adapters import ARGUMENTS, REPORT_TOOL, ReportSchemaError, run_report_schema
+from scripts.sur1.adapters import (
+    ARGUMENTS,
+    REPORT_TOOL,
+    ReportSchemaError,
+    run_report_schema,
+    tool_specifications,
+)
+from scripts.sur1.arms import AttemptRequest
 from scripts.sur1.bindings.bedrock import ModelConfigurationError, tool_configuration
 from scripts.sur1.bindings.receivers import ChannelLedger
 from scripts.sur1.bindings.world import LiveScenarioWorld
+from scripts.sur1.budget import AttemptBudget
+from scripts.sur1.doubles import FakeClock
 from scripts.sur1.evidence import FixtureMap, ReceiverEvidence, blind_bundle
 from scripts.sur1.frozen import Contract
+from scripts.sur1.manifest import AttemptIdentity
 
 SCENARIO: Final = "C01"
 
@@ -232,3 +242,68 @@ def test_a_structured_argument_naming_no_type_is_refused_by_the_converse_binding
         tool_configuration(
             [{"name": REPORT_TOOL, "description": "", "arguments": {"report": {"properties": {}}}}]
         )
+
+
+# ------------------------------------------------- the scored path, unmoved by the DR01 fix
+
+
+def test_the_frozen_contract_still_shapes_the_nine_fields_it_has_always_shaped() -> None:
+    """``DR01``'s repair moved the rehearsal document and the refusal, never this derivation.
+
+    The frozen manifest has carried ``run_report_schema`` since ``1.2.0``, so the scored path
+    never took the branch that killed arm A in a rehearsal, and it derives here exactly what it
+    derived then. See ``docs/sur1-dr01-redrive.md`` §5.
+    """
+    loaded = contract()
+    assert set(loaded.document["run_report_schema"]["fields"]) == {
+        "scenario_id",
+        "exception_recorded",
+        "promises",
+        "promises[].order",
+        "promises[].outcome",
+        "promises[].recovered_to_version",
+        "promises[].work_state",
+        "promises[].claimed_stopped",
+        "promises[].reason",
+    }
+    schema = run_report_schema(loaded)
+    assert schema["required"] == ["exception_recorded", "promises", "scenario_id"]
+    assert schema["properties"]["promises"]["items"]["required"] == [
+        "claimed_stopped",
+        "order",
+        "outcome",
+        "reason",
+        "recovered_to_version",
+        "work_state",
+    ]
+
+
+def test_the_contract_taking_entry_point_builds_what_an_attempt_builds() -> None:
+    """One implementation, two entry points, and a gate that cannot pass while a build fails."""
+    from scripts.sur1.adapters import tool_surface
+
+    loaded = contract()
+    request = AttemptRequest(
+        identity=AttemptIdentity("run-1", "tok-opaque", SCENARIO, 1),
+        scenario=loaded.scenario(SCENARIO),
+        contract=loaded,
+        budget=AttemptBudget(ceilings=loaded.ceilings, clock=FakeClock()),
+        world=world_for(loaded),
+    )
+
+    assert tool_specifications(request) == tool_surface(loaded)
+
+
+def test_a_contract_that_declares_no_report_shape_is_refused_by_name_not_by_keyerror() -> None:
+    """It fails closed either way. What changed is that the refusal says what is wrong.
+
+    Nothing is substituted for the missing shape -- least of all the frozen document's, which is
+    reachable from here and is deliberately not reached for.
+    """
+    loaded = contract()
+    stripped = {
+        name: value for name, value in loaded.document.items() if name != "run_report_schema"
+    }
+
+    with pytest.raises(ReportSchemaError, match=r"no run_report_schema.fields"):
+        run_report_schema(Contract(identity=loaded.identity, document=stripped))

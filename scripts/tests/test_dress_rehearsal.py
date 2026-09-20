@@ -17,30 +17,46 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from scripts.rehearsal import CONTRACT_PATH, NOT_A_BENCHMARK, RUNS_ROOT, SCENARIO
 from scripts.rehearsal import ROOT as REPO
 from scripts.rehearsal import contract as rehearsal_contract
 from scripts.rehearsal import program as rehearsal_program
+from scripts.rehearsal.baseline import RehearsalModel
+from scripts.rehearsal.run import baseline_tool_surface
 from scripts.rehearsal.scorer import DIMENSIONS, REHEARSAL
+from scripts.rehearsal.scorer import _report_is_valid as _rehearsal_report_is_valid
 from scripts.rehearsal.world import CustomerLinkSink, RehearsalIngressError
 from scripts.sur1 import predeclaration
-from scripts.sur1.arms import ArmAttempt
+from scripts.sur1.adapters import (
+    ARGUMENTS,
+    BaselineArm,
+    ReportSchemaError,
+    run_report_schema,
+    tool_specifications,
+)
+from scripts.sur1.arms import ArmAttempt, AttemptRequest
+from scripts.sur1.bindings.receivers import ChannelLedger
 from scripts.sur1.bindings.setup import UnprogrammedScenarioError
-from scripts.sur1.budget import BudgetExhaustedError
+from scripts.sur1.bindings.world import LiveScenarioWorld
+from scripts.sur1.budget import AttemptBudget, BudgetExhaustedError
 from scripts.sur1.capture import CaptureError, RunDirectory, write_once
 from scripts.sur1.doubles import FakeClock, StubArm, SyntheticWorld
 from scripts.sur1.driver import Clock, UnsubstitutableScoredRunError, drive, join
 from scripts.sur1.evidence import (
     ChannelMessage,
+    FixtureMap,
     OrderEvent,
     ReceiverEvidence,
     ReportedPromiseRow,
     TaskSample,
     WorkerReport,
+    blind_bundle,
 )
-from scripts.sur1.frozen import PUBLISHED_MANIFEST_SHA
+from scripts.sur1.frozen import PUBLISHED_MANIFEST_SHA, Contract
+from scripts.sur1.manifest import AttemptIdentity
 
 CONTRACT = rehearsal_contract.load()
 UNIVERSE = CONTRACT.case_universe
@@ -568,3 +584,178 @@ def test_the_link_is_found_under_the_identity_the_arming_and_the_fixture_speak()
             deliveries=1,
         )
     assert made.channel.messages == [], "the link was found, so the fallback door was not used"
+
+
+# ------------------------------------------------------- arm A's tool surface, at DR01
+
+
+def dr01_request(world: SyntheticWorld) -> AttemptRequest:
+    """One attempt of ``DR01``, as arm A is given it. Reaches nothing."""
+    return AttemptRequest(
+        identity=AttemptIdentity("run-1", "tok-opaque", SCENARIO, 1),
+        scenario=rehearsal_contract.scenario(),
+        contract=CONTRACT,
+        budget=AttemptBudget(ceilings=CONTRACT.ceilings, clock=FakeClock()),
+        world=world,
+    )
+
+
+def without_a_report_shape() -> Contract:
+    """``DR01`` as it was when arm A died: a ``report_outcome`` write and no shape for it."""
+    stripped = {
+        name: value for name, value in CONTRACT.document.items() if name != "run_report_schema"
+    }
+    return Contract(identity=CONTRACT.identity, document=stripped)
+
+
+def value_for(name: str, schema: Any, *, order: str) -> Any:
+    """One field, filled from what the schema itself says about it and from nothing else."""
+    if name == "scenario_id":
+        return SCENARIO
+    if name == "order":
+        return order
+    if "enum" in schema:
+        first: Any = schema["enum"][0]
+        return first
+    declared = schema.get("type")
+    if isinstance(declared, list):
+        return None
+    if declared == "boolean":
+        return False
+    if declared == "string":
+        return "generated from the published schema"
+    raise AssertionError(f"{name} is published as {schema!r}, which this generator cannot fill")
+
+
+def generated_report() -> dict[str, Any]:
+    """A whole report, assembled by walking the schema ``DR01`` publishes and nothing else.
+
+    Never hand-written beside the schema. If the rehearsal document ever stops describing the
+    report the rehearsal scorer accepts, the generated one stops validating and this fails.
+    """
+    schema = run_report_schema(CONTRACT)
+    entries = schema["properties"]["promises"]["items"]["properties"]
+    report: dict[str, Any] = {}
+    for name, shape in schema["properties"].items():
+        if name == "promises":
+            report[name] = [
+                {field: value_for(field, entries[field], order=order) for field in entries}
+                for order in UNIVERSE
+            ]
+            continue
+        report[name] = value_for(name, shape, order="")
+    return report
+
+
+def test_the_rehearsal_contract_shapes_the_report_its_one_tool_using_arm_must_produce() -> None:
+    """The defect, stated as the thing that was missing. See ``docs/sur1-dr01-redrive.md`` §5."""
+    declared = CONTRACT.document["run_report_schema"]["fields"]
+    assert declared, "a report_outcome write with no declared fields is what killed arm A"
+
+    schema = run_report_schema(CONTRACT)
+    assert set(schema["properties"]) == {"scenario_id", "exception_recorded", "promises"}
+    assert schema["properties"]["promises"]["items"]["properties"], "promises describes no entry"
+
+
+def test_every_published_property_carries_the_rehearsal_document_s_own_words() -> None:
+    """Derived out of ``DR01``'s document, never restated in code and never read from SUR-1."""
+    schema = run_report_schema(CONTRACT)
+    for name, shape in CONTRACT.document["run_report_schema"]["fields"].items():
+        head, marker, member = str(name).partition("[].")
+        published = (
+            schema["properties"][head]["items"]["properties"][member]
+            if marker
+            else schema["properties"][head]
+        )
+        assert published["description"] == shape, f"{name} does not carry the document's words"
+
+
+def test_arm_a_s_actions_build_from_the_rehearsal_contract() -> None:
+    """The exact call that raised: ``BaselineArm.run`` asks for a tool surface before it acts."""
+    specifications = tool_specifications(dr01_request(SyntheticWorld()))
+
+    assert [spec["name"] for spec in specifications] == [
+        *CONTRACT.read_tools,
+        *CONTRACT.write_tools,
+    ]
+    report = next(spec for spec in specifications if spec["name"] == "report_outcome")
+    assert report["arguments"]["report"] == run_report_schema(CONTRACT)
+    assert report["arguments"]["report"] != ARGUMENTS["report_outcome"]["report"], (
+        "the placeholder string is what an unshaped report publishes"
+    )
+
+
+def test_the_report_schema_reaches_the_scripted_plan_that_drives_arm_a() -> None:
+    """It survives the whole way into the baseline path, not merely into a specification."""
+    model = RehearsalModel(scenario_id=SCENARIO)
+    world = SyntheticWorld(responses={"get_orders": {"orders": []}})
+
+    BaselineArm(model=model).run(dr01_request(world))
+
+    assert model.calls, "the plan was never asked for a turn"
+    for turn in model.calls:
+        assert turn["report_fields"] == ["exception_recorded", "promises", "scenario_id"], (
+            "a turn of the plan was handed a report_outcome it was told nothing about"
+        )
+
+    name, arguments = world.invoked[-1]
+    assert name == "report_outcome", "the plan ended on something other than its one report"
+    assert [promise["order"] for promise in arguments["report"]["promises"]] == list(UNIVERSE)
+
+
+def test_a_report_built_only_from_the_published_schema_survives_the_rehearsal_scorer() -> None:
+    """Schema to arguments to row to validation, with no model and no running stack."""
+    world = LiveScenarioWorld(
+        orders=None,  # type: ignore[arg-type]
+        channel=None,  # type: ignore[arg-type]
+        kitchen=None,  # type: ignore[arg-type]
+        database=None,  # type: ignore[arg-type]
+        ledger=ChannelLedger(),
+        fixture=CONTRACT.document["fixture"]["orders"],
+        scenario_id=SCENARIO,
+    )
+
+    assert world.invoke("report_outcome", {"report": generated_report()}) == {"received": True}
+    row = world.report
+    assert row is not None
+    assert [promise.order for promise in row.promises] == list(UNIVERSE)
+
+    bundle = blind_bundle(
+        ReceiverEvidence(report=row),
+        run_id="no-run",
+        scenario_id=SCENARIO,
+        arm_token="token",
+        fixtures=FixtureMap.read(CONTRACT.document),
+    )
+    assert bundle.report is not None
+    assert _rehearsal_report_is_valid(bundle.report, SCENARIO, UNIVERSE)
+
+
+def test_a_rehearsal_contract_that_shapes_no_report_is_refused_by_name() -> None:
+    """Still refused, and never defaulted or filled in from the frozen document."""
+    with pytest.raises(ReportSchemaError, match=r"no run_report_schema.fields"):
+        run_report_schema(without_a_report_shape())
+
+
+def test_a_rehearsal_contract_whose_report_shape_is_malformed_is_refused() -> None:
+    malformed: tuple[Any, ...] = ({"fields": {}}, {"fields": "nine of them"}, "yes")
+    for broken in malformed:
+        document = dict(CONTRACT.document) | {"run_report_schema": broken}
+        with pytest.raises(ReportSchemaError):
+            run_report_schema(Contract(identity=CONTRACT.identity, document=document))
+
+
+def test_the_readiness_gate_refuses_the_contract_arm_a_died_on() -> None:
+    """The reading that was missing: asked before an attempt, and it reaches nothing.
+
+    Arms B and C never call for a tool surface, so nothing in a rehearsal had ever asked whether
+    arm A's could be built. Two arms ran whole, the third was dead on arrival, and the run
+    reported a result.
+    """
+    passing = baseline_tool_surface(CONTRACT)
+    assert passing.source == "BASELINE_TOOLS" and passing.reachable
+    assert "report_outcome carries a report schema" in passing.detail
+
+    refused = baseline_tool_surface(without_a_report_shape())
+    assert not refused.reachable
+    assert "ReportSchemaError" in refused.detail and "run_report_schema.fields" in refused.detail
