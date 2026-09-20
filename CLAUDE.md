@@ -98,20 +98,22 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   own durable worker runs inside the harness process for **both** arms B and C, and the
   containerised worker is down for the run. **A fourth run is still not taken and is not this
   session's to take.** The scored preflight passes **28/28** against a Bedrock-configured local
-  stack at `DRIVER_VERSION` `1.4.2`. `DR01` has since **completed** through that seam and proved
-  what ADR-0020 was written for: arm B's revalidation check 5 carries the evaluator's own name,
-  arm C's carries `ABLATED_MARK`, checks 1–4 and 6–10 are identical, and one hosted worker
-  executed every governed write with no foreign worker in any row. **Arm A did not run.**
-  `adapters.tool_specifications` reads `run_report_schema` out of the contract document and the
-  rehearsal contract has no such key, so `BASELINE` fails `HARNESS_FAILURE` — present since
-  `1.2.0`, harmless to a scored run because the frozen manifest carries the key, and fatal to the
-  rehearsal's coverage of arm A. It is **recorded unfixed**; a later session fixes it and drives
-  `DR01` once more before a fourth run is even a question. See
-  [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md),
+  stack at `DRIVER_VERSION` `1.4.2`. `DR01` has since **completed with all three arms whole** at
+  `DRIVER_VERSION` `1.4.3`, and proved what ADR-0020 was written for: arm B's revalidation check
+  5 carries the evaluator's own name, arm C's carries `ABLATED_MARK` exactly, checks 1–4 and 6–10
+  are identical, and one hosted worker executed every governed write with no foreign worker in
+  any row. Arm A's own defect is **closed**: the rehearsal contract declared a `report_outcome`
+  write and no `run_report_schema`, so `adapters.tool_specifications` died on a `KeyError` — a
+  rehearsal-only failure since `1.2.0`, harmless to a scored run because the frozen manifest
+  carries the block. The rehearsal document now shapes its own report, a contract that shapes
+  none is refused by name rather than defaulted, and the rehearsal's readiness builds arm A's
+  actions before an arm is driven. **Nothing here is comparative**: a rehearsal measures whether
+  the pipeline composed. See [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md),
   [sur1-parity-correction.md](docs/sur1-parity-correction.md),
   [sur1-hosted-worker.md](docs/sur1-hosted-worker.md),
-  [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md) and
-  [sur1-dr01-redrive.md](docs/sur1-dr01-redrive.md) before touching anything here.
+  [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md),
+  [sur1-dr01-redrive.md](docs/sur1-dr01-redrive.md) and
+  [sur1-dr01-final-rehearsal.md](docs/sur1-dr01-final-rehearsal.md) before touching anything here.
 - **Telegram is unbuilt**, deferred into G8's deployed rehearsals. Correcting a physical fact is
   CLI-only. A customer answers on the web, through a signed possession link carried in the
   outbound message's payload — a transport into the unchanged consent protocol, never a second
@@ -248,6 +250,7 @@ read the source document rather than a paraphrase of it.
 | SUR-1 dress rehearsal (`DR01`, not a benchmark) | [sur1-dress-rehearsal.md](docs/sur1-dress-rehearsal.md) |
 | SUR-1 `DR01` through the hosted worker (incomplete, one defect found) | [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md) |
 | SUR-1 `DR01` re-driven (B/C proved, arm A blocked on a second defect) | [sur1-dr01-redrive.md](docs/sur1-dr01-redrive.md) |
+| SUR-1 `DR01` final rehearsal (all three arms whole, no new defect) | [sur1-dr01-final-rehearsal.md](docs/sur1-dr01-final-rehearsal.md) |
 | SUR-1 scored environment | [sur1-scored-environment.md](docs/sur1-scored-environment.md) |
 | SUR-1 phase 3 closeout (harness scope-frozen) | [sur1-phase3-closeout.md](docs/sur1-phase3-closeout.md) |
 | SUR-1 first scored run (taken once, inconclusive) | [sur1-first-scored-run-defect.md](docs/sur1-first-scored-run-defect.md) |
