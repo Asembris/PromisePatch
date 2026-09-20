@@ -507,7 +507,12 @@ def test_the_required_checks_name_the_three_questions_the_hosted_topology_added(
 
 
 def test_the_driver_version_names_the_hosted_topology() -> None:
-    """A topology change that did not move the recorded driver version would be undisclosed."""
+    """A topology change that did not move the recorded driver version would be undisclosed.
+
+    ``1.4.1`` rather than ``1.4.0``: the topology was right and the ordering around it was not,
+    and a correction found by driving the thing is disclosed by the recorded version the same
+    way ``1.1.1`` was. See ``docs/sur1-dr01-hosted-worker-rehearsal.md``.
+    """
     from scripts.sur1 import DRIVER_VERSION
 
-    assert DRIVER_VERSION == "1.4.0"
+    assert DRIVER_VERSION == "1.4.1"

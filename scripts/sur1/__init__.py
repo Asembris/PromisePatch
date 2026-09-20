@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Final
 
-DRIVER_VERSION: Final = "1.4.0"
+DRIVER_VERSION: Final = "1.4.1"
 """Bumped whenever the driving or the evidence collection changes. Recorded in every capture.
 
 ``1.0.0`` drove the first scored run, ``20260919T2020Z-scored``, which is preserved exactly as
@@ -84,4 +84,17 @@ which checks ran and which worker ran them; and the preflight grew three questio
 stack, a split configuration and a second worker. No frozen benchmark element moved: not the
 manifest, the prompt, the scorer, the ground truth, the budgets, the retry rules or a world
 program, and ``implementation_sha`` is unmoved. No run has been taken under it.
+
+``1.4.1`` is that topology with one defect removed, found the way ``1.1.1``'s was -- by
+exercising it against the live stack rather than against stand-ins. ``ablation_reach`` and
+``sole_executor`` ask their questions of a worker that is *running*, and nothing started one
+until the first install, which happens inside ``drive`` and therefore after the gate. A fully
+rebuilt, fully configured scored stack refused itself, for a reason that was true about the
+ordering and false about the stack. ``execute`` now hosts the worker the run will use before the
+gate asks, and puts it back down when the run is refused or when the invocation was only a
+preflight. The dress rehearsal is wired to that same hosted worker, which it never was: it
+controlled no worker at all, so arm C's wrapper reached nothing there either. Nothing about what
+is measured moves -- no frozen benchmark element, no arm, no world, no reading rule, and
+``implementation_sha`` is unmoved. No run has been taken under it. See
+``docs/sur1-dr01-hosted-worker-rehearsal.md``.
 """
