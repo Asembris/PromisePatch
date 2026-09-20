@@ -222,12 +222,58 @@ disclosure.
 
 Stated as what was run, not as what is believed.
 
-- `pytest scripts/tests` — the full harness suite.
-- `pytest apps/backend/tests/test_cli.py` — the `pp runtime-identity` surface.
-- `ruff check`, `ruff format --check`, `mypy scripts`, `mypy` on the three product groups,
-  `lint-imports`.
-- The frozen identities inside the suite: `assert_frozen()`, `identity_sha()`,
+- `pytest scripts/tests` — **1237 collected, all passing**, one state-dependent challenger guard
+  skipped (unrelated, and skipped before this work). 41 of those are new: 31 in
+  `test_sur1_hosted_worker.py` and 10 negative controls in `test_sur1_preflight.py`.
+- `pytest apps/backend/tests/test_cli.py` — 57 passed, the `pp runtime-identity` surface.
+- `ruff check .`, `ruff format --check .` (554 files), `lint-imports` (30 contracts kept, 0
+  broken), `mypy packages/promise-graph packages/order-contract apps/backend` (281 files),
+  `mypy evals scripts` (145 files).
+- The frozen identities, inside the suite: `assert_frozen()`, `identity_sha()`,
   `declaration.differences()`, the nine world digests and all three published run digests.
+
+### 9.1 The hosted worker was started once, live, and it found a defect
+
+No unit test starts a worker, so the central mechanism of this change had no test that could
+exercise it. It was therefore run once against the live local stack, with the compose `worker`
+stopped and restarted afterwards: **no scenario, no world install, no arm, no model, no scorer
+and no artefact.** What it printed:
+
+```text
+competing worker : stopped
+resume           : hosted-worker:running
+worker identity  : DESKTOP-OKFJLHE:36172:d1750bb8
+reach after      : True
+quiescence       : quiescent after 2 idle cycles
+foreign workers  : ()
+quiesce          : hosted-worker:stopped
+```
+
+The first run of it printed `reach after : False` **with a worker running in this process**.
+`_run` read the evaluator module out of `sys.modules` before the worker was built, and the
+worker reaches the evaluator lazily through a handler, so at that instant nothing had imported
+it and the control could not say the wrapper reached the deciding name. The module is now
+imported rather than looked up. Had this not been run, `ablation_reach` would have refused every
+correctly configured scored run and the refusal would have looked exactly like the defect it
+exists to catch.
+
+The same run confirmed three parity facts from the process that would do the work:
+`order_system_base_url` resolved to `http://127.0.0.1:48100` — the published port, not the
+`58100` the host file names — `demo_session_enabled` was `False`, and `database_target` was
+`promisepatch_app@127.0.0.1:55432/promisepatch` with no password in it.
+
+### 9.2 The local stack is a split-revision stack right now, and the gate says so
+
+Read live, without changing anything: `worker` runs `promisepatch-backend:local` while `api` and
+`mcp` run the pinned image `1c0653c73dd6…`. `pp runtime-identity` inside `api` answers
+*No such command*; inside `worker` it answers the pre-`source_digest` shape, with
+`llm_provider: fake` and `demo_session_enabled: true`.
+
+So on this machine today the new gates refuse a scored run for four separate true reasons —
+`build_identity`, `config_parity`, `product_model_identity` and `demo_provisioning` — and
+`backend_build` passes throughout, which is the gap `build_identity` was written to close.
+**Rebuilding and recreating `api`, `mcp` and the worker image is operator work that is owed
+before `DR01`**, and it is not done here.
 
 GitHub CI is the broad regression authority and has not run on this work.
 

@@ -236,7 +236,7 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 >
 > | Path | Tree / blob |
 > |---|---|
-> | `scripts/sur1/` | `ffeea99172cc1f1c2ac37a37e50440558d9f4a66` |
+> | `scripts/sur1/` | `d99945afa3c639afdaf770c9434ed36c834dc748` |
 > | `scripts/rehearsal/` | `b64d6a64114b3770b7f43c4b7c6ae530b6511d1f` — **unchanged** by this work |
 > | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
 > | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
