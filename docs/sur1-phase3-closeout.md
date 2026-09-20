@@ -246,6 +246,31 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > driven at, and the session that made it takes no run. `DR01` through the corrected seam,
 > against the live local stack, is owed before any spend.
 
+> **Recorded later, beside this block and not into it — the corrected hosting order.** The four
+> requirements were exercised a fifth time, by the session that rebuilt the stack and drove
+> `DR01` through the hosted-worker seam. Two named defects, both found by driving rather than by
+> reading: the preflight asked `ablation_reach` and `sole_executor` about a worker that is
+> running while nothing started one before the gate, so **no scored run could have been
+> authorised under `1.4.0` on any stack**; and the dress rehearsal controlled no worker at all,
+> so arm C's wrapper reached nothing there either. What was built, what the scored preflight then
+> answered (28/28) and the install defect `DR01` found are in
+> [`sur1-dr01-hosted-worker-rehearsal.md`](sur1-dr01-hosted-worker-rehearsal.md). Under it
+> `DRIVER_VERSION` is `1.4.1` and **`implementation_sha` did not move** — no file in
+> `IMPLEMENTATION_MODULES` was touched — and neither did `PREDECLARATION_SHA`, `SCORER_VERSION`,
+> the manifest, the prompt, a world program or a scope answer. `REQUIRED_CHECKS` is still 28 and
+> no check was weakened. The scope-freeze trees at this change are:
+>
+> | Path | Tree / blob |
+> |---|---|
+> | `scripts/sur1/` | `7da4a56dd5a2dc85710f4a7f843a1fffa730455b` |
+> | `scripts/rehearsal/` | `f1f1d195114b92f443c43f1f375dab38fd443d2d` |
+> | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
+> | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
+> | `docs/benchmarks/` | `c49c1eb7834f6a736ec16baeac28d1b011be39e6` — **unchanged** by this work |
+>
+> Requirement 4 holds: no run was taken. `DR01` is still owed — it did not complete, and what it
+> therefore does not say is listed in that record's section 5.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an
