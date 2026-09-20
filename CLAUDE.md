@@ -224,6 +224,8 @@ read the source document rather than a paraphrase of it.
 | SUR-1 first scored run (taken once, inconclusive) | [sur1-first-scored-run-defect.md](docs/sur1-first-scored-run-defect.md) |
 | SUR-1 execution revision `v2` (harness corrected, unrun) | [sur1-execution-revision.v2.md](docs/benchmarks/sur1-execution-revision.v2.md) |
 | SUR-1 `v2` validated live (one defect found and fixed, still unrun) | [sur1-revision-v2-live-validation.md](docs/benchmarks/sur1-revision-v2-live-validation.md) |
+| SUR-1 second scored run (taken once, refused before any arm acted, zero spend) | [sur1-corrected-scored-run-refusal.md](docs/sur1-corrected-scored-run-refusal.md) |
+| SUR-1 execution revision `v3` (one database target, gated, unrun) | [sur1-execution-revision.v3.md](docs/benchmarks/sur1-execution-revision.v3.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |

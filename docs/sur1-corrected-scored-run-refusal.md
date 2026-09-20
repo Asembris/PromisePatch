@@ -157,3 +157,13 @@ Both evaluation holdouts remain sealed. The `SUR-1` scored path imports no `eval
   neither can be rewritten.
 - **Nothing was deployed and nothing was pushed.** No sensitivity model was run.
 - **No holdout was opened**, and no hosted database was contacted.
+
+## 8. Recorded later: the preflight gap named in §3 is closed
+
+§3 named a reproducible gap in the preflight and said it was not fixed in that session. It was
+fixed in a later one, under execution revision `v3`: the governed fixture load is handed the
+database it writes to instead of resolving one of its own, and a required `database_identity`
+check refuses a run whose load and receivers name different databases **before** the run is
+authorised. This run is unchanged by that work and is not reinterpreted by it — it stands exactly
+as §1 to §7 describe. See
+[`sur1-execution-revision.v3.md`](benchmarks/sur1-execution-revision.v3.md).

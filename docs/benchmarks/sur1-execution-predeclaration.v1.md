@@ -235,6 +235,20 @@ row shape and are scored identically.
 > [`sur1-execution-revision.v2.md`](sur1-execution-revision.v2.md). Any later run is a **corrected
 > execution beside** `20260919T2020Z-scored`, never its replacement.
 
+> **Recorded later, beside this document and not into it — execution revision `v3`.** A second
+> scored run has since been taken under this predeclaration,
+> `20260920T1100Z-scored-corrected`, and it is **incomplete**: all 27 of its attempts failed in
+> world preparation, it reached no model and it spent nothing. One measurement-system defect was
+> corrected afterwards — the governed fixture load resolved its own database from the repository's
+> `.env` while the receivers read the one `SUR1_DATABASE_URL` named, and nothing compared them.
+> The load is now handed its database and a required `database_identity` check refuses a
+> mismatched run before it is authorised. **Nothing this predeclaration declares moved**: the
+> `asserts_change` rule, the `E4` projection, the reading rules and `PREDECLARATION_SHA` are all
+> untouched, and so are the manifest, the prompt, the scorer, the ground truth, the budgets and
+> the retry policy. What moved is named in
+> [`sur1-execution-revision.v3.md`](sur1-execution-revision.v3.md). Any later run is a **corrected
+> execution beside both** published runs, never a replacement for either.
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any
