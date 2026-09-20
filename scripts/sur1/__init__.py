@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Final
 
-DRIVER_VERSION: Final = "1.3.0"
+DRIVER_VERSION: Final = "1.4.0"
 """Bumped whenever the driving or the evidence collection changes. Recorded in every capture.
 
 ``1.0.0`` drove the first scored run, ``20260919T2020Z-scored``, which is preserved exactly as
@@ -71,4 +71,17 @@ change; and the preflight grew seven questions, one of which -- ``ablation_reach
 every topology that exists today. No frozen benchmark element moved: not the manifest, the
 prompt, the scorer, the ground truth, the budgets, the retry rules or a world program. No run has
 been taken under it. See ``docs/sur1-parity-correction.md``.
+
+``1.4.0`` is the hosted-worker topology, authorised by
+``docs/adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md``. The product's own durable
+worker -- ``promisepatch.worker.built`` driven by ``Worker.run_forever``, with no branch and no
+benchmark flag -- runs inside the harness process for **both** arms B and C, and the
+containerised worker is down for the whole run. Arm C's rebinding therefore reaches the process
+that decides revalidation for the first time; the wrapper is held until the attempt's durable
+work is quiescent; the product's own ``REVALIDATION_CHECK`` audit rows are read back to prove
+which checks ran and which worker ran them; and the preflight grew three questions --
+``build_identity``, ``config_parity`` and ``sole_executor`` -- which refuse a split-revision
+stack, a split configuration and a second worker. No frozen benchmark element moved: not the
+manifest, the prompt, the scorer, the ground truth, the budgets, the retry rules or a world
+program, and ``implementation_sha`` is unmoved. No run has been taken under it.
 """
