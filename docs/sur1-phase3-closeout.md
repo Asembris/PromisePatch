@@ -199,6 +199,28 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > identity in §3 is unchanged, and the scope-freeze tree hashes above are the `f4618c9` ones and
 > are history rather than the current tree.
 
+> **Recorded later, beside this block and not into it — the parity correction.** The four
+> requirements were exercised a third time, after `20260920T1215Z-scored-v3` was proved invalid.
+> The named defects are in [`sur1-v3-forensic-audit.md`](sur1-v3-forensic-audit.md); what was
+> changed, what was deliberately not, and the one item left open are in
+> [`sur1-parity-correction.md`](sur1-parity-correction.md); the disclosure naming which arms each
+> change affects and in which direction is beside the predeclaration. Under this correction
+> `DRIVER_VERSION` is `1.3.0` and **`implementation_sha` did not move** — no file in
+> `IMPLEMENTATION_MODULES` was touched — and neither did `PREDECLARATION_SHA`, `SCORER_VERSION`,
+> the manifest, the prompt, a world program or a scope answer. The scope-freeze trees at
+> `87bc505` are:
+>
+> | Path | Tree / blob |
+> |---|---|
+> | `scripts/sur1/` | `1b4678e001b104d6a157fd1bedb8ea5d00d67128` |
+> | `scripts/rehearsal/` | `b64d6a64114b3770b7f43c4b7c6ae530b6511d1f` |
+> | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
+> | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` |
+> | `docs/benchmarks/` | `8bfb5807a86c85b3a79fb76b107359da91649a37` |
+>
+> Requirement 4 holds and is load-bearing here: this correction changes what arms B and C are
+> driven against, and the session that made it is not the session that takes any later run.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an
