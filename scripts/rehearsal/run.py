@@ -40,8 +40,15 @@ from scripts.rehearsal.program import registry as rehearsal_registry
 from scripts.rehearsal.scorer import REHEARSAL
 from scripts.rehearsal.world import CustomerLinkSink
 from scripts.sur1 import predeclaration
-from scripts.sur1.adapters import AblationArm, BaselineArm, PromisePatchArm
+from scripts.sur1.adapters import (
+    REPORT_TOOL,
+    AblationArm,
+    BaselineArm,
+    PromisePatchArm,
+    tool_surface,
+)
 from scripts.sur1.arms import ArmAdapter
+from scripts.sur1.bindings import Probe
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.database import installer_target
 from scripts.sur1.bindings.hostedworker import HostedWorkerControl
@@ -262,6 +269,46 @@ def build(config: BindingConfig, *, now: datetime | None = None) -> Bench:
 # ------------------------------------------------------------------------------ the readiness
 
 
+def baseline_tool_surface(contract: Contract) -> Probe:
+    """Can arm A's actions be built from this contract at all? Reads memory and reaches nothing.
+
+    **The reading that was missing.** ``DR01``'s arm A died five seconds into an attempt on a
+    ``KeyError`` because the rehearsal document declared a ``report_outcome`` write and no shape
+    for its one argument, and nothing had ever asked whether arm A's surface could be built --
+    arms B and C never call for one, so two arms ran whole while the third was dead on arrival,
+    and the rehearsal reported a result. See ``docs/sur1-dr01-redrive.md`` §5.
+
+    It calls :func:`~scripts.sur1.adapters.tool_surface` itself rather than re-deriving anything,
+    so a gate that passes is a gate that watched the real build succeed, and then reads back the
+    one thing the defect destroyed: that ``report_outcome``'s argument is a structure with fields
+    in it rather than an object with nothing said about it.
+
+    A probe and never a refusal. :func:`readiness` decides what an unreachable source means, and
+    this answers the same way every other source answers.
+    """
+    try:
+        specifications = tool_surface(contract)
+    except Exception as refusal:
+        return Probe("BASELINE_TOOLS", False, f"{type(refusal).__name__}: {refusal}")
+    report = [spec for spec in specifications if spec["name"] == REPORT_TOOL]
+    if not report:
+        return Probe("BASELINE_TOOLS", False, f"the tool surface declares no {REPORT_TOOL}")
+    published = report[0]["arguments"]["report"]
+    fields = published.get("properties") if isinstance(published, Mapping) else None
+    if not fields:
+        return Probe(
+            "BASELINE_TOOLS",
+            False,
+            f"{REPORT_TOOL} publishes its report as {published!r}, which names no field",
+        )
+    return Probe(
+        "BASELINE_TOOLS",
+        True,
+        f"{len(specifications)} actions build from {contract.identity.benchmark_id}, and "
+        f"{REPORT_TOOL} carries a report schema naming {', '.join(sorted(fields))}",
+    )
+
+
 def readiness(bench: Bench) -> dict[str, Any]:
     """Ask every binding whether it is reachable. Mints nothing and authorises nothing.
 
@@ -270,6 +317,11 @@ def readiness(bench: Bench) -> dict[str, Any]:
     the declared classifier, the ground truth's reachability -- and mints a capability from the
     answers. A rehearsal has no business producing one, and answering those questions about a
     document that is not ``SUR-1`` would produce a report shaped like a scored preflight's.
+
+    One check here reaches nothing at all: :func:`baseline_tool_surface` asks the contract in
+    memory whether arm A's actions can be built. It is here rather than only in a test because
+    what it catches is a disagreement between a document and the code that reads it, which is a
+    thing a run finds and a unit test of either half on its own does not.
     """
     checks = [
         {"name": probe.source, "passed": probe.reachable, "detail": probe.detail}
@@ -277,6 +329,7 @@ def readiness(bench: Bench) -> dict[str, Any]:
             *bench.world.probes(),
             bench.surface.tools.probe(),
             bench.surface.workspace.probe(),
+            baseline_tool_surface(bench.contract),
         )
     ]
     return {

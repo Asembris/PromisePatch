@@ -71,7 +71,13 @@ class RehearsalModel:
         tools: Sequence[Mapping[str, Any]],
     ) -> ModelReply:
         """One turn of the plan. Reads the last tool result only for the order's version."""
-        self.calls.append({"turn": self.step, "tools": [str(tool["name"]) for tool in tools]})
+        self.calls.append(
+            {
+                "turn": self.step,
+                "tools": [str(tool["name"]) for tool in tools],
+                "report_fields": self._report_fields(tools),
+            }
+        )
         self._read_version(messages)
         plan = self._plan()
         if self.step >= len(plan):
@@ -86,6 +92,25 @@ class RehearsalModel:
             input_tokens=0,
             output_tokens=0,
         )
+
+    @staticmethod
+    def _report_fields(tools: Sequence[Mapping[str, Any]]) -> list[str]:
+        """Which report fields this turn's tool surface named, recorded and never acted on.
+
+        The plan is fixed and ignores this entirely -- it produces the same report whatever it
+        is shown, which is what makes it a plan. It is recorded because the one thing that can
+        silently stop being true about arm A is that it was told what ``report_outcome`` wants,
+        and an empty list here is that failure written down rather than inferred later from an
+        empty ``E4``. See ``docs/sur1-dr01-redrive.md`` §5.
+        """
+        for tool in tools:
+            if str(tool["name"]) != "report_outcome":
+                continue
+            report = tool.get("arguments", {}).get("report")
+            if isinstance(report, Mapping):
+                return sorted(str(name) for name in report.get("properties", {}))
+            return []
+        return []
 
     def _read_version(self, messages: Sequence[Mapping[str, Any]]) -> None:
         """Take ``EXT-B``'s current version out of the last ``get_orders`` result.
