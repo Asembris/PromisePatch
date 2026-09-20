@@ -44,6 +44,8 @@ from scripts.sur1.adapters import AblationArm, BaselineArm, PromisePatchArm
 from scripts.sur1.arms import ArmAdapter
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.database import installer_target
+from scripts.sur1.bindings.hostedworker import HostedWorkerControl
+from scripts.sur1.bindings.lifecycle import ComposeWorkerControl
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface, live_worker_surface
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
@@ -231,6 +233,14 @@ def build(config: BindingConfig, *, now: datetime | None = None) -> Bench:
         worker_surface=surface,
         program_lookup=rehearsal_registry(anchor=anchor),
         api_base_url=config.api_base_url,
+        # The product's own durable worker, run in this process, which is what makes the two
+        # PromisePatch arms of this rehearsal the two arms a scored run drives. Left at the
+        # default, `LiveScenarioWorld` controls no worker: arm C's wrapper would rebind the
+        # evaluator here while a container decided revalidation over there, the ablation would
+        # reach nothing, no `REVALIDATION_CHECK` row could be read back to say which checks
+        # ran, and a rehearsal of the corrected seam would have rehearsed the topology the
+        # correction replaced. See ADR-0020 and docs/sur1-hosted-worker.md.
+        worker=HostedWorkerControl(database=database, compose=ComposeWorkerControl()),
     )
     model = RehearsalModel(scenario_id=SCENARIO)
     promisepatch = PromisePatchArm(surface=surface)
@@ -547,12 +557,30 @@ def rehearse(
     directory = execute(run_id=run_id, bench=bench, command=command, root=root)
     report["result"] = joined(directory)
     report["customer_deliveries"] = bench.world.receipts()
+    # The last install left a hosted worker running, and `reset-demo-state` is about to empty
+    # forty-two tables and take an exclusive lock on each. That is the deadlock the installation
+    # lifecycle exists to remove, and a restore is a fixture load like any other, so the worker
+    # this rehearsal hosted goes down before the reset rather than racing it.
+    report["worker_quiesced"] = _quiesce(bench)
     if reset_at_exit:
         report["restore"] = restore(config)
         report["restored"] = restored(bench)
     report["finished_at"] = datetime.now(UTC).isoformat()
     write_once(directory.path / _report_name(directory), report)
     return report
+
+
+def _quiesce(bench: Bench) -> str:
+    """Stop the worker this rehearsal hosted, and say what happened rather than raise.
+
+    A rehearsal that failed to stop its own worker has still driven every arm and written every
+    capture; ending the run here would lose the report those artefacts are summarised in. What
+    the reset then finds is recorded by :func:`restored`, which reads the live systems back.
+    """
+    try:
+        return str(bench.world.worker.quiesce())
+    except Exception as failure:
+        return f"{type(failure).__name__}: {failure}"
 
 
 def _report_name(directory: RunDirectory) -> str:
