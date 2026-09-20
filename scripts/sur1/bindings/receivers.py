@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
@@ -100,6 +100,17 @@ Restated rather than imported, exactly as a migration restates a vocabulary: imp
 database types. ``test_sur1_live_bindings.py`` asserts the two maps agree.
 """
 
+KIND_BY_CHANNEL_PREFIX: Final[dict[str, str]] = {
+    prefix: kind for kind, prefix in sorted(CHANNEL_PREFIX_BY_KIND.items())
+}
+"""The same restated codec, read the other way, so a prefix names its kind exactly once.
+
+Derived rather than written out, for the reason :data:`CHANNEL_PREFIX_BY_KIND` is restated at
+all: two hand-written maps are two places a kind can be spelled, and the first time they
+disagreed a customer's reply would stop matching their consent.
+"""
+
+
 SCHEMA: Final = "promisepatch"
 """The schema the product's tables live in, named because ``asyncpg`` will not find them otherwise.
 
@@ -139,6 +150,75 @@ def channel_identity(payload: Mapping[str, Any]) -> str:
     address = str(payload.get("channel_address", ""))
     prefix = CHANNEL_PREFIX_BY_KIND.get(str(payload.get("channel_kind", "")))
     return f"{prefix}:{address}" if prefix else address
+
+
+class UnresolvableChannelError(RuntimeError):
+    """An address was handed to the transport that names no channel in this world.
+
+    Raised rather than recorded. A row nobody can place is a broken measurement, and one that
+    was recorded verbatim is a broken measurement nobody finds out about until the placement
+    refuses it several minutes and one attempt later.
+    """
+
+
+def resolve_channel_address(address: str, *, known: Collection[str]) -> str:
+    """One address, as the canonical joined identity everything else in the run speaks.
+
+    The world shows a customer's channel in two spellings and states no rule about either.
+    ``get_orders`` is the order system's own snapshot and carries the contract's split shape,
+    ``{"kind": "telegram", "address": "1002"}``; ``get_promise_graph`` renders the engine's
+    opaque joined string, ``tg:1002``. The frozen fixture, the arming, the product's outbox and
+    :class:`~scripts.sur1.evidence.FixtureMap` know only the second. An arm that repeated the
+    first was recorded verbatim, so its ask was counted under a name no armed event watched, its
+    reply never fired, and its ``E2`` row was refused at placement -- on every baseline attempt
+    of two scored runs. See ``docs/sur1-v3-forensic-audit.md`` §1.
+
+    So the transport resolves, against the channels this world actually holds:
+
+    - ``tg:1002`` -- already the identity; returned unchanged;
+    - ``1002`` -- the bare address ``get_orders`` shows; joined to the one known channel whose
+      address it is;
+    - ``telegram:1002`` -- the same snapshot's two fields written as one string; read through
+      the same restated codec.
+
+    Anything else **fails closed**. An address matching no known channel, and an address whose
+    bare form is carried by two known channels of different kinds, both raise: guessing which
+    customer an arm meant would be the harness answering a question only the arm can answer, and
+    a guess that was wrong would be scored as the arm's own message to somebody else.
+
+    Arm-blind by construction. It reads the address and the world's own channel set, and there
+    is no path from either to who is driving.
+    """
+    wanted = address.strip()
+    if not wanted:
+        raise UnresolvableChannelError("no channel address was given")
+
+    canonical = {channel.strip() for channel in known if channel and channel.strip()}
+    if wanted in canonical:
+        return wanted
+
+    by_address: dict[str, set[str]] = {}
+    for channel in sorted(canonical):
+        prefix, separator, rest = channel.partition(":")
+        if not separator:
+            continue
+        by_address.setdefault(rest, set()).add(channel)
+        kind = KIND_BY_CHANNEL_PREFIX.get(prefix)
+        if kind is not None:
+            by_address.setdefault(f"{kind}:{rest}", set()).add(channel)
+
+    candidates = by_address.get(wanted, set())
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    if not candidates:
+        raise UnresolvableChannelError(
+            f"{address!r} names no channel in this world; the customers reachable here are "
+            f"{', '.join(sorted(canonical)) or '(none)'}"
+        )
+    raise UnresolvableChannelError(
+        f"{address!r} is carried by more than one channel ({', '.join(sorted(candidates))}); "
+        "say which one"
+    )
 
 
 def _moment(raw: object) -> datetime:
@@ -603,6 +683,7 @@ __all__ = [
     "AMENDMENT_SOURCE",
     "CHANNEL_PREFIX_BY_KIND",
     "EVENT_WINDOW",
+    "KIND_BY_CHANNEL_PREFIX",
     "MESSAGE_SEND",
     "ORDER_AMENDED",
     "ChannelLedger",
@@ -611,5 +692,7 @@ __all__ = [
     "KitchenReceiver",
     "OrderSystemReceiver",
     "ReceiverUnreadableError",
+    "UnresolvableChannelError",
     "channel_identity",
+    "resolve_channel_address",
 ]

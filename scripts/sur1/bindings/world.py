@@ -60,6 +60,8 @@ from scripts.sur1.bindings.receivers import (
     KitchenReceiver,
     OrderSystemReceiver,
     ReceiverUnreadableError,
+    UnresolvableChannelError,
+    resolve_channel_address,
 )
 from scripts.sur1.bindings.setup import KitchenWriter, WorldHandles, program_for
 from scripts.sur1.bindings.worldsink import LedgerWriter, LiveWorldSink
@@ -449,10 +451,24 @@ class LiveScenarioWorld:
         The transport records it and reads nothing: the direction is stated rather than
         inferred, and whether the text asserts a change is decided later, by the declared rule,
         from the text alone.
+
+        **The address is resolved to the one identity the run speaks, and never recorded
+        verbatim.** This transport used to be the single place on the whole path that
+        canonicalised nothing, so a message addressed with the bare address ``get_orders`` shows
+        was counted under a name the arming did not watch and refused at placement. See
+        :func:`~scripts.sur1.bindings.receivers.resolve_channel_address` and
+        ``docs/sur1-v3-forensic-audit.md`` §1. An address naming no channel in this world is
+        refused here, where the arm can still see it and act again, rather than at collection.
         """
+        try:
+            channel = resolve_channel_address(
+                str(arguments.get("channel_address", "")), known=self.channel_universe()
+            )
+        except UnresolvableChannelError as unknown:
+            raise WorldActionError(str(unknown)) from unknown
         message = self.ledger.accept(
             ChannelMessage(
-                channel_address=str(arguments.get("channel_address", "")),
+                channel_address=channel,
                 direction=OUTBOUND,
                 text=str(arguments.get("text", "")),
                 accepted_at=datetime.now(UTC),
@@ -460,6 +476,22 @@ class LiveScenarioWorld:
             )
         )
         return {"accepted": True, "provider_event_id": message.provider_event_id}
+
+    def channel_universe(self) -> tuple[str, ...]:
+        """Every customer channel this world holds, as the frozen fixture names them.
+
+        The fixture is the benchmark's own statement of who exists, it is the map
+        :class:`~scripts.sur1.evidence.FixtureMap` places an ``E2`` row against, and it is the
+        form a world program's armed reply is stipulated on. Reading the channel set from
+        anywhere else would let the transport accept an address the placement then refuses.
+        """
+        return tuple(
+            sorted(
+                str(entry["channel"])
+                for entry in self.fixture.values()
+                if str(entry.get("channel", ""))
+            )
+        )
 
     def _hold_task(self, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         return self._writer().hold(str(arguments.get("task_id", "")))

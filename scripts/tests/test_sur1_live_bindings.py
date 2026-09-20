@@ -945,3 +945,113 @@ def test_an_outbound_row_whose_kind_this_build_does_not_know_is_refused_not_gues
     assert identity == "1002"
     with pytest.raises(EvidenceMalformedError, match="names no order"):
         fixtures.order_for_channel(identity)
+
+
+# ------------------------------------------------- the transport resolves one channel identity
+
+
+def test_the_bare_address_the_order_system_shows_is_recorded_as_the_joined_identity() -> None:
+    """``1002`` is ``tg:1002``. The defect that lost the baseline on two scored runs.
+
+    ``get_orders`` is the order system's own snapshot and shows ``{"kind": "telegram",
+    "address": "1002"}``; ``get_promise_graph`` shows ``tg:1002``. Both spellings name one
+    customer, the arming watches the joined one, and the transport used to record whichever
+    string it was handed. See ``docs/sur1-v3-forensic-audit.md`` §1.
+    """
+    world = live_world()
+
+    world.invoke("send_customer_message", {"channel_address": "1002", "text": "may we?"})
+
+    (message,) = world.ledger.messages
+    assert message.channel_address == "tg:1002"
+
+
+@pytest.mark.parametrize("spelling", ["tg:1002", "1002", "telegram:1002", " 1002 "])
+def test_every_spelling_this_world_shows_resolves_to_the_one_identity(spelling: str) -> None:
+    world = live_world()
+
+    world.invoke("send_customer_message", {"channel_address": spelling, "text": "may we?"})
+
+    (message,) = world.ledger.messages
+    assert message.channel_address == "tg:1002"
+
+
+@pytest.mark.parametrize("address", ["9999", "tg:9999", "wa:1002", "console:1002", ""])
+def test_an_address_naming_no_channel_in_this_world_is_refused_at_the_transport(
+    address: str,
+) -> None:
+    """Fails closed, where the arm can still see it, rather than at placement minutes later.
+
+    Guessing which customer was meant would be the harness answering the one question only the
+    arm can answer, and a wrong guess would be scored as that arm's own message to somebody else.
+    """
+    world = live_world()
+
+    with pytest.raises(WorldActionError):
+        world.invoke("send_customer_message", {"channel_address": address, "text": "may we?"})
+
+    assert world.ledger.messages == []
+
+
+def test_an_ask_sent_with_the_bare_address_fires_the_stipulated_reply() -> None:
+    """The arming counts asks under the joined name, so the resolution is what makes it due."""
+    world = settling_world("C01")
+
+    world.invoke("send_customer_message", {"channel_address": "1002", "text": "may we?"})
+
+    assert world.arming is not None and world.arming.pending == ()
+    (ask, reply) = world.ledger.messages
+    assert ask.channel_address == "tg:1002"
+    assert reply.direction == INBOUND
+    assert reply.channel_address == "tg:1002"
+    assert reply.text == "YES"
+
+
+def test_a_reply_to_a_bare_addressed_ask_reads_back_on_the_same_identity() -> None:
+    """The prompt tells arm A a reply from any other address is not that customer's answer."""
+    world = settling_world("C01")
+    world.invoke("send_customer_message", {"channel_address": "1002", "text": "may we?"})
+
+    replies = world.invoke("read_customer_replies", {})["replies"]
+
+    assert [reply["text"] for reply in replies] == ["YES"]
+    assert {reply["channel_address"] for reply in replies} == {"tg:1002"}
+
+
+def test_a_message_sent_with_the_bare_address_is_placeable_against_the_fixture() -> None:
+    """The second consequence: an ``E2`` row the projection can put on an order."""
+    world = settling_world("C01")
+    world.invoke("send_customer_message", {"channel_address": "1002", "text": "may we?"})
+
+    fixtures = FixtureMap.read(Contract.load().document)
+    placed = {
+        fixtures.order_for_channel(message.channel_address) for message in world.ledger.messages
+    }
+
+    assert placed == {"ord-b"}
+
+
+def test_the_channel_universe_is_the_frozen_fixture_s_own_channel_set() -> None:
+    contract = Contract.load()
+
+    assert live_world().channel_universe() == tuple(
+        sorted(str(entry["channel"]) for entry in contract.document["fixture"]["orders"].values())
+    )
+
+
+def test_resolution_reads_the_address_and_the_world_and_never_who_is_driving() -> None:
+    import inspect
+
+    from scripts.sur1.bindings.receivers import resolve_channel_address
+
+    assert list(inspect.signature(resolve_channel_address).parameters) == ["address", "known"]
+
+
+def test_one_bare_address_carried_by_two_kinds_is_refused_rather_than_picked() -> None:
+    from scripts.sur1.bindings.receivers import (
+        UnresolvableChannelError,
+        resolve_channel_address,
+    )
+
+    with pytest.raises(UnresolvableChannelError, match="more than one channel"):
+        resolve_channel_address("1002", known=("tg:1002", "wa:1002"))
