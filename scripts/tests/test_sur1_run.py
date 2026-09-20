@@ -210,12 +210,23 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
 
     assert directory is None
     assert not (tmp_path / "just-asking").exists()
-    # Six checks are left out of the comparison and only of this one. Each asks ``docker
+    # Seven checks are left out of the comparison and only of this one. Each asks ``docker
     # compose`` about *this machine* -- whether the worker can be quiesced, what the hosted
     # worker and the other containers are running and configured to call, whether a demo case
-    # would be opened, and whether a container worker could compete -- so their answers depend
-    # on whether the local stack happens to be up, which is not a fact about the preflight.
-    # Every other check here answers the same way on a machine with no stack at all.
+    # would be opened, whether a container worker could compete, and whether the evaluator arm
+    # C rebinds is reached -- so their answers depend on whether the local stack happens to be
+    # up, which is not a fact about the preflight. Every other check here answers the same way
+    # on a machine with no stack at all.
+    #
+    # ``ablation_reach`` is in this set and did not use to be. It was listed below as an
+    # unconditional failure, on the reasoning that *no worker is hosted in a preflight that
+    # drives nothing* -- which was true of the code and was the defect: the gate asks its two
+    # sole-executor and ablation questions about a running worker, and nothing started one until
+    # the first install, which happens inside ``drive`` and therefore after the gate. A
+    # correctly rebuilt, correctly configured scored stack refused itself. ``execute`` now hosts
+    # the worker the run will use before the questions are asked and puts it back down for a
+    # preflight-only invocation, so this check answers about the stack -- and on a machine with
+    # no stack at all it still fails, which is why it belongs here and not below.
     stack_dependent = {
         "worker_lifecycle",
         "demo_provisioning",
@@ -223,6 +234,7 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
         "build_identity",
         "config_parity",
         "sole_executor",
+        "ablation_reach",
     }
     failures = [check.name for check in report.failures if check.name not in stack_dependent]
     assert failures == [
@@ -232,11 +244,23 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
         "backend_build",
         "consent_ingress",
         "classifier_identity",
-        # Not stack-dependent, and not a gap in this test: no worker is hosted in a preflight
-        # that drives nothing, so arm C's wrapper has nothing to reach whether or not the stack
-        # is up. See ``docs/sur1-hosted-worker.md``.
-        "ablation_reach",
     ], "a development run reports the undetermined rule rather than being refused for it"
+
+
+def _last_json_document(printed: str) -> str:
+    """The report the command line printed, out of a stream the product also writes to.
+
+    ``execute`` hosts the product's own durable worker so that the gate can ask its questions of
+    a running one, and the product logs to stdout -- a container's logs belong there and that is
+    not the benchmark's to change. So the CLI's answer is the last document on the stream rather
+    than the whole of it. It is printed with ``indent=2``, so the document begins at the last
+    line that is exactly ``{``; this is a reading of the stream's shape, not a tolerance for
+    whatever it happens to contain.
+    """
+    lines = printed.splitlines()
+    starts = [index for index, line in enumerate(lines) if line == "{"]
+    assert starts, f"the command line printed no JSON report: {printed[-400:]!r}"
+    return "\n".join(lines[starts[-1] :])
 
 
 def test_the_command_line_reports_the_preflight_and_refuses_a_scored_run(
@@ -248,7 +272,7 @@ def test_the_command_line_reports_the_preflight_and_refuses_a_scored_run(
 
     code = main(["--run-id", "cli", "--preflight", "--scenario", "C01"])
 
-    printed = json.loads(capsys.readouterr().out)
+    printed = json.loads(_last_json_document(capsys.readouterr().out))
     assert code == 1, "a development preflight that cannot prepare a world reports so"
     assert printed["kind"] == DEVELOPMENT
     assert not printed["passed"]

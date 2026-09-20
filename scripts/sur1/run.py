@@ -29,6 +29,7 @@ one is a fresh authorisation and every one of
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from collections.abc import Sequence
@@ -196,17 +197,36 @@ def execute(
     """
     contract = Contract.load()
     bindings = build(config, contract)
-    report = require(
-        check(
-            kind=kind,
-            run_id=run_id,
-            bindings=bindings,
-            config=config,
-            scenarios=scenarios,
-            root=root,
+    # The gate asks two questions about a worker that is *running*: whether the process that
+    # decides revalidation is the one arm C's wrapper is installed in, and whether there is a
+    # hosted identity for this run's governed writes to carry. Nothing before this line started
+    # one. `InstallationLifecycle` first resumes at the first install, which happens inside
+    # `drive` and therefore after the gate -- so a correctly rebuilt, correctly configured
+    # scored stack refused itself at `ablation_reach` and `sole_executor`, for a reason that was
+    # true about the ordering and not about the stack. The worker the run will use is brought up
+    # here, before the questions are asked, so that what the gate reports is the stack.
+    started = _host_the_worker(bindings.world)
+    try:
+        report = require(
+            check(
+                kind=kind,
+                run_id=run_id,
+                bindings=bindings,
+                config=config,
+                scenarios=scenarios,
+                root=root,
+            )
         )
-    )
+    except BaseException:
+        # A refused run leaves no worker of ours behind: the next invocation's `resume` has to
+        # start from the same state this one found, or a second life would be running beside it.
+        _release_the_worker(bindings.world, started)
+        raise
     if preflight_only:
+        # `--preflight` changes nothing it can put back, and a hosted worker is something it
+        # can. A gate that left a durable worker running would be answering its own later
+        # questions differently from the stack an operator thinks they inspected.
+        _release_the_worker(bindings.world, started)
         return report, None
     classifier = _classifier(kind)
     authorisation = (
@@ -238,6 +258,50 @@ def execute(
         authorisation=authorisation,
     )
     return report, directory
+
+
+def _host_the_worker(world: object) -> bool:
+    """Start this run's own durable worker, and say whether one was started here.
+
+    A control that cannot be resumed -- a development run's uncontrolled worker -- is left
+    exactly as it was and reported as not started, so nothing is put back that was never taken.
+
+    **A refusal to start is not raised past the gate.** `HostedWorkerControl.resume` refuses
+    while the containerised worker could compete for this run's steps, and that condition is
+    precisely what `sole_executor` exists to report in its own words. Letting it out of here
+    would replace a named refusal naming what to stop with a traceback, and the operator would
+    be told less than the gate already knows.
+    """
+    control = getattr(world, "worker", None)
+    resume = getattr(control, "resume", None)
+    if not callable(resume):
+        return False
+    try:
+        resume()
+    except Exception:
+        # A `resume` that failed part-way may still have left a thread alive, so the same
+        # release path runs here rather than leaking one into the gate's own questions.
+        _release_the_worker(world, True)
+        return False
+    return True
+
+
+def _release_the_worker(world: object, started: bool) -> None:
+    """Put down the worker this invocation started, and only that one.
+
+    ``started`` is false for a worker somebody else is running, which is left alone: a gate that
+    stopped a worker it did not start would be an edit to the stack rather than a reading of it.
+    """
+    if not started:
+        return
+    quiesce = getattr(getattr(world, "worker", None), "quiesce", None)
+    if not callable(quiesce):
+        return
+    # Raised by nothing: this runs while an exception may already be on its way out, and a
+    # failure to stop a worker must not replace the reason the run was refused. The next
+    # `resume` re-asks the same question and refuses on its own account.
+    with contextlib.suppress(Exception):
+        quiesce()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
