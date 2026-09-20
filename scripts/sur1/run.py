@@ -45,7 +45,8 @@ from scripts.sur1.bindings.clock import RunClock, run_clock
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.consentdoor import SignedLinkDoor
 from scripts.sur1.bindings.database import installer_target
-from scripts.sur1.bindings.lifecycle import ComposeWorkerControl
+from scripts.sur1.bindings.hostedworker import HostedWorkerControl
+from scripts.sur1.bindings.lifecycle import ComposeStack, ComposeWorkerControl
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface, live_worker_surface
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
@@ -125,7 +126,13 @@ def build(config: BindingConfig, contract: Contract, *, clock: RunClock | None =
         worker_surface=surface,
         consent_door=SignedLinkDoor(api_base_url=config.api_base_url, database=database),
         clock=clock,
-        worker=ComposeWorkerControl(),
+        # The product's own durable worker, run here rather than in a container, so that arm
+        # C's wrapper reaches the process that decides revalidation. The containerised worker
+        # is held only to be proved down: a second worker would execute benchmark steps
+        # without the wrapper and part of every ablated attempt would silently be arm B. See
+        # ADR-0020 and docs/sur1-parity-correction.md section 4.
+        worker=HostedWorkerControl(database=database, compose=ComposeWorkerControl()),
+        stack=ComposeStack(),
     )
     model = BedrockConverseClient.from_contract(contract, region=config.aws_region)
     return Bindings(

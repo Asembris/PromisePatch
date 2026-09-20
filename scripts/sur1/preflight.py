@@ -98,6 +98,7 @@ from scripts.sur1.authorisation import (
 )
 from scripts.sur1.bindings import is_real
 from scripts.sur1.bindings.config import BindingConfig
+from scripts.sur1.bindings.lifecycle import ABSENT, RUNNING, STOPPED
 from scripts.sur1.bindings.setup import unprogrammed
 from scripts.sur1.capture import RUNS_ROOT, RunDirectory
 from scripts.sur1.evidence import UNDETERMINED, OutboundClassifier, blind_bundle
@@ -194,6 +195,9 @@ REQUIRED_CHECKS: Final = (
     "world_integrity",
     "product_model_identity",
     "ablation_reach",
+    "build_identity",
+    "config_parity",
+    "sole_executor",
 )
 """Every question a scored run must have been asked, named so a partial report cannot mint.
 
@@ -1448,6 +1452,297 @@ def world_integrity(*, world: object) -> Check:
     )
 
 
+def _stack(world: object) -> object | None:
+    """The other containers of this stack, if this world can reach them. Reads only."""
+    return getattr(world, "stack", None)
+
+
+def _stack_identities(world: object, services: Sequence[str]) -> dict[str, Mapping[str, Any]]:
+    """What each named container says it is, or an empty mapping where it said nothing."""
+    stack = _stack(world)
+    ask = getattr(stack, "identities", None)
+    if not callable(ask):
+        return {}
+    try:
+        answered: Mapping[str, Mapping[str, Any]] = ask(services)
+    except Exception:
+        return {}
+    return {name: dict(published or {}) for name, published in answered.items()}
+
+
+PARITY_SERVICES: Final = ("api", "mcp")
+"""The containers that serve a scored run beside the worker, and must match it.
+
+The ``worker`` service is deliberately not here: a scored run does not have one. Its work is
+done by the hosted worker in the harness process, and its container must be down --
+:func:`sole_executor` is what requires that.
+"""
+
+BUILD_KEYS: Final = ("source_digest", "migration_revision")
+"""What *running the same revision* means, as the product computes it about itself."""
+
+CONFIGURATION_KEYS: Final = (
+    "llm_provider",
+    "demo_session_enabled",
+    "explanation_verbalisation",
+    "bakery_tz",
+    "model_id",
+    "region",
+    "temperature",
+    "api",
+)
+"""What *configured the same way* means, restricted to the settings that change behaviour.
+
+Addresses are absent on purpose and are compared separately: a container on the compose network
+and a process on the host legitimately spell the same database and the same order system
+differently, and requiring string equality there would refuse a correct stack while saying
+nothing true.
+"""
+
+
+def build_identity(*, world: object) -> Check:
+    """Every process serving this run is running the revision the harness is measuring.
+
+    ``backend_build`` asks the API which *migration* its code expects, and says plainly that an
+    image stale only in code no migration accompanied reports the same revision and passes. That
+    gap is not hypothetical: the first scored run was driven against a container built before the
+    code it was measuring, and the local containers have no bind mounts, so they serve the image
+    and never the working tree.
+
+    This asks a stronger question of a stronger fact. Each process publishes a ``source_digest``
+    it computes over the bytes of the three packages it actually imported, and they all have to
+    be one digest -- including the harness's own, because the harness imports the same product
+    source and is where arm C's wrapper and the governed fixture load run.
+    """
+    try:
+        from promisepatch.runtime_identity import behavioural_differences, source_digest
+
+        here = source_digest()
+    except Exception as failure:
+        return Check(
+            "build_identity",
+            False,
+            f"this process could not compute a source digest: {type(failure).__name__}: {failure}",
+        )
+
+    published, why = _published_runtime_identity(world)
+    if published is None:
+        return Check("build_identity", False, why)
+
+    identities: dict[str, Mapping[str, Any]] = {"hosted worker": published}
+    identities.update(_stack_identities(world, PARITY_SERVICES))
+    missing = [name for name in PARITY_SERVICES if not identities.get(name)]
+    if missing:
+        return Check(
+            "build_identity",
+            False,
+            f"{', '.join(missing)} published no runtime identity, so whether the stack serving "
+            "this run is one revision is unknown; a container built before the code being "
+            "measured has served a scored run before",
+        )
+
+    mine = {"source_digest": here, "migration_revision": published.get("migration_revision")}
+    faults = [
+        f"{name} differs from this source tree on " + "; ".join(differences)
+        for name, found in sorted(identities.items())
+        if (differences := behavioural_differences(mine, found, keys=BUILD_KEYS))
+    ]
+    if faults:
+        return Check("build_identity", False, "; ".join(faults))
+    return Check(
+        "build_identity",
+        True,
+        f"the harness, the hosted worker and {', '.join(PARITY_SERVICES)} all run source "
+        f"{here[:12]} at migration {published.get('migration_revision')}",
+    )
+
+
+def config_parity(*, world: object, config: BindingConfig) -> Check:
+    """Every process serving this run is configured the same way in the ways that matter.
+
+    Two comparisons, because two kinds of value are involved.
+
+    **Settings are compared by equality.** The provider, the model, the Region, the temperature,
+    the bakery timezone, demo provisioning and explanation verbalisation mean the same thing in
+    every process, so they must be the same value in every process. A split stack -- one process
+    on Bedrock and another quietly on the fake -- is the defect that made all three scored runs
+    unusable, and nothing asked.
+
+    **Addresses are compared by target.** A container reaches the order system at
+    ``order-simulator:8100`` and a host process reaches it on the published port; both are
+    correct and they are different strings. So the hosted worker, which is the process that does
+    the work, must name exactly the systems the harness's own receivers read -- and the
+    containers must name the service whose published port is the one the harness named.
+    ``docker/env/host.env`` says ``58100`` while this machine publishes ``48100``; a hosted
+    worker configured from it would push every governed amendment into a closed socket, and the
+    receivers would read an order system nothing had written to.
+    """
+    try:
+        from promisepatch.runtime_identity import behavioural_differences, database_target
+    except Exception as failure:
+        return Check(
+            "config_parity", False, f"the product could not be imported: {type(failure).__name__}"
+        )
+
+    published, why = _published_runtime_identity(world)
+    if published is None:
+        return Check("config_parity", False, why)
+
+    identities: dict[str, Mapping[str, Any]] = dict(_stack_identities(world, PARITY_SERVICES))
+    missing = [name for name in PARITY_SERVICES if not identities.get(name)]
+    if missing:
+        return Check(
+            "config_parity",
+            False,
+            f"{', '.join(missing)} published no runtime identity, so whether the stack is "
+            "configured one way is unknown",
+        )
+
+    faults = [
+        f"{name} differs from the hosted worker on " + "; ".join(differences)
+        for name, found in sorted(identities.items())
+        if (differences := behavioural_differences(published, found, keys=CONFIGURATION_KEYS))
+    ]
+
+    wanted_database = database_target(config.database_url)
+    if not wanted_database:
+        faults.append("SUR1_DATABASE_URL names no database this comparison could be made against")
+    elif published.get("database_target") != wanted_database:
+        faults.append(
+            f"the hosted worker writes to {published.get('database_target')!r} and the receivers "
+            f"read {wanted_database!r}; the work and the evidence would be two databases"
+        )
+
+    wanted_orders = config.order_system_base_url.rstrip("/")
+    if published.get("order_system_base_url") != wanted_orders:
+        faults.append(
+            f"the hosted worker amends orders at {published.get('order_system_base_url')!r} and "
+            f"E1 is read from {wanted_orders!r}; a governed amendment would land where nothing "
+            "reads it"
+        )
+
+    faults.extend(_service_reaches_the_harness_order_system(world, identities, wanted_orders))
+
+    if faults:
+        return Check("config_parity", False, "; ".join(faults))
+    return Check(
+        "config_parity",
+        True,
+        f"the hosted worker and {', '.join(PARITY_SERVICES)} share one configuration, one "
+        f"database ({wanted_database}) and one order system ({wanted_orders})",
+    )
+
+
+ORDER_SIMULATOR_SERVICE: Final = "order-simulator"
+ORDER_SIMULATOR_PORT: Final = 8100
+"""The compose service the order system runs as, and the port it listens on inside the network."""
+
+
+def _service_reaches_the_harness_order_system(
+    world: object, identities: Mapping[str, Mapping[str, Any]], wanted: str
+) -> list[str]:
+    """Whether each container's order-system address is the system the harness named.
+
+    Asked of compose's own port map rather than of a convention. A container naming the service
+    is correct exactly when that service is published on the port the harness reads E1 from; a
+    container naming a loopback address is correct exactly when the port matches. Anything this
+    cannot establish is a fault, because an unestablished address is how two systems of record
+    came to be in one run.
+    """
+    stack = _stack(world)
+    ask = getattr(stack, "published_port", None)
+    if not callable(ask):
+        return ["this world cannot ask compose where the order system is published"]
+    try:
+        port = str(ask(ORDER_SIMULATOR_SERVICE, ORDER_SIMULATOR_PORT))
+    except Exception as failure:
+        return [f"compose could not be asked for the order system's port: {failure}"]
+    if not port:
+        return [f"compose publishes no host port for {ORDER_SIMULATOR_SERVICE}"]
+    if not wanted.endswith(f":{port}"):
+        return [
+            f"compose publishes {ORDER_SIMULATOR_SERVICE} on port {port} and the harness reads "
+            f"E1 from {wanted!r}; those are two order systems"
+        ]
+    faults = []
+    for name, found in sorted(identities.items()):
+        address = str(found.get("order_system_base_url", ""))
+        if not address:
+            faults.append(f"{name} names no order system")
+        elif ORDER_SIMULATOR_SERVICE not in address and not address.endswith(f":{port}"):
+            faults.append(
+                f"{name} amends orders at {address!r}, which is neither the "
+                f"{ORDER_SIMULATOR_SERVICE} service nor the port it is published on"
+            )
+    return faults
+
+
+def sole_executor(*, world: object) -> Check:
+    """Exactly one worker can execute this run's benchmark work, and it is the hosted one.
+
+    A second durable worker would claim steps and execute them **without** arm C's wrapper. The
+    ablation would then cover whichever fraction of an attempt the hosted worker happened to
+    claim, arm C would be part arm B, and no artefact would say which part. That is not a weaker
+    reading; it is an unreadable one, so it is refused before a run rather than noted in it.
+
+    Three facts, each read rather than assumed: the control can say whether a container worker
+    is running and it is not; the hosted worker has an identity that governed writes will carry;
+    and the control can read the product's own audit ledger back to prove, after each attempt,
+    that nothing else did the work.
+    """
+    control = _worker_control(world)
+    competing = getattr(control, "competing_worker_state", None)
+    if not callable(competing):
+        return Check(
+            "sole_executor",
+            False,
+            "this world's worker control cannot say whether a second worker could claim this "
+            "run's steps, so whether arm C's wrapper covered the whole of an attempt is unknown",
+        )
+    try:
+        state = str(competing())
+    except Exception as failure:
+        return Check("sole_executor", False, f"{type(failure).__name__}: {failure}")
+    if state == RUNNING:
+        return Check(
+            "sole_executor",
+            False,
+            "the containerised worker is running beside the hosted one; it would claim "
+            "benchmark steps and execute them without arm C's wrapper, so part of every "
+            "ablated attempt would silently be arm B. Stop it before a scored run",
+        )
+    if state not in {STOPPED, ABSENT}:
+        return Check(
+            "sole_executor",
+            False,
+            f"the containerised worker is {state!r}, which is neither stopped nor absent; a "
+            "scored run may not proceed on an unestablished answer to who executes its work",
+        )
+
+    prove = getattr(control, "executed_only_by_the_hosted_worker", None)
+    if not callable(prove):
+        return Check(
+            "sole_executor",
+            False,
+            "this world's worker control cannot read back which worker did the governed work, "
+            "so the sole-executor claim would be an assertion rather than a reading",
+        )
+    identity = str(getattr(control, "worker_identity", lambda: "")() or "")
+    if not identity:
+        return Check(
+            "sole_executor",
+            False,
+            "no hosted worker is running, so there is no identity for this run's governed "
+            "writes to carry and nothing to compare a foreign one against",
+        )
+    return Check(
+        "sole_executor",
+        True,
+        f"the containerised worker is {state} and the hosted worker {identity} is the only "
+        "process that can execute this run's durable work",
+    )
+
+
 def ablation_reach(*, world: object) -> Check:
     """Arm C's wrapper is reached by the process that decides revalidation.
 
@@ -1479,12 +1774,34 @@ def ablation_reach(*, world: object) -> Check:
             False,
             "the durable worker that decides revalidation is a separate process, and arm C's "
             "wrapper is installed in this one; arm C would be arm B and the ablation would "
-            "measure nothing. See docs/sur1-parity-correction.md",
+            "measure nothing. See docs/sur1-parity-correction.md and ADR-0020",
+        )
+
+    # Reaching the evaluator is necessary and is not sufficient. The rebinding could reach a
+    # module in this process while the work is done by a worker that is not running, or by one
+    # the wrapper was installed after. So the same control must also be able to show, from the
+    # product's own ledger, which checks actually ran -- and a hosted worker must be up now.
+    witnesses = getattr(control, "revalidation_witnesses", None)
+    if not callable(witnesses):
+        return Check(
+            "ablation_reach",
+            False,
+            "the wrapper reaches the evaluator in this process, but nothing can read the "
+            "product's own record of which checks ran; the treatment would be asserted by the "
+            "harness about itself rather than proved from the system under test",
+        )
+    if str(getattr(control, "worker_identity", lambda: "")() or "") == "":
+        return Check(
+            "ablation_reach",
+            False,
+            "the wrapper reaches the evaluator in this process and no worker is running in it; "
+            "an attempt driven now would decide nothing to ablate",
         )
     return Check(
         "ablation_reach",
         True,
-        "the process that decides revalidation is the one arm C's wrapper is installed in",
+        "the process that decides revalidation is the one arm C's wrapper is installed in, and "
+        "the product's own audit rows can be read back to show which checks ran",
     )
 
 
@@ -1587,6 +1904,9 @@ def preflight(
         world_integrity(world=world),
         product_model_identity(world=world, contract=contract),
         ablation_reach(world=world),
+        build_identity(world=world),
+        config_parity(world=world, config=config),
+        sole_executor(world=world),
     ]
     return PreflightReport(kind=kind, checks=tuple(checks))
 

@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Protocol, TypeVar
@@ -230,21 +230,9 @@ class ComposeWorkerControl:
         preflight reports "this worker publishes no identity" as the refusal it is instead of
         turning it into an exception somewhere up the stack.
         """
-        try:
-            completed = self._compose("exec", "-T", self.service, "pp", "runtime-identity")
-        except PreparationError:
-            return {}
-        for line in reversed(completed.stdout.splitlines()):
-            body = line.strip()
-            if not body.startswith("{"):
-                continue
-            try:
-                published = json.loads(body)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(published, dict):
-                return published
-        return {}
+        return ComposeStack(project=self.project, root=self.root, timeout=self.timeout).identity(
+            self.service
+        )
 
     def evaluates_in_process(self) -> bool:
         """No: the durable worker is a container, and this harness is not inside it."""
@@ -284,6 +272,100 @@ def _rows(stdout: str) -> list[dict[str, Any]]:
     if isinstance(loaded, dict):
         return [loaded]
     return [row for row in loaded if isinstance(row, dict)]
+
+
+@dataclass(frozen=True, slots=True)
+class ComposeStack:
+    """The other containers of the local stack, read and never started, stopped or changed.
+
+    Two questions, both of which a scored run has to be able to answer about processes it does
+    not control. **What is this service running and configured for**, asked of the service
+    itself through ``pp runtime-identity`` rather than of a compose file, because a file says
+    what a container was created with and a running process says what it holds. And **where is
+    this service published**, asked of compose's own port map, because a harness that guessed
+    the port reached nothing: ``docker/env/host.env`` named ``58100`` while this machine
+    publishes ``48100``, and a host process would have pushed every governed amendment into
+    a closed socket.
+
+    Nothing here mutates. ``exec`` runs a read-only command in a container that is already up;
+    ``port`` is a lookup. A service that is down, absent or cannot answer yields nothing, and
+    the preflight turns that into a named refusal rather than an exception.
+    """
+
+    project: str = "promisepatch"
+    root: Path = ROOT
+    timeout: float = 60.0
+    binding_kind: str = REAL
+
+    def identity(self, service: str) -> Mapping[str, Any]:
+        """What ``service`` says it is running and is configured to do, or nothing.
+
+        Every failure is one answer -- *this service said nothing* -- because from a scored
+        run's point of view a container that is down, a compose that refused and a machine with
+        no ``docker`` on its path are the same fact: the stack cannot be shown to match. The
+        preflight turns that into a named refusal, which is the only place it should become one.
+        """
+        try:
+            completed = self._compose("exec", "-T", service, "pp", "runtime-identity")
+        except Exception:
+            return {}
+        for line in reversed(completed.stdout.splitlines()):
+            body = line.strip()
+            if not body.startswith("{"):
+                continue
+            try:
+                published = json.loads(body)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(published, dict):
+                return published
+        return {}
+
+    def identities(self, services: Sequence[str]) -> dict[str, Mapping[str, Any]]:
+        """One identity per named service, in order, including the ones that said nothing."""
+        return {service: self.identity(service) for service in services}
+
+    def published_port(self, service: str, container_port: int) -> str:
+        """The host port ``service``'s ``container_port`` is published on, as compose knows it.
+
+        Compose answers ``127.0.0.1:48100``; only the port is returned, because the host half
+        is the loopback address the harness already only ever names. An unpublished service, an
+        absent one and a compose that refused all return the empty string, which every caller
+        reads as *this could not be established* rather than as a port.
+        """
+        try:
+            completed = self._compose("port", service, str(container_port))
+        except Exception:
+            return ""
+        answer = completed.stdout.strip().splitlines()
+        if not answer:
+            return ""
+        _, _, port = answer[-1].strip().rpartition(":")
+        return port if port.isdigit() else ""
+
+    def probe(self) -> Probe:
+        """Whether compose can be asked about this stack at all. Reads, and writes nothing."""
+        try:
+            self._compose("ps", "--all", "--format", "json")
+        except Exception as failure:
+            return Probe("STACK", False, f"{type(failure).__name__}: {failure}")
+        return Probe("STACK", True, f"compose answers for project {self.project!r}")
+
+    def _compose(self, *arguments: str) -> subprocess.CompletedProcess[str]:
+        completed = subprocess.run(
+            ["docker", "compose", "--project-name", self.project, *arguments],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise PreparationError(
+                f"docker compose {' '.join(arguments)} exited {completed.returncode}: "
+                f"{completed.stderr.strip()[:400]}"
+            )
+        return completed
 
 
 @dataclass(frozen=True, slots=True)
@@ -455,6 +537,7 @@ __all__ = [
     "QUIET_TABLES",
     "RUNNING",
     "STOPPED",
+    "ComposeStack",
     "ComposeWorkerControl",
     "InstallationLifecycle",
     "UncontrolledWorker",

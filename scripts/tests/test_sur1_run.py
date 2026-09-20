@@ -210,12 +210,20 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
 
     assert directory is None
     assert not (tmp_path / "just-asking").exists()
-    # Four checks are left out of the comparison and only of this one. Each asks ``docker
-    # compose`` about *this machine* -- whether the worker can be quiesced, what it is
-    # configured to call, and whether it opens a demo case -- so their answers depend on whether
-    # the local stack happens to be up, which is not a fact about the preflight. Every other
-    # check here answers the same way on a machine with no stack at all.
-    stack_dependent = {"worker_lifecycle", "demo_provisioning", "product_model_identity"}
+    # Six checks are left out of the comparison and only of this one. Each asks ``docker
+    # compose`` about *this machine* -- whether the worker can be quiesced, what the hosted
+    # worker and the other containers are running and configured to call, whether a demo case
+    # would be opened, and whether a container worker could compete -- so their answers depend
+    # on whether the local stack happens to be up, which is not a fact about the preflight.
+    # Every other check here answers the same way on a machine with no stack at all.
+    stack_dependent = {
+        "worker_lifecycle",
+        "demo_provisioning",
+        "product_model_identity",
+        "build_identity",
+        "config_parity",
+        "sole_executor",
+    }
     failures = [check.name for check in report.failures if check.name not in stack_dependent]
     assert failures == [
         "workspace_origin",
@@ -224,9 +232,9 @@ def test_a_preflight_only_invocation_drives_nothing_and_opens_no_directory(
         "backend_build",
         "consent_ingress",
         "classifier_identity",
-        # Not stack-dependent, and not a gap in this test: the ablation reaches no evaluator on
-        # any topology that exists today, so this check refuses with the stack up as readily as
-        # with it down. See ``docs/sur1-parity-correction.md``.
+        # Not stack-dependent, and not a gap in this test: no worker is hosted in a preflight
+        # that drives nothing, so arm C's wrapper has nothing to reach whether or not the stack
+        # is up. See ``docs/sur1-hosted-worker.md``.
         "ablation_reach",
     ], "a development run reports the undetermined rule rather than being refused for it"
 

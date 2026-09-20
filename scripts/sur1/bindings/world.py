@@ -166,6 +166,16 @@ class LiveScenarioWorld:
     live worker is a deadlock rather than a slow moment.
     """
 
+    stack: Any = None
+    """The other containers serving this run, held only so they can be read and compared.
+
+    ``api`` and ``mcp`` are not this world's to start or stop, and this field never does. What
+    it is for is the two questions a scored run has to answer about processes it does not own:
+    whether they are running the revision being measured, and whether they are configured the
+    way the process doing the work is. See :func:`~scripts.sur1.preflight.build_identity` and
+    :func:`~scripts.sur1.preflight.config_parity`; ``None`` is refused by both.
+    """
+
     program_lookup: Callable[[str], Any] = program_for
     """How this world finds the program for a scenario. The frozen registry, by default.
 
@@ -187,6 +197,7 @@ class LiveScenarioWorld:
             "programs": f"{self.program_lookup.__module__}.{self.program_lookup.__qualname__}",
             "clock": strategy_of(self.clock),
             "worker_control": type(self.worker).__name__,
+            "stack": None if self.stack is None else type(self.stack).__name__,
             "consent_ingress": (
                 None if self.consent_door is None else dict(self.consent_door.identity())
             ),

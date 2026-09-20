@@ -45,6 +45,7 @@ from scripts.sur1.preflight import (
     real_bindings,
     receivers,
     require,
+    sole_executor,
     workspace_origin,
     world_programs,
 )
@@ -145,6 +146,36 @@ class ReachableBinding:
     channels: tuple[str, ...] | None = None
     """A world binding's own customer channels, as the frozen fixture names them."""
 
+    stack: Any = None
+    """The other containers of the stack, which a scored run must prove it matches.
+
+    *Every precondition true* now includes ``api``, ``mcp`` and the hosted worker running one
+    source revision and one behaviour-relevant configuration. A world that cannot ask them is
+    refused, because a split stack is what made all three scored runs unusable. See ADR-0020.
+    """
+
+    competing: str = "stopped"
+    """What the containerised worker is, as a hosted worker control reports it.
+
+    ``stopped`` is the world a scored run needs. A second worker would claim benchmark steps
+    and execute them without arm C's wrapper, so part of every ablated attempt would be arm B.
+    """
+
+    hosted_identity: str = "harness:4242:0badc0de"
+    """The lease owner a hosted worker writes onto everything it claims."""
+
+    foreign_workers: tuple[str, ...] = ()
+    """Worker identities other than the hosted one that did governed work. Empty is the proof."""
+
+    witnesses: tuple[Any, ...] = ()
+    """The product's own ``REVALIDATION_CHECK`` rows, as the ablation proof reads them back."""
+
+    service_identities: Mapping[str, Mapping[str, Any]] | None = None
+    """What each other container says it is. ``None`` means this stand-in is not a stack."""
+
+    service_ports: Mapping[str, str] = field(default_factory=dict)
+    """Where compose publishes each service, by name. Read by the order-system target check."""
+
     def identity(self) -> Mapping[str, Any]:
         return dict(self.payload)
 
@@ -153,6 +184,25 @@ class ReachableBinding:
 
     def evaluates_in_process(self) -> bool:
         return self.in_process
+
+    def competing_worker_state(self) -> str:
+        return self.competing
+
+    def worker_identity(self) -> str:
+        return self.hosted_identity
+
+    def executed_only_by_the_hosted_worker(self, since: Any) -> tuple[str, ...]:
+        return self.foreign_workers
+
+    def revalidation_witnesses(self, since: Any) -> tuple[Any, ...]:
+        return self.witnesses
+
+    def identities(self, services: Any) -> dict[str, Mapping[str, Any]]:
+        published = self.service_identities or {}
+        return {str(name): dict(published.get(str(name), {})) for name in services}
+
+    def published_port(self, service: str, container_port: int) -> str:
+        return self.service_ports.get(service, "")
 
     def channel_universe(self) -> tuple[str, ...]:
         if self.channels is not None:
@@ -192,8 +242,24 @@ class ReachableBinding:
         )
 
 
+ORDER_SYSTEM_PORT = "58100"
+"""The port ``BindingConfig`` resolves the order system to when nothing has moved it.
+
+The same value :data:`~scripts.sur1.bindings.config.DEFAULT_PORTS` names, restated here because
+what this file is asserting is that the harness, the hosted worker and the containers agree on
+one order system -- and an agreement written once cannot be shown to be an agreement.
+"""
+
+ORDER_SYSTEM_URL = f"http://127.0.0.1:{ORDER_SYSTEM_PORT}"
+CONTAINER_ORDER_SYSTEM_URL = "http://order-simulator:8100"
+"""One order system, spelled as a host process reaches it and as a container reaches it."""
+
+
 def published_worker_identity(**overrides: Any) -> dict[str, Any]:
     """What ``pp runtime-identity`` prints in a worker configured the way a scored run needs."""
+    from promisepatch.db import HEAD_REVISION
+    from promisepatch.runtime_identity import source_digest
+
     configured = Contract.load().model_configuration
     return {
         "service": "promisepatch",
@@ -204,8 +270,31 @@ def published_worker_identity(**overrides: Any) -> dict[str, Any]:
         "region": REGION,
         "credential_resolves": True,
         "demo_session_enabled": False,
+        "explanation_verbalisation": False,
+        "bakery_tz": "Africa/Tunis",
+        "source_digest": source_digest(),
+        "migration_revision": HEAD_REVISION,
+        "database_target": "reader@127.0.0.1:55432/promisepatch",
+        "order_system_base_url": ORDER_SYSTEM_URL,
         **overrides,
     }
+
+
+def stack(**overrides: Any) -> ReachableBinding:
+    """An ``api`` and an ``mcp`` container at this revision and this configuration.
+
+    Both spell the order system the way a container on the compose network reaches it, which is
+    not the way the hosted worker spells it and is the same system. That difference is the point
+    of the check: addresses are compared by target, settings by equality.
+    """
+    container = published_worker_identity(order_system_base_url=CONTAINER_ORDER_SYSTEM_URL)
+    return ReachableBinding(
+        source="STACK",
+        service_identities=overrides.get(
+            "service_identities", {"api": dict(container), "mcp": dict(container)}
+        ),
+        service_ports=overrides.get("service_ports", {"order-simulator": ORDER_SYSTEM_PORT}),
+    )
 
 
 def model() -> ReachableBinding:
@@ -266,9 +355,10 @@ that would be wrong to refuse. No connection is made to it by anything in this f
 
 def world(**overrides: Any) -> ReachableBinding:
     """A world binding that reaches nothing and has been placed in time by the declared rule."""
-    fixed = {"clock", "consent_door", "orders", "worker", "database", "installer"}
+    fixed = {"clock", "consent_door", "orders", "worker", "database", "installer", "stack"}
     return ReachableBinding(
         source="WORLD",
+        stack=overrides.get("stack", stack()),
         clock=overrides.get("clock", RunClock(anchor=RUN_ANCHOR, timezone="Africa/Tunis")),
         consent_door=overrides.get("consent_door", ReachableBinding(source="CONSENT")),
         orders=overrides.get("orders", orders()),
@@ -605,6 +695,9 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "world_integrity",
         "product_model_identity",
         "ablation_reach",
+        "build_identity",
+        "config_parity",
+        "sole_executor",
     ]
     json.dumps(payload)
 
@@ -838,3 +931,166 @@ def test_the_configuration_check_names_the_workspace_origin_it_now_requires() ->
     """It is a scored requirement, not only a live probe's incidental finding."""
     assert "SUR1_WORKSPACE_ORIGIN" in REQUIRED_FOR_SCORED
     assert not configuration(config(SUR1_WORKSPACE_ORIGIN="")).passed
+
+
+# --------------------------------------------- the hosted worker, its build and its parity
+
+
+def test_a_stack_that_publishes_no_build_identity_refuses_a_scored_run(tmp_path: Path) -> None:
+    """A container that cannot say what it is running is not a container that matches."""
+    report = passing_preflight(tmp_path, world=world(stack=stack(service_identities={})))
+
+    refused = next(c for c in report.failures if c.name == "build_identity")
+    assert "api, mcp published no runtime identity" in refused.detail
+
+
+def test_a_container_built_before_the_measured_code_refuses_a_scored_run(tmp_path: Path) -> None:
+    """The defect the first scored run was driven into, and which `backend_build` cannot see.
+
+    The local containers have no bind mounts: they serve the image. An image stale only in code
+    that no migration accompanied answers `/readyz` with the same migration revision as this
+    source tree and passes every other question in the file.
+    """
+    stale = published_worker_identity(
+        order_system_base_url=CONTAINER_ORDER_SYSTEM_URL, source_digest="0" * 64
+    )
+    report = passing_preflight(
+        tmp_path,
+        world=world(stack=stack(service_identities={"api": stale, "mcp": stale})),
+    )
+
+    refused = next(c for c in report.failures if c.name == "build_identity")
+    assert "source_digest" in refused.detail
+    assert next(c for c in report.checks if c.name == "backend_build").passed
+
+
+def test_a_split_stack_on_two_providers_refuses_a_scored_run(tmp_path: Path) -> None:
+    """One process on the frozen model and another on the fake is two systems under test."""
+    split = published_worker_identity(
+        order_system_base_url=CONTAINER_ORDER_SYSTEM_URL, llm_provider="fake"
+    )
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            stack=stack(
+                service_identities={
+                    "api": published_worker_identity(
+                        order_system_base_url=CONTAINER_ORDER_SYSTEM_URL
+                    ),
+                    "mcp": split,
+                }
+            )
+        ),
+    )
+
+    refused = next(c for c in report.failures if c.name == "config_parity")
+    assert "mcp differs" in refused.detail
+    assert "llm_provider" in refused.detail
+
+
+def test_a_hosted_worker_writing_to_another_database_refuses_a_scored_run(tmp_path: Path) -> None:
+    """The work and the evidence in two databases is what run two spent 27 attempts on."""
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER",
+                identity_payload=published_worker_identity(
+                    database_target="app@127.0.0.1:55433/promisepatch"
+                ),
+            )
+        ),
+    )
+
+    refused = next(c for c in report.failures if c.name == "config_parity")
+    assert "the work and the evidence would be two databases" in refused.detail
+
+
+def test_a_hosted_worker_on_the_wrong_order_system_port_refuses_a_scored_run(
+    tmp_path: Path,
+) -> None:
+    """`docker/env/host.env` named 58100 on a machine publishing 48100.
+
+    A hosted worker configured from it pushes every governed amendment into a closed socket
+    while the receivers read an order system nothing has written to. Neither the amendment nor
+    its absence appears anywhere except as an arm that achieved nothing.
+    """
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER",
+                identity_payload=published_worker_identity(
+                    order_system_base_url="http://127.0.0.1:48100"
+                ),
+            )
+        ),
+    )
+
+    refused = next(c for c in report.failures if c.name == "config_parity")
+    assert "a governed amendment would land where nothing reads it" in refused.detail
+
+
+def test_an_order_system_published_elsewhere_than_e1_is_read_refuses_a_scored_run(
+    tmp_path: Path,
+) -> None:
+    """Asked of compose's own port map, because a convention is not a mapping."""
+    report = passing_preflight(
+        tmp_path, world=world(stack=stack(service_ports={"order-simulator": "49999"}))
+    )
+
+    refused = next(c for c in report.failures if c.name == "config_parity")
+    assert "those are two order systems" in refused.detail
+
+
+def test_a_running_container_worker_refuses_a_scored_run(tmp_path: Path) -> None:
+    """A second worker executes benchmark steps without arm C's wrapper, so C is part B."""
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER",
+                identity_payload=published_worker_identity(),
+                competing="running",
+            )
+        ),
+    )
+
+    refused = next(c for c in report.failures if c.name == "sole_executor")
+    assert "without arm C's wrapper" in refused.detail
+
+
+def test_a_control_that_cannot_say_who_executes_refuses_a_scored_run(tmp_path: Path) -> None:
+    """The containerised control, which has no answer to this question at all."""
+    check = sole_executor(world=SyntheticWorld())
+
+    assert not check.passed
+    assert "cannot say whether a second worker" in check.detail
+
+
+def test_a_hosted_worker_that_is_not_running_refuses_a_scored_run(tmp_path: Path) -> None:
+    """A wrapper that reaches a module in a process with no worker ablates nothing."""
+    report = passing_preflight(
+        tmp_path,
+        world=world(
+            worker=ReachableBinding(
+                source="WORKER",
+                identity_payload=published_worker_identity(),
+                hosted_identity="",
+            )
+        ),
+    )
+
+    assert not next(c for c in report.checks if c.name == "ablation_reach").passed
+    assert not next(c for c in report.checks if c.name == "sole_executor").passed
+
+
+def test_the_containerised_worker_is_exactly_what_the_sole_executor_check_cannot_use() -> None:
+    """The real control answers neither question, by construction rather than by omission."""
+    from scripts.sur1.bindings.lifecycle import ComposeWorkerControl
+
+    control = ComposeWorkerControl()
+
+    assert not hasattr(control, "competing_worker_state")
+    assert not hasattr(control, "revalidation_witnesses")
+    assert control.evaluates_in_process() is False
