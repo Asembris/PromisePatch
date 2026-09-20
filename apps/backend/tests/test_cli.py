@@ -1036,3 +1036,103 @@ def test_case_status_shows_the_approval_without_the_customers_words(
     assert "LITERAL" in result.output
     assert "fake-msg-1" in result.output
     assert "tg:" not in result.output
+
+
+# ---------------------------------------------------------------- what this process will call
+
+
+def test_runtime_identity_is_a_subcommand() -> None:
+    assert "runtime-identity" in runner.invoke(app, ["--help"]).stdout
+
+
+def test_runtime_identity_names_the_provider_a_process_would_actually_reach(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deployment that fell back to the fake says so, in a value it computes from itself."""
+    import json
+
+    monkeypatch.setenv("PP_LLM_PROVIDER", "fake")
+    get_settings.cache_clear()
+
+    published = json.loads(runner.invoke(app, ["runtime-identity"]).stdout)
+
+    assert published["llm_provider"] == "fake"
+    assert "model_id" not in published, "a fake provider names no model, and must not pretend to"
+    get_settings.cache_clear()
+
+
+def test_runtime_identity_publishes_the_model_and_the_temperature_for_bedrock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    from promisepatch.integrations.bedrock import CONVERSE_API, TEMPERATURE
+
+    monkeypatch.setenv("PP_LLM_PROVIDER", "bedrock")
+    monkeypatch.setenv("PP_BEDROCK_MODEL_ID", "us.amazon.nova-2-lite-v1:0")
+    monkeypatch.setenv("PP_AWS_REGION", "us-east-1")
+    get_settings.cache_clear()
+
+    published = json.loads(runner.invoke(app, ["runtime-identity"]).stdout)
+
+    assert published["llm_provider"] == "bedrock"
+    assert published["model_id"] == "us.amazon.nova-2-lite-v1:0"
+    assert published["region"] == "us-east-1"
+    assert published["temperature"] == TEMPERATURE
+    assert published["api"] == CONVERSE_API
+    assert isinstance(published["credential_resolves"], bool)
+    get_settings.cache_clear()
+
+
+def test_runtime_identity_reports_the_demo_provisioning_switch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same switch ``ensure_demo_case`` is gated on, read out of the process that runs it."""
+    import json
+
+    monkeypatch.setenv("PP_DEMO_SESSION_ENABLED", "true")
+    get_settings.cache_clear()
+    assert json.loads(runner.invoke(app, ["runtime-identity"]).stdout)["demo_session_enabled"]
+
+    monkeypatch.setenv("PP_DEMO_SESSION_ENABLED", "false")
+    get_settings.cache_clear()
+    assert not json.loads(runner.invoke(app, ["runtime-identity"]).stdout)["demo_session_enabled"]
+    get_settings.cache_clear()
+
+
+def test_runtime_identity_publishes_no_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configuration, never a credential. The credential is a boolean and nothing else."""
+    import json
+
+    monkeypatch.setenv("PP_LLM_PROVIDER", "bedrock")
+    monkeypatch.setenv("PP_SESSION_SECRET", "a-very-secret-session-key-that-is-long-enough")
+    monkeypatch.setenv("PP_INTERNAL_SERVICE_TOKEN", "an-internal-service-secret")
+    get_settings.cache_clear()
+
+    raw = runner.invoke(app, ["runtime-identity"]).stdout
+    published = json.loads(raw)
+
+    assert "a-very-secret-session-key-that-is-long-enough" not in raw
+    assert "an-internal-service-secret" not in raw
+    assert not any(
+        word in key for key in published for word in ("secret", "token", "password", "key")
+    )
+    get_settings.cache_clear()
+
+
+def test_runtime_identity_opens_nothing_and_calls_no_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """It reports a configuration. A process that invoked a model to do that would spend."""
+    import json
+
+    monkeypatch.setenv("PP_LLM_PROVIDER", "bedrock")
+    monkeypatch.setattr(cli, "build_semantic_provider", _refuse_to_build)
+    get_settings.cache_clear()
+
+    published = json.loads(runner.invoke(app, ["runtime-identity"]).stdout)
+
+    assert published["model_id"]
+    get_settings.cache_clear()
+
+
+def _refuse_to_build(*arguments: Any, **keywords: Any) -> Any:
+    raise AssertionError("runtime-identity built a provider; it reports settings and opens nothing")

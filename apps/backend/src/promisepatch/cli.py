@@ -41,6 +41,8 @@ from promisepatch.domain import (
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 from promisepatch.integrations import build_semantic_provider
+from promisepatch.integrations.bedrock import CONVERSE_API as BEDROCK_CONVERSE_API
+from promisepatch.integrations.bedrock import TEMPERATURE as BEDROCK_TEMPERATURE
 from promisepatch.semantic import ClassifyReplyIntentRequest, SemanticError, UntrustedText
 
 app = typer.Typer(
@@ -266,6 +268,63 @@ def resolve_anchor(given: str, settings: Settings) -> datetime:
 #
 # Nothing here interprets anything either. These commands only make a statement durable; the
 # worker reads it, and until a worker runs, the case sits exactly where the command left it.
+
+
+@app.command(name="runtime-identity")
+def runtime_identity_command() -> None:
+    """Print what this process is configured to do, as JSON, and change nothing.
+
+    An operator looking at a running deployment can read which migration it expects off
+    ``/readyz``, and until now could read *which model it will call* off nothing at all. That
+    gap is not academic: a stack whose worker had silently fallen back to the deterministic
+    fake would answer every readiness probe, serve every request and quietly stop calling a
+    model, and the only way to find out was to read a container's environment from outside it.
+
+    It is printed by the process that holds the configuration, so it is the answer for
+    **this** container -- which for ``worker`` is the process that executes semantic jobs.
+
+    **No secret can appear here.** The Region, the model id and the provider are configuration
+    rather than credentials; whether a credential *resolves* is reported as a boolean and the
+    credential itself is never read into the output. Nothing is called: resolving a provider
+    reads settings, and the AWS credential chain is asked whether it resolves, not used.
+    """
+    settings = get_settings()
+    identity: dict[str, object] = {
+        "service": "promisepatch",
+        "env": settings.env,
+        "llm_provider": settings.llm_provider.value,
+        "demo_session_enabled": settings.demo_session_enabled,
+        "explanation_verbalisation": settings.explanation_verbalisation,
+    }
+    if settings.llm_provider is LlmProvider.BEDROCK:
+        identity.update(
+            {
+                "api": BEDROCK_CONVERSE_API,
+                "model_id": settings.bedrock_model_id.strip(),
+                "region": settings.aws_region.strip(),
+                "temperature": BEDROCK_TEMPERATURE,
+                "max_attempts": settings.bedrock_max_attempts,
+                "timeout_seconds": settings.bedrock_timeout_seconds,
+                "credential_resolves": _credential_resolves(),
+            }
+        )
+    typer.echo(json.dumps(identity, sort_keys=True))
+
+
+def _credential_resolves() -> bool:
+    """Whether the AWS SDK can resolve an identity here. A boolean, never a value.
+
+    Asked of the credential chain rather than of an environment variable, because a task role
+    and an SSO session are both credentials and neither is one. It makes no Bedrock call: a
+    process that answered this by invoking a model would spend money to report its own
+    configuration.
+    """
+    try:
+        import boto3
+
+        return boto3.Session().get_credentials() is not None
+    except Exception:
+        return False
 
 
 @app.command(name="ensure-demo-case")

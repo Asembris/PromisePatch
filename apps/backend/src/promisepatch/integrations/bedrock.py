@@ -49,6 +49,15 @@ from promisepatch.semantic.provider import (
 TEMPERATURE: Final = 0.0
 """Sampled as little as the API allows. These are closed-label readings, not writing."""
 
+CONVERSE_API: Final = "bedrock-runtime Converse"
+"""Which Bedrock API a semantic job is put to, named so a deployment can say so out loud.
+
+Bedrock offers more than one way to reach the same model and they do not behave alike.
+:meth:`BedrockSemanticProvider.transport` opens a ``bedrock-runtime`` client and calls
+``converse``; this is that fact, written once, so ``pp runtime-identity`` can report it
+without a second copy of the string living somewhere that could drift from the call.
+"""
+
 RETRYABLE_ERROR_CODES: Final[frozenset[str]] = frozenset(
     {
         "ThrottlingException",
