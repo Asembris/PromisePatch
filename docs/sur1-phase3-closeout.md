@@ -271,6 +271,36 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > Requirement 4 holds: no run was taken. `DR01` is still owed — it did not complete, and what it
 > therefore does not say is listed in that record's section 5.
 
+> **Recorded later, beside this block and not into it — the corrected install fingerprint.** The
+> four requirements were exercised a sixth time, by the session that fixed what `DR01` found and
+> re-drove it. The named defect: `InstallationLifecycle.fingerprint` asked `commitment_lines` for
+> a `state` column, which the table does not have — it has `received_state`, and the neighbouring
+> `production_tasks` query is the one whose column really is `state`. `around` fingerprints on
+> every install, after the world has been written and verified, so **every attempt of a scored
+> run under `1.3.0` or `1.4.x` would have died there.** Nothing caught it because nothing had
+> executed the statement: the lifecycle tests answered from a dictionary and
+> `preflight.world_integrity` drove the lifecycle against dictionaries too. What was changed, and
+> the re-drive that followed, are in
+> [`sur1-dr01-hosted-worker-rehearsal.md`](sur1-dr01-hosted-worker-rehearsal.md); the disclosure
+> naming what moved and which arms it affects is beside the predeclaration. Under it
+> `DRIVER_VERSION` is `1.4.2` and **`implementation_sha` did not move** — no file in
+> `IMPLEMENTATION_MODULES` was touched — and neither did `PREDECLARATION_SHA`, `SCORER_VERSION`,
+> the manifest, the prompt, a world program or a scope answer. `REQUIRED_CHECKS` is still 28 and
+> no check was weakened; `world_integrity` gained a stand-in that can fail on a real column name
+> and a read-only live reading of the fingerprint's own statements. The scope-freeze trees at
+> this change are:
+>
+> | Path | Tree / blob |
+> |---|---|
+> | `scripts/sur1/` | `0c98a693743b86eeb27137bbb650eebf3618d58f` |
+> | `scripts/rehearsal/` | `f1f1d195114b92f443c43f1f375dab38fd443d2d` — **unchanged** by this work |
+> | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
+> | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
+> | `docs/benchmarks/` | `fba0e9f758939cc86db2616fb3705cce87fb714a` — moved only by this change's own disclosure beside the predeclaration; `PREDECLARATION_SHA` hashes the rules in code and is unmoved |
+>
+> Requirement 4 holds: no scored run was taken. `DR01` is a rehearsal, not a run, and spends
+> nothing.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an
