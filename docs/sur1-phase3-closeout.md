@@ -301,6 +301,33 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > Requirement 4 holds: no scored run was taken. `DR01` is a rehearsal, not a run, and spends
 > nothing.
 
+> **Recorded later, beside this block and not into it — the rehearsal's report shape.** The four
+> requirements were exercised a seventh time, by the session that fixed the second defect `DR01`
+> found. The named defect: `adapters.tool_specifications` derives arm A's report schema out of
+> `run_report_schema.fields`, and the **rehearsal** document declared a `report_outcome` write
+> without declaring that block, so `DR01`'s arm A died on a bare `KeyError` while arms B and C —
+> which never ask for a tool surface — ran whole. It has been true since `1.2.0` and no run had
+> been in a position to notice, because `DR01` last completed under `1.0.0`. It threatens no
+> scored run: the frozen manifest has always carried the block. What was changed and the drive
+> that followed are in [`sur1-dr01-final-rehearsal.md`](sur1-dr01-final-rehearsal.md); the
+> disclosure naming what moved and which arms it affects is beside the predeclaration. Under it
+> `DRIVER_VERSION` is `1.4.3` and **`implementation_sha` did not move** — no file in
+> `IMPLEMENTATION_MODULES` was touched — and neither did `PREDECLARATION_SHA`, `SCORER_VERSION`,
+> the manifest, the prompt, a world program or a scope answer. `REQUIRED_CHECKS` is still 28 and
+> no check was weakened; the rehearsal's own readiness gained a check that builds arm A's actions
+> before an arm is driven. The scope-freeze trees at this change are:
+>
+> | Path | Tree / blob |
+> |---|---|
+> | `scripts/sur1/` | `7f0c243b14aa6014505613b1c0137dd9c0860c37` |
+> | `scripts/rehearsal/` | `53bd10b8d482d6465b8e64dd71b2eec89e448702` |
+> | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
+> | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
+> | `docs/benchmarks/` | `6dfe9452a46f8472309056cbfab80537b868b2a2` — moved only by this change's own disclosure beside the predeclaration; `PREDECLARATION_SHA` hashes the rules in code and is unmoved |
+>
+> Requirement 4 holds: no scored run was taken. `DR01` is a rehearsal, not a run, and spends
+> nothing.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an
