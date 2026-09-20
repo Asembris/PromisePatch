@@ -82,6 +82,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -1373,6 +1374,81 @@ def demo_provisioning(*, world: object) -> Check:
     )
 
 
+class _SchemaCheckedReader:
+    """A stand-in database that answers from values and refuses a column the product lacks.
+
+    The stand-in this replaced could not fail on a real column name. It matched statements on
+    substrings, so ``SELECT id, state FROM commitment_lines`` -- a column that table does not
+    have -- was answered as happily as the correct one, and ``world_integrity`` passed while
+    every scored attempt would have died at its first install. See
+    ``docs/sur1-dr01-hosted-worker-rehearsal.md`` §4.
+
+    So this one parses the statement and checks every table and column it names against the
+    product's **own** table definitions, which is what Alembic migrates the database from. A
+    statement the schema cannot satisfy raises the same refusal a real database raises, phrased
+    the way PostgreSQL phrases it, and the lifecycle fails the check rather than passing it.
+
+    Statements it cannot parse are refused too, rather than waved through: a fingerprint that
+    grew a form this cannot check would otherwise go back to being unchecked, quietly.
+    """
+
+    url = "preflight://in-memory"
+
+    _SELECT: Final = re.compile(
+        r"^SELECT\s+(?P<columns>.+?)\s+FROM\s+(?P<table>[a-z_]+)"
+        r"(?:\s+ORDER BY\s+(?P<order>[a-z_,\s]+))?$",
+        re.IGNORECASE,
+    )
+
+    def __init__(self, installed: str) -> None:
+        self.installed = installed
+        self.cases = 0
+        self.seen: list[str] = []
+
+    def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
+        from scripts.sur1.bindings.receivers import ReceiverUnreadableError
+
+        self.seen.append(statement)
+        match = self._SELECT.match(statement.strip())
+        if match is None:
+            raise ReceiverUnreadableError(
+                source,
+                f"this check cannot verify the statement {statement!r} against the product's "
+                "schema, so it cannot say the fingerprint would run",
+            )
+        table = match.group("table")
+        columns = [name.strip() for name in match.group("columns").split(",")]
+        if match.group("order"):
+            columns += [name.strip() for name in match.group("order").split(",")]
+        self._require_schema(source, table, columns)
+
+        if table == "fixture_state":
+            return [(self.installed, "a-digest")]
+        if table == "cases" and "count(*)" in columns:
+            return [(self.cases,)]
+        if "count(*)" in columns:
+            return [(0,)]
+        return []
+
+    @staticmethod
+    def _require_schema(source: str, table: str, columns: Sequence[str]) -> None:
+        """Every name the statement uses, against the declarations Alembic migrates from."""
+        import promisepatch.db.models  # noqa: F401  populates the registry
+        from promisepatch.db.base import SCHEMA, metadata
+        from scripts.sur1.bindings.receivers import ReceiverUnreadableError
+
+        defined = metadata.tables.get(f"{SCHEMA}.{table}")
+        if defined is None:
+            raise ReceiverUnreadableError(source, f'UndefinedTableError: relation "{table}"')
+        for column in columns:
+            if column == "count(*)":
+                continue
+            if column not in defined.columns:
+                raise ReceiverUnreadableError(
+                    source, f'UndefinedColumnError: column "{column}" does not exist'
+                )
+
+
 def world_integrity(*, world: object) -> Check:
     """The installation lifecycle reads the world again *after* the worker comes back.
 
@@ -1382,32 +1458,23 @@ def world_integrity(*, world: object) -> Check:
     every other question in this file and is exactly what drove 27 attempts at a world nobody
     declared.
 
-    In-process and read-only: the stand-ins are dictionaries, no database is opened and the run's
-    own world is not touched.
+    **Two halves, because the ordering was never the only thing that could be wrong.** The
+    lifecycle is driven in-process against :class:`_SchemaCheckedReader`, which refuses a column
+    the product does not declare; and then, when this machine's database answers at all, the
+    fingerprint's real statements are executed against it. The first half cannot be skipped and
+    catches the statement defect anywhere, including in CI. The second is the live reading
+    ``DR01`` had to be driven to get, and it is read-only: four ``SELECT``\\ s, no install, no
+    write, nothing created.
+
+    **A database that cannot be reached is not a failure here.** Reachability is
+    :func:`receivers`' and :func:`database_identity`' question, and answering it twice in
+    different words would make one defect refuse a run for two reasons. What fails is a database
+    that *answers* and then refuses one of the fingerprint's statements.
     """
     from scripts.sur1.bindings.lifecycle import InstallationLifecycle
     from scripts.sur1.bindings.setup import PreparationError
 
-    installed = "hollow-oak+sur1-preflight"
-
-    class _Reader:
-        url = "preflight://in-memory"
-
-        def __init__(self) -> None:
-            self.cases = 0
-            self.seen: list[str] = []
-
-        def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
-            self.seen.append(statement)
-            if "fixture_state" in statement:
-                return [(installed, "a-digest")]
-            if "count(*) FROM cases" in statement:
-                return [(self.cases,)]
-            if "count(*)" in statement:
-                return [(0,)]
-            return []
-
-    reader = _Reader()
+    reader = _SchemaCheckedReader("hollow-oak+sur1-preflight")
 
     class _WritesOnResume:
         binding_kind = "stand-in"
@@ -1432,24 +1499,66 @@ def world_integrity(*, world: object) -> Check:
     try:
         lifecycle.around("preflight", lambda: "installed")
     except PreparationError:
-        return Check(
-            "world_integrity",
-            True,
-            "the lifecycle re-reads the world after the worker returns and refuses an "
-            "undeclared change",
-        )
+        pass
     except Exception as failure:
         return Check(
             "world_integrity",
             False,
             f"the lifecycle could not be exercised: {type(failure).__name__}: {failure}",
         )
-    return Check(
-        "world_integrity",
-        False,
-        "the lifecycle accepted a world that changed while the worker was coming back; an "
-        "attempt driven here would measure a world nobody declared",
+    else:
+        return Check(
+            "world_integrity",
+            False,
+            "the lifecycle accepted a world that changed while the worker was coming back; an "
+            "attempt driven here would measure a world nobody declared",
+        )
+
+    driven = (
+        "the lifecycle re-reads the world after the worker returns and refuses an undeclared change"
     )
+    executed, why = _fingerprint_against_the_database(world)
+    if executed is False:
+        return Check("world_integrity", False, f"{driven}, but {why}")
+    return Check("world_integrity", True, f"{driven}, and {why}")
+
+
+def _fingerprint_against_the_database(world: object) -> tuple[bool | None, str]:
+    """Run the fingerprint's own statements at this machine's world database, read-only.
+
+    ``None`` is *the database did not answer*, which this check does not own. ``False`` is a
+    database that answered and then refused a statement -- which is the defect ``DR01`` found,
+    and is fatal to every attempt of a scored run.
+    """
+    from scripts.sur1.bindings.lifecycle import InstallationLifecycle, UncontrolledWorker
+    from scripts.sur1.bindings.receivers import ReceiverUnreadableError
+
+    reader = getattr(world, "database", None)
+    if reader is None or not isinstance(getattr(reader, "url", None), str):
+        return None, (
+            "this world names no database, so the fingerprint's statements were not executed "
+            "against one here"
+        )
+    try:
+        reader.rows("WORLD", "SELECT 1")
+    except Exception:
+        return None, (
+            "this machine's world database did not answer, so the fingerprint's statements were "
+            "not executed against one here; receivers and database_identity own reachability"
+        )
+    try:
+        InstallationLifecycle(worker=UncontrolledWorker(), database=reader).fingerprint()
+    except ReceiverUnreadableError as refused:
+        return False, (
+            "the world database refuses one of the fingerprint's own statements, so every "
+            f"install of a scored run would fail after the world was written: {refused.detail}"
+        )
+    except Exception as failure:
+        return False, (
+            "the fingerprint could not be taken of this machine's world database: "
+            f"{type(failure).__name__}: {failure}"
+        )
+    return True, "its statements are the ones this machine's world database actually answers"
 
 
 def _stack(world: object) -> object | None:

@@ -35,6 +35,7 @@ from scripts.sur1.preflight import (
     REQUIRED_ORDER_ENTRY_FIELDS,
     SCORED,
     PreflightRefusedError,
+    _SchemaCheckedReader,
     blinding,
     classifier_identity,
     configuration,
@@ -47,6 +48,7 @@ from scripts.sur1.preflight import (
     require,
     sole_executor,
     workspace_origin,
+    world_integrity,
     world_programs,
 )
 
@@ -1094,3 +1096,131 @@ def test_the_containerised_worker_is_exactly_what_the_sole_executor_check_cannot
     assert not hasattr(control, "competing_worker_state")
     assert not hasattr(control, "revalidation_witnesses")
     assert control.evaluates_in_process() is False
+
+
+# ----------------------------------------------------- the world integrity check, both halves
+#
+# `DR01` died at its first install on `SELECT id, state FROM commitment_lines`, and this check
+# was green while that was true: it drove the lifecycle against a dictionary that matched on
+# substrings and could not fail on a column name. Both halves below exist because of that.
+
+
+@dataclass(slots=True)
+class AnsweringDatabase:
+    """A world database that answers the fingerprint, and can be told to refuse one statement."""
+
+    url: str = "postgresql://reader@127.0.0.1:55432/promisepatch"
+    refuse: str = ""
+    seen: list[str] = field(default_factory=list)
+
+    def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
+        self.seen.append(statement)
+        if self.refuse and self.refuse in statement:
+            raise ReceiverUnreadableError(source, 'UndefinedColumnError: column "state"')
+        if statement == "SELECT 1":
+            return [(1,)]
+        if "fixture_state" in statement:
+            return [("hollow-oak+sur1-C01", "a-digest")]
+        if "count(*)" in statement:
+            return [(0,)]
+        if "commitment_lines" in statement:
+            return [("cl-vp-today-raspberries", "EXPECTED")]
+        if "production_tasks" in statement:
+            return [("task-ol-a", "SCHEDULED", None)]
+        return []
+
+
+@dataclass(slots=True)
+class SilentDatabase:
+    """A world database nothing can reach. Reachability is another check's question."""
+
+    url: str = "postgresql://reader@127.0.0.1:55432/promisepatch"
+
+    def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
+        raise ReceiverUnreadableError(source, "ConnectionRefusedError: nothing is listening")
+
+
+def test_the_stand_in_refuses_the_column_dr01_asked_for() -> None:
+    """The gap itself: a stand-in that could not fail on a real column name.
+
+    The corrected statement and the one that ended `DR01` differ by a column the product does
+    not declare, and the check's own stand-in now tells them apart without opening anything.
+    """
+    reader = _SchemaCheckedReader("hollow-oak+sur1-preflight")
+
+    assert reader.rows("WORLD", "SELECT id, received_state FROM commitment_lines ORDER BY id") == []
+    with pytest.raises(ReceiverUnreadableError, match="UndefinedColumnError"):
+        reader.rows("WORLD", "SELECT id, state FROM commitment_lines ORDER BY id")
+
+
+def test_the_stand_in_refuses_a_table_the_product_does_not_declare() -> None:
+    reader = _SchemaCheckedReader("hollow-oak+sur1-preflight")
+
+    with pytest.raises(ReceiverUnreadableError, match="UndefinedTableError"):
+        reader.rows("WORLD", "SELECT count(*) FROM commitments")
+
+
+def test_the_stand_in_refuses_a_statement_it_cannot_check() -> None:
+    """A fingerprint that grew a form this cannot parse goes back to being unchecked, loudly."""
+    reader = _SchemaCheckedReader("hollow-oak+sur1-preflight")
+
+    with pytest.raises(ReceiverUnreadableError, match="cannot verify"):
+        reader.rows("WORLD", "SELECT id FROM cases JOIN exceptions ON true")
+
+
+def test_a_fingerprint_asking_for_a_column_the_schema_lacks_refuses_a_scored_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The exact defect `DR01` found, put back, and refused before a run could be authorised.
+
+    Under the code this session corrected, this check passed and the run died 27 times at its
+    first install instead. Nothing here opens a database.
+    """
+    from scripts.sur1.bindings.lifecycle import InstallationLifecycle
+
+    def asks_for_state(self: Any) -> dict[str, Any]:
+        return {
+            "commitment_lines": self.database.rows(
+                "WORLD", "SELECT id, state FROM commitment_lines ORDER BY id"
+            )
+        }
+
+    monkeypatch.setattr(InstallationLifecycle, "fingerprint", asks_for_state)
+
+    refused = world_integrity(world=world(database=AnsweringDatabase()))
+    assert not refused.passed
+    assert "could not be exercised" in refused.detail
+
+    report = passing_preflight(tmp_path, world=world(database=AnsweringDatabase()))
+    assert not report.passed
+    with pytest.raises(PreflightRefusedError, match="world_integrity"):
+        require(report)
+
+
+def test_a_world_database_that_answers_is_asked_the_fingerprint_s_own_statements() -> None:
+    """The live half: read-only, four statements, and the reading `DR01` had to be driven to get."""
+    database = AnsweringDatabase()
+
+    check = world_integrity(world=world(database=database))
+
+    assert check.passed
+    assert "actually answers" in check.detail
+    assert "SELECT id, received_state FROM commitment_lines ORDER BY id" in database.seen
+    assert "SELECT id, state, held_by_case_id FROM production_tasks ORDER BY id" in database.seen
+    assert all(statement.startswith("SELECT") for statement in database.seen)
+
+
+def test_a_world_database_that_answers_and_then_refuses_a_statement_refuses_the_run() -> None:
+    """A database that is reachable and cannot satisfy the fingerprint is fatal to every install."""
+    check = world_integrity(world=world(database=AnsweringDatabase(refuse="commitment_lines")))
+
+    assert not check.passed
+    assert "every install of a scored run would fail" in check.detail
+
+
+def test_a_world_database_that_does_not_answer_is_not_this_check_s_refusal() -> None:
+    """Answering reachability twice in different words would refuse a run for two reasons."""
+    check = world_integrity(world=world(database=SilentDatabase()))
+
+    assert check.passed
+    assert "did not answer" in check.detail
