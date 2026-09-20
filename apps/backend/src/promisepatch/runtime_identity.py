@@ -6,11 +6,11 @@ measurement has to answer before it can compare three arms fairly: **is every pr
 the same code**, and **is every process configured the same way in the ways that change
 behaviour**.
 
-Both gaps were paid for. The first scored ``SUR-1`` run was driven against a container built
-before the code it was measuring; the third was driven against ``api``, ``worker`` and ``mcp``
+Both gaps have been paid for here. A measurement was once taken against a container built
+before the code it was measuring; another was taken against ``api``, ``worker`` and ``mcp``
 containers carrying no provider configuration at all, so the product answered semantic jobs
-with the deterministic fake while the baseline arm called the frozen model. In both cases every
-readiness probe passed. See ``docs/sur1-v3-forensic-audit.md``.
+with the deterministic fake while the thing it was being compared with called a real model. In
+both cases every readiness probe passed, because no probe asked either question.
 
 **The build identity is computed, not declared.** :func:`source_digest` hashes the source of
 the three packages that decide behaviour, as they are on this process's import path. A tag, a
@@ -60,8 +60,7 @@ def _source_files(root: Path) -> Iterator[Path]:
 def source_digest(packages: tuple[str, ...] = SOURCE_PACKAGES) -> str:
     """One hex digest over the source of every named package, as this process imports it.
 
-    The algorithm is the one the ``SUR-1`` freeze uses for a module set, restated rather than
-    imported because this module may not depend on the harness: the path relative to the
+    The algorithm is deliberately dull and is stated here in full: the path relative to the
     package root, a NUL, the bytes with CRLF normalised to LF, another NUL, over the paths in
     sorted order. A package that cannot be imported is recorded as absent rather than skipped,
     so a stack missing one does not quietly agree with a stack that has it.
@@ -168,7 +167,7 @@ Addresses are deliberately absent. ``database_target``, ``order_system_base_url`
 origin values legitimately differ between a container on a compose network and a process on the
 host that publishes it, and requiring string equality there would refuse a correct stack. What
 they must agree on is the *system named*, which is an alias comparison and belongs to whoever
-knows the port mapping -- see ``scripts.sur1.preflight.config_parity``.
+knows the port mapping, not to this module.
 """
 
 

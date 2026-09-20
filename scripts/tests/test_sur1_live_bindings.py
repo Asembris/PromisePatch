@@ -573,9 +573,15 @@ def test_the_ablated_arm_drives_the_same_binding_and_adds_only_its_log() -> None
 
     assert full_surface.tools.calls == ablated_surface.tools.calls
     assert full_world.invoked == ablated_world.invoked
-    assert full.diagnostics == {}
     assert ablated.diagnostics["ablated_check"] == 5
-    assert set(ablated.diagnostics) == {"ablation", "ablated_check"}
+    assert set(ablated.diagnostics) == {"ablation", "ablated_check", "settled"}
+    # Arm C adds its log and nothing else. Everything the two arms do to the world and to the
+    # surface is identical, and so is the one diagnostic they both carry: both waited for the
+    # durable work in the same call, which is what keeps arm C's wrapper installed over the
+    # whole attempt without making the wait a difference between the arms. See ADR-0020.
+    assert set(full.diagnostics) == {"settled"}
+    assert full.diagnostics["settled"] == ablated.diagnostics["settled"]
+    assert full_world.settled == ablated_world.settled == 1
 
 
 def test_arm_c_holds_arm_b_s_own_object_so_the_path_cannot_be_duplicated() -> None:
