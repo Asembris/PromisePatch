@@ -249,6 +249,43 @@ row shape and are scored identically.
 > [`sur1-execution-revision.v3.md`](sur1-execution-revision.v3.md). Any later run is a **corrected
 > execution beside both** published runs, never a replacement for either.
 
+> **Recorded later, beside this document and not into it — the parity correction,
+> `DRIVER_VERSION` `1.3.0`.** A third scored run has since been taken under this predeclaration,
+> `20260920T1215Z-scored-v3`, and it is **invalid**. Five arm-correlated defects were proved in it
+> afterwards and are recorded in [`sur1-v3-forensic-audit.md`](../sur1-v3-forensic-audit.md):
+> arm A's messages were recorded on a bare channel address nothing could place, so the baseline
+> was never answered on any scenario; the worker's own start-up provisioning opened a case inside
+> every installed world and attested a physical fact before any arm acted; the product answered
+> semantic jobs with the deterministic fake while arm A called the frozen model; arm C's ablation
+> reached no evaluator, so arm C was arm B; and the report tool published no fields for the one
+> arm that had to fill them.
+>
+> **What moved, which arms it affects, and in which direction**, as
+> [`sur1-parity-correction.md`](../sur1-parity-correction.md) records in full:
+>
+> - **Arm A only.** The harness transport now resolves one channel identity instead of recording
+>   whichever spelling it was handed, and refuses an address naming no channel — so arm A's asks
+>   can be answered and its `E2` rows can be placed, where before neither happened. The
+>   `report_outcome` tool now publishes the frozen `RunReport` schema instead of a bare object, so
+>   arm A is told the field names it was previously expected to guess. **Both changes can only
+>   help arm A**, and both are said plainly for that reason. Arms B and C see neither: they have
+>   no transport of their own and no `report_outcome` call.
+> - **Arms B and C only.** The scored stack must now be configured for the frozen model, which the
+>   preflight reads out of the worker process and requires. **They gain a model they did not
+>   have**; what the fake was answering instead is not recoverable from the published run.
+> - **All three arms.** A world contaminated between its install and the arm acting now refuses
+>   the attempt rather than being measured. The contamination was arm-blind in application and
+>   arm-correlated in effect.
+> - **Nothing yet.** Arm C's ablation still reaches no evaluator on any topology that exists, and
+>   a scored run is now refused for it. The mechanism that would change that is an open ADR
+>   decision and is **not** taken in the correction.
+>
+> **Nothing this predeclaration declares moved**: the `asserts_change` rule, the `E4` projection,
+> the reading rules and `PREDECLARATION_SHA` are all untouched, and so are the manifest, the
+> prompt, the scorer, the world programs, the ground truth, the budgets and the retry policy.
+> `implementation_sha` is unmoved. Any later run is a **corrected execution beside all three**
+> published runs, never a replacement for any of them.
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any

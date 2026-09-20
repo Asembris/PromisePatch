@@ -88,6 +88,15 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   `d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`, checked by
   `scripts/verify_effect_set_manifest.py`. Never edit a label.
 - **Both evaluation holdouts remain sealed.** Do not open one.
+- **`SUR-1` has been taken three times and none of the three is a result.** All three are
+  preserved byte-identical and pinned in two places; the correct response to a digest moving is to
+  restore the run, never to update the pin. The third, `20260920T1215Z-scored-v3`, is **invalid** —
+  five arm-correlated defects were proved in it afterwards. Five are corrected and the preflight
+  now asks 25 questions rather than 18. **A fourth run is refused today** and should be: arm C's
+  ablation reaches no evaluator on any topology that exists, which makes the ablated arm
+  unmeasurable rather than unmeasured. Closing it needs an ADR decision that has not been taken.
+  See [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md) and
+  [sur1-parity-correction.md](docs/sur1-parity-correction.md) before touching anything here.
 - **Telegram is unbuilt**, deferred into G8's deployed rehearsals. Correcting a physical fact is
   CLI-only. A customer answers on the web, through a signed possession link carried in the
   outbound message's payload — a transport into the unchanged consent protocol, never a second
@@ -226,6 +235,8 @@ read the source document rather than a paraphrase of it.
 | SUR-1 `v2` validated live (one defect found and fixed, still unrun) | [sur1-revision-v2-live-validation.md](docs/benchmarks/sur1-revision-v2-live-validation.md) |
 | SUR-1 second scored run (taken once, refused before any arm acted, zero spend) | [sur1-corrected-scored-run-refusal.md](docs/sur1-corrected-scored-run-refusal.md) |
 | SUR-1 execution revision `v3` (one database target, gated, unrun) | [sur1-execution-revision.v3.md](docs/benchmarks/sur1-execution-revision.v3.md) |
+| SUR-1 third scored run (taken once, **invalid**, preserved) | [sur1-v3-scored-run.md](docs/sur1-v3-scored-run.md), [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md) |
+| SUR-1 parity correction (five defects closed, ablation reach open) | [sur1-parity-correction.md](docs/sur1-parity-correction.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
