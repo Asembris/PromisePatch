@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any, Final, Protocol
 from uuid import UUID
 
+from scripts.sur1.bindings.database import InstallerTarget
 from scripts.sur1.bindings.governed import TASK_HELD, TASK_RELEASED, GovernedWriter
 from scripts.sur1.bindings.receivers import SCHEMA, DatabaseReader
 
@@ -90,6 +91,18 @@ class WorldHandles:
     order_system_base_url: str
     database: DatabaseReader
     environment: Mapping[str, str] = field(default_factory=dict)
+
+    installer: InstallerTarget | None = None
+    """The database the governed fixture load will write to, decided before the run began.
+
+    Carried here rather than looked up at the moment of the write. The load used to resolve its
+    own connection from the product's settings inside :func:`~scripts.sur1.bindings.realisation.
+    _write`, which meant the database it installed into was whatever the working directory held
+    when the write happened -- and the receivers read :attr:`database`, which is something else
+    entirely. One scored run was refused 27 times for exactly that split. ``None`` is *no target
+    was handed down*, which is a refusal rather than a fallback. See
+    :mod:`~scripts.sur1.bindings.database`.
+    """
 
     def cli(self, *arguments: str) -> str:
         """Run one ``pp`` command, which is how a physical fact is corrected in this product.

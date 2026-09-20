@@ -16,12 +16,14 @@ exactly one implementation of *drive PromisePatch* and the ablation cannot drift
 second one. :func:`~scripts.sur1.adapters.three_arms` is what builds them, and it is not given a
 second surface to build a second one out of.
 
-**This module has taken one run.** ``20260919T2020Z-scored`` was driven on 2026-09-19,
+**This module has taken two runs.** ``20260919T2020Z-scored`` was driven on 2026-09-19,
 ``AUTHORISE-PAID-INFERENCE-SUR-1-COMPARATIVE`` was spent on it, and it is published
-inconclusive and unaltered. Nothing here supersedes it: a later run is a corrected execution
-beside it. What stands between this module and one is a fresh authorisation and every one of
-:data:`~scripts.sur1.preflight.REQUIRED_CHECKS` -- now seventeen -- passing in one report. See
-``docs/sur1-first-scored-run-defect.md`` and ``docs/benchmarks/sur1-execution-revision.v2.md``.
+inconclusive and unaltered. ``20260920T1100Z-scored-corrected`` was driven on 2026-09-20, failed
+in preparation on all 27 attempts, reached no model and spent nothing. Nothing here supersedes
+either: a later run is a corrected execution beside both. What stands between this module and
+one is a fresh authorisation and every one of
+:data:`~scripts.sur1.preflight.REQUIRED_CHECKS` -- now eighteen -- passing in one report. See
+``docs/sur1-first-scored-run-defect.md`` and ``docs/benchmarks/sur1-execution-revision.v3.md``.
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ from scripts.sur1.bindings.bedrock import BedrockConverseClient
 from scripts.sur1.bindings.clock import RunClock, run_clock
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.bindings.consentdoor import SignedLinkDoor
+from scripts.sur1.bindings.database import installer_target
 from scripts.sur1.bindings.lifecycle import ComposeWorkerControl
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface, live_worker_surface
 from scripts.sur1.bindings.receivers import (
@@ -97,6 +100,11 @@ def build(config: BindingConfig, contract: Contract, *, clock: RunClock | None =
     """
     clock = clock if clock is not None else run_clock()
     database = DatabaseReader(url=config.database_url)
+    # Resolved here, once, and handed to the world rather than looked up inside the write. The
+    # fixture load and the receivers are two connection strings that have to name one database,
+    # and `database_identity` is what refuses a run where they do not. A resolution that failed
+    # is carried on the target and reported by that check; nothing here raises.
+    installer = installer_target()
     ledger = ChannelLedger()
     surface = live_worker_surface(
         mcp_url=config.mcp_url,
@@ -111,6 +119,7 @@ def build(config: BindingConfig, contract: Contract, *, clock: RunClock | None =
         channel=ChannelReceiver(database=database, ledger=ledger),
         kitchen=KitchenReceiver(database=database),
         database=database,
+        installer=installer,
         ledger=ledger,
         fixture=contract.document["fixture"]["orders"],
         worker_surface=surface,

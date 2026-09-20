@@ -45,6 +45,7 @@ from scripts.sur1 import predeclaration
 from scripts.sur1.bindings import REAL, Probe
 from scripts.sur1.bindings.clock import RunClock, strategy_of
 from scripts.sur1.bindings.consentdoor import ConsentDoor
+from scripts.sur1.bindings.database import InstallerTarget
 from scripts.sur1.bindings.events import Arming, FiredEvent, observe
 from scripts.sur1.bindings.lifecycle import (
     InstallationLifecycle,
@@ -122,6 +123,17 @@ class LiveScenarioWorld:
     """
 
     environment: Mapping[str, str] = field(default_factory=dict)
+
+    installer: InstallerTarget | None = None
+    """The database this world's fixture load writes into, decided once before the run.
+
+    Held beside :attr:`database` rather than derived from it: the load connects as the migration
+    role and the receivers as the application role, so they are two connection strings that have
+    to name one database, and something has to hold both for that to be checkable. It is compared
+    with :attr:`database` by :func:`~scripts.sur1.preflight.database_identity` before a scored run
+    is authorised. ``None`` installs nothing: see :class:`~scripts.sur1.bindings.setup.
+    WorldHandles`.
+    """
 
     run_id: UUID = field(default_factory=uuid4)
     scenario_id: str = ""
@@ -219,6 +231,7 @@ class LiveScenarioWorld:
             order_system_base_url=self.orders.base_url,
             database=self.database,
             environment=self.environment,
+            installer=self.installer,
         )
         sink = self._sink()
         anchor = None if self.clock is None else self.clock.anchor

@@ -49,6 +49,7 @@ from typing import Any, Final
 from scripts.rehearsal.run import stack
 from scripts.sur1.bindings.clock import run_clock
 from scripts.sur1.bindings.config import BindingConfig
+from scripts.sur1.bindings.database import installer_target
 from scripts.sur1.bindings.declaration import published
 from scripts.sur1.bindings.realisation import realise
 from scripts.sur1.bindings.receivers import DatabaseReader, OrderSystemReceiver
@@ -400,7 +401,12 @@ def check(*, scenarios: Sequence[str], config: BindingConfig, now: datetime) -> 
     database = DatabaseReader(url=config.database_url)
     orders = OrderSystemReceiver(base_url=config.order_system_base_url)
     handles = WorldHandles(
-        order_system_base_url=config.order_system_base_url, database=database, environment={}
+        order_system_base_url=config.order_system_base_url,
+        database=database,
+        environment={},
+        # The same target the run composition resolves, handed down rather than looked up inside
+        # the write. Without it the load has no database and refuses, which is the point.
+        installer=installer_target(),
     )
 
     for probe in (orders.probe(),):

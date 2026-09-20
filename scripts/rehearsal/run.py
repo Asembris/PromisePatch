@@ -43,6 +43,7 @@ from scripts.sur1 import predeclaration
 from scripts.sur1.adapters import AblationArm, BaselineArm, PromisePatchArm
 from scripts.sur1.arms import ArmAdapter
 from scripts.sur1.bindings.config import BindingConfig
+from scripts.sur1.bindings.database import installer_target
 from scripts.sur1.bindings.promisepatch import LiveWorkerSurface, live_worker_surface
 from scripts.sur1.bindings.receivers import (
     ChannelLedger,
@@ -224,6 +225,7 @@ def build(config: BindingConfig, *, now: datetime | None = None) -> Bench:
         channel=ChannelReceiver(database=database, ledger=ledger),
         kitchen=KitchenReceiver(database=database),
         database=database,
+        installer=installer_target(),
         ledger=ledger,
         fixture=contract.document["fixture"]["orders"],
         worker_surface=surface,

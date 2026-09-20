@@ -63,6 +63,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from promise_graph.examples import hollow_oak
+from scripts.sur1.bindings.database import InstallerTarget
 from scripts.sur1.bindings.events import Arming, EventPlanError
 from scripts.sur1.bindings.setup import PreparationError
 
@@ -127,15 +128,27 @@ class Installer(Protocol):
 class LiveInstaller:
     """The real writes: the product's own fixture load, and the order system's own surface."""
 
-    expected_database: str = ""
-    """The database the receivers read, so the load can refuse to write to a different one.
+    target: InstallerTarget | None = None
+    """The database this load will write to, decided before the run and handed down.
 
-    :func:`_write` resolves its connection from ``promisepatch.config.get_settings()``, which
-    falls back to the repository's own ``.env`` when nothing is exported. The receivers resolve
-    theirs from ``SUR1_DATABASE_URL``. Nothing joined the two, so a run started without the local
-    environment loaded would install its canonical world into whichever database ``.env`` names
-    and then read its evidence out of another -- and every reading would be about a world that was
-    never installed. :func:`_same_database` is what makes that a refusal instead.
+    :func:`_write` used to resolve its own connection from ``promisepatch.config.get_settings()``,
+    which falls back to the repository's own ``.env`` when nothing is exported, while the
+    receivers resolved theirs from ``SUR1_DATABASE_URL``. Nothing joined the two, so a run started
+    without the local environment loaded would install its canonical world into whichever database
+    ``.env`` named and read its evidence out of another. It is a parameter now, resolved once by
+    :func:`~scripts.sur1.bindings.database.installer_target` and checked against the receivers'
+    database by :func:`~scripts.sur1.preflight.database_identity` *before* a run is authorised.
+    ``None`` is a refusal: there is no fallback lookup left to reach.
+    """
+
+    expected_database: str = ""
+    """The database the receivers read, kept as the load's own last refusal.
+
+    The preflight already compares these before authorisation, which is where a split target is
+    supposed to be caught. This stays because the two are not the same guarantee: the preflight
+    gates *a scored run*, and this gates *this write*, including on a development path that never
+    went through a preflight at all. A destructive write that could only be stopped by a check
+    somewhere else is a destructive write with one guard, not two.
     """
 
     anchor: Any = None
@@ -153,7 +166,12 @@ class LiveInstaller:
         return _reset(handles)
 
     def load(self, program: ScenarioProgram) -> str:
-        return _load(program, expected_database=self.expected_database, anchor=self.anchor)
+        return _load(
+            program,
+            target=self.target,
+            expected_database=self.expected_database,
+            anchor=self.anchor,
+        )
 
     def cross(self, step: Any, handles: WorldHandles) -> str:
         return _cross(step, handles)
@@ -185,7 +203,11 @@ def realise(
         )
     digest = _verify(program, published_programs)
 
-    writer = installer or LiveInstaller(expected_database=handles.database.url, anchor=anchor)
+    writer = installer or LiveInstaller(
+        target=handles.installer,
+        expected_database=handles.database.url,
+        anchor=anchor,
+    )
     applied = [writer.reset(handles), writer.load(program)]
     for step in program.steps:
         if isinstance(step, ExternalRepin):
@@ -246,21 +268,19 @@ def _verify(program: ScenarioProgram, published: Mapping[str, Any] | None = None
     return digest
 
 
-def _endpoint(url: str) -> tuple[str, str]:
-    """A connection string's host, port and database name. Never its credential.
+def _split_target(migration_url: str, expected: str) -> str:
+    """The sentence naming a split database target, or empty when both name one.
 
-    Compared rather than the whole URL because the fixture load connects as the migration role
-    and the receivers connect as the application role: two roles on one database are the same
-    database, and two databases behind one role are not.
+    Both readings are delegated to :mod:`~scripts.sur1.bindings.database`, which is the one place
+    that says what a connection string names, so this refusal and the preflight's own cannot come
+    to different answers about the same two URLs.
     """
-    from urllib.parse import urlsplit
+    from scripts.sur1.bindings.database import disagreement, identity_of, receiver_identity
 
-    parsed = urlsplit(url)
-    return (f"{parsed.hostname or ''}:{parsed.port or ''}", parsed.path.lstrip("/"))
-
-
-def _same_database(migration_url: str, expected: str) -> bool:
-    return _endpoint(migration_url) == _endpoint(expected)
+    return disagreement(
+        identity_of(migration_url, what="the fixture load's database URL"),
+        receiver_identity(expected),
+    )
 
 
 def _reset(handles: WorldHandles) -> str:
@@ -286,7 +306,13 @@ def _reset(handles: WorldHandles) -> str:
     return "order-system:reset"
 
 
-def _load(program: ScenarioProgram, *, expected_database: str = "", anchor: Any = None) -> str:
+def _load(
+    program: ScenarioProgram,
+    *,
+    target: InstallerTarget | None = None,
+    expected_database: str = "",
+    anchor: Any = None,
+) -> str:
     """Write the canonical graph through the product's own governed fixture load.
 
     ``anchor`` is the fixture's own byte-stable anchor rather than the wall clock. A benchmark
@@ -305,6 +331,7 @@ def _load(program: ScenarioProgram, *, expected_database: str = "", anchor: Any 
                 graph,
                 fixture_name=fixture_name,
                 anchor=anchor,
+                target=target,
                 expected_database=expected_database,
             )
         )
@@ -319,7 +346,12 @@ def _load(program: ScenarioProgram, *, expected_database: str = "", anchor: Any 
 
 
 async def _write(
-    graph: Any, *, fixture_name: str, anchor: Any, expected_database: str = ""
+    graph: Any,
+    *,
+    fixture_name: str,
+    anchor: Any,
+    target: InstallerTarget | None = None,
+    expected_database: str = "",
 ) -> None:
     """One governed fixture load, in one transaction the harness owns and commits.
 
@@ -328,6 +360,14 @@ async def _write(
     at all. The staff passwords come from the application's settings rather than from anything
     typed here; a harness that invented a credential would seed a deployment with one that is
     in a committed file.
+
+    **The database is received, never resolved.** ``target`` was decided before the run and was
+    compared with the receivers' own database by the preflight; there is no lookup here that
+    could answer differently, and no target at all is a refusal rather than a fallback. The
+    settings are still read, for the reset permission and the seeded staff passwords, and those
+    are deliberately not a second address: a load whose target agreed while its credentials came
+    from somewhere else is the same defect wearing a different hat, which is why there is no
+    variable by which the two could be pointed apart.
 
     Imported inside the function on purpose. This module is imported by the program set, by the
     declaration and by the tests; importing the application's database layer at module scope
@@ -340,19 +380,27 @@ async def _write(
     from promisepatch.db.uow import Actor
     from promisepatch.fixtures import demo
     from promisepatch.fixtures.reset import ensure_reset_allowed, reset_demo_state
+    from scripts.sur1.bindings.database import DatabaseIdentityError
 
+    if target is None:
+        raise PreparationError(
+            "no database target was handed to the fixture load; a world is installed into the "
+            "database the run was configured for and there is no second place to look one up"
+        )
+    if target.fault:
+        raise PreparationError(f"the fixture load has no database to write to: {target.fault}")
+    migration_url = target.url
+    if expected_database:
+        try:
+            split = _split_target(migration_url, expected_database)
+        except DatabaseIdentityError as failure:
+            raise PreparationError(
+                f"the fixture load could not be checked against the receivers: {failure}"
+            ) from failure
+        if split:
+            raise PreparationError(split)
     settings = get_settings()
     ensure_reset_allowed(settings)
-    migration_url = settings.require_migration_database_url()
-    if expected_database and not _same_database(migration_url, expected_database):
-        raise PreparationError(
-            "the fixture load resolved "
-            f"{_endpoint(migration_url)[0]}/{_endpoint(migration_url)[1]} and the receivers read "
-            f"{_endpoint(expected_database)[0]}/{_endpoint(expected_database)[1]}; installing a "
-            "world into one database and reading evidence out of another would produce readings "
-            "about a world that was never installed. Load the local environment "
-            "(scripts/with_local_env.py) so both name the same database."
-        )
     passwords = {
         demo.BAKER_ROLE: settings.require_demo_worker_password(),
         demo.OWNER_ROLE: settings.require_demo_owner_password(),
