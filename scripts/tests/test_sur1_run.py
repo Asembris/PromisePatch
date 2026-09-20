@@ -44,6 +44,28 @@ ENVIRONMENT = {
 }
 
 
+LOCAL_INSTALLER = "postgresql+asyncpg://promisepatch@127.0.0.1:1/promisepatch"
+"""The same database ``SUR1_DATABASE_URL`` names above, reached as the migration role.
+
+Pinned for the same reason the ports are: ``build`` resolves the fixture load's connection from
+the product's own settings, which fall back to whatever ``.env`` this machine holds, and a test
+about *composition* must not answer differently on a developer's machine than on CI. The gate
+that compares the two is proved in ``test_sur1_database_target``, where it belongs.
+"""
+
+
+@pytest.fixture(autouse=True)
+def _pinned_installer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test in this file composes against one known database and reads no ``.env``."""
+    import scripts.sur1.run as run_module
+
+    from scripts.sur1.bindings.database import InstallerTarget
+
+    monkeypatch.setattr(
+        run_module, "installer_target", lambda: InstallerTarget(url=LOCAL_INSTALLER)
+    )
+
+
 def config(**overrides: str) -> BindingConfig:
     values = {**ENVIRONMENT, **overrides}
     return BindingConfig.from_environment({k: v for k, v in values.items() if v})

@@ -24,7 +24,8 @@ from scripts.sur1.bindings import REAL, Probe
 from scripts.sur1.bindings.bedrock import BedrockConverseClient, ModelIdentity
 from scripts.sur1.bindings.clock import RunClock
 from scripts.sur1.bindings.config import DEFAULT_PORTS, REQUIRED_FOR_SCORED, BindingConfig
-from scripts.sur1.bindings.receivers import ReceiverUnreadableError
+from scripts.sur1.bindings.database import InstallerTarget
+from scripts.sur1.bindings.receivers import DatabaseReader, ReceiverUnreadableError
 from scripts.sur1.doubles import ScriptedModel, ScriptedSurface, SyntheticWorld
 from scripts.sur1.evidence import UNDETERMINED, ChannelMessage
 from scripts.sur1.frozen import Contract
@@ -107,6 +108,23 @@ class ReachableBinding:
 
     readiness_payload: Mapping[str, Any] | None = None
     """What this stand-in says the running API was built for. A value, for the same reason."""
+
+    database: Any = None
+    """A world binding's receiver connection. A value: nothing here opens one.
+
+    *Every precondition true* now includes the world being installed into the database its
+    evidence is read out of. A world that names one and a fixture load that names another
+    produces readings about a world that was never installed, which is what happened to
+    ``20260920T1100Z-scored-corrected`` on all 27 of its attempts.
+    """
+
+    installer: Any = None
+    """A world binding's fixture-load target, decided before the run and handed down.
+
+    The migration role rather than the application one, and the same database: the happy path
+    here is deliberately two different credentials at one server, because that is what a correct
+    run actually looks like and a check that refused it would refuse every run.
+    """
 
     def identity(self) -> Mapping[str, Any]:
         return dict(self.payload)
@@ -191,15 +209,25 @@ def surface(**overrides: Any) -> ReachableBinding:
     )
 
 
+LOCAL_MIGRATION_URL = "postgresql+asyncpg://promisepatch@127.0.0.1:55432/promisepatch"
+"""The migration role at the same database ``CONFIGURED`` points the receivers at.
+
+Two roles on one database is what a correct local run is, so the passing case here is the one
+that would be wrong to refuse. No connection is made to it by anything in this file.
+"""
+
+
 def world(**overrides: Any) -> ReachableBinding:
     """A world binding that reaches nothing and has been placed in time by the declared rule."""
-    fixed = {"clock", "consent_door", "orders", "worker"}
+    fixed = {"clock", "consent_door", "orders", "worker", "database", "installer"}
     return ReachableBinding(
         source="WORLD",
         clock=overrides.get("clock", RunClock(anchor=RUN_ANCHOR, timezone="Africa/Tunis")),
         consent_door=overrides.get("consent_door", ReachableBinding(source="CONSENT")),
         orders=overrides.get("orders", orders()),
         worker=overrides.get("worker", ReachableBinding(source="WORKER")),
+        database=overrides.get("database", DatabaseReader(url=CONFIGURED["SUR1_DATABASE_URL"])),
+        installer=overrides.get("installer", InstallerTarget(url=LOCAL_MIGRATION_URL)),
         **{name: value for name, value in overrides.items() if name not in fixed},
     )
 
@@ -508,6 +536,7 @@ def test_the_report_is_a_payload_a_run_record_can_carry(tmp_path: Path) -> None:
         "configuration",
         "workspace_origin",
         "receivers",
+        "database_identity",
         "order_projection",
         "backend_build",
         "worker_lifecycle",
