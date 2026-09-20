@@ -112,8 +112,8 @@ class WorldStandIn:
 def hosted(**overrides: Any) -> HostedWorkerControl:
     """A control with a ledger behind it and, by default, no container worker to compete."""
     control = HostedWorkerControl(
-        database=overrides.get("database", LedgerStandIn()),  # type: ignore[arg-type]
-        compose=overrides.get("compose", ComposeStandIn()),  # type: ignore[arg-type]
+        database=overrides.get("database", LedgerStandIn()),
+        compose=overrides.get("compose", ComposeStandIn()),
     )
     if "identity" in overrides:
         _pretend_a_worker_is_hosted(control, overrides["identity"])
@@ -463,14 +463,24 @@ def test_the_harness_default_order_system_port_is_the_one_compose_defaults_to() 
     assert _order_simulator_published_port(compose) == str(DEFAULT_PORTS["order_system"])
 
 
-def test_a_moved_order_system_port_is_followed_into_the_host_environment() -> None:
-    """``host.env`` named 58100 on a machine publishing 48100, and nothing followed it."""
+def _repoint(values: dict[str, str], port: str, order_system_port: str) -> dict[str, str]:
+    """The launcher's own rule, reached the way a test may reach it.
+
+    ``scripts/with_local_env.py`` imports its sibling by bare name, as a script does, so the
+    directory has to be importable before the module is. Done here rather than at module scope
+    so that importing this file changes nothing for any other test in the directory.
+    """
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from with_local_env import repoint
+    from scripts.with_local_env import repoint
 
-    moved = repoint(
+    return repoint(values, port, order_system_port)
+
+
+def test_a_moved_order_system_port_is_followed_into_the_host_environment() -> None:
+    """``host.env`` named 58100 on a machine publishing 48100, and nothing followed it."""
+    moved = _repoint(
         {
             "PP_DATABASE_URL": "postgresql+asyncpg://app:pw@127.0.0.1:55432/promisepatch",
             "PP_ORDER_SYSTEM_BASE_URL": "http://127.0.0.1:58100",
@@ -485,12 +495,7 @@ def test_a_moved_order_system_port_is_followed_into_the_host_environment() -> No
 
 def test_an_order_system_somewhere_other_than_loopback_is_left_alone() -> None:
     """A deployed address is not this machine's published port and is not repointed."""
-    import sys
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from with_local_env import repoint
-
-    moved = repoint({"PP_ORDER_SYSTEM_BASE_URL": "https://orders.example:443"}, "45432", "48100")
+    moved = _repoint({"PP_ORDER_SYSTEM_BASE_URL": "https://orders.example:443"}, "45432", "48100")
 
     assert moved["PP_ORDER_SYSTEM_BASE_URL"] == "https://orders.example:443"
 
