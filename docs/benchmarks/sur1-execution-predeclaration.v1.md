@@ -358,6 +358,39 @@ row shape and are scored identically.
 > install on a defect that would have ended every scored attempt, which is recorded and left
 > unfixed for a later session.
 
+> **Recorded later, beside this document and not into it — the corrected install fingerprint.**
+> `DRIVER_VERSION` `1.4.1` → **`1.4.2`**, by the session that fixed the defect `DR01` found and
+> re-drove it. The record is
+> [`sur1-dr01-hosted-worker-rehearsal.md`](../sur1-dr01-hosted-worker-rehearsal.md).
+>
+> **What moved, which arms it affects, and in which direction:**
+>
+> - **No arm.** Nothing here changes what any arm is driven at, what it may reach, what is read
+>   back from it or how any reading is made. Arms A, B and C are exactly what `1.4.0` defined.
+> - **Whether any attempt can start.** `InstallationLifecycle.fingerprint` asked
+>   `commitment_lines` for a `state` column; the table has `received_state`, and the neighbouring
+>   `production_tasks` query is the one whose column really is `state`. `around` fingerprints on
+>   every install, after the world has been written and verified, so **every attempt of a scored
+>   run under `1.3.0` or `1.4.x` would have died there** — 27 times over, identically for all
+>   three arms. The statement is corrected and nothing else in the lifecycle moved.
+> - **`world_integrity`, strengthened in two ways and weakened in none.** Its stand-in matched
+>   statements on substrings and could not fail on a column name, which is why a green preflight
+>   sat in front of an install that could not run. It now parses each statement and checks every
+>   table and column it names against the product's own declarations, and — when this machine's
+>   world database answers at all — the fingerprint's own statements are additionally executed
+>   against it, read-only. A database that cannot be reached is still `receivers`' and
+>   `database_identity`'s question and is not refused twice. `REQUIRED_CHECKS` is still 28.
+> - **The proof, moved off doubles.** `scripts/tests/test_sur1_world_lifecycle_postgres.py`
+>   builds a disposable database, migrates it with the product's own Alembic revisions, installs
+>   a world through the product's own governed load and drives the real lifecycle at it,
+>   including a real post-`resume` attestation that has to refuse the attempt. The shared local
+>   database is not written to and no scored scenario is installed.
+>
+> **Nothing this predeclaration declares moved**: the `asserts_change` rule, the `E4` projection,
+> the reading rules and `PREDECLARATION_SHA` are untouched, and so are the manifest, the prompt,
+> the scorer, the world programs, the ground truth, the budgets and the retry policy.
+> `implementation_sha` is unmoved. No scored run has been taken under `1.4.2`.
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any
