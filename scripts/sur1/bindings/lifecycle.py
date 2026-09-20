@@ -415,6 +415,11 @@ class InstallationLifecycle:
         two a world program legitimately writes. Small enough to read twice per attempt and
         specific enough that the contamination which lost the last run -- one case row, one
         exception row, one attested fact -- moves it.
+
+        **The two state columns are not spelled the same.** A commitment line's is
+        ``received_state`` and a production task's is ``state``; writing ``state`` for both is
+        what ended ``DR01`` at its first install, on a statement no stand-in had ever had to
+        answer. See ``docs/sur1-dr01-hosted-worker-rehearsal.md`` §4.
         """
         counts = {
             table: int(self.database.rows("WORLD", f"SELECT count(*) FROM {table}")[0][0])
@@ -429,9 +434,9 @@ class InstallationLifecycle:
             ],
             "counts": counts,
             "commitment_lines": [
-                (str(identifier), str(state))
-                for identifier, state in self.database.rows(
-                    "WORLD", "SELECT id, state FROM commitment_lines ORDER BY id"
+                (str(identifier), str(received_state))
+                for identifier, received_state in self.database.rows(
+                    "WORLD", "SELECT id, received_state FROM commitment_lines ORDER BY id"
                 )
             ],
             "production_tasks": [
