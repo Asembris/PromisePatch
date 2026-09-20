@@ -304,13 +304,13 @@ class HostedWorkerControl:
         same module object the wrapper rebinds. A control that has never started a worker cannot
         claim the evaluator runs in this one.
         """
-        import sys
+        import importlib
 
         from scripts.sur1 import ablation as wrapper
 
         if self._evaluator_module is None:
             return False
-        if sys.modules.get(DURABLE_EVALUATOR_MODULE) is not self._evaluator_module:
+        if importlib.import_module(DURABLE_EVALUATOR_MODULE) is not self._evaluator_module:
             return False
         try:
             with wrapper.ablation():
@@ -439,14 +439,19 @@ class HostedWorkerControl:
 
     async def _run(self, life: _Loop) -> None:
         """Build the product's worker exactly as its entrypoint does, and run its loop."""
-        import sys
+        import importlib
 
         from promisepatch.config import get_settings
         from promisepatch.worker import built
 
         life.loop = asyncio.get_running_loop()
         life.stop = asyncio.Event()
-        self._evaluator_module = sys.modules.get(DURABLE_EVALUATOR_MODULE)
+        # Imported rather than looked up in ``sys.modules``. The worker reaches the evaluator
+        # lazily, through a handler, so at the moment a life starts the module may not have been
+        # imported by anything -- and a lookup that found nothing left the control unable to say
+        # the wrapper reaches the deciding name while a worker was running in this very process.
+        # Found by starting one; no unit test could have, because no unit test starts a worker.
+        self._evaluator_module = importlib.import_module(DURABLE_EVALUATOR_MODULE)
 
         async def mark_idle() -> None:
             """The loop's own idle hook, used to observe quiescence and to do nothing else.
@@ -459,8 +464,6 @@ class HostedWorkerControl:
 
         async with built(get_settings()) as worker:
             life.identity = worker.identity.value
-            if self._evaluator_module is None:
-                self._evaluator_module = sys.modules.get(DURABLE_EVALUATOR_MODULE)
             life.started.set()
             await worker.run_forever(life.stop, when_idle=mark_idle)
 
