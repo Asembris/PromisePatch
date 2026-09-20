@@ -97,10 +97,16 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   [ADR-0020](docs/adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md): the product's
   own durable worker runs inside the harness process for **both** arms B and C, and the
   containerised worker is down for the run. **A fourth run is still not taken and is not this
-  session's to take.** `DR01` through the corrected seam, against the live local stack, is owed
-  before any spend. See [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md),
-  [sur1-parity-correction.md](docs/sur1-parity-correction.md) and
-  [sur1-hosted-worker.md](docs/sur1-hosted-worker.md) before touching anything here.
+  session's to take.** The scored preflight has since passed **28/28** against a rebuilt,
+  Bedrock-configured local stack at `DRIVER_VERSION` `1.4.1`, and `DR01` through the corrected
+  seam **is still owed**: it was driven and failed at its first install on
+  `InstallationLifecycle.fingerprint`, which reads a `state` column `commitment_lines` does not
+  have. That defect ends every scored attempt and is recorded unfixed. See
+  [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md),
+  [sur1-parity-correction.md](docs/sur1-parity-correction.md),
+  [sur1-hosted-worker.md](docs/sur1-hosted-worker.md) and
+  [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md) before
+  touching anything here.
 - **Telegram is unbuilt**, deferred into G8's deployed rehearsals. Correcting a physical fact is
   CLI-only. A customer answers on the web, through a signed possession link carried in the
   outbound message's payload — a transport into the unchanged consent protocol, never a second
@@ -235,6 +241,7 @@ read the source document rather than a paraphrase of it.
 | Started work and the hold contract | [started-work-contract.md](docs/started-work-contract.md) |
 | SUR-1 hosted worker (arm C reaches an evaluator, unrun) | [sur1-hosted-worker.md](docs/sur1-hosted-worker.md) |
 | SUR-1 dress rehearsal (`DR01`, not a benchmark) | [sur1-dress-rehearsal.md](docs/sur1-dress-rehearsal.md) |
+| SUR-1 `DR01` through the hosted worker (incomplete, one defect found) | [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md) |
 | SUR-1 scored environment | [sur1-scored-environment.md](docs/sur1-scored-environment.md) |
 | SUR-1 phase 3 closeout (harness scope-frozen) | [sur1-phase3-closeout.md](docs/sur1-phase3-closeout.md) |
 | SUR-1 first scored run (taken once, inconclusive) | [sur1-first-scored-run-defect.md](docs/sur1-first-scored-run-defect.md) |
