@@ -391,6 +391,42 @@ row shape and are scored identically.
 > the scorer, the world programs, the ground truth, the budgets and the retry policy.
 > `implementation_sha` is unmoved. No scored run has been taken under `1.4.2`.
 
+> **Recorded later, beside this document and not into it — the rehearsal's report shape.**
+> `DRIVER_VERSION` `1.4.2` → **`1.4.3`**, by the session that fixed the second defect `DR01`
+> found. The record is [`sur1-dr01-redrive.md`](../sur1-dr01-redrive.md) §5.
+>
+> **What moved, which arms it affects, and in which direction:**
+>
+> - **No arm, and no scored path at all.** `tool_specifications` derives arm A's report schema
+>   out of `run_report_schema.fields`. The **frozen** manifest has carried that block since
+>   `1.2.0`, so the scored path never took the branch that failed and derives exactly the schema
+>   it derived then — asserted by `test_the_frozen_contract_still_shapes_the_nine_fields_it_has
+>   _always_shaped`. What was broken was the **rehearsal** document, which declared a
+>   `report_outcome` write and no shape for its one argument, so `DR01`'s arm A died on a bare
+>   `KeyError` while arms B and C — which never ask for a tool surface — ran whole.
+> - **`docs/rehearsals/dr01.v1.json` carries its own `run_report_schema`.** Its nine fields and
+>   four shape dialects are the frozen ones, for the reason its `tool_surface` already borrows
+>   the eleven actions: one shared `RunReport` reader and one blind handoff read the result, so a
+>   rehearsal publishing a different shape would rehearse a projection nothing else runs. The
+>   identity is not borrowed and nothing is read out of the frozen document at runtime. The
+>   rehearsal contract's own hash therefore moves, `95b05fde…be8e5` → `6dc3b778…caeb51`; it is
+>   derived at load and pinned nowhere, and the published `DR01` captures keep the hash they
+>   were taken under.
+> - **A contract that shapes no report is refused by name, and is still refused.** The bare
+>   `KeyError` became a `ReportSchemaError` naming the contract and what it lacks. Nothing is
+>   made optional, defaulted, or filled in from the frozen document. An empty or malformed
+>   `fields` is refused too.
+> - **The rehearsal gained the reading that was missing.** `tool_surface` now takes a contract as
+>   well as an attempt — one implementation, two entry points — and `readiness` builds arm A's
+>   actions before any arm is driven, so a rehearsal whose arm A cannot start refuses at the gate
+>   instead of reporting a result with one arm dead. It reaches nothing.
+>
+> **Nothing this predeclaration declares moved**: the `asserts_change` rule, the `E4` projection,
+> the reading rules and `PREDECLARATION_SHA` are untouched, and so are the manifest, the prompt,
+> the scorer, the world programs, the ground truth, the budgets and the retry policy.
+> `implementation_sha` is unmoved, `REQUIRED_CHECKS` is still 28 and no check was weakened. No
+> scored run has been taken under `1.4.3`.
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any

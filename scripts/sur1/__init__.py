@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Final
 
-DRIVER_VERSION: Final = "1.4.2"
+DRIVER_VERSION: Final = "1.4.3"
 """Bumped whenever the driving or the evidence collection changes. Recorded in every capture.
 
 ``1.0.0`` drove the first scored run, ``20260919T2020Z-scored``, which is preserved exactly as
@@ -112,4 +112,18 @@ when it answers, and a real migrated PostgreSQL schema is driven by
 no frozen benchmark element, no arm, no world, no reading rule, no check was weakened,
 ``REQUIRED_CHECKS`` is still 28 and ``implementation_sha`` is unmoved. No run has been taken
 under it. See ``docs/sur1-dr01-hosted-worker-rehearsal.md`` §4.
+
+``1.4.3`` is the second defect ``DR01`` found removed, and it moves nothing a scored run does.
+``tool_specifications`` derives arm A's report schema out of ``run_report_schema.fields``, and
+the **rehearsal** document declared a ``report_outcome`` write without declaring that block, so
+arm A died on a bare ``KeyError`` while arms B and C -- which never ask for a tool surface --
+ran whole. Three things change and none of them is the reading of a contract that has the block:
+the rehearsal document now carries its own ``run_report_schema``; a contract that carries none is
+refused by name instead of escaping as a dictionary key, and is still refused rather than
+defaulted or filled in from the frozen document; and ``tool_surface`` takes a contract so the
+rehearsal's readiness gate can ask whether arm A's actions build before an attempt is started.
+The frozen manifest has always carried the block, so the scored path derives exactly the schema
+it derived at ``1.2.0``. No frozen benchmark element moved, no check was weakened,
+``REQUIRED_CHECKS`` is still 28 and ``implementation_sha`` is unmoved. See
+``docs/sur1-dr01-redrive.md`` §5.
 """
