@@ -12,11 +12,13 @@ which is every machine this harness has been proved on.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from scripts.sur1 import predeclaration
 from scripts.sur1.bindings import is_real
+from scripts.sur1.bindings.clock import RunClock, bakery_timezone, run_anchor
 from scripts.sur1.bindings.config import BindingConfig
 from scripts.sur1.capture import CaptureError, write_once
 from scripts.sur1.doubles import FakeClock
@@ -45,6 +47,34 @@ ENVIRONMENT = {
 def config(**overrides: str) -> BindingConfig:
     values = {**ENVIRONMENT, **overrides}
     return BindingConfig.from_environment({k: v for k, v in values.items() if v})
+
+
+LEGIBLE = datetime(2026, 9, 19, 12, 0, tzinfo=UTC)
+"""An instant the clock rule accepts, so composition is not tested against the wall clock.
+
+Midday, and far from either boundary. ``run_anchor`` refuses two hours of every day -- the ones
+where today's Valley Produce delivery is not today, or tomorrow's also falls today -- and
+``build`` calls ``run_clock`` whenever a caller passes none. So these tests, which are about
+*ordering* and reach the clock only on the way past it, failed for two hours in every
+twenty-four wherever they ran. CI hit it at 00:01 UTC.
+"""
+
+
+@pytest.fixture(autouse=True)
+def _pinned_run_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Place this module's runs at :data:`LEGIBLE` instead of at whatever hour it is now.
+
+    Derived through the harness's own :func:`~scripts.sur1.bindings.clock.run_anchor` rather
+    than written out as a literal anchor, so what is pinned is a real run placement under the
+    real rule -- and if that rule ever stopped accepting this instant, the fixture raises here
+    instead of the pin quietly drifting away from what a run would get.
+
+    **The refusal is not weakened and is not skipped.** It is proved where it belongs, in
+    ``test_sur1_clock.py``, which asserts both unusable hours directly.
+    """
+    zone = bakery_timezone()
+    pinned = RunClock(anchor=run_anchor(LEGIBLE, zone=zone), timezone=str(zone))
+    monkeypatch.setattr("scripts.sur1.run.run_clock", lambda: pinned)
 
 
 def test_building_the_bindings_opens_nothing_and_reaches_nobody() -> None:
