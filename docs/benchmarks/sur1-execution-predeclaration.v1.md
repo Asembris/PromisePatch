@@ -286,6 +286,50 @@ row shape and are scored identically.
 > `implementation_sha` is unmoved. Any later run is a **corrected execution beside all three**
 > published runs, never a replacement for any of them.
 
+> **Recorded later, beside this document and not into it — the hosted-worker topology,
+> `DRIVER_VERSION` `1.4.0`.** No run has been taken under it. It closes the one item the parity
+> correction named, refused and left open: arm C's ablation reached no evaluator on any topology
+> that existed, so **arm C was arm B by construction on all three published runs** and the
+> ablated arm was unmeasurable rather than unmeasured. The decision is
+> [ADR-0020](../adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md) and the
+> implementation is [`sur1-hosted-worker.md`](../sur1-hosted-worker.md).
+>
+> **What moved, which arms it affects, and in which direction:**
+>
+> - **Arms B and C, together and identically.** The product's own durable worker
+>   (`promisepatch.worker.built`, driven by `Worker.run_forever`, with no branch and no benchmark
+>   flag) now runs inside the harness process, and the containerised worker is down for the whole
+>   run. Same code, same wiring, same database, same surfaces; a different process. Both arms
+>   hold one `PromisePatchArm` and therefore one worker, so neither can be driven at a worker the
+>   other is not. **Both arms move or neither does**, which is the property the ablation
+>   comparison depends on.
+> - **Arm C only, and this is the point.** Its wrapper now reaches the process that decides
+>   revalidation. **From no reading to a reading**: it is not that arm C's numbers improve, it is
+>   that arm C has never had numbers of its own. Every published arm C result is arm B's, and all
+>   three runs stay exactly as they are.
+> - **Arms B and C, together and identically, second change.** Their receivers are read after the
+>   durable work goes quiescent, because arm C's wrapper must stay installed until the work it
+>   wraps has finished. **Both may now show effects that had not yet landed** when an attempt was
+>   previously collected. This can only increase what either arm is credited with; it is named
+>   here because it is the one change in this revision that could flatter PromisePatch, and it
+>   is arm-blind between B and C.
+> - **Arm A.** Nothing. It drives the world directly and has no durable case work of its own.
+> - **All three arms.** A stack whose processes do not all run one source revision, or are not
+>   configured alike in the ways that change behaviour, or which could be joined by a second
+>   worker, is now **refused rather than measured** — `build_identity`, `config_parity` and
+>   `sole_executor`, taking `REQUIRED_CHECKS` to 28. One address defect this found is closed
+>   beside them: the host environment named the order system on port `58100` while compose
+>   publishes it on `48100`, so a host process would have pushed every governed amendment into a
+>   closed socket.
+>
+> **Nothing this predeclaration declares moved**: the `asserts_change` rule, the `E4` projection,
+> the reading rules and `PREDECLARATION_SHA` are all untouched, and so are the manifest, the
+> prompt, the scorer, the world programs, the ground truth, the budgets and the retry policy.
+> `implementation_sha` is unmoved. **Nothing under `apps/` or `packages/` learns that `SUR-1`
+> exists**, which the frozen `ABLATION.what_is_not_touched` requires and a test now asserts. Any
+> later run is a **corrected execution beside all three** published runs, never a replacement for
+> any of them.
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any
