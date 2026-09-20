@@ -330,6 +330,34 @@ row shape and are scored identically.
 > later run is a **corrected execution beside all three** published runs, never a replacement for
 > any of them.
 
+> **Recorded later, beside this document and not into it — the corrected hosting order,
+> `DRIVER_VERSION` `1.4.1`.** No run has been taken under it. It is the hosted-worker topology
+> above with two defects removed, both found by driving the thing against the live local stack
+> rather than against stand-ins. The record is
+> [`sur1-dr01-hosted-worker-rehearsal.md`](../sur1-dr01-hosted-worker-rehearsal.md).
+>
+> **What moved, which arms it affects, and in which direction:**
+>
+> - **No arm.** Nothing here changes what any arm is driven at, what it may reach, what is read
+>   back from it or how any reading is made. Arms A, B and C are exactly what `1.4.0` defined.
+> - **Whether a run can start at all.** `ablation_reach` and `sole_executor` ask their questions
+>   of a worker that is *running*, and nothing started one before the gate — the first resume
+>   happens at the first install, inside `drive`. So **no scored run could have been authorised
+>   under `1.4.0` on any stack**, and the two refusals it produced were about the ordering while
+>   reading as though they were about the stack. `execute` now hosts the worker the run will use
+>   before the gate asks and releases it when the run is refused or the invocation was only a
+>   preflight. No check was weakened, removed or made conditional; `REQUIRED_CHECKS` is still 28.
+> - **The dress rehearsal only, which is not a benchmark.** `DR01` controlled no worker at all
+>   and is now wired to the same hosted control a run gets. No scored path is reached by this.
+>
+> **Nothing this predeclaration declares moved**: the `asserts_change` rule, the `E4` projection,
+> the reading rules and `PREDECLARATION_SHA` are untouched, and so are the manifest, the prompt,
+> the scorer, the world programs, the ground truth, the budgets and the retry policy.
+> `implementation_sha` is unmoved. The one scored preflight taken under it passed **28/28** and
+> minted nothing; the `DR01` rehearsal that followed **did not complete**, failing at its first
+> install on a defect that would have ended every scored attempt, which is recorded and left
+> unfixed for a later session.
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any
