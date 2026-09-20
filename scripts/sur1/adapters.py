@@ -135,8 +135,28 @@ def run_report_schema(contract: Contract) -> dict[str, Any]:
     **A shape this reader cannot read is refused rather than defaulted**, because a field
     published as the wrong type is a question arm A would answer wrongly through no fault of
     its own.
+
+    **A contract that declares no report shape is refused by name, and never by default.** It
+    used to escape as a bare ``KeyError`` out of the middle of :func:`tool_specifications`, which
+    is how ``DR01``'s arm A died: the rehearsal document declared a ``report_outcome`` write and
+    no shape for its one argument, and what reached the capture was the name of a dictionary key
+    rather than the name of the thing that was wrong. The refusal below says which contract and
+    what it lacks. It is not a repair -- the contract is still refused, the arm is still dead,
+    and nothing is substituted for the missing shape, least of all the frozen document's. See
+    ``docs/sur1-dr01-redrive.md`` §5.
     """
-    fields: Mapping[str, Any] = contract.document["run_report_schema"]["fields"]
+    declared = contract.document.get("run_report_schema")
+    if not isinstance(declared, Mapping) or not isinstance(declared.get("fields"), Mapping):
+        raise ReportSchemaError(
+            f"{contract.identity.benchmark_id} declares a {REPORT_TOOL} write and no "
+            "run_report_schema.fields to shape its report; an arm handed a bare object is an "
+            "arm told nothing about the answer it has to produce"
+        )
+    fields: Mapping[str, Any] = declared["fields"]
+    if not fields:
+        raise ReportSchemaError(
+            f"{contract.identity.benchmark_id} declares run_report_schema.fields and it is empty"
+        )
     top: dict[str, Any] = {}
     members: dict[str, dict[str, dict[str, Any]]] = {}
     for name, shape in fields.items():
@@ -269,14 +289,26 @@ def clarification_answer(incident: Mapping[str, Any]) -> str:
 
 
 def tool_specifications(request: AttemptRequest) -> tuple[Mapping[str, Any], ...]:
+    """Arm A's actions for this attempt. The contract is the whole of what shapes them."""
+    return tool_surface(request.contract)
+
+
+def tool_surface(contract: Contract) -> tuple[Mapping[str, Any], ...]:
     """The eleven actions, named and described exactly as the contract describes them.
 
     The one argument that is a structure rather than a scalar -- ``report_outcome``'s report --
     carries the frozen ``RunReport`` schema itself, derived by :func:`run_report_schema`, so the
     arm that has to produce it can see which fields it has.
+
+    **It takes a contract rather than an attempt**, so the one question that can kill arm A
+    before it has acted -- can these be built at all? -- can be asked before an attempt exists.
+    :func:`scripts.rehearsal.run.readiness` asks it, which is the reading that was missing when
+    ``DR01``'s arm A spent five seconds reaching a ``KeyError``. One implementation, two entry
+    points: a gate that answered from a second copy of this would be a gate that could pass
+    while the real build failed.
     """
-    surface = request.contract.document["tool_surface"]
-    report_schema = run_report_schema(request.contract)
+    surface = contract.document["tool_surface"]
+    report_schema = run_report_schema(contract)
     specifications = []
     for tool in (*surface["reads"], *surface["writes"]):
         name = str(tool["name"])
