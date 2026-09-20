@@ -39,6 +39,7 @@ from typing import Any, Final
 
 from scripts.sur1.bindings import clock as clock_module
 from scripts.sur1.bindings import consentdoor as consentdoor_module
+from scripts.sur1.bindings import database as database_module
 from scripts.sur1.bindings import events as events_module
 from scripts.sur1.bindings import governed as governed_module
 from scripts.sur1.bindings import programs as programs_module
@@ -59,11 +60,12 @@ DECLARATION_PATH: Final = ROOT / "docs" / "benchmarks" / "sur1-world-programs.v1
 
 NO_ARM_EXECUTED: Final = (
     "No arm was executed to produce this declaration: it is derived from frozen documents and "
-    "from the code that reads them, and nothing in it was learned from a run. One scored run "
-    "has since been driven under it -- 20260919T2020Z-scored, on 2026-09-19 -- and it is "
-    "published inconclusive and unaltered, with 24 of its 27 attempts HARNESS_FAILURE. No "
-    "program, program hash or world digest in this declaration was changed by that run or by "
-    "the correction after it."
+    "from the code that reads them, and nothing in it was learned from a run. Two scored runs "
+    "have since been driven under it. 20260919T2020Z-scored, on 2026-09-19, is published "
+    "inconclusive and unaltered, with 24 of its 27 attempts HARNESS_FAILURE. "
+    "20260920T1100Z-scored-corrected, on 2026-09-20, failed in preparation on all 27 of its "
+    "attempts, reached no model and spent nothing. No program, program hash or world digest in "
+    "this declaration was changed by either run or by the corrections after them."
 )
 """The statement the freeze carries, asserted by a test rather than left as a sentence.
 
@@ -92,6 +94,7 @@ IMPLEMENTATION_MODULES: Final = (
     consentdoor_module,
     clock_module,
     governed_module,
+    database_module,
 )
 """Every module whose source decides what a program is or what its world looks like.
 
@@ -111,6 +114,13 @@ The governed writer is in it because it is how the world's two writes into Promi
 own tables are authorised. A change there decides whether a stipulated stock movement or a
 hold happens at all, while every world digest holds still -- the same failure the sink and
 the door are listed for.
+
+The database module is in it because *which database* a world is installed into decides whether
+the world an arm acts on is the world the receivers read. A world digest cannot see that either:
+it is taken of the canonical snapshot before the write, so a change that quietly pointed the load
+somewhere else would leave all nine digests holding still while every reading became a reading
+about a world that was never installed. That is what happened to ``20260920T1100Z-scored-
+corrected``, and ``docs/sur1-corrected-scored-run-refusal.md`` is the record of it.
 
 The clock is in it because *where in time* a world is installed decides whether its commitments
 fall inside the bakery day, and therefore which clarification a scenario asks and whether any
