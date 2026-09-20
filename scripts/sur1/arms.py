@@ -115,6 +115,22 @@ class ScenarioWorld(Protocol):
         """Read E1 through E3 back, plus whatever E4 the world was handed."""
         ...
 
+    def settle_durable_work(self) -> str:
+        """Wait for the product's durable worker to have nothing outstanding, and say so.
+
+        Asked by arms B and C before their evidence is read, for two reasons that are really
+        one. An attempt collected while the worker was mid-step reports a world the arm had not
+        finished producing; and arm C's ablation wrapper is installed for the length of the
+        arm's call, so a call that returned early would take the wrapper out while the process
+        it wraps was still deciding -- ablating a prefix of the work, with nothing in the
+        capture to say which part. Both arms ask, identically, so the wait cannot become a
+        difference between them. See ADR-0020.
+
+        Returns a sentence for the record and never raises: an attempt whose work did not
+        settle is a reading about that attempt, not a reason to end a run.
+        """
+        ...
+
 
 @runtime_checkable
 class WorkerSurface(Protocol):

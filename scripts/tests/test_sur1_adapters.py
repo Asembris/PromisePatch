@@ -328,7 +328,12 @@ def test_the_full_arm_carries_no_ablation_diagnostics() -> None:
     surface = ScriptedSurface(script=[{"needs": None}])
     world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "x"}})
     attempt = PromisePatchArm(surface=surface).run(request_for(world))
-    assert attempt.diagnostics == {}
+    assert "ablation" not in attempt.diagnostics
+    assert "ablated_check" not in attempt.diagnostics
+    # The one diagnostic arm B does carry is the one arm C carries identically: whether the
+    # durable work had settled when the receivers were read. A key only one of the two arms
+    # wrote would be a difference between them that nothing declared.
+    assert set(attempt.diagnostics) == {"settled"}
 
 
 def test_the_ablation_is_installed_only_while_arm_c_is_running() -> None:

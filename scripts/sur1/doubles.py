@@ -71,6 +71,8 @@ class SyntheticWorld:
     prepared: list[str] = field(default_factory=list)
     invoked: list[tuple[str, Mapping[str, Any]]] = field(default_factory=list)
     unreadable: bool = False
+    settled: int = 0
+    """How many times an arm asked this world to let the durable work finish."""
 
     def prepare(self, scenario: Mapping[str, Any]) -> None:
         self.prepared.append(str(scenario.get("id", "?")))
@@ -86,6 +88,11 @@ class SyntheticWorld:
         if self.unreadable:
             raise OSError("the receivers are unreachable")
         return self.evidence
+
+    def settle_durable_work(self) -> str:
+        """Nothing to settle: a synthetic world has no durable worker behind it."""
+        self.settled += 1
+        return "quiescent: this world drives no worker"
 
 
 @dataclass(slots=True)

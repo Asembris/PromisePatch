@@ -515,6 +515,25 @@ class LiveScenarioWorld:
 
     # -------------------------------------------------------------------------- the collection
 
+    def settle_durable_work(self) -> str:
+        """Let the product's durable worker finish what this attempt started, then say so.
+
+        Delegated to the worker control, because what *quiescent* means belongs to whatever is
+        running the worker. A control that cannot answer -- a container worker, which this
+        process cannot observe cycle by cycle, or a stand-in -- says so and the attempt is
+        collected as it stands, which is exactly what every run so far did.
+
+        Never raises. An attempt whose durable work did not settle is a reading about that
+        attempt; ending the run over it would lose every later scenario. See ADR-0020.
+        """
+        wait = getattr(self.worker, "await_quiescence", None)
+        if not callable(wait):
+            return "quiescent: this worker control cannot be asked"
+        try:
+            return str(wait())
+        except Exception as failure:  # a wait that broke is a fact about the attempt
+            return f"not quiescent: {type(failure).__name__}: {failure}"
+
     def collect(self) -> ReceiverEvidence:
         """Read the four receivers back. Every failure is a declared unreadable source.
 

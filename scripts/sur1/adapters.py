@@ -350,9 +350,18 @@ class PromisePatchArm:
 
     surface: WorkerSurface
     label: str = "PROMISEPATCH"
+    settled: str = ""
+    """What the last attempt's wait for durable quiescence reported. Diagnostic, never scored.
+
+    Written by :meth:`drive_through_surface` and read by :class:`AblationArm`, which is the one
+    caller that needs to say in its capture whether the wrapper was still installed when the
+    work finished. One field on the one object both arms share, so neither can record a
+    different answer than the other would have.
+    """
 
     def run(self, request: AttemptRequest) -> ArmAttempt:
-        return ArmAttempt(evidence=self.drive_through_surface(request))
+        evidence = self.drive_through_surface(request)
+        return ArmAttempt(evidence=evidence, diagnostics={"settled": self.settled})
 
     def drive_through_surface(self, request: AttemptRequest) -> ReceiverEvidence:
         """A worker's loop: say what happened, answer the one thing you are asked, confirm.
@@ -391,6 +400,13 @@ class PromisePatchArm:
 
         request.budget.authorise_tool_call()
         self.surface.status()
+        # Let the product's durable worker finish before anything is read back. Two reasons,
+        # and they are the same reason: an attempt collected mid-step reports a world the arm
+        # had not finished producing, and arm C's wrapper is installed around *this call*, so
+        # returning while the deciding process was still deciding would ablate a prefix of the
+        # work with nothing in the capture to say which part. Arms B and C both wait, here, in
+        # the one method both of them run. See ADR-0020.
+        self.settled = request.world.settle_durable_work()
         return request.world.collect()
 
     def _incident(self, request: AttemptRequest) -> Mapping[str, Any]:
@@ -417,11 +433,19 @@ class AblationArm:
     label: str = "ABLATION"
 
     def run(self, request: AttemptRequest) -> ArmAttempt:
+        # The wrapper spans the wait for quiescence as well as the surface loop, because
+        # ``drive_through_surface`` ends by waiting for the durable worker. Taking the wrapper
+        # out before that would ablate only the part of the attempt that happened to finish
+        # inside the arm's own call. See ADR-0020.
         with ablation() as log:
             evidence = self.inner.drive_through_surface(request)
         return ArmAttempt(
             evidence=evidence,
-            diagnostics={"ablation": log.as_payload(), "ablated_check": 5},
+            diagnostics={
+                "ablation": log.as_payload(),
+                "ablated_check": 5,
+                "settled": self.inner.settled,
+            },
         )
 
 
