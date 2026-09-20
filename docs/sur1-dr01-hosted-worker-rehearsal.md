@@ -216,7 +216,24 @@ image, the compose `worker` stopped, demo provisioning off, the provider Bedrock
 3. Only then is a fourth scored run a question. It is not this session's and it is not the next
    one's either.
 
-## 8. The re-freeze
+## 8. What was validated
+
+Stated as what was run, not as what is believed.
+
+- `pytest scripts/tests` — **1236 passed, 1 skipped**; the skip is the state-dependent challenger
+  guard and predates this work. Two expectations in `test_sur1_run.py` changed, for the reason
+  §3.1 gives; no test was skipped, deselected, deleted or weakened.
+- `ruff check .`, `ruff format --check .` (555 files), `lint-imports` (**30 contracts kept, 0
+  broken**), `mypy evals scripts` (145 files).
+- The scored preflight itself, live: **28/28**, every name in `REQUIRED_CHECKS` present and
+  passing in one report, including `historical_runs` — the three published scored runs recompute
+  byte-identical to what was taken. Both evaluation holdouts are untouched; nothing under `evals/`
+  was read, run or changed.
+
+**GitHub CI is the broad regression authority and has not run on this work**, which has not been
+pushed.
+
+## 9. The re-freeze
 
 `sur1-phase3-closeout.md` §8 requirement 4 holds: the session that changed the machinery does not
 take the run, and no run was taken. The scope-freeze trees are re-recorded at this commit in
