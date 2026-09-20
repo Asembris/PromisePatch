@@ -171,6 +171,69 @@ def test_reported_usage_is_charged_as_the_provider_reports_it() -> None:
     assert request.budget.spend.output_tokens == 40
 
 
+def test_the_baseline_records_every_tool_call_it_made_as_diagnostics() -> None:
+    """Captured, never scored. Without it the empty-``E4`` mechanism could only be guessed at."""
+    model = ScriptedModel(
+        [
+            calling("get_incident"),
+            calling("send_customer_message", channel_address="1002", text="may we?"),
+            calling("report_outcome"),
+        ]
+    )
+    world = SyntheticWorld(evidence=EVIDENCE, responses={"get_incident": {"reported": "hi"}})
+
+    attempt = BaselineArm(model=model).run(request_for(world))
+
+    assert [call["name"] for call in attempt.diagnostics["tool_calls"]] == [
+        "get_incident",
+        "send_customer_message",
+        "report_outcome",
+    ]
+    assert attempt.diagnostics["tool_calls"][1]["arguments"] == {
+        "channel_address": "1002",
+        "text": "may we?",
+    }
+
+
+def test_the_baseline_s_report_argument_is_kept_in_full_structure() -> None:
+    """The one argument the audit could not read from the artefacts."""
+    report = {"scenario_id": "C01", "exception_recorded": True, "promises": [{"order": "ord-a"}]}
+    model = ScriptedModel([calling("report_outcome", report=report)])
+    world = SyntheticWorld(evidence=EVIDENCE)
+
+    attempt = BaselineArm(model=model).run(request_for(world))
+
+    (call,) = attempt.diagnostics["tool_calls"]
+    assert call["arguments"]["report"] == report
+
+
+def test_a_diagnostic_is_bounded_so_a_capture_cannot_become_a_transcript_dump() -> None:
+    from scripts.sur1.adapters import TEXT_CEILING, WIDTH_CEILING, sanitised
+
+    long_text = "x" * (TEXT_CEILING + 50)
+    assert sanitised(long_text).endswith("[... cut]")
+    assert len(sanitised(long_text)) == TEXT_CEILING + len("[... cut]")
+
+    wide = list(range(WIDTH_CEILING + 5))
+    assert sanitised(wide)[-1] == "[5 more entries]"
+
+    from scripts.sur1.adapters import DEPTH_CEILING
+
+    deep: Any = "bottom"
+    for _ in range(DEPTH_CEILING + 2):
+        deep = {"down": deep}
+    assert "depth ceiling" in str(sanitised(deep))
+
+
+def test_diagnostics_are_written_into_the_capture_and_never_into_a_bundle() -> None:
+    """The structural reason an arm-identifying record may exist at all."""
+    import inspect
+
+    from scripts.sur1.evidence import blind_bundle
+
+    assert "diagnostics" not in inspect.signature(blind_bundle).parameters
+
+
 # ------------------------------------------------------------------ the ordinary surfaces
 
 

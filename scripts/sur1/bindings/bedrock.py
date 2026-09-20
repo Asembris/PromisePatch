@@ -51,6 +51,7 @@ JSON_TYPES: Final[dict[str, str]] = {
     "object": "object",
     "boolean": "boolean",
     "number": "number",
+    "array": "array",
 }
 """How an argument shape in :data:`~scripts.sur1.adapters.ARGUMENTS` becomes a JSON-schema type.
 
@@ -129,12 +130,27 @@ def tool_configuration(tools: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     Every argument is required, because a frozen action with an omitted argument is not that
     action. ``toolChoice`` is deliberately absent: the baseline is an agent deciding what to do,
     and forcing a tool would be the harness deciding for it.
+
+    An argument shape is either prose -- ``"string"``, whose first word names its JSON type --
+    or a JSON schema already, which is passed through as it stands. The second form exists for
+    exactly one argument: ``report_outcome``'s report, whose schema
+    :func:`~scripts.sur1.adapters.run_report_schema` derives from the frozen manifest. Publishing
+    it as a bare ``{"type": "object"}`` told arm A nothing about the fields it had to fill, and
+    ``E4`` came back empty on every baseline attempt of two scored runs
+    (``docs/sur1-v3-forensic-audit.md`` §5, F6).
     """
     specifications = []
     for tool in tools:
         arguments: Mapping[str, Any] = tool.get("arguments", {})
-        properties = {}
+        properties: dict[str, Any] = {}
         for name, shape in arguments.items():
+            if isinstance(shape, Mapping):
+                if not shape.get("type"):
+                    raise ModelConfigurationError(
+                        f"{tool['name']}.{name} carries a schema that names no type"
+                    )
+                properties[name] = dict(shape)
+                continue
             word = str(shape).split(",")[0].strip()
             if word not in JSON_TYPES:
                 raise ModelConfigurationError(

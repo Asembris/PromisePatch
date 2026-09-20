@@ -16,7 +16,13 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import pytest
-from scripts.sur1.adapters import ARGUMENTS, KICKOFF, BaselineArm, tool_specifications
+from scripts.sur1.adapters import (
+    ARGUMENTS,
+    KICKOFF,
+    BaselineArm,
+    run_report_schema,
+    tool_specifications,
+)
 from scripts.sur1.arms import AttemptRequest, ModelReply
 from scripts.sur1.bindings import is_real
 from scripts.sur1.bindings.bedrock import (
@@ -137,9 +143,12 @@ def test_every_argument_of_a_frozen_action_is_required_and_typed() -> None:
     assert amend["required"] == sorted(ARGUMENTS["amend_order"])
     assert amend["properties"]["expected_version"] == {"type": "integer"}
     assert amend["properties"]["external_id"] == {"type": "string"}
-    assert by_name["report_outcome"]["inputSchema"]["json"]["properties"]["report"] == {
-        "type": "object"
-    }
+    report = by_name["report_outcome"]["inputSchema"]["json"]["properties"]["report"]
+    assert report == run_report_schema(Contract.load()), (
+        "the report argument was published as a bare object with no properties for two scored "
+        "runs, and arm A filled none of its fields; it now carries the frozen RunReport schema"
+    )
+    assert report["properties"]["promises"]["items"]["required"]
 
 
 def test_an_argument_shape_that_names_no_json_type_is_refused_rather_than_defaulted() -> None:
