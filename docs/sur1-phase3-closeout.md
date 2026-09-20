@@ -221,6 +221,31 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > Requirement 4 holds and is load-bearing here: this correction changes what arms B and C are
 > driven against, and the session that made it is not the session that takes any later run.
 
+> **Recorded later, beside this block and not into it — the hosted-worker topology.** The four
+> requirements were exercised a fourth time, to close the one item the parity correction named,
+> refused and left open. The named defect is `F4` in
+> [`sur1-v3-forensic-audit.md`](sur1-v3-forensic-audit.md) §5 — arm C's ablation reached no
+> evaluator on any topology that existed, so arm C was arm B by construction on all three
+> published runs. The decision that authorises the repair is
+> [ADR-0020](adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md); what was built is in
+> [`sur1-hosted-worker.md`](sur1-hosted-worker.md); the disclosure naming which arms it affects
+> and in which direction is beside the predeclaration. Under it `DRIVER_VERSION` is `1.4.0` and
+> **`implementation_sha` did not move** — no file in `IMPLEMENTATION_MODULES` was touched — and
+> neither did `PREDECLARATION_SHA`, `SCORER_VERSION`, the manifest, the prompt, a world program
+> or a scope answer. `REQUIRED_CHECKS` is 28. The scope-freeze trees at this change are:
+>
+> | Path | Tree / blob |
+> |---|---|
+> | `scripts/sur1/` | `ffeea99172cc1f1c2ac37a37e50440558d9f4a66` |
+> | `scripts/rehearsal/` | `b64d6a64114b3770b7f43c4b7c6ae530b6511d1f` — **unchanged** by this work |
+> | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
+> | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
+> | `docs/benchmarks/` | `c49c1eb7834f6a736ec16baeac28d1b011be39e6` |
+>
+> Requirement 4 holds and is load-bearing again: this change moves the topology arms B and C are
+> driven at, and the session that made it takes no run. `DR01` through the corrected seam,
+> against the live local stack, is owed before any spend.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an

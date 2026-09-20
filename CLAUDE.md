@@ -91,12 +91,16 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
 - **`SUR-1` has been taken three times and none of the three is a result.** All three are
   preserved byte-identical and pinned in two places; the correct response to a digest moving is to
   restore the run, never to update the pin. The third, `20260920T1215Z-scored-v3`, is **invalid** —
-  five arm-correlated defects were proved in it afterwards. Five are corrected and the preflight
-  now asks 25 questions rather than 18. **A fourth run is refused today** and should be: arm C's
-  ablation reaches no evaluator on any topology that exists, which makes the ablated arm
-  unmeasurable rather than unmeasured. Closing it needs an ADR decision that has not been taken.
-  See [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md) and
-  [sur1-parity-correction.md](docs/sur1-parity-correction.md) before touching anything here.
+  five arm-correlated defects were proved in it afterwards. All five are now corrected and the
+  preflight asks 28 questions rather than 18. The last of them — arm C's ablation reaching no
+  evaluator, which made the ablated arm unmeasurable rather than unmeasured — is closed by
+  [ADR-0020](docs/adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md): the product's
+  own durable worker runs inside the harness process for **both** arms B and C, and the
+  containerised worker is down for the run. **A fourth run is still not taken and is not this
+  session's to take.** `DR01` through the corrected seam, against the live local stack, is owed
+  before any spend. See [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md),
+  [sur1-parity-correction.md](docs/sur1-parity-correction.md) and
+  [sur1-hosted-worker.md](docs/sur1-hosted-worker.md) before touching anything here.
 - **Telegram is unbuilt**, deferred into G8's deployed rehearsals. Correcting a physical fact is
   CLI-only. A customer answers on the web, through a signed possession link carried in the
   outbound message's payload — a transport into the unchanged consent protocol, never a second
@@ -199,7 +203,7 @@ git diff --cached --stat
 gitignored, local-only and **authoritative whenever present**. Read them before deciding
 anything they cover. Never modify them unless explicitly asked. Never commit them.
 
-`docs/adr/` holds every architectural decision, `0001` through `0019`. The ones that constrain
+`docs/adr/` holds every architectural decision, `0001` through `0020`. The ones that constrain
 day-to-day work most: [0008](docs/adr/0008-remove-runtime-customer-intent-classifier.md) (no
 runtime intent classifier), [0011](docs/adr/0011-conversational-orchestrator-authority.md) (the
 orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-principal.md) and
@@ -208,7 +212,9 @@ orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-princi
 server), [0018](docs/adr/0018-a-plan-confirmation-spends-a-human-approval.md) (a plan
 confirmation spends a human approval), and
 [0019](docs/adr/0019-a-benchmark-world-is-installed-at-a-run-local-anchor.md) (a benchmark world
-is installed at a run-local anchor; production keeps the ordinary clock).
+is installed at a run-local anchor; production keeps the ordinary clock), and
+[0020](docs/adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md) (a scored benchmark
+hosts the product's own worker; no deployed process ever learns the benchmark exists).
 
 ## Historical record
 
@@ -227,6 +233,7 @@ read the source document rather than a paraphrase of it.
 | Comparative benchmark (`SUR-1`, frozen, run once) | [safe-useful-recovery-benchmark.md](docs/safe-useful-recovery-benchmark.md), [sur1-execution-harness.md](docs/sur1-execution-harness.md), [sur1-execution-bindings.md](docs/sur1-execution-bindings.md), [sur1-execution-predeclaration.v1.md](docs/benchmarks/sur1-execution-predeclaration.v1.md), [sur1-world-programs.md](docs/sur1-world-programs.md), [sur1-world-events.md](docs/sur1-world-events.md), [sur1-scored-authorisation.md](docs/sur1-scored-authorisation.md), [sur1-pre-run-audit.md](docs/sur1-pre-run-audit.md), [sur1-consent-ingress.md](docs/sur1-consent-ingress.md) |
 | G7 and G8 | [g7-closeout.md](docs/g7-closeout.md), [g8-adversarial-proof-map.md](docs/g8-adversarial-proof-map.md), [g8-head-of-line-measurement.md](docs/g8-head-of-line-measurement.md), [g8-head-of-line-disposition.md](docs/g8-head-of-line-disposition.md), [head-of-line-correction.md](docs/head-of-line-correction.md), [adversarial-race-proofs.md](docs/adversarial-race-proofs.md) |
 | Started work and the hold contract | [started-work-contract.md](docs/started-work-contract.md) |
+| SUR-1 hosted worker (arm C reaches an evaluator, unrun) | [sur1-hosted-worker.md](docs/sur1-hosted-worker.md) |
 | SUR-1 dress rehearsal (`DR01`, not a benchmark) | [sur1-dress-rehearsal.md](docs/sur1-dress-rehearsal.md) |
 | SUR-1 scored environment | [sur1-scored-environment.md](docs/sur1-scored-environment.md) |
 | SUR-1 phase 3 closeout (harness scope-frozen) | [sur1-phase3-closeout.md](docs/sur1-phase3-closeout.md) |
