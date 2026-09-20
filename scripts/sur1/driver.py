@@ -199,8 +199,64 @@ def drive_attempt(
         note = f"{type(unexpected).__name__}: {unexpected}"
         evidence = _salvage(world, note)
 
+    executor, fault = executor_evidence(world)
+    if executor:
+        diagnostics = {**diagnostics, "executor": executor}
+    if fault and status in {"PENDING_SCORE", "VOID"}:
+        # Fails closed rather than being noted. An attempt part of whose durable work was
+        # executed by a worker arm C's wrapper never reached is not a weaker reading of arm C;
+        # it is a reading of an arm nobody defined, and a number derived from it would be
+        # indistinguishable from a number about the scenario. See ADR-0020.
+        status, note = "HARNESS_FAILURE", fault
+
     latency = clock.monotonic() - started
     return evidence, diagnostics, status, note, budget, latency
+
+
+def executor_evidence(world: ScenarioWorld) -> tuple[dict[str, Any], str]:
+    """Who executed this attempt's durable work, and which revalidation checks ran.
+
+    **Read out of the product's own append-only audit ledger**, not out of the harness's log. A
+    harness that recorded its own wrapper calls would be asserting the treatment about itself;
+    the ``REVALIDATION_CHECK`` rows are written by the deciding transaction, carry the check's
+    index and name, and carry the worker identity that produced them. Arm B's check 5 row holds
+    the evaluator's own name and arm C's holds the ablation mark, so the two arms are
+    distinguishable in the system under test rather than only in the capture.
+
+    Returns the payload and, separately, a sentence naming why this attempt cannot be read. An
+    empty sentence is the sole-executor proof. Anything a control cannot answer yields no
+    payload and no fault: a run driven at a control that does not track executors is exactly
+    what every run so far was, and the preflight is where that is refused.
+    """
+    control = getattr(world, "worker", None)
+    foreign = getattr(control, "executed_only_by_the_hosted_worker", None)
+    witnesses = getattr(control, "revalidation_witnesses", None)
+    since = getattr(world, "started_at", None)
+    if not callable(foreign) or not callable(witnesses) or since is None:
+        return {}, ""
+
+    payload: dict[str, Any] = {"worker": str(getattr(control, "worker_identity", lambda: "")())}
+    try:
+        others = tuple(foreign(since))
+        checks = tuple(witnesses(since))
+    except Exception as unreadable:
+        # An unreadable ledger is not a passing sole-executor proof. It is recorded as the
+        # unknown it is and the attempt is refused, because *nobody else did the work* and
+        # *nobody could tell* are different facts and only one of them is a reading.
+        return payload | {"unreadable": f"{type(unreadable).__name__}: {unreadable}"}, (
+            f"the product's own record of who executed this attempt could not be read: "
+            f"{type(unreadable).__name__}: {unreadable}"
+        )
+
+    payload["revalidation"] = [witness.as_payload() for witness in checks]
+    payload["foreign_workers"] = list(others)
+    if others:
+        return payload, (
+            "durable work in this attempt was executed by "
+            f"{', '.join(others)} as well as by the hosted worker; part of it ran in a process "
+            "arm C's wrapper does not reach, so this attempt is a reading of no declared arm"
+        )
+    return payload, ""
 
 
 def _salvage(world: ScenarioWorld, note: str) -> ReceiverEvidence:
