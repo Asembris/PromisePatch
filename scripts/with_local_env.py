@@ -20,7 +20,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bootstrap_local_env import published_port
+from bootstrap_local_env import (
+    DEFAULT_ORDER_SIMULATOR_PORT,
+    ORDER_SIMULATOR_PORT_VARIABLE,
+    published_port,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST_ENV = ROOT / "docker" / "env" / "host.env"
@@ -29,19 +33,40 @@ _LOCAL_ENDPOINT = re.compile(r"@(127\.0\.0\.1|localhost|\[::1\]):(\d+)/")
 """The host and port in a local connection string. Loopback only, so a URL naming anything
 else is left exactly as it was rather than quietly repointed."""
 
+_LOCAL_BASE_URL = re.compile(r"^(https?://)(127\.0\.0\.1|localhost|\[::1\]):(\d+)")
+"""The host and port of a loopback base URL, for the same reason and with the same restraint."""
 
-def repoint(values: dict[str, str], port: str) -> dict[str, str]:
-    """Move the loopback connection strings onto ``port``.
+ORDER_SYSTEM_VARIABLE = "PP_ORDER_SYSTEM_BASE_URL"
+"""The one base URL a host process reaches a published compose service on.
+
+A container reaches the order system by service name and is unaffected. A process on the host
+-- the integration suite, and now the ``SUR-1`` hosted worker -- reaches it on the published
+port, and a template that still names the default while compose publishes another port sends
+every governed amendment at nothing.
+"""
+
+
+def repoint(values: dict[str, str], port: str, order_system_port: str = "") -> dict[str, str]:
+    """Move the loopback addresses onto the ports compose actually publishes.
 
     ``host.env`` is generated once and then left alone -- regenerating it rotates the runtime
     role's password out from under a database that still has the old one. So when a machine
-    has to publish PostgreSQL somewhere other than the port its `host.env` was written with,
+    has to publish a service somewhere other than the port its ``host.env`` was written with,
     the launcher moves the address rather than asking for the file to be rebuilt.
+
+    Two addresses move, for one reason: the database, and -- when a port is given -- the order
+    system. Both are loopback-only substitutions, so a value naming a host other than this one
+    is left exactly as it was.
     """
-    return {
+    moved = {
         key: (_LOCAL_ENDPOINT.sub(rf"@\g<1>:{port}/", value) if "DATABASE_URL" in key else value)
         for key, value in values.items()
     }
+    if order_system_port and ORDER_SYSTEM_VARIABLE in moved:
+        moved[ORDER_SYSTEM_VARIABLE] = _LOCAL_BASE_URL.sub(
+            rf"\g<1>\g<2>:{order_system_port}", moved[ORDER_SYSTEM_VARIABLE]
+        )
+    return moved
 
 
 def load(path: Path) -> dict[str, str]:
@@ -77,7 +102,11 @@ def main(argv: list[str]) -> int:
 
     # Resolved with `bootstrap_local_env`'s own rule rather than a second one, so the port the
     # suite connects to is by construction the port compose publishes.
-    values = repoint(load(HOST_ENV), published_port(ROOT))
+    values = repoint(
+        load(HOST_ENV),
+        published_port(ROOT),
+        published_port(ROOT, ORDER_SIMULATOR_PORT_VARIABLE, DEFAULT_ORDER_SIMULATOR_PORT),
+    )
     environment = {**os.environ, **values}
     # `shell=False`: the command is an argument vector the caller already split, and passing it
     # through a shell would make quoting in a test command a source of surprise.

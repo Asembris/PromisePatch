@@ -62,27 +62,47 @@ Reading one non-secret key out of `.env` is not the interpolation compose refuse
 number cannot redirect the stack at another database.
 """
 
+ORDER_SIMULATOR_PORT_VARIABLE = "PROMISEPATCH_ORDER_SIMULATOR_PUBLISHED_PORT"
+DEFAULT_ORDER_SIMULATOR_PORT = "58100"
+"""The same question for the order system, and the same answer for the same reason.
 
-def published_port(root: Path) -> str:
-    """The host port to publish PostgreSQL on, following compose's own precedence."""
-    from_environment = os.environ.get(PUBLISHED_PORT_VARIABLE)
+A host process reaches the order system on its published port; a container reaches it by
+service name. A machine that had to move the published port and a template that still names the
+default is how ``docker/env/host.env`` came to say ``58100`` while compose publishes ``48100``:
+a host process would push every governed amendment at nothing. See
+``scripts.sur1.preflight.config_parity``, which refuses a scored run for exactly that.
+"""
+
+
+def published_port(
+    root: Path,
+    variable: str = PUBLISHED_PORT_VARIABLE,
+    default: str = DEFAULT_PUBLISHED_PORT,
+) -> str:
+    """The host port a published service is reachable on, following compose's own precedence.
+
+    The real environment first, then the repository's own ``.env``, then the default -- which is
+    the order ``docker compose`` itself resolves an interpolated value in. Defaulted to
+    PostgreSQL's variable so every existing caller keeps asking the question it was asking.
+    """
+    from_environment = os.environ.get(variable)
     if from_environment:
-        return _valid_port(from_environment)
+        return _valid_port(variable, from_environment)
 
     dotenv = root / ".env"
     if dotenv.is_file():
         for line in dotenv.read_text(encoding="utf-8").splitlines():
             key, _, value = line.strip().partition("=")
-            if key.strip() == PUBLISHED_PORT_VARIABLE and value.strip():
-                return _valid_port(value.strip())
+            if key.strip() == variable and value.strip():
+                return _valid_port(variable, value.strip())
 
-    return DEFAULT_PUBLISHED_PORT
+    return default
 
 
-def _valid_port(value: str) -> str:
+def _valid_port(variable: str, value: str) -> str:
     """Refuse anything that is not a port, rather than writing it into a connection string."""
     if not value.isdigit() or not 1 <= int(value) <= 65535:
-        raise SystemExit(f"{PUBLISHED_PORT_VARIABLE}={value!r} is not a TCP port number")
+        raise SystemExit(f"{variable}={value!r} is not a TCP port number")
     return value
 
 
