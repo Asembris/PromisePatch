@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Final
 
-DRIVER_VERSION: Final = "1.4.1"
+DRIVER_VERSION: Final = "1.4.2"
 """Bumped whenever the driving or the evidence collection changes. Recorded in every capture.
 
 ``1.0.0`` drove the first scored run, ``20260919T2020Z-scored``, which is preserved exactly as
@@ -97,4 +97,19 @@ controlled no worker at all, so arm C's wrapper reached nothing there either. No
 is measured moves -- no frozen benchmark element, no arm, no world, no reading rule, and
 ``implementation_sha`` is unmoved. No run has been taken under it. See
 ``docs/sur1-dr01-hosted-worker-rehearsal.md``.
+
+``1.4.2`` is that seam with the install defect ``DR01`` found removed.
+``InstallationLifecycle.fingerprint`` asked ``commitment_lines`` for a ``state`` column; the
+table has ``received_state``, and the neighbouring ``production_tasks`` query is the one whose
+column really is ``state``. It is fatal to every attempt of a scored run, because ``around``
+fingerprints on every install, after the world has been written and verified. Nothing caught it
+because nothing had executed the statement: the lifecycle tests answered from a dictionary and
+``preflight.world_integrity`` drove the lifecycle against dictionaries too. So the statement is
+corrected, that check's stand-in now refuses a column the product does not declare, the check
+additionally executes the fingerprint's own statements against this machine's world database
+when it answers, and a real migrated PostgreSQL schema is driven by
+``scripts/tests/test_sur1_world_lifecycle_postgres.py``. Nothing about what is measured moves --
+no frozen benchmark element, no arm, no world, no reading rule, no check was weakened,
+``REQUIRED_CHECKS`` is still 28 and ``implementation_sha`` is unmoved. No run has been taken
+under it. See ``docs/sur1-dr01-hosted-worker-rehearsal.md`` §4.
 """
