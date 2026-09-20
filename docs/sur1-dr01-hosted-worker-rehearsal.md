@@ -238,3 +238,14 @@ pushed.
 `sur1-phase3-closeout.md` §8 requirement 4 holds: the session that changed the machinery does not
 take the run, and no run was taken. The scope-freeze trees are re-recorded at this commit in
 `sur1-phase3-closeout.md` §8, beside the previous ones rather than into them.
+
+---
+
+> **Recorded later, beside this record and not into it.** §7's first two items are done.
+> `fingerprint`'s column was corrected, the stand-in that could not fail on a real column name
+> was replaced, a real-PostgreSQL proof was added, and `DR01` was driven again and **completed**
+> under `DRIVER_VERSION` `1.4.2`. Arms `PROMISEPATCH` and `ABLATION` produced the B/C treatment
+> evidence and the sole-executor evidence that §5 above lists as owed; arm `BASELINE` failed on a
+> second, separate defect that has been present since `1.2.0` and does not affect a scored run.
+> Nothing in this document is amended: it remains the reading the rehearsal that found the first
+> defect produced. See [`sur1-dr01-redrive.md`](sur1-dr01-redrive.md).
