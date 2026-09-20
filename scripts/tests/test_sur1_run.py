@@ -58,7 +58,6 @@ that compares the two is proved in ``test_sur1_database_target``, where it belon
 def _pinned_installer(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every test in this file composes against one known database and reads no ``.env``."""
     import scripts.sur1.run as run_module
-
     from scripts.sur1.bindings.database import InstallerTarget
 
     monkeypatch.setattr(

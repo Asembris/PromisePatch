@@ -316,11 +316,11 @@ def test_the_destructive_write_guard_is_still_in_front_of_the_load(
     """
     import asyncio
 
+    from scripts.sur1.bindings import realisation
+
     import promisepatch.config as product_config
     from promisepatch.db import session as db_session
     from promisepatch.fixtures.reset import FixtureResetNotAllowedError
-
-    from scripts.sur1.bindings import realisation
 
     class Closed:
         allow_fixture_reset = False
