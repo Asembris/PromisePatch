@@ -1,0 +1,139 @@
+{
+  "attempt": {
+    "arm_token": "tok-f18f74515912e799",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 70595,
+      "model_calls": 12,
+      "output_tokens": 1622,
+      "tool_calls": 10
+    },
+    "evidence_ref": "tok-f18f74515912e799-C02-a1.json",
+    "finished_at": "2026-09-20T12:06:14.129164+00:00",
+    "latency_seconds": 27.421000000000276,
+    "note": "",
+    "retried": false,
+    "run_id": "20260920T1215Z-scored-v3",
+    "scenario_id": "C02",
+    "started_at": "2026-09-20T12:05:46.708792+00:00",
+    "status": "PENDING_SCORE"
+  },
+  "diagnostics": {},
+  "evidence": {
+    "E1": [
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-A",
+        "idempotency_key": "amend-ext-a",
+        "line_external_item_id": "rv-raspberry-almond-4",
+        "occurred_at": "2026-09-20T12:06:06.770257+00:00",
+        "previous_version": 1,
+        "version": 2
+      }
+    ],
+    "E2": [
+      {
+        "accepted_at": "2026-09-20T12:06:08.046833+00:00",
+        "channel_address": "1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "sur1-out-53a0606d-3f1a-41df-8008-57ccde82dce8",
+        "text": "Hello Tomas, due to a raspberry shortage, we can substitute your raspberry-rose cake with a strawberry-rose version. This will change the visible decoration. Please reply with YES or NO to approve this change."
+      },
+      {
+        "accepted_at": "2026-09-20T12:06:09.179622+00:00",
+        "channel_address": "1003",
+        "direction": "OUTBOUND",
+        "provider_event_id": "sur1-out-cbd33948-7d05-49dc-808d-1aff96f26517",
+        "text": "Hello Okafor-Reyes wedding team, due to a raspberry shortage, we can substitute the raspberries in your charlotte with strawberries. This will change the visible decoration. Please reply with YES or NO to approve this change."
+      }
+    ],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": {
+      "acknowledged_stops": [],
+      "exception_recorded": false,
+      "promises": [],
+      "scenario_id": "C02"
+    },
+    "contradictions": [],
+    "unreadable_sources": []
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.2.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260920T1215Z-scored-v3",
+    "scorer_version": "1.0.0"
+  }
+}
