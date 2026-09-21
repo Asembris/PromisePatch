@@ -9,10 +9,11 @@ carries. This file is the proof that it no longer can.
 
 **Two protections were assumed and neither held.** ``PP_ALLOW_FIXTURE_RESET`` says that *a*
 reset is permitted and says nothing about where. The autouse guard in ``conftest`` refuses any
-socket that leaves this machine -- but it is function-scoped, and pytest builds a module-scoped
-fixture before the first function-scoped one, so ``migrated_world`` would have dropped a
-database before the guard existed. It is also an in-process monkeypatch on ``socket``, and the
-Alembic upgrade runs in a child process it cannot reach at any scope.
+socket that leaves this machine -- but it was function-scoped, and pytest builds a module-scoped
+fixture before the first function-scoped one, so ``migrated_world`` dropped a database before
+the guard existed. It is also an in-process monkeypatch on ``socket``, and the Alembic upgrade
+runs in a child process it cannot reach at any scope. The guard is now installed at session
+scope too, which closes the first of those and not the second.
 
 **So the proof is positive and structural, not a blacklist and not an ordering.** Every
 connection string the module opens something on comes back from
@@ -291,24 +292,29 @@ def test_the_scratch_database_is_never_the_shared_local_one() -> None:
 # ------------------------------------------------- why the socket guard could not have done it
 
 
-def test_the_socket_guard_cannot_cover_the_module_scoped_fixture() -> None:
+def test_the_socket_guard_now_covers_the_scope_the_module_fixture_is_built_at() -> None:
     """The scope mismatch that made this defect possible, held as a fact rather than a memory.
 
     pytest instantiates fixtures highest-scope-first, so a module-scoped fixture's setup runs
-    before any function-scoped autouse fixture in the same run. Both scopes are read off the
-    fixtures themselves here: if somebody later widens the guard and deletes the URL check
-    believing it redundant, this states what the guard did and did not cover.
+    before any function-scoped autouse fixture. ``migrated_world`` is module-scoped, which is
+    why the socket guard was not installed when it dropped a database. It is now installed at
+    session scope as well, and both scopes are read off the fixtures themselves here.
 
-    The second reason is not expressible as a scope at all: the Alembic upgrade runs in a child
-    process, and an in-process monkeypatch on ``socket`` never sees it.
+    This is the net, not the protection. The Alembic upgrade runs in a child process that no
+    in-process patch on ``socket`` reaches at any scope, so what actually makes this module safe
+    is the URL check above -- and if somebody later deletes that check believing the widened
+    guard made it redundant, the tests above fail and this docstring says why.
     """
-    guard = conftest.refuse_off_machine_connections._fixture_function_marker
+    per_test = conftest.refuse_off_machine_connections._fixture_function_marker
+    per_session = conftest.refuse_off_machine_connections_outside_a_test._fixture_function_marker
     world = lifecycle.migrated_world._fixture_function_marker
 
-    assert guard.autouse is True
-    assert guard.scope == "function"
+    assert per_test.autouse is True
+    assert per_test.scope == "function"
+    assert per_session.autouse is True
+    assert per_session.scope == "session"
     assert world.scope == "module"
-    assert "subprocess" in MODULE_SOURCE, "the child process the guard cannot reach"
+    assert "subprocess" in MODULE_SOURCE, "the child process no socket patch can reach"
 
 
 # ------------------------------------------------------ the module cannot reach around it later

@@ -10,6 +10,12 @@ opens a self-pipe on Windows -- and because a connection to this machine is not 
 call, an AWS call or a data disclosure. Everything else is refused and recorded, so the count
 of off-machine connections is a number a test can assert on rather than a hope.
 
+The guard is installed twice, at two scopes, because a scope is exactly what it used to miss.
+pytest builds higher-scoped fixtures first, so a module-scoped fixture's setup ran before any
+function-scoped ``autouse`` one -- and the module-scoped fixture in this directory opened a
+database and dropped things in it. The session-scoped installation covers that window; the
+function-scoped one is unchanged, so what a test sees is what it always saw.
+
 Nothing here grants a spend authorisation, and nothing here is ``autouse`` except the guard.
 That is deliberate and is checked by :func:`test_no_fixture_here_authorises_spending`: a
 fixture that quietly authorised paid inference for every test in the directory would recreate,
@@ -56,12 +62,36 @@ def _guard(name: str, original: Any) -> Any:
     return wrapper
 
 
+def _install(patch: pytest.MonkeyPatch) -> None:
+    """Wrap the three ways a connection is opened, whatever scope is asking."""
+    patch.setattr(socket.socket, "connect", _guard("connect", socket.socket.connect))
+    patch.setattr(socket.socket, "connect_ex", _guard("connect_ex", socket.socket.connect_ex))
+    patch.setattr(
+        socket, "create_connection", _guard("create_connection", socket.create_connection)
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def refuse_off_machine_connections_outside_a_test() -> Iterator[None]:
+    """The same interception, for everything that happens between tests rather than inside one.
+
+    The fixture below is function-scoped, and pytest builds higher-scoped fixtures first: a
+    module-scoped ``setup`` opened its connections before any function-scoped guard existed.
+    ``test_sur1_world_lifecycle_postgres`` was the module that had one, and it dropped and
+    created a database in it.
+
+    That module now proves its own target local before it connects, which is the protection
+    that matters -- it also covers the Alembic child process, which no in-process patch can
+    reach. This is the net underneath it, so the next module-scoped fixture in this directory
+    does not have to rediscover the gap.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        _install(patch)
+        yield
+
+
 @pytest.fixture(autouse=True)
 def refuse_off_machine_connections(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Intercept every outbound connection for the duration of one test."""
-    monkeypatch.setattr(socket.socket, "connect", _guard("connect", socket.socket.connect))
-    monkeypatch.setattr(socket.socket, "connect_ex", _guard("connect_ex", socket.socket.connect_ex))
-    monkeypatch.setattr(
-        socket, "create_connection", _guard("create_connection", socket.create_connection)
-    )
+    _install(monkeypatch)
     yield
