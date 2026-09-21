@@ -14,7 +14,7 @@
 #   ./deploy/deploy.sh smoke       # prove the deployed endpoints from outside
 #   ./deploy/deploy.sh all         # the above, in that order
 #
-# And two stages that are not releases and are never reached by one:
+# And three stages that are not releases and are never reached by one:
 #
 #   ./deploy/deploy.sh channel         # select the customer transport, on purpose
 #   ./deploy/deploy.sh infrastructure  # submit this checkout's template, on purpose
@@ -82,6 +82,11 @@
 #                             reachable from `stack`, `rollout` or `all`.
 #   PP_DEPLOY_REPLACE_HOST    `host-image` only: the id of the instance being destroyed, typed
 #                             back to confirm it.
+#   PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE
+#                             `infrastructure` only: the id of the instance the upgrade's plan
+#                             may replace, typed back to confirm it. Deliberately not the same
+#                             variable as `PP_DEPLOY_REPLACE_HOST`, so a shell left holding one
+#                             confirmation cannot spend it on the other operation.
 # Read only by `channel`, and by nothing a release runs:
 #   PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER
 #                             `fake` or `telegram`. `telegram` puts the next approval
@@ -90,11 +95,6 @@
 #   PP_DEPLOY_TELEGRAM_BOT_TOKEN
 #                             the BotFather credential, stored once as a SecureString and
 #                             never overwritten by a re-run.
-#   PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE
-#                             `infrastructure` only: the id of the instance the upgrade's plan
-#                             may replace, typed back to confirm it. Deliberately not the same
-#                             variable as `PP_DEPLOY_REPLACE_HOST`, so a shell left holding one
-#                             confirmation cannot spend it on the other operation.
 #
 # TLS verification is never weakened anywhere in this script or anywhere in this repository:
 # a test enumerates every spelling of "trust whatever certificate turns up" and fails on any of
@@ -338,7 +338,7 @@ stage_config () {
 # out from under a running worker.
 stage_channel () {
   say "channel (the customer transport)"
-  local provider token_name
+  local provider token_name provider_name
   provider="${PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER:-}"
   token_name="${PREFIX}/telegram-bot-token"
   [[ -n "$provider" ]] || die "PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER is required; it is fake or telegram"
@@ -357,7 +357,16 @@ stage_channel () {
   if [[ "$provider" == "telegram" ]]; then
     aws ssm get-parameter --region "$REGION" --name "$token_name" >/dev/null 2>&1 || die "telegram is selected and no bot credential is stored; a worker selected for telegram without a token refuses to start. Pass PP_DEPLOY_TELEGRAM_BOT_TOKEN."
   fi
-  aws ssm put-parameter --region "$REGION" --name "${PREFIX}/customer-channel-provider" --type String --value "$provider" --tags Key=Project,Value=promisepatch --overwrite >/dev/null
+  # `--tags` and `--overwrite` are mutually exclusive: SSM answers `ValidationException` and
+  # writes nothing. Found by running this stage against the real API on 2026-09-21, after the
+  # credential above -- which is `--no-overwrite` and so takes its tag -- had already been
+  # created. So the tag goes on at creation and an update carries only the value.
+  provider_name="${PREFIX}/customer-channel-provider"
+  if aws ssm get-parameter --region "$REGION" --name "$provider_name" >/dev/null 2>&1; then
+    aws ssm put-parameter --region "$REGION" --name "$provider_name" --type String --value "$provider" --overwrite >/dev/null
+  else
+    aws ssm put-parameter --region "$REGION" --name "$provider_name" --type String --value "$provider" --tags Key=Project,Value=promisepatch >/dev/null
+  fi
   printf '  provider %s\n' "$provider"
   printf '  run rollout to converge the host onto it; this stage sends nothing\n'
 }
