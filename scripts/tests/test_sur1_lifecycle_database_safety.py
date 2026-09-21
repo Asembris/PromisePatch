@@ -4,8 +4,14 @@
 things. It issues ``DROP DATABASE``, runs Alembic to head, and loads the demo world through
 ``reset_demo_state`` -- correct against a disposable local container and catastrophic anywhere
 else. It took its target verbatim from ``PP_MIGRATION_DATABASE_URL`` and proved nothing about
-it, and on a developer machine that variable can carry whatever the repository's own ``.env``
-carries. This file is the proof that it no longer can.
+it. This file is the proof that it no longer can.
+
+**How that variable came to name a hosted database.** ``deepeval`` is installed as a ``pytest11``
+plugin, so every pytest session imports it, and importing it calls ``load_dotenv()``. The
+repository's root ``.env`` is copied into ``os.environ`` before the first test runs -- so under
+pytest, and only under pytest, a developer's hosted connection string was the one the fixture
+read. Nothing in this repository asked for that and nothing in this repository can rely on it not
+happening again, which is the whole argument for checking the target rather than the provenance.
 
 **Two protections were assumed and neither held.** ``PP_ALLOW_FIXTURE_RESET`` says that *a*
 reset is permitted and says nothing about where. The autouse guard in ``conftest`` refuses any

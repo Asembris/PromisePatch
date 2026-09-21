@@ -16,11 +16,17 @@ and drives the real lifecycle at it. The shared local database is never written 
 contaminated the demo fixture would be the same class of accident the lifecycle exists to refuse.
 
 **Where it is allowed to point is decided before it can connect.** The disposable database is
-created and dropped on whatever server ``PP_MIGRATION_DATABASE_URL`` happens to name, and on a
-developer machine the repository's own ``.env`` may name a hosted one. So this module carries the
-same interlock the backend suite does: every connection string it opens something on has come
-back from :func:`_database_safety.local_test_database_url`, and a host that is not this machine's
-raises before a socket exists.
+created and dropped on whatever server ``PP_MIGRATION_DATABASE_URL`` happens to name, and under
+pytest that is not necessarily what the shell set. ``deepeval`` is installed as a ``pytest11``
+plugin, so every session imports it, and importing it calls ``load_dotenv()`` -- which copies the
+repository's root ``.env`` into ``os.environ`` before a single test runs. A developer whose
+``.env`` names a hosted database therefore had one in ``os.environ`` here, without having asked
+for it and without ``uv run python -c`` showing the same thing.
+
+So this module carries the same interlock the backend suite does: every connection string it
+opens something on has come back from :func:`_database_safety.local_test_database_url`, and a
+host that is not this machine's raises before a socket exists. The environment is an input to
+that check, never evidence on its own.
 
 The autouse socket guard in ``conftest`` cannot stand in for that, for two separate reasons. It
 is function-scoped, and pytest builds a module-scoped fixture before the first function-scoped
