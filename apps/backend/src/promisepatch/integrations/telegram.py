@@ -51,6 +51,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Final
 
 import httpx2
@@ -105,6 +106,15 @@ blocked or removed by the person on the other end, ``404`` a method this token c
 None of them is a reason to try five times: the outbox's failure continuation abandons the
 approval and puts the promise on the owner's desk, which is the truthful outcome -- the
 customer was not reached, and nobody may answer for them.
+"""
+
+GET_ME: Final = "getMe"
+"""The Bot API method that reports which bot a credential is, and changes nothing by asking."""
+
+GET_CHAT: Final = "getChat"
+"""The Bot API method that reports whether one chat is known to the bot, and changes nothing.
+
+Not ``getUpdates``: this asks about a destination, never about what anybody said to it.
 """
 
 REDACTED: Final = "***"
@@ -175,9 +185,7 @@ class TelegramAdapter:
         self.timeout = timeout
         self._client = client or httpx2.AsyncClient(timeout=timeout)
         self._owns_client = client is None
-        self._redaction = _TokenRedaction(bot_token)
-        for name in TRANSPORT_LOGGERS:
-            logging.getLogger(name).addFilter(self._redaction)
+        self._redaction = _install_redaction(bot_token)
 
     def __repr__(self) -> str:
         """Names the channel and the timeout. Never the token, in a traceback or anywhere."""
@@ -191,8 +199,7 @@ class TelegramAdapter:
         )
 
     async def aclose(self) -> None:
-        for name in TRANSPORT_LOGGERS:
-            logging.getLogger(name).removeFilter(self._redaction)
+        _remove_redaction(self._redaction)
         if self._owns_client:
             await self._client.aclose()
 
@@ -307,6 +314,193 @@ class TelegramAdapter:
         return text.replace(self._token, REDACTED)
 
 
+def _install_redaction(token: str) -> _TokenRedaction:
+    """Put one token's redaction on the transport loggers, and hand it back to be removed."""
+    redaction = _TokenRedaction(token)
+    for name in TRANSPORT_LOGGERS:
+        logging.getLogger(name).addFilter(redaction)
+    return redaction
+
+
+def _remove_redaction(redaction: _TokenRedaction) -> None:
+    """Take it off again. A filter left behind would outlive the credential it was hiding."""
+    for name in TRANSPORT_LOGGERS:
+        logging.getLogger(name).removeFilter(redaction)
+
+
+class ChannelCheckError(RuntimeError):
+    """Why a preflight could not confirm the channel, in words an operator may read aloud.
+
+    Every message reaching this exception has been through :meth:`TelegramPreflight._safe`, or
+    is composed here out of nothing that came off the wire. It is raised ``from None`` wherever
+    an HTTP client's own exception is in scope, because that exception's text carries the URL it
+    failed on -- and that URL is the bot token.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class BotIdentity:
+    """Who the credential says it is: the two fields that are safe to print, and no others.
+
+    Not the whole ``getMe`` result. A bot's answer also reports what it is permitted to read in
+    groups and whether it may be added to them, and a preflight that echoed the object back
+    would be publishing provider detail nobody asked it to check.
+    """
+
+    id: int
+    username: str
+
+
+@dataclass(frozen=True, slots=True)
+class ChatIdentity:
+    """That one destination exists and what kind of place it is. Never who is in it.
+
+    ``getChat`` answers with a title, a name and a photo for the person on the other end. None
+    of that is needed to know the bot can reach them, and a customer's name in an operator's
+    terminal is a customer's name in a scrollback buffer.
+    """
+
+    id: str
+    type: str
+
+
+class TelegramPreflight:
+    """The two Bot API questions that change nothing, so a deployment can be checked cold.
+
+    ADR-0006 records a rehearsed setup step -- the customer presses Start once, because bots
+    cannot open a conversation -- and until now nothing verified it. This does, and the whole
+    design is what it is unable to do:
+
+    * **It cannot send.** There is no ``sendMessage`` here and no text to put in one. A
+      preflight that could deliver would be a way to reach a real customer's phone from a
+      terminal, outside the transaction that decides a message is owed.
+    * **It cannot read a reply.** No ``getUpdates``, no webhook, no ``update_id``. The reason is
+      the one :class:`TelegramAdapter` gives: a second door through which the word ``YES`` could
+      arrive would be a second consent parser.
+    * **It writes nothing anywhere.** No row, no file and no database handle -- the import
+      contract on this package forbids it one -- and it needs no AWS credential to run.
+
+    What it does is answer two questions an operator otherwise answers by sending a real message
+    to a real person and watching a phone: is this credential a bot the API recognises, and is
+    this exact chat id one the bot may speak to.
+    """
+
+    def __init__(
+        self,
+        *,
+        bot_token: str,
+        timeout: float,
+        client: httpx2.AsyncClient | None = None,
+    ) -> None:
+        if not bot_token.strip():
+            raise ValueError("a Telegram preflight cannot be built with an empty bot token")
+        self._token = bot_token
+        self.timeout = timeout
+        self._client = client or httpx2.AsyncClient(timeout=timeout)
+        self._owns_client = client is None
+        self._redaction = _install_redaction(bot_token)
+
+    def __repr__(self) -> str:
+        """The channel and the timeout. Never the token, in a traceback or anywhere."""
+        return f"TelegramPreflight(channel={CHANNEL_KIND!r}, timeout={self.timeout!r})"
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> TelegramPreflight:
+        """Built from the credential and ceiling the adapter uses, or refused by variable name.
+
+        Deliberately not gated on
+        :attr:`~promisepatch.config.Settings.customer_channel_provider`. A preflight is what an
+        operator runs *before* selecting Telegram, and one that demanded the deployment already
+        be switched on could only ever confirm a decision that had already been made.
+
+        The missing-credential refusal is worded here rather than borrowed from
+        :meth:`~promisepatch.config.Settings.require_telegram_bot_token`, which speaks for a
+        process that has already selected Telegram and would tell an operator to set a variable
+        this command does not need.
+        """
+        if settings.telegram_bot_token is None:
+            raise ChannelCheckError(
+                "PP_TELEGRAM_BOT_TOKEN is not configured, so there is no bot credential to "
+                "check. Setting it does not switch this deployment's transport on: "
+                "PP_CUSTOMER_CHANNEL_PROVIDER decides that, separately."
+            )
+        return cls(
+            bot_token=settings.require_telegram_bot_token(),
+            timeout=settings.telegram_timeout_seconds,
+        )
+
+    async def aclose(self) -> None:
+        _remove_redaction(self._redaction)
+        if self._owns_client:
+            await self._client.aclose()
+
+    async def identify(self) -> BotIdentity:
+        """Ask the API who this credential is, and refuse an answer that is not a bot."""
+        return _bot_identity(await self._ask(GET_ME))
+
+    async def locate(self, chat_id: str) -> ChatIdentity:
+        """Ask whether the bot may speak to exactly this chat, refusing anything but an id.
+
+        The address is checked against :data:`CHAT_ID` here as well as at the call site, for the
+        reason the adapter checks it: ``@username`` is reassignable, so a preflight that
+        confirmed one would be confirming reachability of whoever holds the name today.
+        """
+        if not CHAT_ID.match(chat_id):
+            raise ChannelCheckError(f"{chat_id!r} is not a Telegram chat id")
+        return _chat_identity(await self._ask(GET_CHAT, {"chat_id": chat_id}))
+
+    async def _ask(self, method: str, body: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
+        """One read-only Bot API call, with its answer verified before anybody may believe it.
+
+        ``getMe`` goes as a ``GET`` with no parameters at all; ``getChat`` carries its one
+        argument in a JSON body rather than a query string, so a chat id does not end up in a
+        URL that an intermediary would log.
+        """
+        url = f"{API_ORIGIN}/bot{self._token}/{method}"
+        try:
+            if body is None:
+                response = await self._client.get(url, timeout=self.timeout)
+            else:
+                response = await self._client.post(url, json=dict(body), timeout=self.timeout)
+        except httpx2.HTTPError as error:
+            # By type, and ``from None``: the exception's own text, and the chain a bare
+            # ``raise ... from error`` would keep, both carry the URL that failed -- and that
+            # URL is the bot token.
+            raise ChannelCheckError(
+                f"telegram could not be reached for {method}: {type(error).__name__}"
+            ) from None
+
+        if response.status_code != 200:
+            detail = self._safe(_description(response) or f"HTTP {response.status_code}")
+            raise ChannelCheckError(f"telegram refused {method}: {detail}")
+
+        try:
+            answer = response.json()
+        except ValueError:
+            raise ChannelCheckError(
+                f"telegram answered {method} with a body this build cannot read"
+            ) from None
+
+        if not isinstance(answer, dict) or answer.get("ok") is not True:
+            raise ChannelCheckError(
+                f"telegram did not answer ok to {method}: "
+                f"{self._safe(_description(response) or 'no description')}"
+            )
+
+        result = answer.get("result")
+        if not isinstance(result, dict):
+            raise ChannelCheckError(f"telegram answered ok to {method} with no result object")
+        return result
+
+    def _safe(self, text: str) -> str:
+        """Nothing off the wire reaches a terminal with the token still in it.
+
+        Here for the reason :meth:`TelegramAdapter._safe` is: the Bot API does not echo the
+        credential back, and "it would not matter if it did" is the stronger guarantee.
+        """
+        return text.replace(self._token, REDACTED)[:200]
+
+
 def compose(*, text: str, approval_url: Any) -> str:
     """The frozen words, and the link beside them on its own line.
 
@@ -361,6 +555,35 @@ def _unusable_destination(payload: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _bot_identity(result: Mapping[str, Any]) -> BotIdentity:
+    """A ``getMe`` result, or a refusal naming the field that was not there.
+
+    Checked field by field rather than trusted, because "the call returned 200" is not the
+    question a preflight is asked. ``is_bot`` is verified explicitly: a credential that somehow
+    described a person would mean the operator is holding something other than a bot token.
+    """
+    bot_id = result.get("id")
+    if not isinstance(bot_id, int) or isinstance(bot_id, bool):
+        raise ChannelCheckError("telegram's getMe answer carries no numeric bot id")
+    if result.get("is_bot") is not True:
+        raise ChannelCheckError("telegram's getMe answer does not describe a bot")
+    username = result.get("username")
+    if not isinstance(username, str) or not username:
+        raise ChannelCheckError("telegram's getMe answer carries no bot username")
+    return BotIdentity(id=bot_id, username=username)
+
+
+def _chat_identity(result: Mapping[str, Any]) -> ChatIdentity:
+    """A ``getChat`` result, reduced to the two fields that say the destination is real."""
+    chat_id = result.get("id")
+    if not isinstance(chat_id, int) or isinstance(chat_id, bool):
+        raise ChannelCheckError("telegram's getChat answer carries no numeric chat id")
+    chat_type = result.get("type")
+    if not isinstance(chat_type, str) or not chat_type:
+        raise ChannelCheckError("telegram's getChat answer carries no chat type")
+    return ChatIdentity(id=str(chat_id), type=chat_type)
+
+
 def _refused(reason: str) -> DeliveryOutcome:
     return DeliveryOutcome(status=DeliveryStatus.TERMINAL, error=reason)
 
@@ -395,9 +618,16 @@ def _description(response: httpx2.Response) -> str | None:
 __all__ = [
     "API_ORIGIN",
     "CHANNEL_KIND",
+    "CHAT_ID",
+    "GET_CHAT",
+    "GET_ME",
     "MAX_TEXT_CHARACTERS",
     "TRANSPORT_LOGGERS",
+    "BotIdentity",
+    "ChannelCheckError",
+    "ChatIdentity",
     "TelegramAdapter",
+    "TelegramPreflight",
     "build_customer_channel",
     "compose",
 ]

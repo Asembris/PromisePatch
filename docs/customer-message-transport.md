@@ -163,7 +163,11 @@ exclude.
   link on the surface that already existed, into the consent protocol that already existed.
   Adding a second door through which the word `YES` could arrive would be adding a second
   consent parser, and there is exactly one.
-- **No `pp channel check`.** ADR-0006's rehearsed setup step is still unwritten.
+- ~~**No `pp channel check`.** ADR-0006's rehearsed setup step is still unwritten.~~
+  **Written on 2026-09-21**, after this slice and separately from it. See
+  [the operator preflight](#the-operator-preflight) below. It changed nothing here: no adapter,
+  no setting, no check and no row moved, and it still holds that no live Bot API call has ever
+  been made from this repository.
 - **No second provider.** WhatsApp and SMS are out of scope and no groundwork for either was
   laid; the enum has two members because two is what exists.
 - **No retry_after honoured.** Telegram's `429` carries advice on how long to wait. The row's
@@ -187,6 +191,41 @@ the outbox's three words, every refusal, the byte-identical retry, and the crede
 
 Until a deployed rehearsal does all of that, "PromisePatch can contact a customer" is a claim
 about code that has never spoken to Telegram.
+
+## The operator preflight
+
+`pp channel check` answers, without sending anything, the two questions an operator otherwise
+answers by putting a real approval message on a real phone and watching it arrive:
+
+```text
+pp channel check                    -> getMe    : is this credential a bot the API recognises
+pp channel check --chat-id 1002     -> getChat  : may the bot speak to exactly that destination
+```
+
+The second is ADR-0006's rehearsed setup step — the customer presses Start once, because bots
+cannot open a conversation — and until now nothing verified it. `chat not found` is what an
+operator sees when they have not.
+
+What it cannot do is the design, and each line of it is a test in
+[`test_channel_check.py`](../apps/backend/tests/test_channel_check.py):
+
+- **it cannot send** — there is no `sendMessage` in the command and no text to put in one, so
+  the first message a customer receives is still one the transaction composed, not one an
+  operator typed;
+- **it cannot read a reply** — no `getUpdates`, no webhook, no parser, for the reason the
+  adapter gives: a second door for the word `YES` would be a second consent parser;
+- **it opens no database and needs no AWS credential** — it reads settings, makes at most two
+  HTTPS calls and prints what it found;
+- **it prints no secret** — not the token, and not the URL it called, because the Bot API takes
+  its credential in the path and that URL *is* the token. It reuses the adapter's
+  `_TokenRedaction` and its by-exception-type transport errors, so a provider that echoed the
+  credential back would still not get it onto a terminal.
+
+It is deliberately **not gated on `PP_CUSTOMER_CHANNEL_PROVIDER`**: a preflight is what an
+operator runs *before* selecting Telegram, and one that demanded the deployment already be
+switched on could only confirm a decision already made. For the same reason the report names
+the configured provider beside the answer — a working credential is not a switched-on
+transport, and a green check must never be read as "this deployment is contacting customers".
 
 ## Turning it on
 

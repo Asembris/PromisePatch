@@ -41,6 +41,14 @@ from promisepatch.domain import (
 from promisepatch.fixtures import demo
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 from promisepatch.integrations import build_semantic_provider
+from promisepatch.integrations.telegram import (
+    API_ORIGIN,
+    CHANNEL_KIND,
+    CHAT_ID,
+    BotIdentity,
+    ChatIdentity,
+    TelegramPreflight,
+)
 from promisepatch.runtime_identity import runtime_identity
 from promisepatch.semantic import ClassifyReplyIntentRequest, SemanticError, UntrustedText
 
@@ -313,6 +321,96 @@ def _credential_resolves() -> bool:
         return boto3.Session().get_credentials() is not None
     except Exception:
         return False
+
+
+channel_app = typer.Typer(
+    name="channel",
+    help="Customer channel preflight. Reads the provider; sends nobody anything.",
+    no_args_is_help=True,
+)
+app.add_typer(channel_app, name="channel")
+
+
+@channel_app.command(name="check")
+def channel_check_command(
+    chat_id: Annotated[
+        str | None,
+        typer.Option(
+            "--chat-id",
+            help="A numeric chat id to prove the bot may speak to. Omit to check only the bot.",
+        ),
+    ] = None,
+) -> None:
+    """Prove this deployment could reach Telegram, without reaching a customer.
+
+    ADR-0006 records a setup step nothing has ever verified: the customer presses Start on the
+    bot once, because bots cannot open a conversation. The way to check that without this
+    command is to send a real approval message to a real phone and watch it arrive -- which
+    means the first proof that the channel works is also the first message a customer receives,
+    composed by an operator rather than by the transaction that decides a message is owed.
+
+    So this asks Telegram two questions that change nothing. ``getMe`` says whether the
+    credential is a bot the API recognises; ``--chat-id`` adds a ``getChat`` that says whether
+    that exact destination is one the bot may speak to. There is no ``sendMessage`` here, no
+    text to put in one, and no inbound path of any kind -- no ``getUpdates``, no webhook, no
+    parser -- because a second door through which the word ``YES`` could arrive would be a
+    second consent parser.
+
+    **It opens no database and needs no AWS credential.** It reads settings, makes at most two
+    HTTPS calls to :data:`~promisepatch.integrations.telegram.API_ORIGIN`, and prints what it
+    found.
+
+    **Nothing it prints is a secret.** The token is required and never displayed, the URL it
+    called is never reported because that URL *is* the token, and no provider body is echoed
+    back raw. A success here says the credential works; it does not say this deployment is
+    using it, which is why the configured provider is printed beside the answer.
+    """
+    settings = get_settings()
+
+    if chat_id is not None and not CHAT_ID.match(chat_id):
+        # Refused here, before a client exists and before anything is sent anywhere. ADR-0006
+        # makes the numeric id the customer's approval identity, and `@username` is refused for
+        # the reason the adapter refuses it: a username is reassignable.
+        typer.secho(
+            f"{chat_id!r} is not a Telegram chat id; ADR-0006 makes the numeric id the "
+            "customer's approval identity and a username is reassignable.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        bot, chat = asyncio.run(_run_channel_check(settings, chat_id=chat_id))
+    except (RuntimeError, ValueError) as error:
+        # `RuntimeError` covers both the missing credential, which names its variable, and a
+        # `ChannelCheckError` the preflight has already made safe to print.
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+    typer.echo(f"channel:  {CHANNEL_KIND}")
+    typer.echo(f"api:      {API_ORIGIN}")
+    typer.echo(f"bot:      @{bot.username} (id {bot.id})")
+    typer.echo(f"chat:     {chat.id} ({chat.type})" if chat else "chat:     not checked")
+    typer.echo(f"provider: {settings.customer_channel_provider.value}")
+    typer.echo("result:   reachable; no message was sent")
+
+
+async def _run_channel_check(
+    settings: Settings, *, chat_id: str | None
+) -> tuple[BotIdentity, ChatIdentity | None]:
+    """Both reads under one client, and the client closed however they end.
+
+    Closing matters more here than it usually does: the preflight installs a redaction filter on
+    the transport loggers while it is open, and one left behind would outlive the credential it
+    was hiding.
+    """
+    preflight = TelegramPreflight.from_settings(settings)
+    try:
+        bot = await preflight.identify()
+        chat = await preflight.locate(chat_id) if chat_id is not None else None
+    finally:
+        await preflight.aclose()
+    return bot, chat
 
 
 @app.command(name="ensure-demo-case")
