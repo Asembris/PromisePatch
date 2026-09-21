@@ -209,7 +209,7 @@ under five seconds — has not fired.
 
 ## 4. What is not built, and what is simulated
 
-### 4.1 The Telegram customer channel is half built and has never spoken to Telegram
+### 4.1 The Telegram customer channel is half built and has never delivered a message
 
 [ADR-0006](adr/0006-customer-channel-telegram.md) chose the Telegram Bot API as the canonical
 customer channel. **The outbound half now exists and the inbound half does not.**
@@ -220,17 +220,21 @@ the outbox's existing provider boundary, selected by `PP_CUSTOMER_CHANNEL_PROVID
 and credentialled by `PP_TELEGRAM_BOT_TOKEN`. See
 [`customer-message-transport.md`](customer-message-transport.md).
 
-*What does not.* There is no bot, no webhook ingress, no `secret_token` check, no `update_id`
+*What does not.* There is no webhook ingress, no `secret_token` check, no `update_id`
 deduplication, no `getUpdates` and no inbound path of any kind — deliberately, because a
 second route by which the word `YES` could arrive would be a second consent parser.
-`pp channel check`, the verification step ADR-0006's consequences describe, does not exist as
-a CLI command either.
 
-*What has never happened.* **No live Bot API call has been made from this repository.** Every
-test of the adapter runs against a scripted transport; no bot has been created, no token
-issued, no message delivered to a second device, and no deployed process has ever had the
+*What is now proved live.* `pp channel check`, the verification step ADR-0006's consequences
+describe, exists as a CLI command and was run against the real Bot API on **2026-09-21**:
+`getMe` returned the expected bot, and `--chat-id <numeric-id>` returned that same id typed
+`private` through a real `getChat`. Both are reads. The numeric id is a person's and is
+recorded nowhere in this repository.
+
+*What has never happened.* **No message has been delivered from this repository.**
+`sendMessage` has never been called live, every test of the adapter runs against a scripted
+transport, no message has reached a second device, and no deployed process has ever had the
 provider set to `telegram`. Until a deployed rehearsal does that, "PromisePatch can contact a
-customer" is a claim about code that has never spoken to Telegram.
+customer" is a claim about code that can reach Telegram and has never sent anything.
 
 `domain.adapters.FakeEffectAdapter` remains the default provider everywhere — CI, every test
 and the local stack — and is deliberately honest about what it models: it behaves like a

@@ -148,11 +148,16 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md),
   [sur1-dr01-redrive.md](docs/sur1-dr01-redrive.md) and
   [sur1-dr01-final-rehearsal.md](docs/sur1-dr01-final-rehearsal.md) before touching anything here.
-- **Telegram outbound is built and has never spoken to Telegram.** One adapter behind the
-  existing provider boundary sends the frozen message and its signed link, selected by
-  `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`; the fake provider remains the default everywhere and
-  is what CI, every test and the local stack use. No bot exists, no token has been issued and
-  no live Bot API call has ever been made — the deployed second-device proof is G8's.
+- **Telegram outbound is built, and the credential and one private destination are now proved
+  live. Nothing has ever been sent.** One adapter behind the existing provider boundary sends
+  the frozen message and its signed link, selected by `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`;
+  the fake provider remains the default everywhere and is what CI, every test and the local
+  stack use. On **2026-09-21** `pp channel check` and `pp channel check --chat-id <numeric-id>`
+  were run against the real Bot API from a developer machine: `getMe` returned the expected bot
+  and `getChat` returned the requested private chat. **That is reachability, not delivery** — no
+  `sendMessage` has ever been called from this repository, no message has reached a second
+  device, and no deployed process has ever had `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`. The
+  deployed second-device proof is still G8's.
   **Telegram inbound stays unbuilt and deliberately so**: a second route for the word `YES`
   would be a second consent parser. The Bot API offers no idempotency key, so a retry in the
   uncertain window is a real duplicate *message* and never a duplicate effect; that is the

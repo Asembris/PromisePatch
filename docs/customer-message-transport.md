@@ -166,8 +166,9 @@ exclude.
 - ~~**No `pp channel check`.** ADR-0006's rehearsed setup step is still unwritten.~~
   **Written on 2026-09-21**, after this slice and separately from it. See
   [the operator preflight](#the-operator-preflight) below. It changed nothing here: no adapter,
-  no setting, no check and no row moved, and it still holds that no live Bot API call has ever
-  been made from this repository.
+  no setting, no check and no row moved. It is also what made the first live Bot API calls from
+  this repository, on 2026-09-21 — two reads that sent nobody anything. See
+  [what is proven live](#what-is-proven-live).
 - **No second provider.** WhatsApp and SMS are out of scope and no groundwork for either was
   laid; the enum has two members because two is what exists.
 - **No retry_after honoured.** Telegram's `429` carries advice on how long to wait. The row's
@@ -175,22 +176,49 @@ exclude.
   rather than silently discarded.
 - **No rate limiting of our own**, and no batching. One effect, one call.
 
+## What is proven live
+
+**On 2026-09-21 the credential and one private destination were checked against the real Bot
+API**, from a developer machine, with the deployment's provider still `fake`:
+
+```text
+pp channel check                  -> getMe   : ok, the expected bot, is_bot verified
+pp channel check --chat-id <id>   -> getChat : ok, that same numeric id, type private
+```
+
+Two reads, and that is the whole of it. Telegram answered `200` with `ok: true` to each; `getMe`
+returned the bot username this deployment expects; `getChat` returned the same numeric id it was
+asked for, typed `private`. One refusal was observed on the way, against an id that is nobody's
+destination: `Bad Request: chat not found`. That is exactly what an operator sees before the
+customer has pressed Start, and it is the first real Bot API error description this repository
+has read rather than inferred from documentation.
+
+The numeric chat id belongs to a person and is deliberately recorded nowhere — not here, not in
+a test, not in a fixture. The token stays in gitignored `docker/env/api.env` and was never
+printed by any of this.
+
+**This is reachability, not delivery.** Nothing was sent.
+
 ## What is not proven
 
-**No live Bot API call has ever been made from this repository.** Every test in this slice runs
+**No message has ever been sent from this repository**, and every test in this slice still runs
 against a scripted transport. What that buys is real — the mapping from a provider's answers to
 the outbox's three words, every refusal, the byte-identical retry, and the credential's reach
 — and what it does not buy is the thing a G8 rehearsal is for:
 
-- no bot exists, and no `PP_TELEGRAM_BOT_TOKEN` has been issued;
-- no message has reached a second device;
-- no deployed process has ever had `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`;
+- `sendMessage` has never been called live, and no message has reached a second device;
+- no deployed process has ever had `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`; the two reads above
+  ran from a developer machine against a stack whose provider is `fake`, which is why the
+  preflight prints the configured provider beside its answer;
 - the deployed `PP_CUSTOMER_LINK_BASE_URL` has not been checked against what a phone can open,
   and a loopback address is not one;
-- Telegram's real error descriptions have not been observed, only their documented shapes.
+- Telegram's real error descriptions are observed for `chat not found` and nothing else; every
+  other refusal in the table above is still a documented shape;
+- nothing proves a real chat id reaches the adapter. The preflight is *told* a destination by an
+  operator; no approval request has ever carried one.
 
 Until a deployed rehearsal does all of that, "PromisePatch can contact a customer" is a claim
-about code that has never spoken to Telegram.
+about code that has spoken to Telegram exactly twice, read-only, and has still delivered nothing.
 
 ## The operator preflight
 
