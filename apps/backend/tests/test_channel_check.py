@@ -29,7 +29,11 @@ from typer.testing import CliRunner
 from promisepatch import cli
 from promisepatch.cli import app, channel_app
 from promisepatch.config import Settings, get_settings
-from promisepatch.integrations.telegram import TelegramPreflight
+from promisepatch.integrations.telegram import (
+    TelegramAdapter,
+    TelegramPreflight,
+    build_customer_channel,
+)
 
 runner = CliRunner()
 
@@ -122,9 +126,21 @@ def test_channel_check_is_a_subcommand() -> None:
 
 
 def test_there_is_no_channel_command_that_sends_anything() -> None:
-    """The whole group is a preflight. A send from a terminal would be a message nobody owed."""
+    """No command in the group may deliver. A send from a terminal is a message nobody owed.
+
+    The group holds a preflight and a binding, and the property is the same for both: neither
+    has a ``sendMessage``, neither has any text to put in one, and the module they are written
+    in reaches the adapter's send path through nothing at all. Asserted over the whole group
+    rather than over one name, so a third command inherits the rule instead of escaping it.
+    """
     assert runner.invoke(app, ["channel", "--help"]).exit_code == 0
-    assert [command.name for command in channel_app.registered_commands] == ["check"]
+    assert {command.name for command in channel_app.registered_commands} == {
+        "check",
+        "bind-demo-customer",
+    }
+    imported = list(vars(cli).values())
+    assert not any(value is TelegramAdapter for value in imported)
+    assert not any(value is build_customer_channel for value in imported)
 
 
 # ------------------------------------------------------------------------------ the credential

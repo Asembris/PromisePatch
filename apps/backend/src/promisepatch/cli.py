@@ -38,7 +38,14 @@ from promisepatch.domain import (
     plan_approval,
     recovery,
 )
-from promisepatch.fixtures import demo
+from promisepatch.fixtures import channel_binding, demo
+from promisepatch.fixtures.channel_binding import (
+    BindingOutcome,
+    DemoCustomerMissingError,
+    UnexpectedBindingStateError,
+    VerifiedDestination,
+    WorldNotTheDemoError,
+)
 from promisepatch.fixtures.reset import ResetOutcome, ensure_reset_allowed, reset_demo_state
 from promisepatch.integrations import build_semantic_provider
 from promisepatch.integrations.telegram import (
@@ -393,6 +400,135 @@ def channel_check_command(
     typer.echo(f"chat:     {chat.id} ({chat.type})" if chat else "chat:     not checked")
     typer.echo(f"provider: {settings.customer_channel_provider.value}")
     typer.echo("result:   reachable; no message was sent")
+
+
+@channel_app.command(name="bind-demo-customer")
+def channel_bind_demo_customer_command(
+    chat_id: Annotated[
+        str,
+        typer.Option(
+            "--chat-id",
+            help="The numeric chat id to bind. Verified against Telegram before anything moves.",
+        ),
+    ],
+) -> None:
+    """Point the seeded demo customer at a real chat, so the next approval carries a real one.
+
+    ``docs/customer-message-transport.md`` records the last gap between this repository and a
+    live customer message: *nothing proves a real chat id reaches the adapter*. The preflight is
+    told a destination by an operator; no approval request has ever carried one, because the
+    committed fixture gives every customer a made-up ``tg:100N`` and a committed dataset must
+    not carry a real person's identifier. This is the one operator action that closes it.
+
+    **It binds one row and has no way to name another.** The customer is derived from the
+    fixture -- the owner of the seeded case's single ``APPROVAL_REQUIRED`` order, the one
+    promise in the demo whose recovery waits on a person -- so there is no customer argument to
+    point somewhere else. It refuses a database whose ``fixture_state`` does not say the demo
+    fixture by name, which is what keeps a benchmark world and an unseeded database out, and it
+    refuses a row already carrying a destination it did not itself write.
+
+    **It verifies before it writes, and the type is what enforces the order.** ``getMe`` and
+    ``getChat`` run first, on a connection that is closed before a database one is opened; what
+    crosses into the binding is a
+    :class:`~promisepatch.fixtures.channel_binding.VerifiedDestination` carrying the id the Bot
+    API echoed back, so an unverified id -- or a ``@username``, which is never what comes back
+    -- has no way to reach a row. A failed check writes nothing, and the
+    whole binding is one transaction, so a failure after the audit event rolls that back too.
+
+    **It still cannot send.** There is no ``sendMessage`` here and no text to put in one, for
+    the reason ``pp channel check`` has none: the first message a customer receives is composed
+    by the transaction that decides a message is owed, never by an operator.
+
+    **It does not echo the destination.** The bot and the kind of chat are printed, because
+    those are what say the binding is sound; the chat id belongs to the person on the other end
+    and an operator who typed it does not need it read back into their scrollback.
+
+    Exit codes distinguish the outcomes: ``0`` bound or already bound, ``1`` the destination
+    could not be verified, ``2`` no demo customer here, ``3`` a state this refuses to overwrite.
+    """
+    settings = get_settings()
+
+    if not CHAT_ID.match(chat_id):
+        # Refused before a client exists, before a database handle exists, and before anything
+        # is sent anywhere. ADR-0006 makes the numeric id the customer's approval identity, and
+        # `@username` is refused for the reason the adapter refuses it: a username is
+        # reassignable, so binding one binds whoever holds the name today.
+        typer.secho(
+            f"{chat_id!r} is not a Telegram chat id; ADR-0006 makes the numeric id the "
+            "customer's approval identity and a username is reassignable.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        bot, chat = asyncio.run(_run_channel_check(settings, chat_id=chat_id))
+    except (RuntimeError, ValueError) as error:
+        typer.secho(
+            f"{error}\nresult:   not verified; nothing was bound and no message was sent",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1) from error
+
+    if chat is None or chat.id != chat_id:  # pragma: no cover - `locate` answers or raises
+        # `pp channel check` prints the returned id and leaves the comparison to the operator.
+        # A binding cannot: the row it writes is the destination every later approval is sent
+        # to, so an answer about a different chat than the one asked about is a refusal.
+        typer.secho(
+            "telegram answered about a different chat than the one asked about; nothing was bound.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    destination = VerifiedDestination(
+        chat_id=chat.id, chat_type=chat.type, bot_id=bot.id, bot_username=bot.username
+    )
+
+    try:
+        outcome = asyncio.run(_run_bind_demo_customer(settings, destination))
+    except (WorldNotTheDemoError, DemoCustomerMissingError) as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    except UnexpectedBindingStateError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=3) from error
+    except (RuntimeError, ValueError) as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+    typer.echo(f"channel:  {outcome.channel_kind}")
+    typer.echo(f"customer: {outcome.customer_id}")
+    typer.echo(f"bot:      @{outcome.bot_username} (id {destination.bot_id})")
+    typer.echo(f"chat:     {outcome.chat_type} (id not echoed)")
+    typer.echo(f"action:   {outcome.action.value}")
+    typer.echo(f"audit:    {'seq ' + str(outcome.audit_seq) if outcome.changed else '-'}")
+    typer.echo(f"provider: {settings.customer_channel_provider.value}")
+    typer.echo(f"result:   {outcome.action.value}; no message was sent")
+
+
+async def _run_bind_demo_customer(
+    settings: Settings, destination: VerifiedDestination
+) -> BindingOutcome:
+    """One connection, one transaction: the binding commits whole or not at all.
+
+    The runtime role rather than the migration one, because a binding is an ordinary audited
+    ``UPDATE`` and needs no privilege a running deployment does not already hold. ``begin``
+    owns the outcome: a refusal raised inside rolls back the audit event along with the write
+    it authorised, and there is no state in between.
+    """
+    engine = build_engine(settings.require_database_url(), pool_size=1)
+    try:
+        async with engine.begin() as connection:
+            return await channel_binding.bind_demo_customer_channel(
+                connection,
+                destination=destination,
+                now=datetime.now(UTC),
+                actor=Actor(kind="SYSTEM", id="pp channel bind-demo-customer"),
+            )
+    finally:
+        await engine.dispose()
 
 
 async def _run_channel_check(
