@@ -214,11 +214,13 @@ the outbox's three words, every refusal, the byte-identical retry, and the crede
   and a loopback address is not one;
 - Telegram's real error descriptions are observed for `chat not found` and nothing else; every
   other refusal in the table above is still a documented shape;
-- nothing proves a real chat id reaches the adapter. The preflight is *told* a destination by an
-  operator; no approval request has ever carried one.
+- **no approval request has ever carried a real chat id.** A local demo customer now holds one
+  — see *Binding the demo customer* below — but that is a row in a disposable database on a
+  developer machine. Nothing deployed holds one, nothing has composed a message addressed to
+  one, and no adapter has been handed one.
 
 Until a deployed rehearsal does all of that, "PromisePatch can contact a customer" is a claim
-about code that has spoken to Telegram exactly twice, read-only, and has still delivered nothing.
+about code that has spoken to Telegram read-only and has still delivered nothing.
 
 ## The operator preflight
 
@@ -254,6 +256,67 @@ operator runs *before* selecting Telegram, and one that demanded the deployment 
 switched on could only confirm a decision already made. For the same reason the report names
 the configured provider beside the answer — a working credential is not a switched-on
 transport, and a green check must never be read as "this deployment is contacting customers".
+
+## Binding the demo customer
+
+The shipped fixture gives every customer a made-up destination — `tg:1001` through `tg:1006` —
+because a committed dataset must not carry a real person's identifier. Correct, and also the
+reason no approval request has ever been addressed to a real phone. `pp channel bind-demo-customer`
+is the one operator action that closes that, and its scope is deliberately tiny:
+
+```text
+pp channel bind-demo-customer --chat-id <numeric id>
+```
+
+- **one customer, and no argument that could name another.** The row is derived from the
+  fixture — the owner of the seeded case's single `APPROVAL_REQUIRED` order, the one promise in
+  the demo whose recovery waits on a person. There is no `--customer` option, and this is not a
+  customer editor;
+- **one world.** `fixture_state` must name the demo fixture. A `SUR-1` benchmark world records
+  `hollow-oak+sur1-<scenario>` and is refused, as is a database that was never seeded;
+- **one prior state.** The row must carry the fixture's own destination, or already the one
+  being bound. A destination this command did not write is refused rather than overwritten;
+  `pp reset-demo-state` puts the fixture value back, and that is the way round to it;
+- **verified before written.** `getMe` and `getChat` run first, on a client closed before a
+  database one is opened, and what crosses into the binding is a `VerifiedDestination` carrying
+  the id the Bot API echoed back — so an unverified id, or a `@username`, has no path to a row;
+- **one audited transaction.** The `UPDATE` happens inside a `governed` block under the reset's
+  own advisory lock, so a binding and a reload cannot interleave, and a failure rolls the audit
+  event back with the write it authorised. Rebinding the same id writes nothing at all;
+- **it sends nothing, and grants nothing.** There is no `sendMessage` in the `channel` group and
+  no text to put in one. Saying where a proposal would be delivered is not proposing one and is
+  never agreeing to one: no approval request, no decision and no authority is created.
+
+**The destination is not written into any ledger.** The audit row says the demo customer's
+Telegram address was replaced, by which bot it was proved reachable, and what it replaced — the
+fixture's own `1002`, which is public data in this repository. What replaced it is recorded as
+`<redacted>`. No digest stands in for it either: a ten-digit number has ten billion candidates,
+so a digest would be theatre rather than protection. The value lives in the `customers` row it
+addresses, which is the only place it is any use.
+
+The id itself is never committed, never logged and never printed by the command — `pp channel
+check` prints a destination because its whole answer is about one; a binding's answer is about a
+row.
+
+Each line of that is a test in
+[`test_channel_binding.py`](../apps/backend/tests/test_channel_binding.py):
+
+| Claim | Test |
+|---|---|
+| A username is refused before Telegram is called | `test_a_username_is_refused_before_telegram_is_called` |
+| A missing credential names the variable and binds nothing | `test_a_binding_without_a_credential_names_the_variable_and_binds_nothing` |
+| A destination Telegram will not confirm binds nothing | `test_a_destination_telegram_will_not_confirm_binds_nothing` |
+| What reaches the binding is the id the Bot API echoed back | `test_a_confirmed_destination_is_what_reaches_the_binding` |
+| Exactly one customer moves | `test_only_the_canonical_demo_customer_moves` |
+| A destination this command did not write is refused | `test_a_destination_this_command_did_not_write_is_refused` |
+| A world that is not the demo fixture is refused | `test_a_world_that_is_not_the_demo_fixture_is_refused` |
+| A missing demo customer fails closed | `test_a_demo_customer_that_is_not_here_is_refused` |
+| Rebinding the same destination writes nothing | `test_rebinding_the_same_destination_writes_nothing` |
+| A failure after the audit event leaves no trace | `test_a_failure_after_the_audit_event_leaves_no_trace` |
+| The ledger records the binding and never the destination | `test_the_ledger_records_the_binding_and_never_the_destination` |
+| A binding creates no approval and no consent | `test_a_binding_creates_no_approval_and_no_consent` |
+| Neither the destination nor the credential reaches the terminal | `test_the_report_never_echoes_the_destination`, `test_the_report_never_echoes_the_credential` |
+| No command in the `channel` group can send | `test_there_is_no_channel_command_that_sends_anything` |
 
 ## Turning it on
 
