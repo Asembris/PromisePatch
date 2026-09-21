@@ -15,6 +15,19 @@ product's own Alembic revisions, loads the demo world through the product's own 
 and drives the real lifecycle at it. The shared local database is never written to: a test that
 contaminated the demo fixture would be the same class of accident the lifecycle exists to refuse.
 
+**Where it is allowed to point is decided before it can connect.** The disposable database is
+created and dropped on whatever server ``PP_MIGRATION_DATABASE_URL`` happens to name, and on a
+developer machine the repository's own ``.env`` may name a hosted one. So this module carries the
+same interlock the backend suite does: every connection string it opens something on has come
+back from :func:`_database_safety.local_test_database_url`, and a host that is not this machine's
+raises before a socket exists.
+
+The autouse socket guard in ``conftest`` cannot stand in for that, for two separate reasons. It
+is function-scoped, and pytest builds a module-scoped fixture before the first function-scoped
+one -- so ``migrated_world`` would have dropped a database before the guard was installed. And
+the Alembic upgrade below runs in a child process, which no in-process socket patch reaches at
+all. ``test_sur1_lifecycle_database_safety.py`` holds both facts as tests.
+
 Marked ``integration`` and skipped without ``PP_MIGRATION_DATABASE_URL``, like every other suite
 in this repository that needs a database. Roughly eight seconds: create, migrate, seed, drive,
 drop.
@@ -33,6 +46,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+# Every connection string this module opens something on comes through here, so a database that
+# is not this machine's disposable one is refused before a connection exists.
+from _database_safety import (
+    MIGRATION_URL_VARIABLE,
+    RUNTIME_URL_VARIABLE,
+    local_test_database_url,
+)
 from scripts.sur1.bindings import Probe
 
 pytestmark = pytest.mark.integration
@@ -70,10 +91,28 @@ def _named(url: str, database: str) -> str:
     return f"{url.rsplit('/', 1)[0]}/{database}"
 
 
+def _configured(variable: str) -> str:
+    """One connection string out of the environment, proven local or refused.
+
+    The launcher puts these there, and the environment is not on its own evidence of anything:
+    a developer shell that inherited the repository's ``.env`` names whatever that file names.
+    This module's first act is ``DROP DATABASE``, so the question is answered here -- once, and
+    before the fixture holds a URL at all.
+    """
+    return local_test_database_url(os.environ[variable], variable=variable)
+
+
 async def _administer(statement: str, *, url: str) -> None:
+    """One administrative statement, against the maintenance database of a *local* server.
+
+    The check is repeated rather than trusted from the caller. This is the only place in the
+    module that dials a socket itself, so a later edit that reached around the fixture still
+    could not issue ``DROP DATABASE`` anywhere but this machine.
+    """
     import asyncpg
 
-    connection = await asyncpg.connect(dsn=_dsn(_named(url, "postgres")), timeout=10)
+    local = local_test_database_url(url, variable=MIGRATION_URL_VARIABLE)
+    connection = await asyncpg.connect(dsn=_dsn(_named(local, "postgres")), timeout=10)
     try:
         await connection.execute(statement)
     finally:
@@ -108,7 +147,8 @@ async def _load_world(url: str) -> None:
 
     timezone = os.environ.get("PP_BAKERY_TZ", "Africa/Tunis")
     anchor = demo.resolve_demo_anchor(datetime.now(UTC), timezone)
-    engine = build_engine(url, pool_size=1)
+    local = local_test_database_url(url, variable=MIGRATION_URL_VARIABLE)
+    engine = build_engine(local, pool_size=1)
     try:
         async with engine.begin() as connection:
             await reset_demo_state(
@@ -135,13 +175,17 @@ def migrated_world() -> Iterator[tuple[str, str]]:
     the tables from the same declarations the statement would be compared against would make the
     two agree by construction.
     """
-    migration = os.environ.get("PP_MIGRATION_DATABASE_URL")
-    runtime = os.environ.get("PP_DATABASE_URL")
-    if not migration or not runtime:
+    if not os.environ.get(MIGRATION_URL_VARIABLE) or not os.environ.get(RUNTIME_URL_VARIABLE):
         pytest.skip(
             "PP_MIGRATION_DATABASE_URL and PP_DATABASE_URL are not set; this suite needs a "
             "database. Run it through scripts/with_local_env.py."
         )
+
+    # Before anything is dialled, migrated or dropped. A configured-but-remote target raises
+    # here rather than skipping: a skip would be safe and silent, and silence is how somebody
+    # comes to believe this ran.
+    migration = _configured(MIGRATION_URL_VARIABLE)
+    runtime = _configured(RUNTIME_URL_VARIABLE)
 
     asyncio.run(_administer(f'DROP DATABASE IF EXISTS "{SCRATCH_DATABASE}"', url=migration))
     asyncio.run(_administer(f'CREATE DATABASE "{SCRATCH_DATABASE}"', url=migration))
@@ -179,7 +223,8 @@ def reader(migrated_world: tuple[str, str]) -> Any:
     """The receivers' own reader on the runtime role, exactly as a run reads a world."""
     from scripts.sur1.bindings.receivers import DatabaseReader
 
-    return DatabaseReader(url=migrated_world[1])
+    local = local_test_database_url(migrated_world[1], variable=RUNTIME_URL_VARIABLE)
+    return DatabaseReader(url=local)
 
 
 # ------------------------------------------------------------ the worker controls it is handed
@@ -231,7 +276,8 @@ class AttestsOnResume(QuietWorker):
         from promisepatch.db import build_engine
         from promisepatch.db.uow import Actor, UnitOfWork
 
-        engine = build_engine(self.migration_url, pool_size=1)
+        local = local_test_database_url(self.migration_url, variable=MIGRATION_URL_VARIABLE)
+        engine = build_engine(local, pool_size=1)
         try:
             async with (
                 engine.begin() as connection,
