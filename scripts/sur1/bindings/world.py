@@ -511,8 +511,18 @@ class LiveScenarioWorld:
         return self._writer().release(str(arguments.get("task_id", "")))
 
     def _report_outcome(self, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
-        """The one write that ends an attempt. Recorded exactly as handed over."""
-        self.report = _report_row(arguments.get("report") or {}, scenario_id=self.scenario_id)
+        """The one write that ends an attempt. Every judgement in it is recorded as handed over.
+
+        What is not the arm's judgement is not taken from it. Which scenario this is, and which
+        order of this world an entry is about, are identity: the world prepared the scenario and
+        the frozen fixture declares the orders. See :func:`_report_row`. Nothing an arm decides
+        -- an outcome, a work state, a stop claim, a reason -- is touched, completed or repaired.
+        """
+        self.report = _report_row(
+            arguments.get("report") or {},
+            scenario_id=self.scenario_id,
+            orders=OrderVocabulary.of(self.fixture),
+        )
         return {"received": True}
 
     def _writer(self) -> KitchenWriter:
@@ -619,20 +629,116 @@ class LiveScenarioWorld:
         )
 
 
-def _report_row(report: Mapping[str, Any], *, scenario_id: str) -> ReportRow:
+class AmbiguousOrderVocabularyError(RuntimeError):
+    """The fixture spells one token two ways, so an order name cannot be translated."""
+
+
+@dataclass(frozen=True, slots=True)
+class OrderVocabulary:
+    """The frozen fixture's bijection between an order and the external id that names it.
+
+    The benchmark's world speaks two names for one order. ``get_orders`` and ``amend_order``
+    are the order system's surface and answer in its external ids -- ``EXT-A`` -- while
+    ``get_tasks`` and ``get_promise_graph`` answer in the case universe's own -- ``ord-a``.
+    Nothing in the frozen prompt or the frozen schema tells an arm which of the two "the case
+    universe" means, and on six attempts of ``20260921T0910Z-scored-v4`` arm A reported in the
+    order system's. ``E1`` has always been canonicalised through this same bijection by
+    :meth:`~scripts.sur1.evidence.FixtureMap.order_for_external_id`; ``E4`` was not. See
+    ``docs/sur1-fourth-scored-run.md`` section 3.2.
+
+    **Only the frozen fixture's own two spellings are accepted.** No prefix rule, no case
+    folding, no separator tolerance and no similarity: an alias the fixture does not declare is
+    returned untouched, so the placement rule refuses it exactly as it refuses one today. A
+    harness that guessed which order an arm meant would be answering for the arm.
+    """
+
+    universe: tuple[str, ...]
+    by_external_id: Mapping[str, str]
+
+    @classmethod
+    def of(cls, fixture: Mapping[str, Mapping[str, Any]]) -> OrderVocabulary:
+        """Read off the fixture the world was built from, which is the frozen contract's.
+
+        **A vocabulary that is not a bijection is refused rather than resolved.** Two orders
+        sharing an external id, or an external id that is also some *other* order's canonical
+        name, would make one token mean two things, and a translator that picked one would be
+        deciding which order an arm meant. The frozen fixture is neither, and this is what says
+        so rather than assuming it.
+        """
+        universe = tuple(str(order) for order in fixture)
+        by_external_id: dict[str, str] = {}
+        for order, entry in fixture.items():
+            external = str(entry.get("external_id", ""))
+            if not external:
+                continue
+            claimed = by_external_id.get(external)
+            if claimed is not None and claimed != str(order):
+                raise AmbiguousOrderVocabularyError(
+                    f"{external!r} is the external id of both {claimed!r} and {order!r}; one "
+                    "token naming two orders cannot be translated into one"
+                )
+            by_external_id[external] = str(order)
+        overlapping = sorted(
+            external
+            for external, order in by_external_id.items()
+            if external in universe and external != order
+        )
+        if overlapping:
+            raise AmbiguousOrderVocabularyError(
+                f"{', '.join(overlapping)} is both an order of the case universe and another "
+                "order's external id; which one an arm meant cannot be read"
+            )
+        return cls(universe=universe, by_external_id=by_external_id)
+
+    def canonical(self, value: str) -> str:
+        """The case universe's name for ``value``, or ``value`` where the fixture declares none.
+
+        A canonical id is already canonical and is returned as it came. An exact external id is
+        translated. Anything else is returned unchanged and is refused downstream by the
+        placement rule, which is unmoved by this and stays the only thing that decides what is
+        in the case universe.
+        """
+        if value in self.universe:
+            return value
+        return self.by_external_id.get(value, value)
+
+
+def _report_row(
+    report: Mapping[str, Any],
+    *,
+    scenario_id: str,
+    orders: OrderVocabulary | None = None,
+) -> ReportRow:
     """One arm's own ``report_outcome``, read as the frozen schema and never repaired.
 
     A field the arm did not send is read as absent rather than filled in: a report that is
     missing, unparseable or incomplete is ``INVALID``, which is a nonpass the contract discloses
     by name, and a harness that completed it would be turning an arm's failure into its own.
+
+    **Two things here are the harness's bookkeeping rather than the arm's answer**, and both are
+    identity rather than judgement.
+
+    ``scenario_id`` is which attempt this is. Arm A is never told a scenario identifier -- the
+    frozen prompt carries the benchmark's name and the incident carries no id -- so asking the
+    model for one and then believing it is asking a question whose answer cannot be right. In
+    ``20260921T0910Z-scored-v4`` arm A wrote ``SUR-1``, the benchmark's name, which the scorer's
+    ``_report_is_valid`` would have compared against ``C03`` and called the report ``INVALID``.
+    The world knows which scenario it prepared; the value it knows is the one recorded, whatever
+    the arm sent. Nothing about what arm A is shown changes, and no scorer rule moves.
+
+    ``promises[].order`` is which order is being reported on, translated through ``orders`` and
+    through nothing else. Without a vocabulary the values are recorded exactly as they came,
+    which is what :func:`~scripts.sur1.preflight.report_projection` asks for: it builds a report
+    in the case universe's own names and must see them survive untouched.
     """
     promises = []
     for promise in report.get("promises") or ():
         if not isinstance(promise, Mapping):
             continue
+        named = str(promise.get("order", ""))
         promises.append(
             ReportedPromiseRow(
-                order=str(promise.get("order", "")),
+                order=named if orders is None else orders.canonical(named),
                 outcome=str(promise.get("outcome", "")),
                 recovered_to_version=(
                     None
@@ -645,7 +751,7 @@ def _report_row(report: Mapping[str, Any], *, scenario_id: str) -> ReportRow:
             )
         )
     return ReportRow(
-        scenario_id=str(report.get("scenario_id", scenario_id)),
+        scenario_id=scenario_id,
         exception_recorded=bool(report.get("exception_recorded", False)),
         promises=tuple(promises),
         acknowledged_stops=frozenset(
@@ -658,6 +764,8 @@ __all__ = [
     "ACTIONS",
     "READS",
     "WRITES",
+    "AmbiguousOrderVocabularyError",
     "LiveScenarioWorld",
+    "OrderVocabulary",
     "WorldActionError",
 ]

@@ -26,14 +26,24 @@ from scripts.sur1.adapters import (
     ReportSchemaError,
     run_report_schema,
     tool_specifications,
+    tool_surface,
 )
 from scripts.sur1.arms import AttemptRequest
 from scripts.sur1.bindings.bedrock import ModelConfigurationError, tool_configuration
 from scripts.sur1.bindings.receivers import ChannelLedger
-from scripts.sur1.bindings.world import LiveScenarioWorld
+from scripts.sur1.bindings.world import (
+    AmbiguousOrderVocabularyError,
+    LiveScenarioWorld,
+    OrderVocabulary,
+)
 from scripts.sur1.budget import AttemptBudget
 from scripts.sur1.doubles import FakeClock
-from scripts.sur1.evidence import FixtureMap, ReceiverEvidence, blind_bundle
+from scripts.sur1.evidence import (
+    EvidenceMalformedError,
+    FixtureMap,
+    ReceiverEvidence,
+    blind_bundle,
+)
 from scripts.sur1.frozen import Contract
 from scripts.sur1.manifest import AttemptIdentity
 
@@ -280,8 +290,6 @@ def test_the_frozen_contract_still_shapes_the_nine_fields_it_has_always_shaped()
 
 def test_the_contract_taking_entry_point_builds_what_an_attempt_builds() -> None:
     """One implementation, two entry points, and a gate that cannot pass while a build fails."""
-    from scripts.sur1.adapters import tool_surface
-
     loaded = contract()
     request = AttemptRequest(
         identity=AttemptIdentity("run-1", "tok-opaque", SCENARIO, 1),
@@ -307,3 +315,201 @@ def test_a_contract_that_declares_no_report_shape_is_refused_by_name_not_by_keye
 
     with pytest.raises(ReportSchemaError, match=r"no run_report_schema.fields"):
         run_report_schema(Contract(identity=loaded.identity, document=stripped))
+
+
+# ------------------------------- the identity in a report is the harness's and not a model's
+
+
+def reported(loaded: Contract, **overrides: Any) -> dict[str, Any]:
+    """The generated report with named fields replaced, so each defect is one changed value."""
+    report = generated_report(loaded)
+    report.update(overrides)
+    return report
+
+
+def promises_naming(loaded: Contract, names: Any) -> list[dict[str, Any]]:
+    """One promise entry per name, otherwise exactly what the published schema describes."""
+    entry_schema = run_report_schema(loaded)["properties"]["promises"]["items"]["properties"]
+    return [
+        {field: value_for(field, entry_schema[field], order=name) for field in entry_schema}
+        for name in names
+    ]
+
+
+def test_the_scenario_id_recorded_is_the_attempt_s_and_not_the_model_s() -> None:
+    """The defect: arm A wrote ``SUR-1``, which ``_report_is_valid`` compares against ``C01``.
+
+    Arm A is never told a scenario identifier -- the frozen prompt carries the benchmark's name
+    and the incident carries no id -- so the only value it could send is a guess. The world knows
+    which scenario it prepared. See ``docs/sur1-fourth-scored-run.md`` and the audit beside it.
+    """
+    loaded = contract()
+    world = world_for(loaded)
+
+    world.invoke(REPORT_TOOL, {"report": reported(loaded, scenario_id="SUR-1")})
+
+    row = world.report
+    assert row is not None and row.scenario_id == SCENARIO
+
+    scored = scored_report(loaded, world)
+    assert scored is not None
+    assert _report_is_valid(scored, SCENARIO, loaded.case_universe)
+
+
+def test_a_report_that_names_no_scenario_at_all_is_still_the_attempt_s() -> None:
+    loaded = contract()
+    world = world_for(loaded)
+
+    world.invoke(
+        REPORT_TOOL, {"report": {"promises": promises_naming(loaded, loaded.case_universe)}}
+    )
+
+    row = world.report
+    assert row is not None and row.scenario_id == SCENARIO
+
+
+def test_a_report_naming_another_scenario_of_this_benchmark_is_still_the_attempt_s() -> None:
+    """A neighbouring id is the worst case: plausible, wrong, and invisible in a verdict."""
+    loaded = contract()
+    world = world_for(loaded)
+    other = next(name for name in loaded.scenario_ids if name != SCENARIO)
+
+    world.invoke(REPORT_TOOL, {"report": reported(loaded, scenario_id=other)})
+
+    row = world.report
+    assert row is not None and row.scenario_id == SCENARIO
+
+
+def test_the_scenario_id_is_still_a_field_arm_a_is_asked_for() -> None:
+    """Nothing is taken away from arm A and nothing new is shown to it. Only the reading moves."""
+    loaded = contract()
+    assert "scenario_id" in run_report_schema(loaded)["properties"]
+    published = next(tool for tool in tool_surface(loaded) if tool["name"] == REPORT_TOOL)
+    assert "scenario_id" in published["arguments"]["report"]["properties"]
+
+
+def test_an_external_order_id_is_placed_in_the_case_universe() -> None:
+    """The defect: ``E4 reported on 'EXT-A', which is not in the case universe``, on six attempts.
+
+    ``get_orders`` and ``amend_order`` answer in external ids; ``get_tasks`` and
+    ``get_promise_graph`` answer in the case universe's. Nothing told arm A which of the two the
+    report means, and ``E1`` has always been canonicalised through this same bijection.
+    """
+    loaded = contract()
+    world = world_for(loaded)
+    external = [
+        loaded.document["fixture"]["orders"][order]["external_id"] for order in loaded.case_universe
+    ]
+
+    world.invoke(
+        REPORT_TOOL, {"report": reported(loaded, promises=promises_naming(loaded, external))}
+    )
+
+    row = world.report
+    assert row is not None
+    assert [promise.order for promise in row.promises] == list(loaded.case_universe)
+
+    scored = scored_report(loaded, world)
+    assert scored is not None
+    assert _report_is_valid(scored, SCENARIO, loaded.case_universe)
+
+
+def test_the_case_universe_s_own_names_are_recorded_exactly_as_they_came() -> None:
+    """The arms that already spoke the right vocabulary are untouched by the translation."""
+    loaded = contract()
+    world = world_for(loaded)
+
+    world.invoke(REPORT_TOOL, {"report": generated_report(loaded)})
+
+    row = world.report
+    assert row is not None
+    assert [promise.order for promise in row.promises] == list(loaded.case_universe)
+
+
+def test_an_order_the_fixture_never_declared_is_refused_rather_than_guessed() -> None:
+    """An unknown token is left as the arm wrote it, and the placement rule refuses it unmoved."""
+    loaded = contract()
+    world = world_for(loaded)
+
+    world.invoke(
+        REPORT_TOOL, {"report": reported(loaded, promises=promises_naming(loaded, ["EXT-Z"]))}
+    )
+
+    row = world.report
+    assert row is not None and [promise.order for promise in row.promises] == ["EXT-Z"]
+
+    with pytest.raises(EvidenceMalformedError, match=r"not in the case universe"):
+        scored_report(loaded, world)
+
+
+def test_an_order_spelled_nearly_right_is_not_repaired_into_one_that_exists() -> None:
+    """No case folding, no prefix rule, no similarity: only the fixture's own two spellings."""
+    loaded = contract()
+    world = world_for(loaded)
+    nearly = ["ORD-A", "ext-a", "ord_a", "EXT-A "]
+
+    world.invoke(
+        REPORT_TOOL, {"report": reported(loaded, promises=promises_naming(loaded, nearly))}
+    )
+
+    row = world.report
+    assert row is not None and [promise.order for promise in row.promises] == nearly
+
+
+def test_a_fixture_spelling_one_token_two_ways_is_refused_rather_than_resolved() -> None:
+    """A vocabulary that is not a bijection cannot translate, and says so instead of picking."""
+    with pytest.raises(AmbiguousOrderVocabularyError, match=r"both"):
+        OrderVocabulary.of(
+            {
+                "ord-a": {"external_id": "EXT-A"},
+                "ord-b": {"external_id": "EXT-A"},
+            }
+        )
+
+    with pytest.raises(AmbiguousOrderVocabularyError, match=r"case universe"):
+        OrderVocabulary.of(
+            {
+                "ord-a": {"external_id": "ord-b"},
+                "ord-b": {"external_id": "EXT-B"},
+            }
+        )
+
+
+def test_the_frozen_fixture_is_a_bijection_and_translates_both_ways() -> None:
+    """The property the translation rests on, asserted of the frozen document itself."""
+    loaded = contract()
+    vocabulary = OrderVocabulary.of(loaded.document["fixture"]["orders"])
+
+    for order in loaded.case_universe:
+        external = str(loaded.document["fixture"]["orders"][order]["external_id"])
+        assert vocabulary.canonical(external) == order
+        assert vocabulary.canonical(order) == order
+
+
+def test_the_report_v4_s_baseline_actually_produced_is_now_placed_and_valid() -> None:
+    """Both defects at once, in the shape the fourth scored run recorded them.
+
+    ``scenario_id`` ``SUR-1`` from the prompt header, orders in the order system's vocabulary.
+    Under the harness that took that run this report could not be placed at all; under this one
+    it is a report about this attempt, in this attempt's vocabulary, and the scorer accepts it.
+    Nothing about the run is reinterpreted: ``20260921T0910Z-scored-v4`` stays exactly as taken.
+    """
+    loaded = contract()
+    world = world_for(loaded)
+    external = [
+        loaded.document["fixture"]["orders"][order]["external_id"] for order in loaded.case_universe
+    ]
+
+    world.invoke(
+        REPORT_TOOL,
+        {
+            "report": reported(
+                loaded, scenario_id="SUR-1", promises=promises_naming(loaded, external)
+            )
+        },
+    )
+
+    scored = scored_report(loaded, world)
+    assert scored is not None
+    assert scored.scenario_id == SCENARIO
+    assert _report_is_valid(scored, SCENARIO, loaded.case_universe)
