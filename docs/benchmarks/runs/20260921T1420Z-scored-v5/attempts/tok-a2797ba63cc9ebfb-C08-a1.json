@@ -1,0 +1,263 @@
+{
+  "attempt": {
+    "arm_token": "tok-a2797ba63cc9ebfb",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 4
+    },
+    "evidence_ref": "tok-a2797ba63cc9ebfb-C08-a1.json",
+    "finished_at": "2026-09-21T14:27:17.393686+00:00",
+    "latency_seconds": 16.672000000000025,
+    "note": "",
+    "retried": false,
+    "run_id": "20260921T1420Z-scored-v5",
+    "scenario_id": "C08",
+    "started_at": "2026-09-21T14:27:00.724398+00:00",
+    "status": "PENDING_SCORE"
+  },
+  "diagnostics": {
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [
+        {
+          "check": 1,
+          "name": "track and case are waiting",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 2,
+          "name": "order state and version unchanged",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 3,
+          "name": "pinned recipe version unchanged",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 4,
+          "name": "constraint snapshot unchanged",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 5,
+          "name": "substitute still available",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 6,
+          "name": "production task not started and still ahead",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 7,
+          "name": "approval deadline not passed",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 8,
+          "name": "sender is the order's approval channel",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 9,
+          "name": "decision came from the literal parser",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        },
+        {
+          "check": 10,
+          "name": "one unspent decision, bound to this plan",
+          "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+        }
+      ],
+      "worker": "DESKTOP-OKFJLHE:3592:09548ac5"
+    },
+    "settled": "quiescent after 2 idle cycles"
+  },
+  "evidence": {
+    "E1": [
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-A",
+        "idempotency_key": "pp:amend:eaf1813c-e2a2-5b97-81c5-24bd65bba97a:dff9ac35-ba4b-527b-a236-63cd963e0619:1",
+        "line_external_item_id": "rv-raspberry-almond-4",
+        "occurred_at": "2026-09-21T14:27:07.894030+00:00",
+        "previous_version": 1,
+        "version": 2
+      },
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-B",
+        "idempotency_key": "pp:amend:1409299d-81f7-569f-b79a-377528b2cdc1:c53ed0a7-97ed-5ff0-b227-f7225070d7df:1",
+        "line_external_item_id": "rv-raspberry-rose-3",
+        "occurred_at": "2026-09-21T14:27:09.893773+00:00",
+        "previous_version": 1,
+        "version": 2
+      }
+    ],
+    "E2": [
+      {
+        "accepted_at": "2026-09-21T14:27:08.175090+00:00",
+        "channel_address": "tg:1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "fake-786ba00fa14c",
+        "text": "Hello Tomas Lindqvist,\n\nAn ingredient for your order EXT-B, due 2026-09-22 01:30 (Africa/Tunis) did not arrive, so we cannot make it exactly as ordered.\n\nWe propose to make Raspberry Rose Cake (v3) instead of Raspberry Rose Cake (v2).\nThat change uses strawberries in place of raspberries.\n\nChange reference: OPT-C53ED0\n\nReply YES to approve this change or NO to decline it. If you decline, the bakery will follow up."
+      },
+      {
+        "accepted_at": "2026-09-21T14:27:08.352086+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "sur1-reply-C08-1",
+        "text": "YES"
+      },
+      {
+        "accepted_at": "2026-09-21T14:27:08.468599+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "link:c3d97acc-f4c2-5321-95a8-34fa9ec4b9b6",
+        "text": "yes"
+      }
+    ],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": "329ba28a-e958-5216-82a7-eae8723b6a7f",
+        "held_by_this_attempt": true,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": "329ba28a-e958-5216-82a7-eae8723b6a7f",
+        "held_by_this_attempt": true,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": {
+      "acknowledged_stops": [],
+      "exception_recorded": true,
+      "promises": [
+        {
+          "claimed_stopped": false,
+          "order": "ord-a",
+          "outcome": "RECOVERED",
+          "reason": "changed",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-b",
+          "outcome": "RECOVERED",
+          "reason": "changed",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-c",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-d",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-e",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-f",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        }
+      ],
+      "scenario_id": "C08"
+    },
+    "contradictions": [],
+    "unreadable_sources": []
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.5.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260921T1420Z-scored-v5",
+    "scorer_version": "1.0.0"
+  }
+}

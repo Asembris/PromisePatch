@@ -1,0 +1,182 @@
+{
+  "attempt": {
+    "arm_token": "tok-8d326c97688743ac",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 4
+    },
+    "evidence_ref": "tok-8d326c97688743ac-C09-a1.json",
+    "finished_at": "2026-09-21T14:29:53.760226+00:00",
+    "latency_seconds": 12.280999999999949,
+    "note": "",
+    "retried": false,
+    "run_id": "20260921T1420Z-scored-v5",
+    "scenario_id": "C09",
+    "started_at": "2026-09-21T14:29:41.469152+00:00",
+    "status": "PENDING_SCORE"
+  },
+  "diagnostics": {
+    "ablated_check": 5,
+    "ablation": [],
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [],
+      "worker": "DESKTOP-OKFJLHE:3592:0204b7ff"
+    },
+    "settled": "quiescent after 2 idle cycles"
+  },
+  "evidence": {
+    "E1": [
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-A",
+        "idempotency_key": "pp:amend:6d9ad563-fa81-53f8-a3f3-758f11ee5963:697bd32b-087e-50f1-a0fc-3d6d45413a28:1",
+        "line_external_item_id": "rv-raspberry-almond-4",
+        "occurred_at": "2026-09-21T14:29:46.312513+00:00",
+        "previous_version": 1,
+        "version": 2
+      }
+    ],
+    "E2": [],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": "26a1e279-3969-587d-bdc7-98d2bb848b8f",
+        "held_by_this_attempt": true,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": "26a1e279-3969-587d-bdc7-98d2bb848b8f",
+        "held_by_this_attempt": true,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": "26a1e279-3969-587d-bdc7-98d2bb848b8f",
+        "held_by_this_attempt": true,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": {
+      "acknowledged_stops": [],
+      "exception_recorded": true,
+      "promises": [
+        {
+          "claimed_stopped": false,
+          "order": "ord-a",
+          "outcome": "RECOVERED",
+          "reason": "changed",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-b",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-c",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-d",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-e",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-f",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        }
+      ],
+      "scenario_id": "C09"
+    },
+    "contradictions": [],
+    "unreadable_sources": []
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.5.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260921T1420Z-scored-v5",
+    "scorer_version": "1.0.0"
+  }
+}

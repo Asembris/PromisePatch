@@ -1,0 +1,195 @@
+{
+  "attempt": {
+    "arm_token": "tok-a2797ba63cc9ebfb",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 4
+    },
+    "evidence_ref": "tok-a2797ba63cc9ebfb-C02-a1.json",
+    "finished_at": "2026-09-21T14:25:31.548004+00:00",
+    "latency_seconds": 12.702999999999975,
+    "note": "",
+    "retried": false,
+    "run_id": "20260921T1420Z-scored-v5",
+    "scenario_id": "C02",
+    "started_at": "2026-09-21T14:25:18.847664+00:00",
+    "status": "PENDING_SCORE"
+  },
+  "diagnostics": {
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [],
+      "worker": "DESKTOP-OKFJLHE:3592:1f91e663"
+    },
+    "settled": "quiescent after 2 idle cycles"
+  },
+  "evidence": {
+    "E1": [
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-A",
+        "idempotency_key": "pp:amend:85fa9910-8366-5795-987e-10a07ec0eac5:3a64e78f-ba96-595b-bcc1-0708b3be893f:1",
+        "line_external_item_id": "rv-raspberry-almond-4",
+        "occurred_at": "2026-09-21T14:25:23.794838+00:00",
+        "previous_version": 1,
+        "version": 2
+      }
+    ],
+    "E2": [
+      {
+        "accepted_at": "2026-09-21T14:25:24.014105+00:00",
+        "channel_address": "tg:1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "fake-7b4a690529f5",
+        "text": "Hello Tomas Lindqvist,\n\nAn ingredient for your order EXT-B, due 2026-09-22 01:30 (Africa/Tunis) did not arrive, so we cannot make it exactly as ordered.\n\nWe propose to make Raspberry Rose Cake (v3) instead of Raspberry Rose Cake (v2).\nThat change uses strawberries in place of raspberries.\n\nChange reference: OPT-138F1F\n\nReply YES to approve this change or NO to decline it. If you decline, the bakery will follow up."
+      },
+      {
+        "accepted_at": "2026-09-21T14:25:24.271079+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "sur1-reply-C02-1",
+        "text": "Strawberries work."
+      }
+    ],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": "c59dbcd8-3a82-5831-b67e-dad8ce3734ab",
+        "held_by_this_attempt": true,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": "c59dbcd8-3a82-5831-b67e-dad8ce3734ab",
+        "held_by_this_attempt": true,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": {
+      "acknowledged_stops": [],
+      "exception_recorded": true,
+      "promises": [
+        {
+          "claimed_stopped": false,
+          "order": "ord-a",
+          "outcome": "RECOVERED",
+          "reason": "changed",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-b",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "asked",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-c",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-d",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-e",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-f",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        }
+      ],
+      "scenario_id": "C02"
+    },
+    "contradictions": [],
+    "unreadable_sources": []
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.5.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260921T1420Z-scored-v5",
+    "scorer_version": "1.0.0"
+  }
+}

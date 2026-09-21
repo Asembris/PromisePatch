@@ -88,8 +88,9 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   `d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`, checked by
   `scripts/verify_effect_set_manifest.py`. Never edit a label.
 - **Both evaluation holdouts remain sealed.** Do not open one.
-- **`SUR-1` has been taken four times and none of the four is a comparative result.** The first
-  three are preserved byte-identical and pinned in two places; the correct response to a digest
+- **`SUR-1` has been taken five times. The first four are not comparative results; the fifth is
+  comparative on outcomes and still says nothing about models.** The first four are preserved
+  byte-identical and pinned in two places; the correct response to a digest
   moving is to restore the run, never to update the pin. The third, `20260920T1215Z-scored-v3`, is **invalid** —
   five arm-correlated defects were proved in it afterwards. All five are now corrected and the
   preflight asks 28 questions rather than 18. The last of them — arm C's ablation reaching no
@@ -113,8 +114,18 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   stays a disclosed limitation. `20260921T0910Z-scored-v4` is now pinned in `PUBLISHED_RUNS` and
   all four runs recompute byte-identical. `implementation_sha`, `PREDECLARATION_SHA`,
   `SCORER_VERSION`, the manifest, the prompt, the world programs, the ground truth, the budgets
-  and the retry policy are unmoved, and `REQUIRED_CHECKS` is still 28. **No scored run has been
-  taken under `1.5.0`**, and one focused rehearsal has: `dr01-v150-focused` drove all three
+  and the retry policy are unmoved, and `REQUIRED_CHECKS` is still 28. **The fifth run,
+  `20260921T1420Z-scored-v5`, is the first taken under `1.5.0`** and is preserved exactly as it
+  came out: 28 attempts (27 plus one in-policy retry of the single `VOID`), arm A at 124 model
+  calls scoring 5 `DISQUALIFIED` / 2 `BUDGET_EXHAUSTED` / 1 each safe-complete and
+  safe-incomplete with 12 safety violations, arms B and C both 8 `SAFE_AND_COMPLETE` + 1
+  `SAFE_AND_INCOMPLETE` with every safety counter `0` — **having called the model zero times**.
+  Arm C's ablation reached the evaluator on six attempts and on `C06` is recorded changing a
+  decision, without changing the verdict or raising a counter. **It is not a model comparison**,
+  and arm C is identical to arm B on all nine scenarios. It is **not yet pinned in
+  `PUBLISHED_RUNS`** — pinning moves a scope-freeze tree and belongs to a session that did not
+  score. See [sur1-fifth-scored-run.md](docs/sur1-fifth-scored-run.md). One focused rehearsal
+  preceded it: `dr01-v150-focused` drove all three
   corrections live at `DR01`, reaching no model and minting no authorisation, and each behaved as
   the revision claims. See
   [sur1-execution-revision.v4.md](docs/benchmarks/sur1-execution-revision.v4.md) and
@@ -283,6 +294,7 @@ read the source document rather than a paraphrase of it.
 | SUR-1 third scored run (taken once, **invalid**, preserved) | [sur1-v3-scored-run.md](docs/sur1-v3-scored-run.md), [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md) |
 | SUR-1 fourth scored run (taken once, comparatively empty, preserved) | [sur1-fourth-scored-run.md](docs/sur1-fourth-scored-run.md) |
 | SUR-1 execution revision `v4` (three defects closed, harness-only, unrun) | [sur1-execution-revision.v4.md](docs/benchmarks/sur1-execution-revision.v4.md) |
+| SUR-1 fifth scored run (taken once, comparative on outcomes, not on models, preserved) | [sur1-fifth-scored-run.md](docs/sur1-fifth-scored-run.md) |
 | SUR-1 parity correction (five defects closed, ablation reach open) | [sur1-parity-correction.md](docs/sur1-parity-correction.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md) |

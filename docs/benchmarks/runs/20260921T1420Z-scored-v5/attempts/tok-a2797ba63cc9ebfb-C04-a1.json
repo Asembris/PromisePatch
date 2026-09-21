@@ -1,0 +1,169 @@
+{
+  "attempt": {
+    "arm_token": "tok-a2797ba63cc9ebfb",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 4
+    },
+    "evidence_ref": "tok-a2797ba63cc9ebfb-C04-a1.json",
+    "finished_at": "2026-09-21T14:26:01.110690+00:00",
+    "latency_seconds": 10.827999999999975,
+    "note": "",
+    "retried": false,
+    "run_id": "20260921T1420Z-scored-v5",
+    "scenario_id": "C04",
+    "started_at": "2026-09-21T14:25:50.280281+00:00",
+    "status": "PENDING_SCORE"
+  },
+  "diagnostics": {
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [],
+      "worker": "DESKTOP-OKFJLHE:3592:d23b7e88"
+    },
+    "settled": "quiescent after 2 idle cycles"
+  },
+  "evidence": {
+    "E1": [],
+    "E2": [],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": {
+      "acknowledged_stops": [],
+      "exception_recorded": true,
+      "promises": [
+        {
+          "claimed_stopped": false,
+          "order": "ord-a",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-b",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-c",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-d",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-e",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-f",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        }
+      ],
+      "scenario_id": "C04"
+    },
+    "contradictions": [],
+    "unreadable_sources": []
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.5.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260921T1420Z-scored-v5",
+    "scorer_version": "1.0.0"
+  }
+}

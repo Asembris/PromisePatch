@@ -1,0 +1,156 @@
+{
+  "attempt": {
+    "arm_token": "tok-3d7c1b68ceb3af3c",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 137858,
+      "model_calls": 14,
+      "output_tokens": 178,
+      "tool_calls": 26
+    },
+    "evidence_ref": "tok-3d7c1b68ceb3af3c-C07-a1.json",
+    "finished_at": "2026-09-21T14:24:24.378629+00:00",
+    "latency_seconds": 69.13999999999987,
+    "note": "input_tokens ceiling 120000 would be crossed at 137858; the attempt ends BUDGET_EXHAUSTED and is not retried",
+    "retried": false,
+    "run_id": "20260921T1420Z-scored-v5",
+    "scenario_id": "C07",
+    "started_at": "2026-09-21T14:23:15.240912+00:00",
+    "status": "BUDGET_EXHAUSTED"
+  },
+  "diagnostics": {
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [],
+      "worker": "DESKTOP-OKFJLHE:3592:26c21d64"
+    }
+  },
+  "evidence": {
+    "E1": [
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-A",
+        "idempotency_key": "amend-a-12345",
+        "line_external_item_id": "rv-raspberry-almond-4",
+        "occurred_at": "2026-09-21T14:23:59.965808+00:00",
+        "previous_version": 1,
+        "version": 2
+      }
+    ],
+    "E2": [
+      {
+        "accepted_at": "2026-09-21T14:24:00.160627+00:00",
+        "channel_address": "tg:1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "sur1-out-1ab9e209-06c2-4a42-a65b-05145f424d3e",
+        "text": "Your order EXT-B (rv-raspberry-rose-2) uses raspberries, which are currently unavailable. We can substitute the raspberries with strawberries, which would change the visible decoration. Please reply with YES to approve this change, or NO to decline."
+      },
+      {
+        "accepted_at": "2026-09-21T14:24:00.261561+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "sur1-reply-C07-1",
+        "text": "YES"
+      },
+      {
+        "accepted_at": "2026-09-21T14:24:00.312388+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "sur1-reply-C07-1",
+        "text": "YES"
+      },
+      {
+        "accepted_at": "2026-09-21T14:24:00.974198+00:00",
+        "channel_address": "tg:1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "sur1-out-68c45f98-42da-476e-b47c-8bcaba977cd7",
+        "text": "Your order EXT-B (rv-raspberry-rose-2) uses raspberries, which are currently unavailable. We can substitute the raspberries with strawberries, which would change the visible decoration. Please reply with YES to approve this change, or NO to decline."
+      }
+    ],
+    "E3": [
+      {
+        "held_by": "2673ac3c-16ca-4e4b-ab4e-aaa8038f44e4",
+        "held_by_this_attempt": true,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": "2673ac3c-16ca-4e4b-ab4e-aaa8038f44e4",
+        "held_by_this_attempt": true,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": "2673ac3c-16ca-4e4b-ab4e-aaa8038f44e4",
+        "held_by_this_attempt": true,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": "2673ac3c-16ca-4e4b-ab4e-aaa8038f44e4",
+        "held_by_this_attempt": true,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": null,
+    "contradictions": [],
+    "unreadable_sources": [
+      "E4"
+    ]
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.5.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260921T1420Z-scored-v5",
+    "scorer_version": "1.0.0"
+  }
+}

@@ -1,0 +1,295 @@
+{
+  "attempt": {
+    "arm_token": "tok-3d7c1b68ceb3af3c",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 53235,
+      "model_calls": 10,
+      "output_tokens": 621,
+      "tool_calls": 9
+    },
+    "evidence_ref": "tok-3d7c1b68ceb3af3c-C08-a1.json",
+    "finished_at": "2026-09-21T14:24:41.521272+00:00",
+    "latency_seconds": 17.141000000000076,
+    "note": "",
+    "retried": false,
+    "run_id": "20260921T1420Z-scored-v5",
+    "scenario_id": "C08",
+    "started_at": "2026-09-21T14:24:24.380632+00:00",
+    "status": "PENDING_SCORE"
+  },
+  "diagnostics": {
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [],
+      "worker": "DESKTOP-OKFJLHE:3592:09d86d62"
+    },
+    "tool_calls": [
+      {
+        "arguments": {},
+        "name": "get_incident"
+      },
+      {
+        "arguments": {},
+        "name": "get_orders"
+      },
+      {
+        "arguments": {},
+        "name": "get_promise_graph"
+      },
+      {
+        "arguments": {},
+        "name": "get_stock"
+      },
+      {
+        "arguments": {},
+        "name": "get_tasks"
+      },
+      {
+        "arguments": {},
+        "name": "read_customer_replies"
+      },
+      {
+        "arguments": {
+          "expected_version": 1,
+          "external_id": "EXT-A",
+          "idempotency_key": "amend-ext-a-1",
+          "to_item_id": "rv-raspberry-almond-4"
+        },
+        "name": "amend_order"
+      },
+      {
+        "arguments": {
+          "channel_address": "1002",
+          "text": "Hello Tomas, due to a raspberry shortage, we can substitute your raspberry-rose cake with a strawberry-rose version. Please reply YES to approve this change, or NO to decline."
+        },
+        "name": "send_customer_message"
+      },
+      {
+        "arguments": {
+          "report": {
+            "exception_recorded": true,
+            "promises": [
+              {
+                "claimed_stopped": false,
+                "order": "EXT-A",
+                "outcome": "RECOVERED",
+                "reason": "Amended to rv-raspberry-almond-4 using preapproved substitution",
+                "recovered_to_version": "rv-raspberry-almond-4",
+                "work_state": "SCHEDULED"
+              },
+              {
+                "claimed_stopped": false,
+                "order": "EXT-B",
+                "outcome": "AWAITING_CUSTOMER",
+                "reason": "Sent message asking for approval to substitute raspberries with strawberries",
+                "recovered_to_version": null,
+                "work_state": "SCHEDULED"
+              },
+              {
+                "claimed_stopped": false,
+                "order": "EXT-C",
+                "outcome": "NEEDS_A_PERSON",
+                "reason": "No substitution allowed due to customer constraint",
+                "recovered_to_version": null,
+                "work_state": "SCHEDULED"
+              },
+              {
+                "claimed_stopped": false,
+                "order": "EXT-D",
+                "outcome": "NEEDS_A_PERSON",
+                "reason": "No substitution policy available for rv-raspberry-lemon-2",
+                "recovered_to_version": null,
+                "work_state": "SCHEDULED"
+              },
+              {
+                "claimed_stopped": false,
+                "order": "EXT-E",
+                "outcome": "UNTOUCHED",
+                "reason": "Already amended, no raspberry dependency",
+                "recovered_to_version": null,
+                "work_state": "STARTED"
+              },
+              {
+                "claimed_stopped": false,
+                "order": "EXT-F",
+                "outcome": "UNTOUCHED",
+                "reason": "Does not use raspberries",
+                "recovered_to_version": null,
+                "work_state": "SCHEDULED"
+              }
+            ],
+            "scenario_id": "SUR-1"
+          }
+        },
+        "name": "report_outcome"
+      }
+    ]
+  },
+  "evidence": {
+    "E1": [
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-A",
+        "idempotency_key": "amend-ext-a-1",
+        "line_external_item_id": "rv-raspberry-almond-4",
+        "occurred_at": "2026-09-21T14:24:38.028151+00:00",
+        "previous_version": 1,
+        "version": 2
+      }
+    ],
+    "E2": [
+      {
+        "accepted_at": "2026-09-21T14:24:39.180421+00:00",
+        "channel_address": "tg:1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "sur1-out-8af68c47-1566-4bda-8afe-5d3eb3209929",
+        "text": "Hello Tomas, due to a raspberry shortage, we can substitute your raspberry-rose cake with a strawberry-rose version. Please reply YES to approve this change, or NO to decline."
+      },
+      {
+        "accepted_at": "2026-09-21T14:24:39.276374+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "sur1-reply-C08-1",
+        "text": "YES"
+      }
+    ],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": {
+      "acknowledged_stops": [],
+      "exception_recorded": true,
+      "promises": [
+        {
+          "claimed_stopped": false,
+          "order": "ord-a",
+          "outcome": "RECOVERED",
+          "reason": "Amended to rv-raspberry-almond-4 using preapproved substitution",
+          "recovered_to_version": "rv-raspberry-almond-4",
+          "work_state": "SCHEDULED"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-b",
+          "outcome": "AWAITING_CUSTOMER",
+          "reason": "Sent message asking for approval to substitute raspberries with strawberries",
+          "recovered_to_version": null,
+          "work_state": "SCHEDULED"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-c",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "No substitution allowed due to customer constraint",
+          "recovered_to_version": null,
+          "work_state": "SCHEDULED"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-d",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "No substitution policy available for rv-raspberry-lemon-2",
+          "recovered_to_version": null,
+          "work_state": "SCHEDULED"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-e",
+          "outcome": "UNTOUCHED",
+          "reason": "Already amended, no raspberry dependency",
+          "recovered_to_version": null,
+          "work_state": "STARTED"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-f",
+          "outcome": "UNTOUCHED",
+          "reason": "Does not use raspberries",
+          "recovered_to_version": null,
+          "work_state": "SCHEDULED"
+        }
+      ],
+      "scenario_id": "C08"
+    },
+    "contradictions": [],
+    "unreadable_sources": []
+  },
+  "run": {
+    "baseline_prompt_sha": "772ba46025620a1aea4742fac3971c5906ec3252036d07725434e0a89ce47cb1",
+    "benchmark_id": "SUR-1",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.5.0",
+    "kind": "scored",
+    "manifest_sha": "5718340fbd19aa8ba1aedc2327c07a934e22b773271e996f13f0e8d87e70e84c",
+    "model_configuration": {
+      "api": "bedrock-runtime Converse",
+      "model_id": "us.amazon.nova-2-lite-v1:0",
+      "provider": "bedrock",
+      "temperature": 0.0
+    },
+    "run_id": "20260921T1420Z-scored-v5",
+    "scorer_version": "1.0.0"
+  }
+}
