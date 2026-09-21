@@ -155,15 +155,23 @@ PUBLISHED_RUNS: Final[dict[str, tuple[int, str]]] = {
         57,
         "403622ecd45a34723517556570d1b154c3f11f0e1fcaf9201856eeff6b9e18ca",
     ),
+    "20260921T0910Z-scored-v4": (
+        57,
+        "cb7197a4eceed73a01dad29d42f562df9e4ffaf95bc2ce62ea0f995980a4c90f",
+    ),
 }
 """Every scored run that has been taken, by file count and digest, so an edit is detectable.
 
-A scored run may be taken once and its headline is whatever it says. All three of these are
-published inconclusive or invalid, and **all three stay exactly as they were taken**: the
-correct response to one of these digests moving is to restore the run, never to update the
-constant. ``20260920T1215Z-scored-v3`` is pinned here for the first time; the other two were
-pinned in ``scripts/tests`` and are pinned again here, because the preflight has to be able to
-refuse a fourth run whose predecessors have quietly changed.
+A scored run may be taken once and its headline is whatever it says. All four of these are
+published inconclusive, invalid or comparatively empty, and **all four stay exactly as they
+were taken**: the correct response to one of these digests moving is to restore the run, never
+to update the constant.
+
+``20260921T0910Z-scored-v4`` is pinned here for the first time. The session that took it could
+not pin it -- doing so edits this file, which is scope-frozen, and the run's own record says so
+in its section 6 -- so it is pinned by the correction session that follows, which is what
+``sur1-phase3-closeout.md`` section 8 reserves this file for. Pinning it changes nothing about
+what the run says: it says nothing comparative, and it still does.
 
 Hashed the way the freeze hashes a module set: the relative path, a NUL, the bytes with
 CRLF normalised to LF, another NUL, over the paths in sorted order. That is the algorithm
