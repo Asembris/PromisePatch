@@ -2,8 +2,7 @@
 # /opt/promisepatch/docker-compose.yml at boot. It must fit a 4096-byte standard-tier
 # parameter, so the reasoning lives in the template and the P6 docs.
 #
-# Same images, commands and per-container env files as the local stack. The database is RDS,
-# a TLS proxy is in front, output goes to CloudWatch Logs.
+# Same images and commands as the local stack; RDS, a TLS proxy in front, CloudWatch Logs.
 
 name: promisepatch
 
@@ -48,7 +47,7 @@ services:
 
   api:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
-    env_file: [env/api.env]
+    env_file: [env/api.env, env/channel.env]
     depends_on:
       migrate: { condition: service_completed_successfully }
     networks: [stack]
@@ -65,7 +64,7 @@ services:
   worker:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
     command: ["pp", "worker"]
-    env_file: [env/api.env]
+    env_file: [env/api.env, env/channel.env]
     depends_on:
       migrate: { condition: service_completed_successfully }
     networks: [stack]

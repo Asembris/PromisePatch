@@ -16,6 +16,7 @@
 #
 # And two stages that are not releases and are never reached by one:
 #
+#   ./deploy/deploy.sh channel         # select the customer transport, on purpose
 #   ./deploy/deploy.sh infrastructure  # submit this checkout's template, on purpose
 #   ./deploy/deploy.sh host-image      # replace the instance, on purpose, after showing what dies
 #
@@ -81,6 +82,14 @@
 #                             reachable from `stack`, `rollout` or `all`.
 #   PP_DEPLOY_REPLACE_HOST    `host-image` only: the id of the instance being destroyed, typed
 #                             back to confirm it.
+# Read only by `channel`, and by nothing a release runs:
+#   PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER
+#                             `fake` or `telegram`. `telegram` puts the next approval
+#                             message a case queues on a real phone, which is why no
+#                             release and no `all` can reach this stage.
+#   PP_DEPLOY_TELEGRAM_BOT_TOKEN
+#                             the BotFather credential, stored once as a SecureString and
+#                             never overwritten by a re-run.
 #   PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE
 #                             `infrastructure` only: the id of the instance the upgrade's plan
 #                             may replace, typed back to confirm it. Deliberately not the same
@@ -231,7 +240,7 @@ stage_secrets () {
   }
   for name in db-master-password db-app-password mcp-bearer-token session-secret \
               order-webhook-secret internal-service-token demo-worker-password \
-              demo-owner-password; do
+              demo-owner-password customer-link-secret; do
     generated="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
     put_secret "$name" "$generated"
   done
@@ -309,6 +318,48 @@ stage_config () {
   # boot reads. Written by the same run that pushed the image, from the same commit.
   aws ssm put-parameter --region "$REGION" --name "${PREFIX}/image-tag" --type String --value "$(image_tag)" --overwrite >/dev/null
   printf '  uploaded %s/{compose,caddyfile,image-tag}\n' "$PREFIX"
+}
+
+# Which customer transport this deployment uses, and the credential it sends with.
+#
+# **Deliberately absent from `all`, and not a release.** Selecting Telegram points this bakery at
+# a real phone: the next approval a case queues stops reaching an in-memory provider and starts
+# arriving on somebody's device. That is an operation somebody names, exactly like replacing the
+# host, and not something a routine `deploy.sh all` can do by carrying a stale variable.
+#
+# The parameters written here are read by `converge.sh` at every boot and land in
+# `env/channel.env`, which `api` and `worker` load beside `env/api.env`. That indirection is the
+# whole point: `env/api.env` is written once per instance by cloud-init, so a customer channel
+# configured there could only be changed by replacing the instance -- and the instance is the one
+# thing a deployment holding real cases must not have to replace to change a setting.
+#
+# The provider is overwritable because it is the switch and turning it back off must be cheap.
+# The credential is not, like every other secret here, so a re-run cannot rotate a live bot token
+# out from under a running worker.
+stage_channel () {
+  say "channel (the customer transport)"
+  local provider token_name
+  provider="${PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER:-}"
+  token_name="${PREFIX}/telegram-bot-token"
+  [[ -n "$provider" ]] || die "PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER is required; it is fake or telegram"
+  [[ "$provider" == "fake" || "$provider" == "telegram" ]] || die "PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER is ${provider}; it is fake or telegram"
+  if [[ -n "${PP_DEPLOY_TELEGRAM_BOT_TOKEN:-}" ]]; then
+    if aws ssm get-parameter --region "$REGION" --name "$token_name" >/dev/null 2>&1; then
+      printf '  kept     %s\n' "$token_name"
+    else
+      aws ssm put-parameter --region "$REGION" --name "$token_name" --type SecureString --value "$PP_DEPLOY_TELEGRAM_BOT_TOKEN" --tags Key=Project,Value=promisepatch --no-overwrite >/dev/null
+      printf '  created  %s\n' "$token_name"
+    fi
+  fi
+  # Selected for Telegram with no credential stored, the worker refuses to start. That is right
+  # in the process and the wrong place to find out, because the deployment would then be one
+  # reboot away from having no worker at all. Refuse here, before any parameter moves.
+  if [[ "$provider" == "telegram" ]]; then
+    aws ssm get-parameter --region "$REGION" --name "$token_name" >/dev/null 2>&1 || die "telegram is selected and no bot credential is stored; a worker selected for telegram without a token refuses to start. Pass PP_DEPLOY_TELEGRAM_BOT_TOKEN."
+  fi
+  aws ssm put-parameter --region "$REGION" --name "${PREFIX}/customer-channel-provider" --type String --value "$provider" --tags Key=Project,Value=promisepatch --overwrite >/dev/null
+  printf '  provider %s\n' "$provider"
+  printf '  run rollout to converge the host onto it; this stage sends nothing\n'
 }
 
 # Every parameter the live stack declares except the three a submission owns, spelled as
@@ -691,6 +742,9 @@ case "$STAGE" in
   stack)     stage_preflight; stage_stack ;;
   rollout)   stage_preflight; stage_rollout ;;
   smoke)     stage_smoke ;;
+  # Deliberately absent from `all` as well. Selecting a real customer transport puts
+  # messages on a real phone, which is a decision and not a step in a deploy.
+  channel)   stage_preflight; stage_channel ;;
   # Deliberately absent from `all`. Neither changing what the deployment is made of nor
   # replacing the host is part of any release, and an operation that may destroy an instance --
   # or, with a seed, erase every case -- is one somebody asks for by name.
@@ -706,5 +760,5 @@ case "$STAGE" in
     stage_rollout
     stage_smoke
     ;;
-  *) die "usage: $0 {preflight|secrets|registry|images|config|stack|rollout|smoke|all|infrastructure|host-image}" ;;
+  *) die "usage: $0 {preflight|secrets|registry|images|config|stack|rollout|smoke|all|channel|infrastructure|host-image}" ;;
 esac

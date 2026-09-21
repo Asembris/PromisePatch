@@ -1029,6 +1029,8 @@ case "$all" in
   *describe-change-set*)          echo "$PP_FAKE_REPLACED" ;;
   *delete-change-set*)            echo deleted >> "$PP_FAKE_LOG.deleted" ;;
   *execute-change-set*)           echo executed >> "$PP_FAKE_LOG.executed" ;;
+  *"ssm get-parameter"*)          exit "$PP_FAKE_PARAMETER_MISSING" ;;
+  *"ssm put-parameter"*)          : ;;
   *"cloudformation wait"*)        : ;;
   *"cloudformation deploy"*)
       echo "Changeset created successfully. Run the following command to review changes:"
@@ -1111,6 +1113,9 @@ def _run_stage(stage: str, scenario: dict[str, str]) -> subprocess.CompletedProc
         "PP_FAKE_INSTANCE": "i-087c742587f83d61d",
         "PP_FAKE_REPLACED": "",
         "PP_FAKE_STACK_MISSING": "0",
+        # A parameter that is not there yet. `stage_channel` reads this to decide whether a
+        # credential is already stored, and `1` is what the CLI exits with when it is not.
+        "PP_FAKE_PARAMETER_MISSING": "1",
         "PP_FAKE_LIVE_PARAMETERS": LIVE_STACK_PARAMETERS,
         # Deliberately none of the above. This is the drifted shell: every one of these differs
         # from what the live stack declares, so any of them reaching a submission against an
@@ -1127,6 +1132,8 @@ def _run_stage(stage: str, scenario: dict[str, str]) -> subprocess.CompletedProc
     environment.pop("PP_DEPLOY_INFRASTRUCTURE_MAY_REPLACE", None)
     environment.pop("PP_DEPLOY_SEED_ON_FIRST_BOOT", None)
     environment.pop("PP_DEPLOY_HOST_AMI_ID", None)
+    environment.pop("PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER", None)
+    environment.pop("PP_DEPLOY_TELEGRAM_BOT_TOKEN", None)
     environment.update(scenario)
     result = subprocess.run(
         [executable, str(root / "harness.sh")],
@@ -1136,7 +1143,12 @@ def _run_stage(stage: str, scenario: dict[str, str]) -> subprocess.CompletedProc
         env=environment,
         cwd=str(REPOSITORY_ROOT),
     )
-    result.stdout += "\n--- calls ---\n" + (root / "calls.log").read_text(encoding="utf-8")
+    # A stage that refuses before it calls `aws` leaves no log at all, and that is a result
+    # rather than a harness failure: it is the difference between a refusal that mutated
+    # nothing and one that got halfway. Read it as empty rather than raising.
+    log = root / "calls.log"
+    calls = log.read_text(encoding="utf-8") if log.exists() else ""
+    result.stdout += "\n--- calls ---\n" + calls
     if (root / "calls.log.executed").exists():
         result.stdout += "\nEXECUTED\n"
     if (root / "calls.log.deleted").exists():
@@ -2727,4 +2739,202 @@ def test_the_smoke_check_proves_the_deployment_is_the_one_that_was_deployed() ->
     assert "PP_EXPECTED_IMAGE_TAG=" in build, (
         "nothing tells the smoke check which commit the stack declares, so the one check that "
         "would catch a host serving an older image reports SKIPPED and the run still passes"
+    )
+
+
+# -------------------------------------------------------------- the customer transport's config
+
+
+CHANNEL_ENV_FILE = "env/channel.env"
+"""Where a deployed process reads its customer transport from.
+
+Deliberately not ``env/api.env``. That file is written by the bootstrap, which cloud-init runs
+once per instance and not again, so a setting that lives only there can be changed only by
+replacing the instance -- and the instance is the one thing a deployment holding real cases must
+not have to replace to move a setting. The tests below are what keep those two layers apart.
+"""
+
+CHANNEL_SETTINGS = (
+    "PP_CUSTOMER_CHANNEL_PROVIDER",
+    "PP_CUSTOMER_LINK_BASE_URL",
+    "PP_TELEGRAM_BOT_TOKEN",
+    "PP_CUSTOMER_LINK_SECRET",
+)
+
+
+def test_the_customer_transport_is_configured_where_a_release_can_reach_it(
+    template: dict[str, Any],
+) -> None:
+    """Otherwise switching a customer channel on means replacing the host.
+
+    This is the defect the section exists for, and it was found against the live deployment on
+    2026-09-21: ``PP_CUSTOMER_CHANNEL_PROVIDER`` and its credential could only be written into
+    ``env/api.env``, which the bootstrap writes once per instance. A deployment holding four
+    real cases therefore had no way to start contacting customers short of replacing the
+    instance those cases' host had been serving since 2026-09-13.
+
+    So the channel file is written by ``converge.sh``, which runs at every boot and re-reads its
+    inputs from SSM -- the same layer the composition, the TLS configuration and the image tag
+    already live in.
+    """
+    converge = _converge_script(template)
+    assert f"> {CHANNEL_ENV_FILE}" in converge, (
+        "converge.sh does not write the channel file, so the customer transport is back to "
+        "being a property of the instance rather than of the release"
+    )
+    for name in CHANNEL_SETTINGS:
+        assert name in converge, f"converge.sh never writes {name}"
+
+    # And the once-per-instance half must not carry them, or the two layers would disagree and
+    # `env_file` order would quietly decide which deployment is contacting customers.
+    bootstrap = _user_data(template).replace(converge, "")
+    for name in CHANNEL_SETTINGS:
+        assert name not in bootstrap, (
+            f"{name} is written by the bootstrap as well; it would then be fixed for the life "
+            "of the instance and a release could not move it"
+        )
+
+
+def test_the_processes_that_dispatch_and_verify_are_the_ones_given_the_channel(
+    compose: dict[str, Any],
+) -> None:
+    """``worker`` sends the message and ``api`` verifies the link the customer opens.
+
+    Nothing else has any business holding a bot credential. ``mcp`` in particular is forbidden
+    the domain and the database, and a transport credential in that process would be the kind
+    of thing an import-linter contract cannot see.
+    """
+    for name in ("api", "worker"):
+        files = compose["services"][name]["env_file"]
+        assert CHANNEL_ENV_FILE in files, f"{name} cannot read the customer transport settings"
+    for name in ("migrate", "seed", "mcp", "order-simulator"):
+        files = compose["services"][name].get("env_file") or []
+        assert CHANNEL_ENV_FILE not in files, (
+            f"{name} is handed the customer channel credential and has no use for one"
+        )
+
+
+def test_neither_customer_secret_is_ever_written_as_an_empty_value(
+    template: dict[str, Any],
+) -> None:
+    """An empty secret is not the same as an absent one, and both parse.
+
+    ``PP_TELEGRAM_BOT_TOKEN=`` is a ``SecretStr('')`` rather than ``None``, so a worker selected
+    for Telegram would build an adapter around an empty credential instead of refusing to start
+    -- which is exactly the failure the refusal exists to prevent. ``PP_CUSTOMER_LINK_SECRET=``
+    is worse: ``customer_links_configured`` would answer true and every approval link would be
+    signed with nothing at all.
+    """
+    converge = _converge_script(template)
+    for name, guard in (
+        ("PP_TELEGRAM_BOT_TOKEN", "$BOT_TOKEN"),
+        ("PP_CUSTOMER_LINK_SECRET", "$LINK_SECRET"),
+    ):
+        line = next(row for row in converge.splitlines() if f"{name}=" in row)
+        assert f'[ -n "{guard}" ]' in line, (
+            f"{name} is written unconditionally, so an unset parameter becomes an empty "
+            "credential rather than no credential"
+        )
+
+
+def test_an_unconfigured_deployment_still_reaches_nobody(template: dict[str, Any]) -> None:
+    """The fake provider is the default here for the same reason it is the default in settings.
+
+    The other end of this channel is a real person's phone. A deployment whose parameter has
+    never been written must contact nobody, rather than picking up whichever credential happens
+    to be in the environment.
+    """
+    converge = _converge_script(template)
+    assert "CHANNEL_PROVIDER=fake" in converge, (
+        "an unset customer-channel-provider parameter does not fall back to the fake provider"
+    )
+
+
+def test_selecting_a_customer_transport_is_never_reached_by_a_release() -> None:
+    """``all`` must not be able to start sending messages to real people.
+
+    The same rule as the seed and the host image: an operation whose blast radius is outside
+    this deployment is one somebody names. A stale ``PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER`` in a
+    shell is not a decision to contact customers.
+    """
+    script = _deploy_script()
+    body = script[script.index('case "$STAGE" in') :]
+    everything = body[body.index("  all)") :]
+    assert "stage_channel" not in everything, "`all` selects a customer transport"
+    assert "channel)" in body, "there is no way to select a customer transport at all"
+
+    release_stages = script[script.index("stage_stack ()") : script.index("stage_channel ()")]
+    assert "customer-channel-provider" not in release_stages
+    assert "telegram-bot-token" not in release_stages
+
+
+def test_telegram_without_a_stored_credential_is_refused_before_anything_moves() -> None:
+    """A worker selected for Telegram with no token refuses to start.
+
+    That is right in the process and the wrong place to find out: the deployment would be one
+    reboot from having no worker at all, with approvals queuing behind it. So the stage refuses
+    while the parameter still says whatever it said before.
+    """
+    result = _run_stage("stage_channel", {"PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER": "telegram"})
+    assert result.returncode != 0
+    assert "refuses to start" in result.stderr
+    assert "put-parameter" not in result.stdout, (
+        "the provider was written although the credential it needs is not stored"
+    )
+
+
+def test_selecting_the_fake_transport_needs_no_credential() -> None:
+    """Turning it back off must be cheap, and must not require holding a bot token to do it."""
+    result = _run_stage("stage_channel", {"PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER": "fake"})
+    assert result.returncode == 0, result.stderr
+    assert "customer-channel-provider" in result.stdout
+    assert "telegram-bot-token" not in result.stdout
+
+
+def test_an_unnamed_transport_is_refused_rather_than_defaulted() -> None:
+    """A stage that guessed would be a stage that could guess `telegram`."""
+    result = _run_stage("stage_channel", {})
+    assert result.returncode != 0
+    assert "PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER is required" in result.stderr
+    assert result.stdout.endswith("--- calls ---\n"), (
+        "the refusal made an AWS call before deciding; it must decide first"
+    )
+
+
+def test_a_stored_bot_credential_is_never_rotated_by_a_re_run() -> None:
+    """``--no-overwrite``, like every other secret this script writes.
+
+    A re-run that rotated the credential would leave a running worker holding a token the Bot
+    API no longer honours, and the first sign of it would be an approval nobody received.
+    """
+    result = _run_stage(
+        "stage_channel",
+        {
+            "PP_DEPLOY_CUSTOMER_CHANNEL_PROVIDER": "telegram",
+            "PP_DEPLOY_TELEGRAM_BOT_TOKEN": "0000:not-a-real-credential",
+            "PP_FAKE_PARAMETER_MISSING": "0",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "kept" in result.stdout, "a stored credential was overwritten by a re-run"
+    assert "0000:not-a-real-credential" not in result.stdout
+
+
+def test_the_link_a_customer_opens_is_signed_by_a_secret_the_deploy_generates(
+    template: dict[str, Any],
+) -> None:
+    """Both halves of the link, and neither of them a default.
+
+    ``customer_links_configured`` is both-or-neither on purpose: an address with no secret makes
+    a link anybody could forge, and a secret with nowhere to point is not a link. The base URL is
+    derived from the name this deployment's certificate is actually issued for, because a link
+    is composed by the worker with no request in scope -- so there is nothing else to derive it
+    from, and a wrong one is a message pointing a customer at somebody else's deployment.
+    """
+    assert "customer-link-secret" in _deploy_script(), (
+        "nothing generates the secret a customer's approval link is signed with"
+    )
+    converge = _converge_script(template)
+    assert "PP_CUSTOMER_LINK_BASE_URL=https://$TLS_HOSTNAME" in converge, (
+        "the approval link does not point at the name this deployment's certificate is for"
     )

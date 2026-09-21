@@ -637,6 +637,32 @@ Resources:
               ENV
               umask 0022
 
+              # The customer transport, written here rather than in env/api.env because it is
+              # release state and not a property of this instance. cloud-init writes api.env
+              # once and never again, so a setting that lives only there cannot be moved without
+              # replacing the host -- and a deployment holding real cases must be able to switch
+              # its customer channel on without that. That was the whole of why an operator
+              # could not turn Telegram on against the running deployment.
+              #
+              # Every parameter is optional. Absent, the provider is the fake one, which reaches
+              # nobody. The two secrets are written only when they exist rather than as empty
+              # values, because an empty PP_TELEGRAM_BOT_TOKEN parses as a credential rather
+              # than as none -- which would defeat the refusal-to-start a worker selected for
+              # Telegram without one is supposed to make -- and an empty PP_CUSTOMER_LINK_SECRET
+              # would sign a customer's approval link with nothing at all.
+              CHANNEL_PROVIDER="$(param customer-channel-provider 2>/dev/null || true)"
+              if [ -z "$CHANNEL_PROVIDER" ]; then CHANNEL_PROVIDER=fake; fi
+              BOT_TOKEN="$(param telegram-bot-token 2>/dev/null || true)"
+              LINK_SECRET="$(param customer-link-secret 2>/dev/null || true)"
+              umask 0077
+              {
+                echo "PP_CUSTOMER_CHANNEL_PROVIDER=$CHANNEL_PROVIDER"
+                echo "PP_CUSTOMER_LINK_BASE_URL=https://$TLS_HOSTNAME"
+                if [ -n "$BOT_TOKEN" ]; then echo "PP_TELEGRAM_BOT_TOKEN=$BOT_TOKEN"; fi
+                if [ -n "$LINK_SECRET" ]; then echo "PP_CUSTOMER_LINK_SECRET=$LINK_SECRET"; fi
+              } > env/channel.env
+              umask 0022
+
               aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
               docker compose --env-file env/stack.env pull
               docker compose --env-file env/stack.env up -d --remove-orphans
