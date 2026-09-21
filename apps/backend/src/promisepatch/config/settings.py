@@ -39,6 +39,23 @@ class LlmProvider(StrEnum):
     BEDROCK = "bedrock"
 
 
+class CustomerChannelProvider(StrEnum):
+    """Which transport carries a message to a customer's own device.
+
+    A closed enum for the reason :class:`LlmProvider` is one: a deployment that misspells the
+    value fails when its settings are parsed rather than quietly falling back to a provider
+    that reaches nobody. ``fake`` is the default everywhere -- every test, CI and the local
+    Docker stack deliver to an in-memory provider that needs no credential and sends nothing.
+
+    Selecting a real channel is therefore a deliberate act by whoever configured the process,
+    and it is the *only* thing that changes: the message, the link, the consent protocol and
+    every check on the way back are identical whichever value this holds.
+    """
+
+    FAKE = "fake"
+    TELEGRAM = "telegram"
+
+
 class Settings(BaseSettings):
     """The full configuration surface of the backend as it stands today."""
 
@@ -193,6 +210,39 @@ class Settings(BaseSettings):
 
     Uncertain, not failed: the order system may well have applied it. The retry presents the
     same idempotency key, and the order system decides whether that is one effect or two.
+    """
+
+    customer_channel_provider: CustomerChannelProvider = CustomerChannelProvider.FAKE
+    """Which transport delivers a message to a customer. ``fake`` unless a deployment says so.
+
+    Defaulted to the fake for the reason :attr:`llm_provider` is, and with one more behind it:
+    the other end of this channel is a real person's phone. A deployment that had this default
+    to a live provider would send a stranger a message the first time anything queued one, and
+    the provider it reached would be whichever credential happened to be in the environment.
+
+    Read in exactly one place --
+    :func:`promisepatch.integrations.telegram.build_customer_channel` -- so no transition, no
+    handler and no test asks which channel is configured. What a message *says* and what a
+    customer's answer *means* are identical either way.
+    """
+
+    telegram_bot_token: SecretStr | None = None
+    """The Bot API credential outbound customer messages are sent with.
+
+    A :class:`~pydantic.SecretStr` because it is the whole of the bot's authority: anyone
+    holding it can send as this bakery. It is required only when
+    :attr:`customer_channel_provider` names Telegram, and a process selected for Telegram
+    without it refuses to start rather than falling back to a provider that reaches nobody.
+
+    It never appears in a URL this code logs, in an error a row records, or in a ``repr``.
+    """
+
+    telegram_timeout_seconds: float = 10.0
+    """How long one ``sendMessage`` call may take before it counts as an uncertain delivery.
+
+    Uncertain, not failed. Telegram offers no idempotency key, so a retry after a timeout may
+    put a second copy of one message on a customer's phone -- which is the at-least-once
+    guarantee the outbox states, and the reason this ceiling is generous rather than tight.
     """
 
     llm_provider: LlmProvider = LlmProvider.FAKE
@@ -468,6 +518,20 @@ class Settings(BaseSettings):
                 "can be built."
             )
         return self.customer_link_base_url.rstrip("/")
+
+    def require_telegram_bot_token(self) -> str:
+        """The bot credential, or a precise failure naming what to configure.
+
+        Checked when the customer channel is built, which for the worker is before its database
+        handle exists -- so a deployment that selected Telegram and configured no token fails on
+        the way up, with the variable's name, rather than on the first approval a case queues.
+        """
+        if self.telegram_bot_token is None:
+            raise RuntimeError(
+                "PP_TELEGRAM_BOT_TOKEN is not configured; PP_CUSTOMER_CHANNEL_PROVIDER=telegram "
+                "selects a real customer transport and there is no credential to send with."
+            )
+        return self.telegram_bot_token.get_secret_value()
 
     def require_bedrock_model_id(self) -> str:
         """The configured model, or a precise failure naming what to configure.

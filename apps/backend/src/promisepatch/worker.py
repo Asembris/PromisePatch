@@ -57,12 +57,12 @@ from promisepatch.domain import (
 )
 from promisepatch.domain.adapters import FakeEffectAdapter, RoutedEffectAdapter
 from promisepatch.domain.identity import WorkerIdentity
-from promisepatch.domain.model import EFFECT_ORDER_AMEND
+from promisepatch.domain.model import EFFECT_MESSAGE_SEND, EFFECT_ORDER_AMEND
 from promisepatch.domain.observation import STEP_INTERPRET_SEMANTICALLY
 from promisepatch.domain.order_mirror import AuthoritativeFetch
 from promisepatch.domain.outbox import EffectAdapter
 from promisepatch.domain.physical import bakery_day
-from promisepatch.integrations import build_semantic_provider
+from promisepatch.integrations import build_customer_channel, build_semantic_provider
 from promisepatch.integrations.order_system import OrderSystemAdapter, OrderSystemClient
 from promisepatch.observability import configure_logging, get_logger
 from promisepatch.semantic import FakeSemanticProvider, SemanticProvider
@@ -385,16 +385,21 @@ async def built(settings: Settings, adapter: EffectAdapter | None = None) -> Asy
 
     Which provider each kind of effect reaches is a deployment question, answered once here and
     nowhere else. With an order system configured, amendments go to it and the mirror is
-    reconciled against what it says; without one, the fake provider proves the outbox's own
-    guarantees and makes no claim about anybody's order. Everything else -- today, only the
-    customer message, whose real channel is a later slice -- goes to the fake provider either
-    way. The recovery saga is identical in every case: it reads what the row says the provider
-    did, and does not know which one answered.
+    reconciled against what it says; with a customer channel configured, a message goes to a
+    real device. Without either, the fake provider proves the outbox's own guarantees and makes
+    no claim about anybody's order or anybody's phone. The recovery saga is identical in every
+    case: it reads what the row says the provider did, and does not know which one answered.
+
+    **The customer channel is built first, before anything this function would have to close.**
+    A deployment that selected a real transport and configured no credential fails here, on the
+    way up, with the variable's name -- rather than starting, marking approval requests sent,
+    and leaving tracks waiting on answers nobody was ever asked for.
 
     Extracted from :func:`run` so that anything else needing worker cycles -- today, ``pp
     ensure-demo-case`` -- drives *this* wiring rather than a second copy of it that could
     quietly reach a different provider.
     """
+    customer_channel = build_customer_channel(settings)
     database = RuntimeDatabase.from_settings(settings)
     client = (
         OrderSystemClient(
@@ -405,12 +410,14 @@ async def built(settings: Settings, adapter: EffectAdapter | None = None) -> Asy
         else None
     )
     if adapter is None:
+        routes: dict[str, EffectAdapter] = {}
+        if client is not None:
+            routes[EFFECT_ORDER_AMEND] = OrderSystemAdapter(client)
+        if customer_channel is not None:
+            routes[EFFECT_MESSAGE_SEND] = customer_channel
         adapter = (
-            RoutedEffectAdapter(
-                routes={EFFECT_ORDER_AMEND: OrderSystemAdapter(client)},
-                default=FakeEffectAdapter(),
-            )
-            if client is not None
+            RoutedEffectAdapter(routes=routes, default=FakeEffectAdapter())
+            if routes
             else FakeEffectAdapter()
         )
     try:
@@ -425,6 +432,8 @@ async def built(settings: Settings, adapter: EffectAdapter | None = None) -> Asy
     finally:
         if client is not None:
             await client.aclose()
+        if customer_channel is not None:
+            await customer_channel.aclose()
         await database.dispose()
 
 

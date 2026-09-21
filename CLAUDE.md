@@ -148,10 +148,20 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md),
   [sur1-dr01-redrive.md](docs/sur1-dr01-redrive.md) and
   [sur1-dr01-final-rehearsal.md](docs/sur1-dr01-final-rehearsal.md) before touching anything here.
-- **Telegram is unbuilt**, deferred into G8's deployed rehearsals. Correcting a physical fact is
-  CLI-only. A customer answers on the web, through a signed possession link carried in the
-  outbound message's payload — a transport into the unchanged consent protocol, never a second
-  one. See [customer-approval-link.md](docs/customer-approval-link.md).
+- **Telegram outbound is built and has never spoken to Telegram.** One adapter behind the
+  existing provider boundary sends the frozen message and its signed link, selected by
+  `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`; the fake provider remains the default everywhere and
+  is what CI, every test and the local stack use. No bot exists, no token has been issued and
+  no live Bot API call has ever been made — the deployed second-device proof is G8's.
+  **Telegram inbound stays unbuilt and deliberately so**: a second route for the word `YES`
+  would be a second consent parser. The Bot API offers no idempotency key, so a retry in the
+  uncertain window is a real duplicate *message* and never a duplicate effect; that is the
+  at-least-once case `outbox.py` already names, and it is disclosed rather than engineered
+  around. Correcting a physical fact is CLI-only. A customer answers on the web, through a
+  signed possession link carried in the outbound message's payload — a transport into the
+  unchanged consent protocol, never a second one. See
+  [customer-message-transport.md](docs/customer-message-transport.md) and
+  [customer-approval-link.md](docs/customer-approval-link.md).
 
 `new_roadmap.md` is the authority on what is open and what each gate requires. Read it before
 deciding what to build. Do not restate its contents here.
@@ -299,7 +309,7 @@ read the source document rather than a paraphrase of it.
 | SUR-1 fifth scored run (taken once, comparative on outcomes, not on models, preserved) | [sur1-fifth-scored-run.md](docs/sur1-fifth-scored-run.md) |
 | SUR-1 parity correction (five defects closed, ablation reach open) | [sur1-parity-correction.md](docs/sur1-parity-correction.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
-| Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md) |
+| Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md), [customer-message-transport.md](docs/customer-message-transport.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |

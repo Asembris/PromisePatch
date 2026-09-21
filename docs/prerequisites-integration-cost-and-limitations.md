@@ -209,38 +209,46 @@ under five seconds — has not fired.
 
 ## 4. What is not built, and what is simulated
 
-### 4.1 The Telegram customer channel does not exist
+### 4.1 The Telegram customer channel is half built and has never spoken to Telegram
 
 [ADR-0006](adr/0006-customer-channel-telegram.md) chose the Telegram Bot API as the canonical
-customer channel. **It is implemented nowhere.** There is no bot, no webhook ingress, no
-`secret_token` check, no `update_id` deduplication and no send path. Searching the repository
-for the word finds it in exactly three kinds of place:
+customer channel. **The outbound half now exists and the inbound half does not.**
 
-- a **channel-kind string** — `ck_customers_approval_channel_kind` permits
-  `'telegram' | 'whatsapp' | 'console'`; `db/types.CHANNEL_KINDS` repeats it;
-  `graph/channel.py` maps it to the prefix `tg`;
-- **comments recording that the ingress is a later slice** — `domain/handlers.py`: "Telegram's
-  ingress, its secret-header check and its `update_id` are a later slice";
-- **tests**, using it as a source name.
+*What exists.* [`integrations/telegram.py`](../apps/backend/src/promisepatch/integrations/telegram.py)
+sends one approval message — the frozen §13.6 wording plus the signed possession link — through
+the outbox's existing provider boundary, selected by `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`
+and credentialled by `PP_TELEGRAM_BOT_TOKEN`. See
+[`customer-message-transport.md`](customer-message-transport.md).
 
-`pp channel check`, the verification step ADR-0006's consequences describe, does not exist as a
-CLI command.
+*What does not.* There is no bot, no webhook ingress, no `secret_token` check, no `update_id`
+deduplication, no `getUpdates` and no inbound path of any kind — deliberately, because a
+second route by which the word `YES` could arrive would be a second consent parser.
+`pp channel check`, the verification step ADR-0006's consequences describe, does not exist as
+a CLI command either.
 
-The only effect adapter in the repository is `domain.adapters.FakeEffectAdapter`, whose own
-first line is "The only provider this slice has: one that does nothing, and remembers that it
-did." It is deliberately honest about what it models: it behaves like a provider *with*
-idempotency-key support, so that a duplicate send under one key can be shown collapsing to one
-effect on its side.
+*What has never happened.* **No live Bot API call has been made from this repository.** Every
+test of the adapter runs against a scripted transport; no bot has been created, no token
+issued, no message delivered to a second device, and no deployed process has ever had the
+provider set to `telegram`. Until a deployed rehearsal does that, "PromisePatch can contact a
+customer" is a claim about code that has never spoken to Telegram.
 
-**So the customer side is a labelled simulation today.** The consent protocol itself is real
-and durable — the request, its captured order version, recipe version and constraint hash, the
-deadline, the sender binding, the literal parser, the single confirmation prompt, the
-escalation on a second unreadable reply — and a customer's reply enters the system through
-`pp receive-customer-reply`, an operator command that deliberately cannot record an approval
-itself. What is missing is the transport between that protocol and a real person's phone.
+`domain.adapters.FakeEffectAdapter` remains the default provider everywhere — CI, every test
+and the local stack — and is deliberately honest about what it models: it behaves like a
+provider *with* idempotency-key support, so that a duplicate send under one key can be shown
+collapsing to one effect on its side. The real Bot API has no such key, which the transport
+document states rather than engineers around.
+
+**So the customer side is still a labelled simulation in every run anybody has taken.** The
+consent protocol itself is real and durable — the request, its captured order version, recipe
+version and constraint hash, the deadline, the sender binding, the literal parser, the single
+confirmation prompt, the escalation on a second unreadable reply — and a customer answers
+either through the signed link ([`customer-approval-link.md`](customer-approval-link.md)) or
+through `pp receive-customer-reply`, an operator command that deliberately cannot record an
+approval itself.
 
 **Recorded as deferred, with its target:** [`p6.2`](p6.2-first-deployment.md) §9 states it
-plainly — "**The customer loop over Telegram is absent** — that is P6.3."
+plainly — "**The customer loop over Telegram is absent** — that is P6.3." The delivery path
+is now written; the deployed proof is not.
 
 ### 4.2 The order system is a labelled simulator
 

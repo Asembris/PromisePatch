@@ -204,9 +204,11 @@ credential except the signature, and the worker's screen afterwards for each end
 
 ## What is not built
 
-- **No notification transport.** Nothing sends the message. The link is in the outbox payload and
-  a real channel — Telegram, email, SMS — is a later slice that changes who delivers it and
-  nothing about what happens next.
+- **No notification transport was built with this slice.** One exists now, for one channel:
+  [`customer-message-transport.md`](customer-message-transport.md) added outbound Telegram
+  delivery behind the existing provider boundary, and it changes who hands the link over and
+  nothing about what happens next. It has never made a live Bot API call. Email and SMS remain
+  unbuilt and unplanned.
 - **No rate limit on the surface.** The token is an HMAC-SHA256 and is not guessable, and an
   oversized one is refused before it is decoded, but a valid token can be polled.
 - **No option codes.** §13.6 also permits an exact option code; the parser still implements only

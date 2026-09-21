@@ -19,11 +19,14 @@ from promisepatch.integrations.semantic_provider import (
     ObservedSemanticProvider,
     build_semantic_provider,
 )
+from promisepatch.integrations.telegram import TelegramAdapter, build_customer_channel
 
 __all__ = [
     "ObservedSemanticProvider",
     "OrderSystemAdapter",
     "OrderSystemClient",
     "OrderSystemUnavailableError",
+    "TelegramAdapter",
+    "build_customer_channel",
     "build_semantic_provider",
 ]

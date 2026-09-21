@@ -1,10 +1,11 @@
-"""The only provider this slice has: one that does nothing, and remembers that it did.
+"""The provider every default deployment has: one that does nothing, and remembers that it did.
 
-Telegram, the order simulator and everything else with a real consequence are later slices. A
-worker still needs *an* adapter to run against, and a fake one is the right thing here for a
-reason beyond convenience: the property under test is that our side sends the same idempotency
-key every time, and only a provider that records what it received can demonstrate that a
-duplicate send under one key collapsed to one effect on its side.
+Two real providers now exist beside it -- the order simulator and the Telegram customer channel
+-- and neither is reached unless a deployment says so. A worker still needs *an* adapter to run
+against, and a fake one is the right thing here for a reason beyond convenience: the property
+under test is that our side sends the same idempotency key every time, and only a provider that
+records what it received can demonstrate that a duplicate send under one key collapsed to one
+effect on its side.
 
 Deliberately honest about what it models. It behaves the way a provider *with* idempotency-key
 support behaves: a repeated key returns the original acceptance rather than acting twice. A
@@ -155,13 +156,15 @@ class RoutedEffectAdapter:
 
     The dispatcher deliberately knows nothing about what an effect *means*, and the recovery
     saga deliberately knows nothing about which provider answered. Something has to know that a
-    recovery amendment goes to the order system and a customer message does not, and this is it:
-    one table, built where the process is composed, rather than a conditional in the transitions
-    that decided on the effects.
+    recovery amendment goes to the order system and a customer message goes to the customer's
+    own channel, and this is it: one table, built where the process is composed, rather than a
+    conditional in the transitions that decided on the effects.
 
-    ``default`` is the honest answer for a kind with no configured provider yet -- today, the
-    customer channel, whose real provider is a later slice. It is a fake one, it says so, and
-    routing to it is a statement about this deployment rather than a claim about the effect.
+    ``default`` is the honest answer for a kind this deployment configured no provider for. It
+    is a fake one, it says so, and routing to it is a statement about this deployment rather
+    than a claim about the effect. Both routes are optional and independent: a stack with an
+    order system and no customer channel amends real orders and messages nobody, and a stack
+    with neither proves the outbox's own guarantees and claims nothing about the world.
     """
 
     routes: Mapping[str, EffectAdapter]
