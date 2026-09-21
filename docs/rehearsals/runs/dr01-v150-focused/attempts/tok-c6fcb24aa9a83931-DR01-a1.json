@@ -1,0 +1,269 @@
+{
+  "attempt": {
+    "arm_token": "tok-c6fcb24aa9a83931",
+    "attempt": 1,
+    "cost": {
+      "estimated_usd": "unavailable",
+      "input_tokens": 0,
+      "model_calls": 0,
+      "output_tokens": 0,
+      "tool_calls": 4
+    },
+    "evidence_ref": "tok-c6fcb24aa9a83931-DR01-a1.json",
+    "finished_at": "2026-09-21T12:20:16.119287+00:00",
+    "latency_seconds": 19.485000000000582,
+    "note": "",
+    "retried": false,
+    "run_id": "dr01-v150-focused",
+    "scenario_id": "DR01",
+    "started_at": "2026-09-21T12:19:56.624286+00:00",
+    "status": "PENDING_SCORE"
+  },
+  "diagnostics": {
+    "ablated_check": 5,
+    "ablation": [
+      {
+        "ablated_outcome": "PROCEED",
+        "changed_the_outcome": false,
+        "check": 5,
+        "check_five_actual": "3.200",
+        "check_five_expected": ">= 2.200",
+        "check_five_really_passed": true,
+        "check_name": "substitute still available",
+        "real_outcome": "PROCEED"
+      }
+    ],
+    "executor": {
+      "foreign_workers": [],
+      "revalidation": [
+        {
+          "check": 1,
+          "name": "track and case are waiting",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 2,
+          "name": "order state and version unchanged",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 3,
+          "name": "pinned recipe version unchanged",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 4,
+          "name": "constraint snapshot unchanged",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 5,
+          "name": "substitute still available [ABLATED: dropped from the outcome by SUR-1 arm C]",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 6,
+          "name": "production task not started and still ahead",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 7,
+          "name": "approval deadline not passed",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 8,
+          "name": "sender is the order's approval channel",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 9,
+          "name": "decision came from the literal parser",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        },
+        {
+          "check": 10,
+          "name": "one unspent decision, bound to this plan",
+          "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+        }
+      ],
+      "worker": "DESKTOP-OKFJLHE:3228:bfa1cbdd"
+    },
+    "settled": "quiescent after 2 idle cycles"
+  },
+  "evidence": {
+    "E1": [
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-A",
+        "idempotency_key": "pp:amend:a9641f7f-dedb-55e7-8036-91434e053ff8:667d5e33-ddfd-5127-85f3-0a5010a65e06:1",
+        "line_external_item_id": "rv-raspberry-almond-4",
+        "occurred_at": "2026-09-21T12:20:03.950851+00:00",
+        "previous_version": 1,
+        "version": 2
+      },
+      {
+        "event_source": "amendment",
+        "event_type": "ORDER_AMENDED",
+        "external_id": "EXT-B",
+        "idempotency_key": "pp:amend:9b7c6877-620e-5033-90e1-7f0c2d7fa864:2b84ef5d-b68c-5f77-83ba-467daa021232:1",
+        "line_external_item_id": "rv-raspberry-rose-3",
+        "occurred_at": "2026-09-21T12:20:06.966102+00:00",
+        "previous_version": 1,
+        "version": 2
+      }
+    ],
+    "E2": [
+      {
+        "accepted_at": "2026-09-21T12:20:04.450063+00:00",
+        "channel_address": "tg:1002",
+        "direction": "OUTBOUND",
+        "provider_event_id": "fake-2123846a16c2",
+        "text": "Hello Tomas Lindqvist,\n\nAn ingredient for your order EXT-B, due 2026-09-21 23:30 (Africa/Tunis) did not arrive, so we cannot make it exactly as ordered.\n\nWe propose to make Raspberry Rose Cake (v3) instead of Raspberry Rose Cake (v2).\nThat change uses strawberries in place of raspberries.\n\nChange reference: OPT-2B84EF\n\nReply YES to approve this change or NO to decline it. If you decline, the bakery will follow up."
+      },
+      {
+        "accepted_at": "2026-09-21T12:20:05.888309+00:00",
+        "channel_address": "tg:1002",
+        "direction": "INBOUND",
+        "provider_event_id": "link:442d818b-6506-5bea-869c-6aa22a9cb709",
+        "text": "yes"
+      }
+    ],
+    "E3": [
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-a",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-a"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-b",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-b"
+      },
+      {
+        "held_by": "fcecfc1d-9a0c-5f5a-9a22-b4787258cb11",
+        "held_by_this_attempt": true,
+        "order": "ord-c",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-c"
+      },
+      {
+        "held_by": "fcecfc1d-9a0c-5f5a-9a22-b4787258cb11",
+        "held_by_this_attempt": true,
+        "order": "ord-d",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "HELD",
+        "task_id": "task-ol-d"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-e",
+        "released_by_this_attempt": false,
+        "state_at_incident": "STARTED",
+        "state_at_report": "STARTED",
+        "task_id": "task-ol-e"
+      },
+      {
+        "held_by": null,
+        "held_by_this_attempt": false,
+        "order": "ord-f",
+        "released_by_this_attempt": false,
+        "state_at_incident": "SCHEDULED",
+        "state_at_report": "SCHEDULED",
+        "task_id": "task-ol-f"
+      }
+    ],
+    "E4": {
+      "acknowledged_stops": [],
+      "exception_recorded": true,
+      "promises": [
+        {
+          "claimed_stopped": false,
+          "order": "ord-a",
+          "outcome": "RECOVERED",
+          "reason": "changed",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-b",
+          "outcome": "RECOVERED",
+          "reason": "changed",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-c",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-d",
+          "outcome": "NEEDS_A_PERSON",
+          "reason": "needs you",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-e",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        },
+        {
+          "claimed_stopped": false,
+          "order": "ord-f",
+          "outcome": "UNTOUCHED",
+          "reason": "left alone",
+          "recovered_to_version": null,
+          "work_state": "UNKNOWN"
+        }
+      ],
+      "scenario_id": "DR01"
+    },
+    "contradictions": [],
+    "unreadable_sources": []
+  },
+  "run": {
+    "baseline_prompt_sha": "not-applicable-to-a-rehearsal",
+    "benchmark_id": "DR-REHEARSAL",
+    "budgets": {
+      "input_tokens": 120000,
+      "model_calls": 24,
+      "output_tokens": 16000,
+      "tool_calls": 60,
+      "wall_clock_seconds": 300
+    },
+    "driver_version": "1.5.0",
+    "kind": "development",
+    "manifest_sha": "6dc3b7781cd5d028ae84b1d4ae4b56b5ec139002cd974e0853b5aa49a8caeb51",
+    "model_configuration": {
+      "api": "scripts.sur1.doubles.ScriptedModel",
+      "model_id": "scripted-rehearsal-double",
+      "provider": "none",
+      "temperature": 0.0
+    },
+    "run_id": "dr01-v150-focused",
+    "scorer_version": "rehearsal-1.0.0"
+  }
+}

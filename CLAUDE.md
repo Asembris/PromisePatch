@@ -113,9 +113,12 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   stays a disclosed limitation. `20260921T0910Z-scored-v4` is now pinned in `PUBLISHED_RUNS` and
   all four runs recompute byte-identical. `implementation_sha`, `PREDECLARATION_SHA`,
   `SCORER_VERSION`, the manifest, the prompt, the world programs, the ground truth, the budgets
-  and the retry policy are unmoved, and `REQUIRED_CHECKS` is still 28. **No run and no rehearsal
-  has been taken under `1.5.0`.** See
-  [sur1-execution-revision.v4.md](docs/benchmarks/sur1-execution-revision.v4.md). `DR01`
+  and the retry policy are unmoved, and `REQUIRED_CHECKS` is still 28. **No scored run has been
+  taken under `1.5.0`**, and one focused rehearsal has: `dr01-v150-focused` drove all three
+  corrections live at `DR01`, reaching no model and minting no authorisation, and each behaved as
+  the revision claims. See
+  [sur1-execution-revision.v4.md](docs/benchmarks/sur1-execution-revision.v4.md) and
+  [sur1-v150-focused-rehearsal.md](docs/sur1-v150-focused-rehearsal.md). `DR01`
   **completed with all three arms whole** at
   `DRIVER_VERSION` `1.4.3`, and proved what ADR-0020 was written for: arm B's revalidation check
   5 carries the evaluator's own name, arm C's carries `ABLATED_MARK` exactly, checks 1–4 and 6–10
@@ -269,6 +272,7 @@ read the source document rather than a paraphrase of it.
 | SUR-1 `DR01` through the hosted worker (incomplete, one defect found) | [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md) |
 | SUR-1 `DR01` re-driven (B/C proved, arm A blocked on a second defect) | [sur1-dr01-redrive.md](docs/sur1-dr01-redrive.md) |
 | SUR-1 `DR01` final rehearsal (all three arms whole, no new defect) | [sur1-dr01-final-rehearsal.md](docs/sur1-dr01-final-rehearsal.md) |
+| SUR-1 `1.5.0` focused rehearsal (the three `v4` corrections, driven live) | [sur1-v150-focused-rehearsal.md](docs/sur1-v150-focused-rehearsal.md) |
 | SUR-1 scored environment | [sur1-scored-environment.md](docs/sur1-scored-environment.md) |
 | SUR-1 phase 3 closeout (harness scope-frozen) | [sur1-phase3-closeout.md](docs/sur1-phase3-closeout.md) |
 | SUR-1 first scored run (taken once, inconclusive) | [sur1-first-scored-run-defect.md](docs/sur1-first-scored-run-defect.md) |
