@@ -16,16 +16,29 @@ it is stood in for explicitly and the stand-in says so.
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from scripts.sur1.ablation import ABLATED_CHECK, ABLATED_MARK
 from scripts.sur1.bindings import REAL
+from scripts.sur1.bindings.governed import (
+    AUDIT_PREFIX,
+    STOCK_MOVEMENT,
+    TASK_HELD,
+    TASK_RELEASED,
+    WORLD_ACTOR,
+)
 from scripts.sur1.bindings.hostedworker import (
     DURABLE_EVALUATOR_MODULE,
+    EFFECT_FAILED_EVENT,
+    REVALIDATION_CHECK_EVENT,
+    STEP_EXECUTED_EVENT,
+    STEP_EXECUTION_EVENTS,
+    STEP_FAILED_EVENT,
     HarnessCompetitionError,
     HostedWorkerControl,
     RevalidationWitness,
@@ -70,6 +83,16 @@ def audit_rows(*, ablated: bool, worker: str = HOSTED) -> list[tuple[Any, ...]]:
     ]
 
 
+def executions(*workers: str, event: str = STEP_EXECUTED_EVENT) -> list[tuple[Any, ...]]:
+    """``(type, provenance.worker)`` rows, exactly as the executor evidence selects them.
+
+    One per worker that executed something durable. A world facility's own governed write never
+    appears here whatever actor it carries, because its event type is not one the product writes
+    when a worker executes a step -- which is the whole of the correction.
+    """
+    return [(event, worker) for worker in workers]
+
+
 @dataclass(slots=True)
 class LedgerStandIn:
     """A :class:`~scripts.sur1.bindings.receivers.DatabaseReader` made of rows. Opens nothing."""
@@ -81,10 +104,17 @@ class LedgerStandIn:
     unreadable: bool = False
 
     def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
+        """Answer the two queries apart by what they select, not by what they filter on.
+
+        The executor query now names ``REVALIDATION_CHECK`` in its own ``type IN (...)`` list,
+        so the two can only be told apart by the projection: the witnesses ask for the check's
+        index, and nothing else does.
+        """
         self.seen.append(statement)
         if self.unreadable:
             raise OSError("the audit ledger could not be read")
-        return list(self.checks) if "REVALIDATION_CHECK" in statement else list(self.actors)
+        witnesses = "provenance ->> 'check'" in statement
+        return list(self.checks) if witnesses else list(self.actors)
 
 
 @dataclass(slots=True)
@@ -186,7 +216,7 @@ def test_the_ablation_mark_is_the_one_the_wrapper_writes_and_not_a_second_spelli
 
 def test_an_attempt_the_hosted_worker_executed_alone_carries_its_proof_and_no_fault() -> None:
     control = hosted(
-        database=LedgerStandIn(checks=audit_rows(ablated=True), actors=[(HOSTED,)]),
+        database=LedgerStandIn(checks=audit_rows(ablated=True), actors=executions(HOSTED)),
         identity=HOSTED,
     )
 
@@ -201,7 +231,9 @@ def test_an_attempt_the_hosted_worker_executed_alone_carries_its_proof_and_no_fa
 def test_an_attempt_a_second_worker_touched_fails_closed() -> None:
     """Part of an ablated attempt executed where the wrapper does not reach is no arm at all."""
     control = hosted(
-        database=LedgerStandIn(checks=audit_rows(ablated=True), actors=[(HOSTED,), (CONTAINER,)]),
+        database=LedgerStandIn(
+            checks=audit_rows(ablated=True), actors=executions(HOSTED, CONTAINER)
+        ),
         identity=HOSTED,
     )
 
@@ -220,6 +252,214 @@ def test_an_unreadable_ledger_is_a_refusal_rather_than_a_passing_proof() -> None
 
     assert "could not be read" in fault
     assert "unreadable" in payload
+
+
+@dataclass(slots=True)
+class AuditLedgerStandIn:
+    """Rows as ``audit_events`` holds them, answered by applying the statement's own filter.
+
+    The point of filtering here rather than returning a fixed list is that the correction lives
+    in the ``WHERE`` clause: a stand-in that ignored the predicate would pass whatever the query
+    asked for. ``entries`` are ``(type, actor_id, provenance.worker)`` and the reader projects
+    whichever two columns the statement selects.
+    """
+
+    entries: list[tuple[str, str, str | None]] = field(default_factory=list)
+    url: str = "stand-in://audit-events"
+    seen: list[str] = field(default_factory=list)
+
+    def rows(self, source: str, statement: str) -> list[tuple[Any, ...]]:
+        self.seen.append(statement)
+        if "provenance ->> 'check'" in statement:
+            return []
+        wanted = set(re.findall(r"'([A-Z_]+)'", statement.split("type IN (")[1].split(")")[0]))
+        return sorted({(event, worker) for event, _, worker in self.entries if event in wanted})
+
+
+WORLD_FACILITY_ROWS: Final = [
+    (TASK_HELD, WORLD_ACTOR, None),
+    (TASK_RELEASED, WORLD_ACTOR, None),
+    (STOCK_MOVEMENT, WORLD_ACTOR, None),
+]
+"""Exactly what the harness's own world facility leaves in the ledger during an attempt.
+
+``Actor(SYSTEM, "sur1 world facility")`` on a governed write with no worker in its provenance,
+because no worker performed it -- the benchmark's own stipulation did. Five attempts of
+``20260921T0910Z-scored-v4`` were refused for these rows. See ``docs/sur1-fourth-scored-run.md``
+section 3.1.
+"""
+
+
+def test_the_world_facility_s_own_writes_are_not_a_competing_worker() -> None:
+    """The defect that made five of v4's attempts unreadable, held down by its own rows."""
+    control = hosted(
+        database=AuditLedgerStandIn(
+            entries=[*WORLD_FACILITY_ROWS, (STEP_EXECUTED_EVENT, HOSTED, HOSTED)]
+        ),
+        identity=HOSTED,
+    )
+
+    payload, fault = executor_evidence(WorldStandIn(worker=control))  # type: ignore[arg-type]
+
+    assert fault == ""
+    assert payload["foreign_workers"] == []
+
+
+def test_c06_s_stipulated_stock_movement_does_not_refuse_the_attempt() -> None:
+    """``C06`` arms a stock movement, and it fired for all three arms. None of them is a worker."""
+    control = hosted(
+        database=AuditLedgerStandIn(entries=[(STOCK_MOVEMENT, WORLD_ACTOR, None)]),
+        identity=HOSTED,
+    )
+
+    payload, fault = executor_evidence(WorldStandIn(worker=control))  # type: ignore[arg-type]
+
+    assert (fault, payload["foreign_workers"]) == ("", [])
+
+
+def test_the_baseline_s_own_task_hold_does_not_refuse_the_attempt() -> None:
+    """Arm A holds a kitchen task through the world facility and drives no durable worker."""
+    control = hosted(
+        database=AuditLedgerStandIn(entries=[(TASK_HELD, WORLD_ACTOR, None)]),
+        identity=HOSTED,
+    )
+
+    payload, fault = executor_evidence(WorldStandIn(worker=control))  # type: ignore[arg-type]
+
+    assert (fault, payload["foreign_workers"]) == ("", [])
+
+
+def test_a_second_worker_is_still_caught_among_the_world_facility_s_rows() -> None:
+    """Letting the world facility through may not let a competing worker through with it."""
+    control = hosted(
+        database=AuditLedgerStandIn(
+            entries=[
+                *WORLD_FACILITY_ROWS,
+                (STEP_EXECUTED_EVENT, HOSTED, HOSTED),
+                (STEP_EXECUTED_EVENT, CONTAINER, CONTAINER),
+            ]
+        ),
+        identity=HOSTED,
+    )
+
+    payload, fault = executor_evidence(WorldStandIn(worker=control))  # type: ignore[arg-type]
+
+    assert payload["foreign_workers"] == [CONTAINER]
+    assert "a reading of no declared arm" in fault
+
+
+def test_no_event_the_world_facility_writes_is_watched_as_an_execution() -> None:
+    """Structural, so a fourth world write cannot quietly become a competing worker.
+
+    Every audit type the harness's governed writer can produce begins with the benchmark prefix,
+    and no watched execution event does. That is the property the correction rests on, and it is
+    asserted rather than left to the three literals above.
+    """
+    assert all(not event.startswith(AUDIT_PREFIX) for event in STEP_EXECUTION_EVENTS)
+    assert {TASK_HELD, TASK_RELEASED, STOCK_MOVEMENT}.isdisjoint(STEP_EXECUTION_EVENTS)
+
+
+def test_an_attempt_whose_ledger_names_a_step_and_no_worker_fails_closed() -> None:
+    """*A step ran* and *nobody can say who ran it* is an unknown, and an unknown is a refusal."""
+    control = hosted(
+        database=LedgerStandIn(
+            checks=audit_rows(ablated=False), actors=[(STEP_EXECUTED_EVENT, "")]
+        ),
+        identity=HOSTED,
+    )
+
+    payload, fault = executor_evidence(WorldStandIn(worker=control))  # type: ignore[arg-type]
+
+    assert "could not be read" in fault
+    assert "names no worker" in fault
+    assert "unreadable" in payload
+    assert "foreign_workers" not in payload
+
+
+@pytest.mark.parametrize("event", STEP_EXECUTION_EVENTS)
+def test_a_second_worker_is_caught_whichever_execution_row_it_leaves(event: str) -> None:
+    """One rule, four rows. A competing worker cannot pick the event that is not watched."""
+    control = hosted(
+        database=LedgerStandIn(
+            checks=audit_rows(ablated=False), actors=executions(CONTAINER, event=event)
+        ),
+        identity=HOSTED,
+    )
+
+    _, fault = executor_evidence(WorldStandIn(worker=control))  # type: ignore[arg-type]
+
+    assert CONTAINER in fault
+
+
+def test_the_execution_events_are_the_product_s_own_and_not_a_second_spelling() -> None:
+    """A type this harness invented would read a ledger nothing writes and pass by finding none."""
+    from promisepatch.domain.model import (
+        AUDIT_EFFECT_FAILED,
+        AUDIT_STEP_EXECUTED,
+        AUDIT_STEP_FAILED,
+    )
+    from promisepatch.domain.revalidation import AUDIT_REVALIDATION_CHECK
+
+    assert STEP_EXECUTED_EVENT == AUDIT_STEP_EXECUTED
+    assert STEP_FAILED_EVENT == AUDIT_STEP_FAILED
+    assert EFFECT_FAILED_EVENT == AUDIT_EFFECT_FAILED
+    assert REVALIDATION_CHECK_EVENT == AUDIT_REVALIDATION_CHECK
+    assert set(STEP_EXECUTION_EVENTS) == {
+        AUDIT_STEP_EXECUTED,
+        AUDIT_STEP_FAILED,
+        AUDIT_EFFECT_FAILED,
+        AUDIT_REVALIDATION_CHECK,
+    }
+
+
+def test_every_watched_event_carries_the_executing_worker_in_its_provenance() -> None:
+    """The column the evidence reads is the one the product actually fills, on all four rows.
+
+    Read out of the product's source rather than asserted: each of the four governed writes is
+    found in its own module and its ``provenance`` is required to name ``worker``. A rule that
+    read a key nothing writes would refuse every attempt, or pass every attempt, depending on
+    which way the null went.
+    """
+    import ast
+
+    import promisepatch.domain.outbox as outbox_module
+    import promisepatch.domain.revalidation as revalidation_module
+    import promisepatch.domain.steps as steps_module
+
+    filled = set()
+    for module, events in (
+        (steps_module, {"AUDIT_STEP_FAILED", "AUDIT_STEP_EXECUTED"}),
+        (outbox_module, {"AUDIT_EFFECT_FAILED"}),
+        (revalidation_module, {"AUDIT_REVALIDATION_CHECK"}),
+    ):
+        tree = ast.parse(Path(module.__file__ or "").read_text(encoding="utf-8"))
+        for call in ast.walk(tree):
+            if not isinstance(call, ast.Call):
+                continue
+            keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+            named = keywords.get("event_type")
+            provenance = keywords.get("provenance")
+            if named is None or provenance is None:
+                continue
+            mentions = {
+                node.id for node in ast.walk(named) if isinstance(node, ast.Name)
+            } & events
+            if not mentions:
+                continue
+            keys = {
+                key.value
+                for key in ast.walk(provenance)
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            }
+            assert "worker" in keys, f"{module.__name__} writes {mentions} without a worker"
+            filled |= mentions
+
+    assert filled == {
+        "AUDIT_STEP_EXECUTED",
+        "AUDIT_STEP_FAILED",
+        "AUDIT_EFFECT_FAILED",
+        "AUDIT_REVALIDATION_CHECK",
+    }
 
 
 def test_a_control_that_tracks_no_executor_yields_no_proof_and_no_fault() -> None:

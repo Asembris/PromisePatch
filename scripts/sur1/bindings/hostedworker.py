@@ -64,6 +64,37 @@ product's append-only ledger rather than the harness's log, which is what makes 
 arm C was ablated and arm B was not.
 """
 
+STEP_EXECUTED_EVENT: Final = "WORKFLOW_STEP_EXECUTED"
+STEP_FAILED_EVENT: Final = "WORKFLOW_STEP_FAILED"
+EFFECT_FAILED_EVENT: Final = "WORKFLOW_EFFECT_FAILED"
+"""The product's own audit types for a durable step transition and a failed effect delivery.
+
+Spelled here as literals for the reason :data:`REVALIDATION_CHECK_EVENT` is, and asserted
+against ``promisepatch.domain.model``'s own constants by ``scripts/tests/
+test_sur1_hosted_worker.py`` rather than trusted: this module is reachable from the preflight,
+and importing the application's domain at module scope would make reading a hash import the
+product.
+"""
+
+STEP_EXECUTION_EVENTS: Final = (
+    STEP_EXECUTED_EVENT,
+    STEP_FAILED_EVENT,
+    EFFECT_FAILED_EVENT,
+    REVALIDATION_CHECK_EVENT,
+)
+"""Every event that is the product saying *a worker executed something durable here*.
+
+This is the whole evidence base of :meth:`HostedWorkerControl.
+executed_only_by_the_hosted_worker`, and every one of the four carries the executing worker in
+``provenance.worker``. A governed write that is not one of these -- a fixture load, a world
+facility's stipulated hold or stock movement, an API request's own write -- is not a worker
+executing a step and is not evidence about who did this attempt's durable work.
+
+``REVALIDATION_CHECK`` is in the tuple because it is the row arm C's treatment is read out of:
+a check evaluated by a process the wrapper never reached is precisely the failure the
+sole-executor guard exists for, and it is caught here as well as in the witnesses.
+"""
+
 START_TIMEOUT: Final = 30.0
 STOP_TIMEOUT: Final = 60.0
 QUIESCENCE_TIMEOUT: Final = 120.0
@@ -355,21 +386,58 @@ class HostedWorkerControl:
         return "" if life is None else life.identity
 
     def executed_only_by_the_hosted_worker(self, since: datetime) -> tuple[str, ...]:
-        """Every worker identity other than this one that did governed work since ``since``.
+        """Every other worker identity that executed durable work since ``since``.
 
-        Read out of the product's own append-only audit ledger, which records the actor of every
-        governed write. An empty tuple is the sole-executor proof; anything in it is a second
-        process that executed part of an attempt, and the attempt is not a reading of either arm.
+        Read out of the product's own append-only audit ledger, and out of the four event types
+        the product writes when a worker executes something: the two step transitions, the
+        effect failure and the revalidation check. Each of those carries the executing worker in
+        ``provenance.worker``, which is ``claim.lease_owner`` -- the lease the work was done
+        under. An empty tuple is the sole-executor proof; anything in it is a second process that
+        executed part of an attempt, and the attempt is not a reading of either arm.
+
+        **Why it is not every ``SYSTEM`` actor.** It used to be, and that is what made five
+        attempts of ``20260921T0910Z-scored-v4`` unreadable. The harness's own world facility
+        writes governed rows too -- a kitchen hold and a stipulated stock movement are
+        ``UPDATE``s and ``INSERT``s on governed tables, so they are audited under
+        ``Actor(SYSTEM, "sur1 world facility")`` -- and a rule that read every ``SYSTEM`` actor
+        read the benchmark's own stipulation as a competing worker. See
+        ``docs/sur1-fourth-scored-run.md`` §3.1.
+
+        **It is not an allowlist.** Nothing here names an identity that is forgiven; what changed
+        is *which rows count as evidence of execution*. A world write is not a step execution and
+        never was, whoever performs it, and a second worker that executes one step is caught by
+        exactly the same rule that lets the world facility through. The names in
+        :data:`STEP_EXECUTION_EVENTS` are the product's own constants, asserted against them
+        rather than spelled here twice.
+
+        **What it does not cover, stated rather than implied.** A successful outbox delivery
+        writes no audit row of its own, so a process that delivered an effect and executed no
+        step is not visible to this reading. It would have had to claim a step to reach one, and
+        every claim it executed is in the rows below; what remains uncovered is a worker that
+        delivered a message it never planned.
+
+        **A row that names no executor is a refusal, not a pass.** The ledger saying a step ran
+        and not saying who ran it is the *unknown* case, and the driver turns the raised error
+        into the same fail-closed fault an unreadable ledger produces.
         """
         mine = self.worker_identity()
+        types = ", ".join(f"'{event}'" for event in STEP_EXECUTION_EVENTS)
         rows = self.database.rows(
             "WORKER",
-            "SELECT DISTINCT actor_id FROM audit_events "
-            f"WHERE actor_kind = 'SYSTEM' AND occurred_at >= '{_stamp(since)}'::timestamptz",
+            "SELECT DISTINCT type, provenance ->> 'worker' FROM audit_events "
+            f"WHERE type IN ({types}) AND occurred_at >= '{_stamp(since)}'::timestamptz",
         )
-        return tuple(
-            sorted(str(row[0]) for row in rows if row[0] is not None and str(row[0]) != mine)
-        )
+        others = set()
+        for event, worker in rows:
+            named = "" if worker is None else str(worker).strip()
+            if not named:
+                raise HostedWorkerError(
+                    f"the ledger records a {str(event)!r} in this attempt and names no worker "
+                    "that executed it; who did this attempt's durable work cannot be read"
+                )
+            if named != mine:
+                others.add(named)
+        return tuple(sorted(others))
 
     def revalidation_witnesses(self, since: datetime) -> tuple[RevalidationWitness, ...]:
         """The product's own record of which checks ran, in order, since ``since``.
@@ -490,8 +558,12 @@ def _credential_resolves() -> bool:
 
 __all__ = [
     "DURABLE_EVALUATOR_MODULE",
+    "EFFECT_FAILED_EVENT",
     "QUIESCENT_MARKS",
     "REVALIDATION_CHECK_EVENT",
+    "STEP_EXECUTED_EVENT",
+    "STEP_EXECUTION_EVENTS",
+    "STEP_FAILED_EVENT",
     "HarnessCompetitionError",
     "HostedWorkerControl",
     "HostedWorkerError",
