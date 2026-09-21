@@ -272,8 +272,9 @@ pp channel bind-demo-customer --chat-id <numeric id>
   fixture — the owner of the seeded case's single `APPROVAL_REQUIRED` order, the one promise in
   the demo whose recovery waits on a person. There is no `--customer` option, and this is not a
   customer editor;
-- **one world.** `fixture_state` must name the demo fixture. A `SUR-1` benchmark world records
-  `hollow-oak+sur1-<scenario>` and is refused, as is a database that was never seeded;
+- **one world.** `fixture_state` must name the demo fixture, and nothing else will do. A
+  stated *variant* of the demo world, installed under its own fixture name, is refused by the
+  same check, as is a database that was never seeded;
 - **one prior state.** The row must carry the fixture's own destination, or already the one
   being bound. A destination this command did not write is refused rather than overwritten;
   `pp reset-demo-state` puts the fixture value back, and that is the way round to it;

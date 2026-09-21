@@ -16,11 +16,12 @@ and the list of what it refuses is the design:
   Reading the id off the fixture rather than typing it here means a dataset that renamed that
   customer moves this with it, and that no second customer can be reached by changing an
   argument, because there is no argument to change.
-* **One world.** ``fixture_state`` must say this database holds the demo fixture by name. A
-  ``SUR-1`` benchmark world records ``hollow-oak+sur1-<scenario>`` and is refused by the same
-  check, as is a database that has never been seeded at all. "Is this the disposable demo
-  database" is not something a process can infer from its own hostname, and guessing wrong
-  writes a stranger's chat id into somebody else's row.
+* **One world.** ``fixture_state`` must say this database holds the demo fixture by name, and
+  nothing else will do. A *variant* of the demo world -- a stated graph installed under its own
+  fixture name, which :func:`promisepatch.fixtures.reset.reset_demo_state` takes an argument
+  for -- is refused by the same check, as is a database that has never been seeded at all. "Is
+  this the disposable demo database" is not something a process can infer from its own
+  hostname, and guessing wrong writes a stranger's chat id into somebody else's row.
 * **One prior state.** The row must carry either the fixture's own committed destination or,
   already, exactly the destination being bound. A row holding some *other* address is a state
   this command did not create and cannot reason about -- perhaps a second operator bound a

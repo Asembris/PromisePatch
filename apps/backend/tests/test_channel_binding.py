@@ -361,12 +361,12 @@ async def test_a_destination_this_command_did_not_write_is_refused(
 async def test_a_world_that_is_not_the_demo_fixture_is_refused(
     app_conn: AsyncConnection, demo_state: Any
 ) -> None:
-    """A ``SUR-1`` world records ``hollow-oak+sur1-<scenario>`` and has no demo customer."""
+    """A stated variant installed under its own fixture name has no demo customer."""
     before = await _channels(app_conn)
     await app_conn.execute(
         update(FixtureState)
         .where(FixtureState.id == FIXTURE_STATE_ID)
-        .values(fixture_name="hollow-oak+sur1-C01")
+        .values(fixture_name="hollow-oak+variant-01")
     )
 
     with pytest.raises(WorldNotTheDemoError):
