@@ -49,12 +49,53 @@ a tuning of the rule, which is fixed in :mod:`scripts.sur1.predeclaration` and u
 
 UNIVERSE: Final = ("ord-a", "ord-b", "ord-c", "ord-d", "ord-e", "ord-f")
 
+EXTERNAL_UNIVERSE: Final = ("EXT-A", "EXT-B", "EXT-C", "EXT-D", "EXT-E", "EXT-F")
+"""The same six orders in the order system's spelling, which ``get_orders`` answers in.
+
+``amend_order`` and ``get_orders`` speak these; ``get_tasks`` and ``get_promise_graph`` speak
+:data:`UNIVERSE`. Nothing in the frozen prompt or the report schema says which one ``E4`` means,
+which is defect ``D3`` of ``docs/benchmarks/sur1-execution-revision.v4.md`` -- six baseline
+attempts of the fourth scored run died on ``E4 reported on 'EXT-A', which is not in the case
+universe``. Held here so a rehearsal can reproduce that exact spelling deliberately.
+"""
+
+ADVERSARIAL_SCENARIO_ID: Final = "SUR-1"
+"""The benchmark's own name, which is what arm A actually sent in the fourth scored run.
+
+Defect ``D2``: the frozen prompt's header names the benchmark and nothing tells arm A a scenario
+identifier, so ``SUR-1`` is the only string it could guess -- and ``_report_row`` believed it.
+"""
+
+HELD_TASK: Final = "task-ol-a"
+"""One ``SCHEDULED`` production task, held through the frozen surface's own ``hold_task``.
+
+The point of holding it is not the hold. ``hold_task`` is performed by
+:class:`~scripts.sur1.bindings.setup.KitchenWriter`, a *world facility*, whose governed
+``UPDATE`` on ``production_tasks`` is audited under ``Actor(SYSTEM, "sur1 world facility")``.
+That row, written **during** an attempt, is exactly the shape that defect ``D1`` read as a second
+durable worker and refused five attempts over. Driving it here is how a rehearsal proves the
+corrected executor rule lets it through while still being the rule that catches a real one.
+"""
+
 
 @dataclass(slots=True)
 class RehearsalModel:
     """A :class:`~scripts.sur1.arms.ModelClient` that replays a fixed plan and reaches nothing."""
 
     scenario_id: str = "DR01"
+    adversarial_identity: bool = False
+    """Whether to drive the three identity mistakes ``v4`` corrected, on purpose.
+
+    Off by default, so ``DR01`` means what it has always meant and the nine rehearsals already
+    recorded stay comparable with the next ordinary one. Turned on by
+    ``--adversarial-identity``, which is recorded in the capture's own ``command``, this plan
+    additionally holds a kitchen task through the world facility (``D1``) and hands over a report
+    naming the wrong scenario (``D2``) in the order system's vocabulary (``D3``).
+
+    It is a *worse* arm A, never a better one. Nothing here is tuned to make a correction look
+    right: the three values are the ones the fourth scored run actually recorded.
+    """
+
     calls: list[dict[str, Any]] = field(default_factory=list)
     step: int = 0
     version: int = 0
@@ -136,6 +177,11 @@ class RehearsalModel:
             {"name": "get_promise_graph", "arguments": {}},
             {"name": "get_stock", "arguments": {}},
             {"name": "get_tasks", "arguments": {}},
+            *(
+                ({"name": "hold_task", "arguments": {"task_id": HELD_TASK}},)
+                if self.adversarial_identity
+                else ()
+            ),
             {
                 "name": "send_customer_message",
                 "arguments": {"channel_address": CONSENT_CHANNEL, "text": ASK},
@@ -154,23 +200,43 @@ class RehearsalModel:
         )
 
     def _report(self) -> dict[str, Any]:
-        """The one write that ends the attempt, covering the case universe exactly once."""
+        """The one write that ends the attempt, covering the case universe exactly once.
+
+        Under :attr:`adversarial_identity` the same six promises are written in the order
+        system's spelling and the scenario is named ``SUR-1``. Both are wrong, both are what arm
+        A actually sent, and neither is repaired here: the whole point is that the *world*
+        records its own scenario id and translates ``EXT-A`` through the frozen fixture's
+        bijection, in :func:`scripts.sur1.bindings.world._report_row`.
+        """
+        universe = EXTERNAL_UNIVERSE if self.adversarial_identity else UNIVERSE
+        recovered = CONSENT_EXTERNAL_ID if self.adversarial_identity else CONSENT_ORDER
         return {
-            "scenario_id": self.scenario_id,
+            "scenario_id": (
+                ADVERSARIAL_SCENARIO_ID if self.adversarial_identity else self.scenario_id
+            ),
             "exception_recorded": True,
             "promises": [
                 {
                     "order": order,
-                    "outcome": "RECOVERED" if order == CONSENT_ORDER else "UNTOUCHED",
-                    "recovered_to_version": TO_VERSION if order == CONSENT_ORDER else None,
+                    "outcome": "RECOVERED" if order == recovered else "UNTOUCHED",
+                    "recovered_to_version": TO_VERSION if order == recovered else None,
                     "work_state": "UNKNOWN",
                     "claimed_stopped": False,
                     "reason": "rehearsal plan",
                 }
-                for order in UNIVERSE
+                for order in universe
             ],
             "acknowledged_stops": [],
         }
 
 
-__all__ = ["ASK", "CONSENT_CHANNEL", "CONSENT_EXTERNAL_ID", "TO_VERSION", "RehearsalModel"]
+__all__ = [
+    "ADVERSARIAL_SCENARIO_ID",
+    "ASK",
+    "CONSENT_CHANNEL",
+    "CONSENT_EXTERNAL_ID",
+    "EXTERNAL_UNIVERSE",
+    "HELD_TASK",
+    "TO_VERSION",
+    "RehearsalModel",
+]

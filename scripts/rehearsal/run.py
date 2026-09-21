@@ -211,7 +211,12 @@ class Bench:
         }
 
 
-def build(config: BindingConfig, *, now: datetime | None = None) -> Bench:
+def build(
+    config: BindingConfig,
+    *,
+    now: datetime | None = None,
+    adversarial_identity: bool = False,
+) -> Bench:
     """Assemble the rehearsal. Opens no client and reaches nothing.
 
     The anchor is resolved here, once, and captured in the world-program registry's closure, so
@@ -249,7 +254,7 @@ def build(config: BindingConfig, *, now: datetime | None = None) -> Bench:
         # correction replaced. See ADR-0020 and docs/sur1-hosted-worker.md.
         worker=HostedWorkerControl(database=database, compose=ComposeWorkerControl()),
     )
-    model = RehearsalModel(scenario_id=SCENARIO)
+    model = RehearsalModel(scenario_id=SCENARIO, adversarial_identity=adversarial_identity)
     promisepatch = PromisePatchArm(surface=surface)
     return Bench(
         config=config,
@@ -584,9 +589,10 @@ def rehearse(
     command: Sequence[str],
     root: Path = RUNS_ROOT,
     reset_at_exit: bool = True,
+    adversarial_identity: bool = False,
 ) -> dict[str, Any]:
     """The whole rehearsal, in the order the pipeline runs it."""
-    bench = build(config)
+    bench = build(config, adversarial_identity=adversarial_identity)
     report: dict[str, Any] = {
         "not_a_benchmark": NOT_A_BENCHMARK,
         "run_id": run_id,
@@ -659,6 +665,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--kind", default=KIND, choices=[KIND])
     parser.add_argument("--no-reset", action="store_true")
     parser.add_argument("--readiness-only", action="store_true")
+    parser.add_argument(
+        "--adversarial-identity",
+        action="store_true",
+        help=(
+            "Drive arm A with the three mistakes SUR-1 execution revision v4 corrected: a "
+            "kitchen hold through the world facility during the attempt, a report naming "
+            "SUR-1 as its scenario, and E4 promises in the order system's vocabulary."
+        ),
+    )
     arguments = parser.parse_args(argv)
 
     config = stack()
@@ -671,6 +686,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         config=config,
         command=["dress-rehearsal", *(argv or sys.argv[1:])],
         reset_at_exit=not arguments.no_reset,
+        adversarial_identity=arguments.adversarial_identity,
     )
     print(json.dumps({key: report[key] for key in ("run_id", "result")}, indent=2, sort_keys=True))
     return 0
