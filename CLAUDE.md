@@ -88,17 +88,23 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   `d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`, checked by
   `scripts/verify_effect_set_manifest.py`. Never edit a label.
 - **Both evaluation holdouts remain sealed.** Do not open one.
-- **`SUR-1` has been taken three times and none of the three is a result.** All three are
-  preserved byte-identical and pinned in two places; the correct response to a digest moving is to
-  restore the run, never to update the pin. The third, `20260920T1215Z-scored-v3`, is **invalid** —
+- **`SUR-1` has been taken four times and none of the four is a comparative result.** The first
+  three are preserved byte-identical and pinned in two places; the correct response to a digest
+  moving is to restore the run, never to update the pin. The third, `20260920T1215Z-scored-v3`, is **invalid** —
   five arm-correlated defects were proved in it afterwards. All five are now corrected and the
   preflight asks 28 questions rather than 18. The last of them — arm C's ablation reaching no
   evaluator, which made the ablated arm unmeasurable rather than unmeasured — is closed by
   [ADR-0020](docs/adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md): the product's
   own durable worker runs inside the harness process for **both** arms B and C, and the
-  containerised worker is down for the run. **A fourth run is still not taken and is not this
-  session's to take.** The scored preflight passes **28/28** against a Bedrock-configured local
-  stack at `DRIVER_VERSION` `1.4.2`. `DR01` has since **completed with all three arms whole** at
+  containerised worker is down for the run. The scored preflight passes **28/28** against a
+  Bedrock-configured local stack. **The fourth run, `20260921T0910Z-scored-v4`, has now been
+  taken** at `DRIVER_VERSION` `1.4.3` and is preserved exactly as it came out: 27 attempts, 0
+  retries, arm A unscored on all nine, arms B and C scored on eight of nine having called the
+  model zero times, and every safety counter `0`. **It says nothing comparative.** It is the
+  first run in which arm C's ablation reached the evaluator, and on `C06` the dropped check is
+  recorded changing a decision inside an attempt that failed closed. Three defects are recorded
+  unpatched. It is **not** pinned in `PUBLISHED_RUNS`, because that file is scope-frozen. See
+  [sur1-fourth-scored-run.md](docs/sur1-fourth-scored-run.md). `DR01` **completed with all three arms whole** at
   `DRIVER_VERSION` `1.4.3`, and proved what ADR-0020 was written for: arm B's revalidation check
   5 carries the evaluator's own name, arm C's carries `ABLATED_MARK` exactly, checks 1–4 and 6–10
   are identical, and one hosted worker executed every governed write with no foreign worker in
@@ -259,6 +265,7 @@ read the source document rather than a paraphrase of it.
 | SUR-1 second scored run (taken once, refused before any arm acted, zero spend) | [sur1-corrected-scored-run-refusal.md](docs/sur1-corrected-scored-run-refusal.md) |
 | SUR-1 execution revision `v3` (one database target, gated, unrun) | [sur1-execution-revision.v3.md](docs/benchmarks/sur1-execution-revision.v3.md) |
 | SUR-1 third scored run (taken once, **invalid**, preserved) | [sur1-v3-scored-run.md](docs/sur1-v3-scored-run.md), [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md) |
+| SUR-1 fourth scored run (taken once, comparatively empty, preserved) | [sur1-fourth-scored-run.md](docs/sur1-fourth-scored-run.md) |
 | SUR-1 parity correction (five defects closed, ablation reach open) | [sur1-parity-correction.md](docs/sur1-parity-correction.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md) |
