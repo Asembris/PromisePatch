@@ -427,6 +427,68 @@ row shape and are scored identically.
 > `implementation_sha` is unmoved, `REQUIRED_CHECKS` is still 28 and no check was weakened. No
 > scored run has been taken under `1.4.3`.
 
+> **Recorded later, beside this document and not into it — the three defects the fourth scored
+> run recorded unpatched.** `DRIVER_VERSION` `1.4.3` → **`1.5.0`**, by a session other than the
+> one that took `20260921T0910Z-scored-v4`. The run is
+> [`sur1-fourth-scored-run.md`](../sur1-fourth-scored-run.md); what was changed is
+> [`sur1-execution-revision.v4.md`](sur1-execution-revision.v4.md).
+>
+> **What moved, which arms it affects, and in which direction:**
+>
+> - **The executor evidence, and it is arm-blind.** `HostedWorkerControl.executed_only_by_the
+>   _hosted_worker` selected every `SYSTEM` actor in `audit_events` since the attempt began, and
+>   the harness's *own* world facility writes governed rows under `Actor(SYSTEM, "sur1 world
+>   facility")` — a stipulated kitchen hold and a stipulated stock movement are statements
+>   against governed tables. Five of `v4`'s attempts were therefore refused as executed by a
+>   second worker: `BASELINE` on `C01` and `C02`, and all three arms on `C06`. It now selects the
+>   four audit types the product writes when a **worker executes something durable** —
+>   `WORKFLOW_STEP_EXECUTED`, `WORKFLOW_STEP_FAILED`, `WORKFLOW_EFFECT_FAILED` and
+>   `REVALIDATION_CHECK` — and reads the executing worker out of each row's `provenance.worker`,
+>   which is the lease the work was done under. **Direction: from refusing five readable attempts
+>   to reading them.** It is not an allowlist and forgives no identity: what changed is which
+>   rows count as evidence of execution, and a competing worker that executes one step is caught
+>   by the same rule that lets the world facility through. A row naming a step and no executor is
+>   a refusal, not a pass. `C06` is the one scenario where this cuts both ways — it arms a stock
+>   movement for all three arms, so all three were refused for a row none of them wrote.
+> - **The baseline's `scenario_id`, and it is arm A only.** `_report_row` preferred the model's
+>   value and fell back to the world's only when the key was absent. Arm A is never told a
+>   scenario identifier, so its value is a guess; in `v4` it wrote `SUR-1`, the benchmark's own
+>   name, which the scorer's `_report_is_valid` compares against `C03` and calls `INVALID`. The
+>   world's own id is now recorded whatever the arm sends. **Direction: it can only make a
+>   baseline report placeable that would otherwise be `INVALID`, and it flatters arm A.** It is
+>   named for that reason. Arm A is shown nothing new — `scenario_id` is still a published field
+>   it is asked for, the frozen prompt is untouched, and no benchmark information is added to
+>   what it can read. Arms B and C are unaffected: their `E4` is projected by
+>   `predeclaration.worker_report`, which has always been handed the world's id.
+> - **The baseline's `promises[].order`, and it is arm A only.** `E4` recorded whatever the arm
+>   wrote; `E1` has always been canonicalised through the frozen fixture's bijection by
+>   `FixtureMap.order_for_external_id`. The world's surface speaks two names for one order —
+>   `get_orders` and `amend_order` answer in external ids, `get_tasks` and `get_promise_graph` in
+>   the case universe's — and nothing tells arm A which the report means, so six of `v4`'s
+>   baseline attempts could not be placed: *E4 reported on 'EXT-A', which is not in the case
+>   universe*. `promises[].order` is now translated through that same bijection and through
+>   nothing else. **Direction: it can only make a baseline report placeable, and it flatters arm
+>   A.** Only the fixture's own two spellings are accepted: no case folding, no prefix rule, no
+>   separator tolerance, no similarity. An id the fixture does not declare is left exactly as the
+>   arm wrote it and is refused by the placement rule, which is unchanged. A fixture whose two
+>   vocabularies overlapped would be refused rather than resolved; the frozen one does not.
+> - **Arms B and C called the model zero times in `v4`, and that is unchanged here.** It is the
+>   product's deterministic lexicon reading *didn't arrive* and *went off* without a semantic
+>   call, and the frozen contract requires one model *configuration* across the arms, not one
+>   invocation count. Nothing in this revision forces, encourages or enables a model call on any
+>   arm, and no arm's loop, budget or surface moved. It stays a disclosed limitation of any run
+>   taken under it.
+> - **`20260921T0910Z-scored-v4` is pinned in `preflight.PUBLISHED_RUNS`**, which the session
+>   that took it could not do. All four published runs recompute byte-identical and none is
+>   reinterpreted by anything above: the corrections apply to runs not yet driven.
+>
+> **Nothing this predeclaration declares moved**: the `asserts_change` rule, the `E4` projection
+> for arms B and C, the reading rules and `PREDECLARATION_SHA` are untouched, and so are the
+> manifest, the prompt, the scorer, the world programs, the ground truth, the budgets and the
+> retry policy. `implementation_sha` is unmoved, `REQUIRED_CHECKS` is still 28 and no check was
+> weakened. Nothing under `apps/` or `packages/` was edited. No scored run and no rehearsal has
+> been taken under `1.5.0`.
+
 ## What this predeclaration does not do
 
 - **It takes no run.** No arm has been driven under it, no message has been classified from any

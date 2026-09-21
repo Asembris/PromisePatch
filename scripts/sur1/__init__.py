@@ -14,22 +14,24 @@ production file changes for arm C.
 **The session that builds this is not the session that runs it.** Nothing here has been driven
 against a ``SUR-1`` scenario, no model has been reached, and no comparative number exists.
 
-Recorded later: three scored runs have since been taken and all three are preserved exactly as
+Recorded later: four scored runs have since been taken and all four are preserved exactly as
 they came out. ``20260919T2020Z-scored`` on 2026-09-19 is published inconclusive -- 24 of its 27
 attempts ended ``HARNESS_FAILURE``. ``20260920T1100Z-scored-corrected`` on 2026-09-20 failed in
 preparation on all 27 attempts, reached no model and spent nothing.
 ``20260920T1215Z-scored-v3`` on 2026-09-20 is published **invalid**: five arm-correlated defects
-were later proved in it, none of which any preflight question asked about. Nothing here
-supersedes any of them. See ``docs/sur1-first-scored-run-defect.md``,
-``docs/sur1-corrected-scored-run-refusal.md``, ``docs/sur1-v3-forensic-audit.md`` and
-``docs/sur1-parity-correction.md``.
+were later proved in it, none of which any preflight question asked about.
+``20260921T0910Z-scored-v4`` on 2026-09-21 is published comparatively empty: no baseline attempt
+was scored and the other two arms reached no model. Nothing here supersedes any of them. See
+``docs/sur1-first-scored-run-defect.md``, ``docs/sur1-corrected-scored-run-refusal.md``,
+``docs/sur1-v3-forensic-audit.md``, ``docs/sur1-parity-correction.md`` and
+``docs/sur1-fourth-scored-run.md``.
 """
 
 from __future__ import annotations
 
 from typing import Final
 
-DRIVER_VERSION: Final = "1.4.3"
+DRIVER_VERSION: Final = "1.5.0"
 """Bumped whenever the driving or the evidence collection changes. Recorded in every capture.
 
 ``1.0.0`` drove the first scored run, ``20260919T2020Z-scored``, which is preserved exactly as
@@ -126,4 +128,41 @@ The frozen manifest has always carried the block, so the scored path derives exa
 it derived at ``1.2.0``. No frozen benchmark element moved, no check was weakened,
 ``REQUIRED_CHECKS`` is still 28 and ``implementation_sha`` is unmoved. See
 ``docs/sur1-dr01-redrive.md`` §5.
+
+``1.4.3`` drove the fourth scored run, ``20260921T0910Z-scored-v4``, which is preserved exactly
+as it came out. It says nothing comparative: the baseline reached the model on all nine scenarios
+and none of its attempts could be scored, and the two PromisePatch arms were scored having called
+the model zero times. Arm C's ablation reached the evaluator for the first time in a scored run.
+
+``1.5.0`` removes the three defects that run recorded unpatched. Two of them are arm A's identity
+and one is arm-blind, and none of them is a metric, a scenario, a prompt or a reading rule.
+
+*Who executed this attempt* is read from the product's four durable-execution audit rows rather
+than from every ``SYSTEM`` actor in the ledger. The old rule read the harness's **own** world
+facility -- the governed writer behind a stipulated kitchen hold and a stipulated stock movement
+-- as a second durable worker, and refused five of ``v4``'s attempts for it. The new rule is not
+an allowlist and forgives no identity: what changed is which rows are evidence that a *worker
+executed a step*, and a competing worker that executes one is caught by exactly the same rule. A
+row that names a step and no executor is a refusal rather than a pass.
+
+*Which scenario a report is about* is the world's, not the model's. Arm A is never told a
+scenario identifier, so the value it sends is a guess; in ``v4`` it sent ``SUR-1``, the
+benchmark's name, which the scorer compares against ``C03`` and calls ``INVALID``. The attempt's
+own id is recorded whatever the arm sends. Arm A is shown nothing new and no scorer rule moves.
+
+*Which order a report names* is translated through the frozen fixture's own bijection, the one
+``E1`` has always used -- ``EXT-A`` is ``ord-a`` -- and through nothing else. Six of ``v4``'s
+baseline attempts could not be placed because the order system's surface answers in external ids
+while the case universe is spelled in canonical ones, and nothing told arm A which the report
+meant. An id the fixture does not declare is left exactly as the arm wrote it and is refused by
+the unchanged placement rule; a fixture whose two vocabularies overlap is refused rather than
+resolved.
+
+``20260921T0910Z-scored-v4`` is additionally pinned in ``preflight.PUBLISHED_RUNS``, which the
+session that took it could not do. Nothing about any published run is reinterpreted by any of
+this: all four stay exactly as they were taken, and the corrections apply to runs not yet
+driven. No frozen benchmark element moved -- not the manifest, the prompt, the scorer, the
+ground truth, the budgets, the retry rules or a world program -- no check was weakened,
+``REQUIRED_CHECKS`` is still 28 and ``implementation_sha`` is unmoved. No run has been taken
+under it. See ``docs/benchmarks/sur1-execution-revision.v4.md``.
 """

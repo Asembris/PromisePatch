@@ -441,9 +441,7 @@ def test_every_watched_event_carries_the_executing_worker_in_its_provenance() ->
             provenance = keywords.get("provenance")
             if named is None or provenance is None:
                 continue
-            mentions = {
-                node.id for node in ast.walk(named) if isinstance(node, ast.Name)
-            } & events
+            mentions = {node.id for node in ast.walk(named) if isinstance(node, ast.Name)} & events
             if not mentions:
                 continue
             keys = {
@@ -747,15 +745,15 @@ def test_the_required_checks_name_the_three_questions_the_hosted_topology_added(
 
 
 def test_the_driver_version_names_the_hosted_topology() -> None:
-    """A topology change that did not move the recorded driver version would be undisclosed.
+    """A change to the evidence collection that did not move the version would be undisclosed.
 
-    ``1.4.3`` rather than ``1.4.0``: the topology was right, the ordering around it was not, the
-    fingerprint the lifecycle takes of an installed world named a column ``commitment_lines``
-    does not have, and the rehearsal document shaped no report for the one arm that is handed a
-    tool surface. All three corrections were found by driving the thing, and all three are
-    disclosed by the recorded version the same way ``1.1.1`` was. See
-    ``docs/sur1-dr01-hosted-worker-rehearsal.md`` and ``docs/sur1-dr01-redrive.md``.
+    ``1.4.x`` was the hosted topology and the three defects driving it found. ``1.5.0`` is the
+    three defects the fourth scored run recorded unpatched, one of which is this module's: the
+    executor evidence read every ``SYSTEM`` actor and therefore read the harness's own world
+    facility as a competing worker. Every one of them is disclosed by the recorded version the
+    same way ``1.1.1`` was. See ``docs/sur1-fourth-scored-run.md`` and
+    ``docs/benchmarks/sur1-execution-revision.v4.md``.
     """
     from scripts.sur1 import DRIVER_VERSION
 
-    assert DRIVER_VERSION == "1.4.3"
+    assert DRIVER_VERSION == "1.5.0"
