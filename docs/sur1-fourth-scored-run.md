@@ -212,3 +212,29 @@ and no artefact was edited.
   `sur1-phase3-closeout.md` §8 and is not done by the session that took the run.
 - **GitHub CI is the broad regression authority.** It was green at `fa6071f` on every job except
   the designed `effect sets (expected red until 16/16)`, and this work changes no code.
+
+## 7. Recorded later: the three defects of §3 are closed, and this run is not
+
+§3 named three defects and said none was patched. All three were corrected in a later session,
+under execution revision `v4` at `DRIVER_VERSION` `1.5.0`, and §6's owed pin was paid.
+
+- **§3.1** — the executor evidence reads the product's own durable-execution audit rows
+  (`WORKFLOW_STEP_EXECUTED`, `WORKFLOW_STEP_FAILED`, `WORKFLOW_EFFECT_FAILED`,
+  `REVALIDATION_CHECK`) and the worker each names in `provenance.worker`, rather than every
+  `SYSTEM` actor in the ledger. `sur1 world facility` is no longer read as a second durable
+  worker, and a competing worker that executes a step still fails an attempt closed. Arm-blind.
+- **§3.2** — the baseline's `promises[].order` is translated through the frozen fixture's own
+  bijection, the one `E1` has always used, and an id the fixture does not declare is still
+  refused by the unchanged placement rule. Arm A only, and it flatters arm A.
+- A third defect this run masked: the baseline's `scenario_id` was the model's, and arm A wrote
+  `SUR-1`. It is now the world's. Arm A only, and it flatters arm A.
+- **§3.3 is unchanged and is not a defect.** Arms B and C reaching no model is the product's
+  deterministic lexicon, and nothing was done to force a model call.
+- **§6's `PUBLISHED_RUNS` item is paid.** This run is pinned at 57 files and
+  `cb7197a4eceed73a…`, in `scripts/sur1/preflight.py` and in `scripts/tests/
+  test_sur1_database_target.py`.
+
+**This run is unchanged by that work and is not reinterpreted by it.** It stands exactly as §1 to
+§6 describe: taken once, preserved byte-identical, and saying nothing comparative. The corrections
+apply to runs not yet driven, and no run or rehearsal has been taken under `1.5.0`. See
+[`sur1-execution-revision.v4.md`](benchmarks/sur1-execution-revision.v4.md).
