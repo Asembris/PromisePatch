@@ -102,9 +102,21 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   retries, arm A unscored on all nine, arms B and C scored on eight of nine having called the
   model zero times, and every safety counter `0`. **It says nothing comparative.** It is the
   first run in which arm C's ablation reached the evaluator, and on `C06` the dropped check is
-  recorded changing a decision inside an attempt that failed closed. Three defects are recorded
-  unpatched. It is **not** pinned in `PUBLISHED_RUNS`, because that file is scope-frozen. See
-  [sur1-fourth-scored-run.md](docs/sur1-fourth-scored-run.md). `DR01` **completed with all three arms whole** at
+  recorded changing a decision inside an attempt that failed closed. See
+  [sur1-fourth-scored-run.md](docs/sur1-fourth-scored-run.md). **All three defects that run
+  recorded unpatched are now closed**, harness-only, at `DRIVER_VERSION` `1.5.0`: the executor
+  evidence reads the product's four durable-execution audit rows instead of every `SYSTEM` actor,
+  so the harness's own world facility is no longer a competing worker (arm-blind); the baseline's
+  `scenario_id` is the world's and not the model's; and the baseline's `promises[].order` is
+  translated through the frozen fixture's own bijection, the one `E1` has always used. The last
+  two affect arm A only and **both flatter it**. Arms B and C reaching no model is unchanged and
+  stays a disclosed limitation. `20260921T0910Z-scored-v4` is now pinned in `PUBLISHED_RUNS` and
+  all four runs recompute byte-identical. `implementation_sha`, `PREDECLARATION_SHA`,
+  `SCORER_VERSION`, the manifest, the prompt, the world programs, the ground truth, the budgets
+  and the retry policy are unmoved, and `REQUIRED_CHECKS` is still 28. **No run and no rehearsal
+  has been taken under `1.5.0`.** See
+  [sur1-execution-revision.v4.md](docs/benchmarks/sur1-execution-revision.v4.md). `DR01`
+  **completed with all three arms whole** at
   `DRIVER_VERSION` `1.4.3`, and proved what ADR-0020 was written for: arm B's revalidation check
   5 carries the evaluator's own name, arm C's carries `ABLATED_MARK` exactly, checks 1–4 and 6–10
   are identical, and one hosted worker executed every governed write with no foreign worker in
@@ -266,6 +278,7 @@ read the source document rather than a paraphrase of it.
 | SUR-1 execution revision `v3` (one database target, gated, unrun) | [sur1-execution-revision.v3.md](docs/benchmarks/sur1-execution-revision.v3.md) |
 | SUR-1 third scored run (taken once, **invalid**, preserved) | [sur1-v3-scored-run.md](docs/sur1-v3-scored-run.md), [sur1-v3-forensic-audit.md](docs/sur1-v3-forensic-audit.md) |
 | SUR-1 fourth scored run (taken once, comparatively empty, preserved) | [sur1-fourth-scored-run.md](docs/sur1-fourth-scored-run.md) |
+| SUR-1 execution revision `v4` (three defects closed, harness-only, unrun) | [sur1-execution-revision.v4.md](docs/benchmarks/sur1-execution-revision.v4.md) |
 | SUR-1 parity correction (five defects closed, ablation reach open) | [sur1-parity-correction.md](docs/sur1-parity-correction.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md) |
