@@ -209,7 +209,9 @@ the outbox's three words, every refusal, the byte-identical retry, and the crede
 - `sendMessage` has never been called live, and no message has reached a second device;
 - no deployed process has ever had `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`; the two reads above
   ran from a developer machine against a stack whose provider is `fake`, which is why the
-  preflight prints the configured provider beside its answer;
+  preflight prints the configured provider beside its answer. An attempt to change that on
+  2026-09-21 got as far as deploying the code and no further: see
+  [deployed-customer-channel.md](deployed-customer-channel.md);
 - the deployed `PP_CUSTOMER_LINK_BASE_URL` has not been checked against what a phone can open,
   and a loopback address is not one;
 - Telegram's real error descriptions are observed for `chat not found` and nothing else; every
@@ -337,6 +339,24 @@ requests marked sent, tracks waiting, deadlines running, and nobody ever asked.
 
 The customer must press Start on the bot once first. Bots cannot initiate conversations, which
 ADR-0006 already records as a rehearsed setup step.
+
+### On a deployment, that paragraph was not true
+
+It describes the local stack, whose `docker/env/api.env` is an ordinary file somebody edits. A
+deployed host's env files are **provisioning artefacts**: cloud-init writes them on an instance's
+first boot and not again, and `converge.sh` -- the script a release re-reads at every boot --
+rewrote no `env/*.env` file at all. So there was no way to give the deployed worker either
+variable short of replacing the instance, which is the one thing a deployment holding real cases
+must not need in order to change a setting. That was found on 2026-09-21, against the running
+deployment, and is recorded with its four closed doors in
+[deployed-customer-channel.md](deployed-customer-channel.md) section 3.
+
+The correction puts the customer transport in the layer a release owns: `converge.sh` writes
+`env/channel.env` from SSM at every boot, `api` and `worker` load it beside `env/api.env`, and
+`deploy.sh channel` selects the provider and stores the credential. It is **committed and has
+never been applied** -- to a deployment, a host or a parameter -- because carrying it to the
+running stack needs a destructive confirmation and then a host replacement. Section 6 of that
+document says what a live turn-on would take.
 
 ## Where each claim is proved
 

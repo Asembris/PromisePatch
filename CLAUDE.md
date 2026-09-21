@@ -157,7 +157,13 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   and `getChat` returned the requested private chat. **That is reachability, not delivery** — no
   `sendMessage` has ever been called from this repository, no message has reached a second
   device, and no deployed process has ever had `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`. The
-  deployed second-device proof is still G8's.
+  deployed second-device proof is still G8's. **On 2026-09-21 the deployment was released to
+  `aeb46d2bdb7f` and the turn-on was refused**: the four customer-channel settings can only reach
+  a deployed process through `env/api.env`, which cloud-init writes once per instance, so
+  switching the transport on needs a destructive confirmation and then a host replacement. The
+  config-path correction that moves those settings into the layer a release owns is **committed
+  and deliberately unapplied**; no parameter it names exists. See
+  [deployed-customer-channel.md](docs/deployed-customer-channel.md).
   **Telegram inbound stays unbuilt and deliberately so**: a second route for the word `YES`
   would be a second consent parser. The Bot API offers no idempotency key, so a retry in the
   uncertain window is a real duplicate *message* and never a duplicate effect; that is the
@@ -315,6 +321,7 @@ read the source document rather than a paraphrase of it.
 | SUR-1 parity correction (five defects closed, ablation reach open) | [sur1-parity-correction.md](docs/sur1-parity-correction.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md), [customer-message-transport.md](docs/customer-message-transport.md) |
+| Deployed customer channel (released; turn-on blocked, nothing sent) | [deployed-customer-channel.md](docs/deployed-customer-channel.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |
