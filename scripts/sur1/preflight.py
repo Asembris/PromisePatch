@@ -159,19 +159,24 @@ PUBLISHED_RUNS: Final[dict[str, tuple[int, str]]] = {
         57,
         "cb7197a4eceed73a01dad29d42f562df9e4ffaf95bc2ce62ea0f995980a4c90f",
     ),
+    "20260921T1420Z-scored-v5": (
+        59,
+        "5808acbe07321909bf5ccfe9e85c99ac4c522fb1a16a5e7cd92197143ddb7cbb",
+    ),
 }
 """Every scored run that has been taken, by file count and digest, so an edit is detectable.
 
-A scored run may be taken once and its headline is whatever it says. All four of these are
-published inconclusive, invalid or comparatively empty, and **all four stay exactly as they
-were taken**: the correct response to one of these digests moving is to restore the run, never
-to update the constant.
+A scored run may be taken once and its headline is whatever it says. All five of these are
+published inconclusive, invalid, comparatively empty or comparative on outcomes alone, and
+**all five stay exactly as they were taken**: the correct response to one of these digests
+moving is to restore the run, never to update the constant.
 
-``20260921T0910Z-scored-v4`` is pinned here for the first time. The session that took it could
-not pin it -- doing so edits this file, which is scope-frozen, and the run's own record says so
-in its section 6 -- so it is pinned by the correction session that follows, which is what
-``sur1-phase3-closeout.md`` section 8 reserves this file for. Pinning it changes nothing about
-what the run says: it says nothing comparative, and it still does.
+``20260921T0910Z-scored-v4`` was pinned here by the correction session that followed it, and
+``20260921T1420Z-scored-v5`` is pinned here the same way and for the same reason. Neither
+session that took a run could pin it -- doing so edits this file, which is scope-frozen, and
+each run's own record says so -- so the pin is added by the session that follows, which is what
+``sur1-phase3-closeout.md`` section 8 reserves this file for. Pinning changes nothing about
+what either run says: neither is a model comparison, and neither becomes one here.
 
 Hashed the way the freeze hashes a module set: the relative path, a NUL, the bytes with
 CRLF normalised to LF, another NUL, over the paths in sorted order. That is the algorithm

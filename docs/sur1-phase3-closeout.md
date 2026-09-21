@@ -399,6 +399,58 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > `C01`-`C09` world program and writes outside `docs/benchmarks/runs/`. The first scored run
 > under `1.5.0` belongs to a different session, and none has been taken.
 
+> **Recorded later, beside this block and not into it — the fifth scored run's pin.** The four
+> requirements were exercised a tenth time, by a session that **scored nothing and rehearsed
+> nothing**. `20260921T1420Z-scored-v5` was taken, scored and committed at `9595604` before this
+> session began; it is read here and not altered. **This is not a defect fix**, and requirement 1
+> does not apply to it: nothing behaved wrongly. The only harness change is **immutable
+> historical preservation metadata** — `20260921T1420Z-scored-v5` added to
+> `preflight.PUBLISHED_RUNS` at 59 files and digest
+> `5808acbe07321909bf5ccfe9e85c99ac4c522fb1a16a5e7cd92197143ddb7cbb`, independently recomputed
+> here with the preflight's own `_run_digest`, together with the two copies of that pin that live
+> in `scripts/tests/` and are outside every scope-freeze path. This is exactly the act the fifth
+> run's own record §8 says belongs to a later session, for the same reason the fourth run's did:
+> pinning edits a scope-frozen file, and the session that takes a run does not change the
+> harness. **All five published scored runs are now pinned and all five recompute
+> byte-identical**; the four earlier digests are unmoved and were not recomputed into the
+> constant but checked against it.
+>
+> **`SUR-1` scored harness semantics are unchanged, and so is `DRIVER_VERSION` `1.5.0`.** No
+> reading rule, no evidence projection, no arm, no budget, no retry rule and no gate moved.
+> `implementation_sha` is unmoved at `c93b38a7…e545f7` — `preflight.py` is not one of the ten
+> `IMPLEMENTATION_MODULES`, and the value was recomputed to confirm it — and neither did
+> `PREDECLARATION_SHA`, `SCORER_VERSION`, the manifest, the baseline prompt, the scorer, a world
+> program, the ground truth or a scope answer. `REQUIRED_CHECKS` is still 28 and no check was
+> weakened. Nothing under `apps/` or `packages/` was edited, and no run artefact was touched.
+> Requirement 2 is served by this note rather than beside the predeclaration: no run is taken
+> under this change and no arm is driven differently by it.
+>
+> **Two identities are both called `implementation_sha` and are not the same thing**, which is
+> worth saying in prose because both appear in the fifth run's records and neither schema
+> changes here. The `implementation_sha` field in `run.json` — for `v5`,
+> `b1d0b067e23c5c560a4284c0731b774da835ad02` — is the **run's git HEAD commit**, set from
+> `implementation()` in `driver.py`; it is
+> commit `b1d0b06`, the re-freeze of the rehearsal tree that preceded the run. The
+> `implementation_sha` named in the revision records and in the notes above —
+> `c93b38a71296ba13744a7f0738394feaf3f2ae09ca61a939afa1ca3269e545f7` — is a **different
+> identity**: the SHA-256 that `bindings.declaration.implementation_sha()` computes over the ten
+> `IMPLEMENTATION_MODULES`, carried in the scored authorisation as `world_program_sha`. A git
+> commit moving does not move the module digest, and this session moved neither.
+>
+> The scope-freeze trees at this change:
+>
+> | Path | Tree / blob |
+> |---|---|
+> | `scripts/sur1/` | `2800feb3136b045871c5b9c384df4ff0b4fecb5a` — **moved** by this work, from `d090b762c757d29234fa4b5250a72aff764dca70`, and solely by adding the pin |
+> | `scripts/rehearsal/` | `da0fb4a634048d183f17b1a1c2d0f031347a3d93` — **unchanged** by this work |
+> | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
+> | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
+> | `docs/benchmarks/` | `88b1dc90b9bdb038279b1cc6a60bf4e1d87540ce` — **unchanged** by this work; it moved at `9595604` for the fifth run's own capture, which this session read and did not edit |
+>
+> Requirement 4 holds in its strongest form: **no scored run was taken and no rehearsal was
+> driven.** No model was called, no holdout was opened, no `C01`-`C09` world program was
+> consumed and nothing was spent.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an

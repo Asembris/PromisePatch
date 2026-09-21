@@ -122,10 +122,12 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   `SAFE_AND_INCOMPLETE` with every safety counter `0` — **having called the model zero times**.
   Arm C's ablation reached the evaluator on six attempts and on `C06` is recorded changing a
   decision, without changing the verdict or raising a counter. **It is not a model comparison**,
-  and arm C is identical to arm B on all nine scenarios. It is **not yet pinned in
-  `PUBLISHED_RUNS`** — pinning moves a scope-freeze tree and belongs to a session that did not
-  score. See [sur1-fifth-scored-run.md](docs/sur1-fifth-scored-run.md). One focused rehearsal
-  preceded it: `dr01-v150-focused` drove all three
+  and arm C is identical to arm B on all nine scenarios. It is **now pinned in
+  `PUBLISHED_RUNS`**, by a later session that scored nothing; **all five published runs are
+  pinned and recompute byte-identical**, and the `scripts/sur1/` scope-freeze tree moved solely
+  for that pin. See [sur1-fifth-scored-run.md](docs/sur1-fifth-scored-run.md) and the fifth
+  later-truth note in [sur1-phase3-closeout.md](docs/sur1-phase3-closeout.md) section 8. One
+  focused rehearsal preceded it: `dr01-v150-focused` drove all three
   corrections live at `DR01`, reaching no model and minting no authorisation, and each behaved as
   the revision claims. See
   [sur1-execution-revision.v4.md](docs/benchmarks/sur1-execution-revision.v4.md) and

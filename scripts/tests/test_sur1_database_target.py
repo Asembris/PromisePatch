@@ -402,8 +402,12 @@ PRESERVED_RUNS = {
         57,
         "cb7197a4eceed73a01dad29d42f562df9e4ffaf95bc2ce62ea0f995980a4c90f",
     ),
+    "20260921T1420Z-scored-v5": (
+        59,
+        "5808acbe07321909bf5ccfe9e85c99ac4c522fb1a16a5e7cd92197143ddb7cbb",
+    ),
 }
-"""All four scored runs, hashed the way the freeze hashes a module set: path, then bytes, sorted.
+"""All five scored runs, hashed the way the freeze hashes a module set: path, then bytes, sorted.
 
 If one of these fails, something edited a published run. The right response is to restore it and
 never to update the constant. The third is where the pin stopped being about corrections and
@@ -411,7 +415,9 @@ started being about a run that was **invalid**: the session that proves a run me
 exactly the session most likely to tidy it away. It is preserved because a benchmark that
 deletes its failures publishes a number about a history that no longer exists. The fourth is
 pinned here for the first time, by the session that corrected the harness rather than by the
-session that took it -- which could not, because pinning edits a scope-frozen file.
+session that took it -- which could not, because pinning edits a scope-frozen file. The fifth is
+pinned the same way and for the same reason, by a session that scored nothing: it is comparative
+on outcomes and says nothing about models, and pinning it does not make it say more.
 
 Restated here rather than imported from :data:`scripts.sur1.preflight.PUBLISHED_RUNS`, which is
 where the run's own preflight asks the same question before spending again. Two independent

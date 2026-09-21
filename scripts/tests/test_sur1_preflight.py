@@ -814,7 +814,7 @@ def test_a_world_whose_channels_are_not_the_fixture_s_refuses_a_scored_run(
 
 
 def test_every_published_scored_run_is_checked_before_another_is_bought() -> None:
-    """Four runs are taken and pinned; the correct response to a move is to restore the run."""
+    """Five runs are taken and pinned; the correct response to a move is to restore the run."""
     from scripts.sur1.preflight import PUBLISHED_RUNS, historical_runs
 
     assert set(PUBLISHED_RUNS) == {
@@ -822,6 +822,7 @@ def test_every_published_scored_run_is_checked_before_another_is_bought() -> Non
         "20260920T1100Z-scored-corrected",
         "20260920T1215Z-scored-v3",
         "20260921T0910Z-scored-v4",
+        "20260921T1420Z-scored-v5",
     }
     assert historical_runs().passed
 
