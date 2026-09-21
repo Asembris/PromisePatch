@@ -328,6 +328,36 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > Requirement 4 holds: no scored run was taken. `DR01` is a rehearsal, not a run, and spends
 > nothing.
 
+> **Recorded later, beside this block and not into it — the three defects the fourth scored run
+> recorded unpatched.** The four requirements were exercised an eighth time, by a session other
+> than the one that took `20260921T0910Z-scored-v4`. The named defects, each with a reproduction,
+> are in [`sur1-execution-revision.v4.md`](benchmarks/sur1-execution-revision.v4.md) §1: the
+> executor evidence read every `SYSTEM` actor and therefore read the harness's **own** world
+> facility as a competing worker, which refused five attempts; the baseline's `scenario_id` was
+> taken from the model, which is never told one, and arm A wrote `SUR-1`; and the baseline's
+> `E4` reported orders in the order system's vocabulary while the case universe is spelled in
+> the canonical one, which refused six more. The disclosure naming which arms each correction
+> affects and in which direction — the first arm-blind, the other two arm A only and both
+> flattering it — is beside the predeclaration. Under it `DRIVER_VERSION` is `1.5.0` and
+> **`implementation_sha` did not move** — no file in `IMPLEMENTATION_MODULES` was touched — and
+> neither did `PREDECLARATION_SHA`, `SCORER_VERSION`, the manifest, the prompt, a world program
+> or a scope answer. `REQUIRED_CHECKS` is still 28 and no check was weakened. Nothing under
+> `apps/` or `packages/` was edited. `20260921T0910Z-scored-v4` is additionally pinned in
+> `preflight.PUBLISHED_RUNS`, which is what the run's own record §6 says the session that took
+> it could not do; all four published runs recompute byte-identical. The scope-freeze trees at
+> this change are:
+>
+> | Path | Tree / blob |
+> |---|---|
+> | `scripts/sur1/` | `d090b762c757d29234fa4b5250a72aff764dca70` |
+> | `scripts/rehearsal/` | `53bd10b8d482d6465b8e64dd71b2eec89e448702` — **unchanged** by this work |
+> | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
+> | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
+> | `docs/benchmarks/` | `3d8b0916e06cb27db5d03c73cccc004534aa59a9` — moved by this change's own revision record and disclosure, and by the fourth run's preserved capture; `PREDECLARATION_SHA` hashes the rules in code and is unmoved |
+>
+> Requirement 4 holds and is load-bearing: this correction changes what arm A's evidence is read
+> as, and the session that made it takes no run and drove no rehearsal.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an
