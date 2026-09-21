@@ -358,6 +358,47 @@ scored run, and `DRIVER_VERSION` is `1.0.0`.
 > Requirement 4 holds and is load-bearing: this correction changes what arm A's evidence is read
 > as, and the session that made it takes no run and drove no rehearsal.
 
+> **Recorded later, beside this block and not into it — the rehearsal that proved the `v4`
+> corrections.** The four requirements were exercised a ninth time, by the session that drove
+> `dr01-v150-focused` against the live local stack. **This one is not a defect fix**, and is
+> recorded because it moved a scope-freeze tree rather than because it repaired anything: `v4`
+> closed its three defects *unrun*, as requirement 4 obliges, so the corrections had never
+> executed against a running system. What was added is **rehearsal instrumentation** — an opt-in
+> `--adversarial-identity` mode on the rehearsal double that makes arm A reproduce the three
+> values the fourth scored run actually recorded, and repairs none of them. It is **off by
+> default**, so `DR01` still means what it meant. What was driven, and what each correction did,
+> are in [`sur1-v150-focused-rehearsal.md`](sur1-v150-focused-rehearsal.md).
+>
+> **`SUR-1` scored harness semantics are unchanged, and so is `DRIVER_VERSION` `1.5.0`.** No
+> reading rule, no evidence projection, no arm, no budget and no gate moved. `implementation_sha`
+> is unmoved at `c93b38a7…e545f7` — no file in `IMPLEMENTATION_MODULES` was touched — and
+> neither did `PREDECLARATION_SHA`, `SCORER_VERSION`, the manifest, the prompt, a world program
+> or a scope answer. `REQUIRED_CHECKS` is still 28 and no check was weakened. Nothing under
+> `apps/` or `packages/` was edited. All four published scored runs recompute byte-identical.
+>
+> **The scored path does not reach what moved.** Nothing under `scripts/sur1/` imports
+> `scripts.rehearsal` — the single occurrence in `adapters.py` is a docstring reference. One
+> frozen-path script does, `check_sur1_realisation.py`, and it imports exactly one name,
+> `scripts.rehearsal.run.stack`, the local-stack address reader; this change does not touch
+> `stack`, whose bytes are identical either side of it. The four edited hunks are confined to
+> `Bench`, `build`, `rehearse` and `main`.
+>
+> The scope-freeze trees at this change, computed at `308676d`:
+>
+> | Path | Tree / blob |
+> |---|---|
+> | `scripts/sur1/` | `d090b762c757d29234fa4b5250a72aff764dca70` — **unchanged** by this work |
+> | `scripts/rehearsal/` | `da0fb4a634048d183f17b1a1c2d0f031347a3d93` — **moved** by this work, from `53bd10b8d482d6465b8e64dd71b2eec89e448702` |
+> | `scripts/score_safe_useful_recovery.py` | `ace137fa44ad383a969b6ca9b449e84af3f560b6` — **unchanged since the closeout**; the metric has never moved |
+> | `scripts/check_sur1_realisation.py` | `bf27a5b28ca5436dd607ab399b5f1f5515088d86` — **unchanged** by this work |
+> | `docs/benchmarks/` | `3d8b0916e06cb27db5d03c73cccc004534aa59a9` — **unchanged** by this work; the rehearsal record is in `docs/`, not beneath it |
+>
+> Requirement 4 holds, and holds in the form that matters: **no scored run was taken.** This
+> session did drive a rehearsal with the machinery it changed, which is what rehearsal machinery
+> is for and what `DR01` exists to be — it reaches no model, spends nothing, consumes no
+> `C01`-`C09` world program and writes outside `docs/benchmarks/runs/`. The first scored run
+> under `1.5.0` belongs to a different session, and none has been taken.
+
 **What a change under those paths now requires, before the first scored run:**
 
 1. **A concrete, named defect** — an observed wrong behaviour with a reproduction, not an
