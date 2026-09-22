@@ -271,6 +271,7 @@ layers = [
     "promisepatch.mcp",
     "promisepatch.runtime_identity",
     "promisepatch.integrations",
+    "promisepatch.demo_restore",
     "promisepatch.provisioning",
     "promisepatch.domain",
     "promisepatch.semantic",
