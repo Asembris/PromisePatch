@@ -1245,3 +1245,37 @@ executed the recovery that decision authorised, pr-b settled, and the case left 
 loop from a spoken physical exception, through a worker's plan confirmation, to a real customer's
 web decision, through ten revalidation checks, to an amendment on the external order system, has
 now run once end to end against a real phone and a real deployment.
+
+## 12. The two defects that loop exposed, closed and deployed
+
+Date: 2026-09-22, after section 11 and in a separate session. Recorded here as later truth;
+sections 3 and 6 through 11 stand exactly as written.
+
+The loop above ran against a message that told the customer to do something impossible, and a
+system that read their Telegram chat id out on five surfaces. Both are now closed in the
+deployed build, at `4cfb74de7cc2`, with smoke `12/12` and every count in section 11.5 unchanged.
+
+- **Section 10.7's measurement became a product change.** The `YES` that reached nothing did so
+  because `CONSENT_INSTRUCTION` invited it. Per
+  [ADR-0021](adr/0021-a-customer-answers-on-the-web-and-their-address-stays-in-the-database.md)
+  the message now names the signed link, which is the only door that opens. Telegram inbound is
+  still unbuilt, and this makes it less likely to be wanted rather than more.
+- **Sections 10.8 and 11.7 understated the disclosure.** They named the worker log and
+  `pp case-status`. An audit found three more, two of them public: the `GET /api/cases/{id}`
+  response and the deployed SPA's evidence drawer both rendered `provider_ref` verbatim, so
+  anyone holding a case id could read a real customer's Telegram identifier off
+  `https://184.194.40.87.sslip.io`. All five are masked at the boundary; every durable row still
+  holds the address whole.
+- **Section 8.7's remaining limitation is closed.** The host's `converge.sh` is now the committed
+  one, installed through `ssm:StartSession` without replacing the host, reseeding anything,
+  touching IAM or passing a secret through an operator's shell. The release's own reboot
+  exercised it: `env/channel.env` was regenerated from SSM by the instance role fourteen seconds
+  after boot, byte-identical to the hand-written file it replaced. A rotated bot token would now
+  be picked up at the next boot.
+
+Two limitations from section 11.7 are **not** closed and are restated rather than quietly
+dropped: no refusal path has been exercised live, and CloudWatch still holds the log lines
+written before the redaction — redacting an emitter does not rewrite history.
+
+The full record, including why `deploy.sh stack` refused this release and what carried it
+instead, is in [`customer-disclosure-hardening.md`](customer-disclosure-hardening.md).

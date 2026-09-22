@@ -56,6 +56,13 @@ These are load-bearing. Never weaken one to make something work; amend the ADR f
 - **Frozen and historical evidence is never silently rewritten.** Manifests, published run
   captures, measurements and closeout documents are read-only history. A later truth is recorded
   beside them, never edited into them.
+- **A customer's channel address is kept where it is used and masked where it is read out.** The
+  outbox row, the approval request, the decision row and the audit ledger hold it whole, because
+  addressing a message, comparing a reply's sender to the channel a request was sent to (§14.3
+  check 8) and saying afterwards what those values were all need it. A log, a terminal, an HTTP
+  response and a rendered page get the channel kind and nothing else. Masked, never hashed: a
+  ten-digit chat id is a space a GPU walks in seconds, so a digest would publish it while looking
+  careful. See ADR-0021.
 
 ## Architecture
 
@@ -78,6 +85,14 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
+  **The deployed image is `4cfb74de7cc2`**, released 2026-09-22 with smoke `12/12`, the host
+  rebooted and never replaced. That release could not go through `deploy.sh stack`: the deployed
+  stack's template predates the channel block, so submitting it reports `Replacement: Conditional`
+  on `Host` and `ElasticIpAssociation` and the guard refuses — correctly. It was carried by a
+  parameter-only change set against the *previously deployed* template, authorised explicitly and
+  gated on an empty resource change list. **That is a documented one-off, not a release path**, and
+  [non-destructive-release.md](docs/non-destructive-release.md) §10.1's gap is unchanged: the
+  stack's recorded template can only be moved by replacing the host.
 - **The effect-set benchmark headline is `11/16` and is immutable.** The denominator is
   permanently sixteen; a repaired score never replaces it, and `16/16` is a separate release
   condition published beside it. Failing scenarios stay committed failing.
@@ -193,6 +208,16 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   decision and reply rows carry it as `sender_identity` — which widens the known logging defect
   and is recorded, not fixed. See
   [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 11.
+  **The message no longer tells the customer to reply, and their chat id no longer leaves the
+  database.** ADR-0021 amends §13.6's frozen literal: the instruction names the signed link,
+  because the link is the only door that opens. The chat id was reaching five read surfaces, two
+  of them public — the `GET /api/cases/{id}` response and the deployed SPA's evidence drawer both
+  rendered `provider_ref` verbatim — and all five are masked at the boundary. **The host's
+  `converge.sh` is no longer stale**: the committed script is installed, and the release's own
+  reboot proved it regenerates `env/channel.env` from SSM under the instance role, byte-identical
+  to the hand-written file. Two limitations stand: no refusal path has been exercised live, and
+  CloudWatch still holds the lines written before the redaction. See
+  [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md).
   **Telegram inbound stays unbuilt and deliberately so**: a second route for the word `YES`
   would be a second consent parser. That is now measured rather than asserted — after the
   delivery above, and **before** the web approval, the operator typed a literal `YES` into the
@@ -304,7 +329,7 @@ git diff --cached --stat
 gitignored, local-only and **authoritative whenever present**. Read them before deciding
 anything they cover. Never modify them unless explicitly asked. Never commit them.
 
-`docs/adr/` holds every architectural decision, `0001` through `0020`. The ones that constrain
+`docs/adr/` holds every architectural decision, `0001` through `0021`. The ones that constrain
 day-to-day work most: [0008](docs/adr/0008-remove-runtime-customer-intent-classifier.md) (no
 runtime intent classifier), [0011](docs/adr/0011-conversational-orchestrator-authority.md) (the
 orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-principal.md) and
@@ -315,7 +340,9 @@ confirmation spends a human approval), and
 [0019](docs/adr/0019-a-benchmark-world-is-installed-at-a-run-local-anchor.md) (a benchmark world
 is installed at a run-local anchor; production keeps the ordinary clock), and
 [0020](docs/adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md) (a scored benchmark
-hosts the product's own worker; no deployed process ever learns the benchmark exists).
+hosts the product's own worker; no deployed process ever learns the benchmark exists), and
+[0021](docs/adr/0021-a-customer-answers-on-the-web-and-their-address-stays-in-the-database.md)
+(a customer answers on the web, and their address stays in the database).
 
 ## Historical record
 
@@ -355,6 +382,7 @@ read the source document rather than a paraphrase of it.
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md), [customer-message-transport.md](docs/customer-message-transport.md) |
 | Deployed customer channel (switched on, one real delivery, one real web approval) | [deployed-customer-channel.md](docs/deployed-customer-channel.md) |
+| Customer copy and address disclosure (both closed, deployed) | [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |
