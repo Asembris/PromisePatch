@@ -2754,6 +2754,17 @@ replacing the instance -- and the instance is the one thing a deployment holding
 not have to replace to move a setting. The tests below are what keep those two layers apart.
 """
 
+
+def _env_files(compose: dict[str, Any], service: str) -> list[str]:
+    """The paths a service's ``env_file`` names, in either spelling.
+
+    An entry is a bare path or a ``{path, required}`` mapping. Both say the same thing about
+    which file a process reads, and only the test below about an older host cares which.
+    """
+    entries = compose["services"][service].get("env_file") or []
+    return [entry["path"] if isinstance(entry, dict) else entry for entry in entries]
+
+
 CHANNEL_SETTINGS = (
     "PP_CUSTOMER_CHANNEL_PROVIDER",
     "PP_CUSTOMER_LINK_BASE_URL",
@@ -2805,13 +2816,38 @@ def test_the_processes_that_dispatch_and_verify_are_the_ones_given_the_channel(
     of thing an import-linter contract cannot see.
     """
     for name in ("api", "worker"):
-        files = compose["services"][name]["env_file"]
+        files = _env_files(compose, name)
         assert CHANNEL_ENV_FILE in files, f"{name} cannot read the customer transport settings"
     for name in ("migrate", "seed", "mcp", "order-simulator"):
-        files = compose["services"][name].get("env_file") or []
-        assert CHANNEL_ENV_FILE not in files, (
+        assert CHANNEL_ENV_FILE not in _env_files(compose, name), (
             f"{name} is handed the customer channel credential and has no use for one"
         )
+
+
+def test_a_host_whose_bootstrap_predates_the_channel_file_still_comes_up(
+    compose: dict[str, Any],
+) -> None:
+    """The composition is release state; ``converge.sh`` is instance state. They move apart.
+
+    ``stage_config`` uploads this file on every release, and the host reads it at the next
+    boot. But ``converge.sh`` -- the only thing that writes ``env/channel.env`` -- is written
+    by ``UserData``, which cloud-init runs once per instance. So between a release carrying
+    this composition and the host replacement that carries the matching ``converge.sh``, a
+    running deployment has the new file and the old script.
+
+    A required ``env_file`` that is missing is fatal to ``docker compose up``, and
+    ``converge.sh`` runs under ``set -e``. Requiring it would therefore have made an ordinary
+    ``deploy.sh all`` stop the live stack and leave it down -- the same cross-layer coupling
+    this whole section exists to remove, pointing the other way.
+
+    Absent, the processes fall back to their own default, which is the fake provider. A
+    deployment that has not been told to contact anybody contacts nobody.
+    """
+    for name in ("api", "worker"):
+        entries = compose["services"][name]["env_file"]
+        optional = [e for e in entries if isinstance(e, dict) and e["path"] == CHANNEL_ENV_FILE]
+        assert optional, f"{name} requires {CHANNEL_ENV_FILE}, so a host that predates it dies"
+        assert optional[0]["required"] is False
 
 
 def test_neither_customer_secret_is_ever_written_as_an_empty_value(

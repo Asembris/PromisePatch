@@ -47,7 +47,7 @@ services:
 
   api:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
-    env_file: [env/api.env, env/channel.env]
+    env_file: [env/api.env, {path: env/channel.env, required: false}]
     depends_on:
       migrate: { condition: service_completed_successfully }
     networks: [stack]
@@ -64,7 +64,7 @@ services:
   worker:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
     command: ["pp", "worker"]
-    env_file: [env/api.env, env/channel.env]
+    env_file: [env/api.env, {path: env/channel.env, required: false}]
     depends_on:
       migrate: { condition: service_completed_successfully }
     networks: [stack]

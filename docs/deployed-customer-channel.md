@@ -128,6 +128,17 @@ message; the API verifies the link the customer opens. `mcp`, `migrate`, `seed` 
 `order-simulator` do not get it, and a test asserts they do not: a bot credential in the MCP
 process is the kind of thing an import-linter contract cannot see.
 
+**They load it as an optional file, and that is load-bearing.** The composition is release
+state: `stage_config` uploads it on every release and the host reads it at the next boot.
+`converge.sh` is instance state: it is written by `UserData`, which cloud-init runs once per
+instance. Between a release carrying this composition and the host replacement that carries the
+matching `converge.sh`, a running deployment has the new file and the old script — and a
+*required* `env_file` that is missing is fatal to `docker compose up`, which runs under
+`set -e`. Requiring it would have meant an ordinary `deploy.sh all` stopping the live stack and
+leaving it down, which is the same cross-layer coupling this section exists to remove, pointing
+the other way. Absent, `api` and `worker` fall back to their own default: the fake provider,
+which reaches nobody.
+
 **`deploy.sh channel` selects the transport, and is deliberately unreachable from `all`.**
 Selecting Telegram points this bakery at a real phone, so it is an operation somebody names,
 exactly like `host-image`. It refuses `telegram` when no credential is stored — because the
@@ -136,9 +147,11 @@ deployment being one reboot from having no worker at all — and it stores the c
 `--no-overwrite`, so a re-run cannot rotate a live token out from under a running worker.
 `customer-link-secret` joins the secrets `stage_secrets` generates.
 
-The composition grew 34 bytes for the two `env_file` entries and gave back 62 by compressing one
-header comment, so the uploaded parameter went from 4052 to **4024 bytes against the 4096-byte
-standard-tier cap** — 72 bytes of headroom where there were 44.
+The composition grew for the two `env_file` entries and gave back 62 bytes by compressing one
+header comment, so the uploaded parameter went from 4052 to **4074 bytes against the 4096-byte
+standard-tier cap** — 22 bytes of headroom where there were 44, measured with the CRLF line
+endings of the checkout deploys are run from. `stage_config` refuses to upload a file over the
+cap, so the next edit that does not fit fails loudly at deploy time rather than in SSM.
 
 Eleven tests hold it, in
 [`test_deployment_definition.py`](../scripts/tests/test_deployment_definition.py). The
