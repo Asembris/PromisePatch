@@ -148,8 +148,9 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md),
   [sur1-dr01-redrive.md](docs/sur1-dr01-redrive.md) and
   [sur1-dr01-final-rehearsal.md](docs/sur1-dr01-final-rehearsal.md) before touching anything here.
-- **Telegram outbound is built and the deployed transport is now switched on. Nothing has ever
-  been sent.** One adapter behind the existing provider boundary sends the frozen message and
+- **Telegram outbound is built, the deployed transport is switched on, and on 2026-09-22 one
+  real approval message was delivered to a phone.** One adapter behind the existing provider
+  boundary sends the frozen message and
   its signed link, selected by `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`; the fake provider remains
   the default everywhere and is what CI, every test and the local stack use. On **2026-09-22 the
   existing host was migrated in place** through `ssm:StartSession`, without a release, a reboot,
@@ -157,27 +158,32 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   on the host, which read every value from SSM with its **own instance role**, so no credential
   passed through the operator's shell. The deployed `api` and `worker` now report
   `provider: telegram`, a forged approval link moved from `503 CUSTOMER_LINKS_NOT_CONFIGURED` to
-  `404 LINK_NOT_FOUND`, and smoke is 12/12. **That is a configured transport, not delivery** — no
-  `sendMessage` has ever been called from this repository, no message has reached a second
-  device, and **no chat id is bound**, so the switched-on transport reaches nobody. The deployed
-  second-device proof is still G8's. The host's `converge.sh` is still the stale one, so
+  `404 LINK_NOT_FOUND`, and smoke is 12/12. That migration produced a configured transport that
+  still reached nobody, because no chat id was bound until the delivery below. The host's
+  `converge.sh` is still the stale one, so
   `env/channel.env` is hand-written rather than derived and a rotated token would not be picked
   up until the migration is re-run or the host is replaced. See
   [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 8, which also records
   why `deploy.sh config` must not be used to carry this: it rewrites `image-tag` from HEAD and
   would name an image no `images` stage ever built.
-  **The first delivery was attempted on 2026-09-22 and is blocked on the world, not the
-  transport.** The private chat is verified and the deployed `worker` reports `provider:
-  telegram`, but the deployed fixture is nine days past its anchor, so no deployed case and no
-  exception the demo world can express yields an `APPROVAL_REQUIRED` band — everything fails
-  closed to `BLOCKED` and reaches the owner, never a customer. The non-destructive roll is
-  **permanently refused** on this host by the outbox and approval rows it already holds, and the
-  destructive repair truncates the customers table, so **a binding taken before that repair is
-  erased by it**. Nothing was bound, nothing was sent and nothing was written. See
-  [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 9 for the ordered
-  next step.
+  **The first real delivery was taken on 2026-09-22.** The stale world that blocked it was
+  repaired with the documented destructive reset, authorised by the project owner, which cost
+  the four deployed cases and preserved both ledgers of record — `audit_events` and
+  `domain_events` only grew. The fresh provisioned case restores the canonical partition, the
+  canonical demo customer alone was bound to a verified private chat through
+  `pp channel bind-demo-customer`, and one plan confirmation on the operator console queued
+  exactly one customer approval, which the durable worker dispatched. Telegram answered
+  `200 OK`, the `provider_ref` is persisted, the `MESSAGE_SEND` row is `DELIVERED` at one
+  attempt, and the operator confirmed exactly one message on the device. **Nothing has been
+  approved or declined**: the request is `SENT` and the case is `WAITING`. The ordering is
+  load-bearing and is not negotiable — **reseed, then bind, then propose** — because the reset
+  truncates `customers` and erases a binding taken before it. See
+  [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 10.
   **Telegram inbound stays unbuilt and deliberately so**: a second route for the word `YES`
-  would be a second consent parser. The Bot API offers no idempotency key, so a retry in the
+  would be a second consent parser. That is now measured rather than asserted — after the
+  delivery above the operator typed a literal `YES` into the bot's own chat and it reached
+  nothing: `inbound_replies` 0, `approval_decisions` 0, the request still `SENT`, and zero
+  `getUpdates` calls ever made. The Bot API offers no idempotency key, so a retry in the
   uncertain window is a real duplicate *message* and never a duplicate effect; that is the
   at-least-once case `outbox.py` already names, and it is disclosed rather than engineered
   around. Correcting a physical fact is CLI-only. A customer answers on the web, through a

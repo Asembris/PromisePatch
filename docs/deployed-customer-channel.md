@@ -785,3 +785,262 @@ negotiable:
    dispatched by the real adapter to a real device.
 
 Step 4 is still the first `sendMessage` this repository has ever made, and it is still unmade.
+
+## 10. The world repaired, the destination bound, and the first message delivered
+
+Date: 2026-09-22, after section 9 and in a separate session. Identity
+`arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment`,
+account `265243686715`, region `us-east-1`, profile `promisepatch`, verified before anything
+mutated and unchanged throughout.
+
+**One real approval message was dispatched to a real phone and Telegram accepted it.** That is
+the first `sendMessage` this repository has ever made, and it closes section 9.7 step 4 and
+section 8.8 step 2. It cost the four deployed cases, which the operator authorised losing.
+
+Sections 3, 6, 7, 8 and 9 are left exactly as written. This section records the later truth
+beside them rather than inside them.
+
+### 10.1 Entry
+
+| | value |
+|---|---|
+| HEAD / tree / `origin/main` | `d4ef1beb7c37`, tracked tree clean, equal to `origin/main` |
+| Stack status / last updated | `UPDATE_COMPLETE` / `2026-09-21T19:28:32Z`, no change sets |
+| `ImageTag` / `HostAmiId` / `SeedDemoFixtureOnFirstBoot` | `aeb46d2bdb7f` / `ami-0fa4996c14e7d501e` / `false` |
+| Host instance / AMI / launch | `i-087c742587f83d61d` / `ami-0fa4996c14e7d501e` / `2026-09-18T10:19:33Z`, `running` |
+| Host kernel `boot_id` / uptime since | `eb889c14-2aa2-462a-a0c6-e73ff8886014` / `2026-09-21 19:30:20` |
+| RDS | `promisepatch-prod`, `db-U2JWQBTINX6W6GAB56EOTHOCSM`, `available`, private, encrypted |
+| `/healthz` image / process `boot_id` | `aeb46d2bdb7f` / `b0124ede-182c-4210-9604-74e4d69d6291` |
+| Deployed runtime provider | `pp channel check` **inside `worker`**: `provider: telegram` |
+| Forged approval `GET` | `404 LINK_NOT_FOUND` |
+| Fixture | `hollow-oak`, `anchor_at` `2026-09-13T18:35:32.020039Z`, digest `f6cb717c...d81be4` |
+| Cases | 4 -- one `PLANNED`, two `RESOLVED`, one `NEEDS_HUMAN_INTERPRETATION` |
+| Outbox | 2 rows, **both `DELIVERED`**, both carrying a `provider_ref` |
+| `approval_requests` / `approval_decisions` / `plan_approvals` / `inbound_replies` | 1 / 0 / 0 / 0 |
+| Customers | 6, all `telegram`, **every address 4 characters** |
+| `audit_events` / `domain_events` | 173 / 227 |
+| Migration | `0009_human_plan_approval`, at head |
+
+**No `PENDING` and no `IN_FLIGHT` outbox row existed**, so the repair had nothing queued that a
+restart could have flushed at a person. Every row above is identical to section 9.1.
+
+### 10.2 The destructive repair, exactly the four documented steps
+
+Run in `/opt/promisepatch` through `ssm:StartSession` with `AWS-StartNonInteractiveCommand`, the
+payload base64 encoded and executed from a file rather than from stdin. **`ssm:SendCommand` is
+still not granted and was not used. No IAM policy was read, broadened or written.**
+
+| step | command | result |
+|---|---|---|
+| 1 | `docker compose --env-file env/stack.env run --rm -T seed` | `hollow-oak`, anchor `2026-09-22T16:47:06.452592Z`, digest `3a33a523...59e89d`, 160 rows, audit seq 174 |
+| 2 | `exec order-simulator ... POST /admin/reset` | `200 {"reset":true,"orders":6}` |
+| 3 | `docker compose --env-file env/stack.env restart worker` | `provisioning.demo_case.opened`, `a3810ae5-6337-559b-8b97-47023bc0094c`, `PLANNED`, `rolled: false` |
+| 4 | re-authenticate | `sessions` is truncated by step 1; the evidence below is read through the host rather than a browser session, so no sign-in was needed |
+
+The anchor was **omitted**, so `resolve_demo_anchor` chose `now`. Local Tunis time was 17:47,
+inside the `[01:00, 23:00)` window `122bebb` exists to keep the seed out of, so `now` was
+returned untouched and no clock was moved by hand.
+
+**`docker compose down -v` was not used**, so `caddy-data` and the Let's Encrypt certificate were
+never at risk. No volume was removed, no host was replaced, no cloud-init reseed was triggered,
+and no timestamp was edited.
+
+### 10.3 The repair, proved
+
+**The world is current.** `fixture_state` reads `hollow-oak` at `2026-09-22T16:47:06.452592Z`,
+nine days forward of where section 9 found it, with a new digest `3a33a523...59e89d`.
+
+**The canonical partition is restored**, read from `pp case-status` on the provisioned case --
+exception `SUPPLY_NOT_RECEIVED`, plan `0fbe85e5db31...025649`:
+
+| promise | band | option |
+|---|---|---|
+| `pr-a` / `EXT-A` Priya Nair | `AUTO_RECOVERABLE` via `R-PREAPPROVED (PREAPPROVAL_COVERS)` | `rv-raspberry-almond-3 -> rv-raspberry-almond-4` (no approval) |
+| `pr-b` / `EXT-B` Tomas Lindqvist | **`APPROVAL_REQUIRED`** via `R-VISIBLE-ASK (VISIBLE_CHANGE_ASK)` | `rv-raspberry-rose-2 -> rv-raspberry-rose-3` (**approval required**), window closes `2026-09-22T21:47:06Z` |
+| `pr-c` / `EXT-C` Okafor-Reyes | `BLOCKED` via `R-NOSUB (NOSUB_CONSTRAINT)` | none -- owner |
+| `pr-d` / `EXT-D` Lena Fischer | `BLOCKED` via `R-NOSUB (NO_PREAUTHORED_VARIANT)` | none -- owner |
+| `pr-e` / `EXT-E` Ahmed Bouazizi | `UNAFFECTED` via `R-UNREACH (NOT_REACHABLE)` | none |
+| `pr-f` / `EXT-F` Cafe Marlow | `UNAFFECTED` via `R-UNREACH (NOT_REACHABLE)` | none |
+
+That is the partition section 9.4 computed as unreachable at the old anchor, now reachable
+again, and `pr-b` carries exactly **one valid option**.
+
+**The ledgers of record survived the `TRUNCATE`.** `audit_events` went 173 to 186 and
+`domain_events` 227 to 245 across the repair: both only ever grew. The reset's own audit row is
+seq 174, appended rather than restarting at 1, which is what says the ledger was not among the
+`resettable_tables()`.
+
+**The infrastructure did not move.** RDS `db-U2JWQBTINX6W6GAB56EOTHOCSM` is `available`, private
+and encrypted, created `2026-09-11T11:19:51Z`. The stack is `UPDATE_COMPLETE` at
+`2026-09-21T19:28:32Z` with no change sets. The host kernel `boot_id` is still
+`eb889c14-2aa2-462a-a0c6-e73ff8886014` and `uptime -s` still `2026-09-21 19:30:20` -- **no
+reboot**. `api` never restarted at all: its process `boot_id` is still `b0124ede-...`, and
+`caddy`, `mcp` and `order-simulator` were untouched. `api` and `worker` both hold
+`RestartCount 0`. Migration unchanged at `0009_human_plan_approval`.
+
+**The transport survived the repair**: `pp channel check` inside the deployed `worker` still
+answers `provider: telegram`, and a forged approval token still answers `404 LINK_NOT_FOUND`.
+
+**The repair sent nothing.** After all four steps the outbox held **0** rows,
+`approval_requests` **0**, `approval_decisions` **0**, `plan_approvals` **0**, `inbound_replies`
+**0**, and the worker log carried **zero** `sendMessage` lines. The reset returned all six
+customers to the fixture's own four-character placeholders, which is section 9.5's ordering fact
+observed: a binding taken before the repair would have been erased by it.
+
+### 10.4 The destination, verified and then bound
+
+`pp channel check --chat-id` was run **inside the deployed `worker`**, so the process that would
+send is the process that proved it could reach. `getMe` and `getChat` only; the preflight
+contains no `sendMessage`.
+
+```text
+channel:  telegram
+bot:      @PromisePatchDemoBot (id 8519260202)
+chat:     <not echoed>
+provider: telegram
+result:   reachable; no message was sent
+returned_id_matches_requested: YES
+chat_type: private
+```
+
+The id Telegram returned is **equal to the id asked about** and the chat is **`private`**, both
+established by comparison inside the host payload rather than by printing. The id was read from
+gitignored operator-local state; **no `getUpdates` call was made**, then or ever.
+
+Then, on the host, through the product's own command and **no manual SQL**:
+
+```text
+pp channel bind-demo-customer --chat-id <not echoed>
+
+channel:  telegram
+customer: cus-tomas
+bot:      @PromisePatchDemoBot (id 8519260202)
+chat:     private (id not echoed)
+action:   bound
+audit:    seq 187
+result:   bound; no message was sent
+```
+
+**Exactly one row moved.** Read immediately before and immediately after, the six customers are:
+
+| customer | before | after |
+|---|---|---|
+| `cus-tomas` | `telegram`, address length 4 | `telegram`, address length 10 |
+| `cus-ahmed`, `cus-cafe-marlow`, `cus-lena`, `cus-okafor-reyes`, `cus-priya` | `telegram`, length 4 | **unchanged, length 4** |
+
+The bound length equals the length of the id held in operator-local state. Addresses are compared
+by length rather than by value throughout this section, for the reason `channel_binding` gives: a
+chat id identifies a real person and belongs only in the row it addresses.
+
+### 10.5 One proposal, through the ordinary workflow
+
+Counts immediately before: outbox **0**, `approval_requests` **0**, `approval_decisions` **0**,
+`plan_approvals` **0**, `inbound_replies` **0**, one case at `PLANNED`.
+
+One confirmation, on the operator console -- one of the two channels where this system takes a
+human's word for a plan -- quoting the plan identity `case-status` printed:
+
+```text
+pp confirm-plan --case a3810ae5-... --worker maya --plan 0fbe85e5db31...025649
+
+plan.approval.recorded      channel=OPERATOR_CONSOLE worker=maya
+recovery.plan.confirmed     applying=1 awaiting_approval=1 escalated=2
+state:     EXECUTING
+```
+
+**`awaiting approval: 1`** is the whole point: one customer, `pr-b`, and nobody else. The two
+escalations are `pr-c` and `pr-d` going to the owner, and the one application is `pr-a`'s
+pre-approved substitution, which asks nobody. **Telegram's `sendMessage` was never called by
+hand** -- the durable worker dispatched it on its own cycle.
+
+### 10.6 The delivery, proved
+
+```text
+POST https://api.telegram.org/bot***/sendMessage  HTTP/1.1 200 OK
+worker.telegram.sent  status=DELIVERED  provider_ref=telegram:<redacted>:3  attempt_error=null
+worker.effect.dispatched  kind=MESSAGE_SEND  attempt=1  status=DELIVERED
+```
+
+| claim | evidence |
+|---|---|
+| exactly one approval request | `approval_requests` 1, `pr-b`, state `SENT` |
+| exactly one customer message | `MESSAGE_SEND` outbox rows **1** |
+| Telegram accepted it | `HTTP/1.1 200 OK`; non-200 responses from `api.telegram.org`: **0** |
+| `provider_ref` persisted | `telegram:<redacted>:3` on the row |
+| the outbox settled | `MESSAGE_SEND` state `DELIVERED` |
+| no duplicate, no retry | `sendMessage` calls in the worker's **entire** log history: **1**; `worker.telegram.sent` events: **1**; `attempts` summed across `MESSAGE_SEND`: **1**; distinct `idempotency_key` count equal to row count |
+| the case moved as it should | `PLANNED` to `EXECUTING` to `WAITING` |
+
+The second outbox row is `ORDER_AMEND`, `DELIVERED`, `attempts 1`, `provider_ref
+amd-40e195e65abe`: `pr-a`'s pre-approved substitution reaching the External Order System. It is
+an order amendment, not a message, and it reaches no person. Two outbox rows and **one** message
+is the canonical partition behaving exactly as section 10.3 predicts.
+
+**Unrelated state is unchanged.** Five of the six customers still carry four-character
+placeholders, so no dispatch could have reached a second person. There is one case on the host
+and it is the provisioned one. `plan_approvals` is 1 -- the confirmation that was spent -- and
+`approval_decisions` is **0**.
+
+**The operator confirmed on the device that exactly one PromisePatch message arrived.** Nothing
+in this session opened the approval link, clicked it, approved or declined.
+
+### 10.7 A spoken `YES` on Telegram reached nothing, and that is now measured
+
+The operator replied `YES` in the Telegram chat after receiving the message. This is the first
+time that has ever been possible, and it is worth recording because it tests an invariant that
+until now was only asserted from the absence of code.
+
+| | value after the reply |
+|---|---|
+| `inbound_replies` | **0** |
+| `approval_decisions` | **0** |
+| `approval_requests` | **1, `pr-b`, still `SENT`** |
+| case state | **`WAITING`**, unchanged |
+| `getUpdates` calls in the worker's entire log history | **0** |
+
+**The reply reached nothing at all.** `customer-message-transport.md` says Telegram inbound stays
+unbuilt deliberately, because a second route for the word `YES` would be a second consent parser;
+the customer answers on the web, through the signed possession link the outbound message carries.
+That is now an observation rather than a design statement: a literal `YES` typed into the bot's
+own chat did not become consent, did not create an inbound row, and did not move the approval
+request off `SENT`. The consent protocol is exactly where it was, still waiting on the link.
+
+### 10.8 What was not done, and two honest limitations
+
+- **Nothing was approved or declined.** The approval link was not opened, clicked or followed by
+  this session, and `approval_decisions` is `0`.
+- **No second proposal was triggered**, and no message was sent by hand at any point.
+- **No AWS resource was created, updated or deleted.** No SSM parameter was written, no release
+  was run, no change set was built, no stack was updated, no host was replaced or rebooted, and
+  no IAM policy was read, broadened or written. Every host command went through
+  `ssm:StartSession`.
+- **The four previously deployed cases are gone**, with their tracks, statements, approval
+  request, outbox rows, orders and promises. Their history remains readable in `audit_events` and
+  `domain_events`, which only grew. This was authorised explicitly before step 1 ran.
+- **The worker logs the chat id in plaintext.** `worker.telegram.sent` carries `chat_id` as a
+  structured field and `provider_ref` embeds it, and the deployed compose uses the `awslogs`
+  driver, so a real person's Telegram identifier now sits in CloudWatch Logs. Nothing in this
+  repository records it -- `channel_binding` is careful to keep it out of both ledgers, and this
+  document redacts it -- but the log line is a gap in that care and is recorded here rather than
+  quietly fixed, because changing an observability field is a code change and this work was
+  scoped to docs.
+- **The host's `converge.sh` is still the stale one**, unchanged at `45f5145e...188a`, so
+  `env/channel.env` remains hand-written rather than derived. Section 8.7's consequence is
+  unchanged: a rotated bot token would not be picked up until the migration is re-run or the host
+  is replaced.
+- **The world decays again from its new anchor.** This seed is good for the rest of the Tunis
+  bakery day of 2026-09-22 and no longer. `demo-world-roll.md`'s non-destructive roll is now
+  **refused again on this host** -- one outbox row, one approval request -- so the next repair is
+  the destructive one again, and it will erase this binding along with everything else.
+
+### 10.9 The next step
+
+The approval request is open and waiting, and the only thing that can answer it is the customer
+opening the signed link the message carries and choosing on the web. Nobody has done so.
+
+1. **On the phone, open the link in the delivered message** and either approve the single option
+   -- `rv-raspberry-rose-2 -> rv-raspberry-rose-3` -- or decline it. The window closes
+   `2026-09-22T21:47:06Z`; after that the request expires and the promise falls to the owner.
+2. The worker then executes the recovery the decision authorises, `pr-b`'s track settles, and the
+   case leaves `WAITING`. `pp case-status --case a3810ae5-...` on the host is how to watch it.
+3. Nothing else needs doing first. The transport, the destination and the world are all in place.
