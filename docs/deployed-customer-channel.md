@@ -366,3 +366,247 @@ checked, so nothing here touches a customer or a destination.
 - The step that remains is section 6 step 2, unchanged: a replaced instance, which orders the
   certificate again against Let's Encrypt's five-duplicates-a-week limit for this name, and
   which the database and its four cases survive because `SeedDemoFixtureOnFirstBoot` is `false`.
+
+---
+
+## 8. The migration performed, and the transport switched on
+
+Date: 2026-09-22. Identity
+`arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment`,
+account `265243686715`, region `us-east-1`, profile `promisepatch`, verified before anything
+mutated and unchanged throughout.
+
+**The deployed worker and API now run `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`, and still nothing
+has been sent.** The host was not replaced, not rebooted and not re-provisioned. Its four cases,
+its fixture and its database are byte-for-byte where they were.
+
+Sections 3, 6 and 7 are left exactly as written. This section records the later truth beside
+them rather than inside them.
+
+### 8.1 The one claim in sections 6 and 7.5 that was too strong
+
+Section 7.5 step 4 concluded:
+
+> *So the turn-on needs a **replaced instance**, which is section 6 step 2.*
+
+That is now falsified, and the correction is worth stating precisely because the reasoning
+around it was right. `converge.sh` on this instance is still the stale one, and a *release*
+still cannot fix that — every word of section 3 about the two configuration layers holds. What
+section 3's fourth bullet got wrong was a fact about the operator machine, not about the
+deployment:
+
+> *`ssm:StartSession` is granted, but the Session Manager plugin is not installed on the operator
+> machine, and reaching the host that way would mean typing a live bot credential into an
+> interactive shell.*
+
+The plugin is installed now — `session-manager-plugin` 1.2.835.0 — and the second half was a
+false constraint. **Nothing had to be typed in.** The channel block in `converge.sh` reads every
+value from SSM using the *instance* role; reproducing that block on the host reads them the same
+way. The credential never entered the operator's shell, never appeared in an argument, and was
+never printed. `ssm:SendCommand` is still not granted and was not used; `ssm:StartSession` with
+`AWS-StartNonInteractiveCommand` is the whole of the access, and **no IAM policy was broadened.**
+
+So a replaced instance is what the *committed* correction needs in order to own this setting. It
+was never what *switching the transport on* needed.
+
+### 8.2 The state before, recorded before anything mutated
+
+| | value |
+|---|---|
+| HEAD / tree / `origin/main` | `f35d1afe4ab3`, tracked tree clean, equal to `origin/main` |
+| CI on `d532db93` | 13 `success`, 1 failure: `effect sets (expected red until 16/16)` |
+| Host instance / AMI / launch | `i-087c742587f83d61d` / `ami-0fa4996c14e7d501e` / `2026-09-18T10:19:33Z` |
+| Host kernel `boot_id` / uptime since | `eb889c14-2aa2-462a-a0c6-e73ff8886014` / `2026-09-21 19:30:20` |
+| RDS `DbiResourceId` | `db-U2JWQBTINX6W6GAB56EOTHOCSM`, `available`, private, encrypted |
+| Stack status / last updated | `UPDATE_COMPLETE` / `2026-09-21T19:28:32Z`, no change sets |
+| `/healthz` image / process `boot_id` | `aeb46d2bdb7f` / `bad27044-bbef-4528-a137-d44956dc2129` |
+| Fixture `loaded_at` / `anchor_at` / digest | `...148240Z` / `...020039Z` / `f6cb717c...d81be4` |
+| Cases | 4, payload digest `0754fcde7c4e...c97fe1` |
+| Outbox | 2 rows, **both `DELIVERED`**, newest `2026-09-13T18:36:46Z` |
+| Approvals | `approval_requests` 1, `approval_decisions` 0, `plan_approvals` 0 |
+| Customers | 6, all `approval_channel_kind=telegram`, **every address 4 characters** |
+| `env/channel.env` | absent |
+| Host `converge.sh` | `45f5145e...188a`, **zero** channel references |
+| `env/api.env` | carries **no** channel setting |
+| SSM `compose` | version 8, **zero** `channel.env` occurrences |
+| Forged approval `GET` | `503 CUSTOMER_LINKS_NOT_CONFIGURED` |
+
+Two of those rows are the reason this was safe to do at all. **The outbox held no `PENDING` and
+no `IN_FLIGHT` row**, so switching the provider and restarting the worker had nothing queued to
+flush. And **every customer address is four characters**, so no row carries a real chat id and no
+dispatch could have reached a person even if one had been queued.
+
+### 8.3 The migration, exactly
+
+Three steps, each through `ssm:StartSession` with `AWS-StartNonInteractiveCommand`, the script
+base64'd so nothing depended on quoting, and every command run as `sudo bash` because
+`/opt/promisepatch` is `root`-owned.
+
+**One.** The committed channel block from `converge.sh`, reproduced verbatim on the host — the
+same `param` helper, the same `fake` default, the same `https://$TLS_HOSTNAME` derivation, the
+same `umask 0077`, and the same two guards that write a secret only when it exists:
+
+```text
+CHANNEL_PROVIDER="$(param customer-channel-provider 2>/dev/null || true)"
+if [ -z "$CHANNEL_PROVIDER" ]; then CHANNEL_PROVIDER=fake; fi
+BOT_TOKEN="$(param telegram-bot-token 2>/dev/null || true)"
+LINK_SECRET="$(param customer-link-secret 2>/dev/null || true)"
+umask 0077
+{
+  echo "PP_CUSTOMER_CHANNEL_PROVIDER=$CHANNEL_PROVIDER"
+  echo "PP_CUSTOMER_LINK_BASE_URL=https://$TLS_HOSTNAME"
+  if [ -n "$BOT_TOKEN" ]; then echo "PP_TELEGRAM_BOT_TOKEN=$BOT_TOKEN"; fi
+  if [ -n "$LINK_SECRET" ]; then echo "PP_CUSTOMER_LINK_SECRET=$LINK_SECRET"; fi
+} > env/channel.env
+umask 0022
+```
+
+Result: `-rw------- root root`, 232 bytes, four keys, both secrets present. The identity that
+read them is
+`arn:aws:sts::265243686715:assumed-role/PromisePatchInstanceRole/i-087c742587f83d61d` — the
+host, using its own instance role, which is the whole point. Only the two non-secret values were
+ever echoed back.
+
+**Two.** The committed composition uploaded to SSM, because the host's `docker-compose.yml` is
+derived from that parameter at every boot and writing only the file would have been undone by
+the next one. This is exactly the call `stage_config` makes for `compose`: same name, same
+`String` type, same `--overwrite`.
+
+```text
+/promisepatch/prod/compose   version 8 -> 9, 4072 chars, 2 occurrences of channel.env
+```
+
+**`deploy.sh config` was deliberately not used, and this is a trap worth naming.** That stage
+also writes `image-tag` from `$(image_tag)`, which is `git rev-parse --short=12 HEAD` — today
+`f35d1afe4ab3`, a **docs-only commit for which no image was ever built**. Running it would have
+pointed the parameter the host converges on at an image that does not exist, and the next boot
+would have failed to pull. `caddyfile` was compared and is byte-identical to the committed one,
+so it was not written either. One parameter moved; the other two were left alone on purpose.
+
+**Three.** The composition fetched on the host the way `converge.sh` fetches it, then `api` and
+`worker` recreated — and nothing else:
+
+```text
+param compose > docker-compose.yml        4051 -> 4073 bytes, 2 channel.env occurrences
+docker compose --env-file env/stack.env up -d api worker
+```
+
+Before that third step the candidate was validated *on the host*: `docker compose config`
+answered `OK` under the host's Compose v2.32.4, which is the version that matters because the
+optional-`env_file` form needs 2.24 or newer. The resolved configuration was then checked
+key-by-key, and it places the four channel settings in `api` and `worker` and in **no other
+service** — `caddy`, `mcp`, `migrate` and `order-simulator` all resolve to none of them, which is
+the live counterpart of the test section 4 calls load-bearing.
+
+`migrate` ran once, as its `service_completed_successfully` dependency requires, exited `0`, and
+logged no `Running upgrade` line: the database was already at `0009_human_plan_approval` and the
+`alembic upgrade head` was the no-op it is designed to be.
+
+### 8.4 The activation, proved
+
+**The deployed processes state their own configuration.** `pp channel check` was run inside the
+deployed `worker` and the deployed `api` containers — `getMe` only, no `--chat-id`, and the
+preflight has no `sendMessage` in it at all:
+
+```text
+channel:  telegram
+api:      https://api.telegram.org
+bot:      @PromisePatchDemoBot (id 8519260202)
+chat:     not checked
+provider: telegram
+result:   reachable; no message was sent
+```
+
+`provider: telegram` is the line that has never appeared from a deployed process before. In
+section 7.6 the same command printed `provider: fake`, because it was the operator's shell
+answering. This is the worker.
+
+**The runtime's own answer to a forged link changed.** This is the measurement section 7.4
+established as stronger than reading the composition and reasoning about it:
+
+```text
+GET /api/customer/approval/not-a-real-token
+before  503 {"error":{"code":"CUSTOMER_LINKS_NOT_CONFIGURED", ...}}
+after   404 {"error":{"code":"LINK_NOT_FOUND", ...}}
+```
+
+`_possession` raises `UNCONFIGURED` only when `settings.customer_link_secret is None`. A `404` is
+the API saying it holds the secret, minted no link for that token, and refused it on the merits.
+`pp runtime-identity` in the worker agrees:
+`customer_link_base_url: https://184.194.40.87.sslip.io`.
+
+Deployment smoke: **12/12 passed, 0 failed, 0 skipped**, including `deployed-image`, which still
+reports `aeb46d2bdb7f`. `api` is `healthy` with `RestartCount 0`; `worker` is running with
+`RestartCount 0` and logged one clean `worker.start`.
+
+### 8.5 Nothing was sent, and nothing was created
+
+| | before | after |
+|---|---|---|
+| `outbox_messages` | 2, both `DELIVERED` | **2, both `DELIVERED`** |
+| newest outbox `created_at` | `2026-09-13T18:36:46Z` | unchanged |
+| rows with a `provider_ref` | 2 | 2 |
+| `approval_requests` / `approval_decisions` / `plan_approvals` | 1 / 0 / 0 | **1 / 0 / 0** |
+| customers with a real chat id | 0 (all addresses 4 chars) | **0, all six unchanged** |
+| dispatch or `sendMessage` lines in `api` + `worker` logs | — | **0** |
+
+`bind-demo-customer` was not run, no chat id was used, no proposal was triggered, nothing was
+approved or declined, and `sendMessage` remains uncalled from this repository.
+
+### 8.6 Data and infrastructure, preserved
+
+| | before | after |
+|---|---|---|
+| Host instance / AMI / launch time | `i-087c742587f83d61d` / `ami-0fa4996c14e7d501e` / `2026-09-18T10:19:33Z` | **all three unchanged** |
+| Host kernel `boot_id` | `eb889c14-2aa2-462a-a0c6-e73ff8886014` | **identical — no reboot** |
+| Host uptime since | `2026-09-21 19:30:20` | **identical** |
+| `caddy` / `mcp` / `order-simulator` | up 20 hours | **still up 20 hours, untouched** |
+| RDS `DbiResourceId` | `db-U2JWQBTINX6W6GAB56EOTHOCSM` | unchanged, `available`, private, encrypted |
+| Stack status / last updated | `UPDATE_COMPLETE` / `2026-09-21T19:28:32Z` | **unchanged — no stack update** |
+| Change sets | none | none |
+| `ImageTag` / `HostAmiId` / `SeedDemoFixtureOnFirstBoot` | `aeb46d2bdb7f` / `ami-0fa4996c14e7d501e` / `false` | unchanged |
+| Migration | `0009_human_plan_approval` | unchanged, at head |
+| Fixture `loaded_at` / `anchor_at` / digest | `...148240Z` / `...020039Z` / `f6cb717c...` | **all unchanged** |
+| Cases | 4, digest `0754fcde7c4e...c97fe1` | **4, digest identical** |
+
+The host kernel `boot_id` is the load-bearing row: it changes only on a real reboot, and it did
+not move. The `/healthz` `boot_id` *did* change, from `bad27044...` to `b0124ede...`, and that is
+correct — `health.py` says it "changes on every process start", so it reports the API restart
+that was the point of the exercise and says nothing about the host.
+
+**`infrastructure` was not run. `host-image` was not run. No host was replaced or rebooted. No
+IAM policy was broadened, read or written.** The only AWS mutation in this entire session is the
+single `compose` parameter going from version 8 to version 9.
+
+### 8.7 What is still not done, and one honest limitation
+
+- **No message was sent**, and `sendMessage` has still never been called from this repository.
+- **No chat id is bound anywhere.** Every deployed customer still carries a placeholder.
+- The deployed transport is switched on and **reaches nobody**, because there is no destination.
+- **The host's `converge.sh` is still the stale one**, unchanged at `45f5145e...188a`. It was
+  deliberately not rewritten: replacing it is instance state, and this work reproduced only the
+  migration's effect, not its owner.
+- **So `env/channel.env` is hand-written, not derived.** Nothing deletes it, and `converge.sh`
+  writes `docker-compose.yml`, `Caddyfile` and `env/stack.env` only, so the activation is
+  expected to survive a reboot — **but that expectation was reasoned, not measured**, because
+  this work was not authorised to reboot and did not. The real consequence is refresh rather than
+  survival: if the bot token is rotated in SSM, this instance keeps the old one until the
+  migration is re-run or the host is replaced with one carrying the committed `converge.sh`.
+- Two files predating this session sit in `/opt/promisepatch` — `check_state.py` and a 0-byte
+  `check_state.pynsha256sum`, both dated 2026-09-21. They are referenced by nothing and were
+  **left exactly where they were.** `docker-compose.yml.pre-channel` is this session's own copy
+  of the version-8 composition, kept beside it deliberately.
+
+### 8.8 The next step, for whoever takes the first real delivery
+
+The transport is on. What remains is a destination and then a proposal, in that order:
+
+1. `pp channel bind-demo-customer --chat-id <numeric-id>` **run on the host**, through the same
+   Session Manager path used here, because the deployed PostgreSQL is private and reachable only
+   from the host's security group. It verifies the chat against Telegram before it writes and
+   echoes no chat id. A chat id goes stale 24 hours after the customer last messages the bot, so
+   re-message the bot immediately before binding.
+2. One proposal through the ordinary workflow, and the approval it queues, which the real adapter
+   will then dispatch to a real device — the first `sendMessage` this repository has ever made.
+
+Neither was performed here, and neither is authorised by this document.

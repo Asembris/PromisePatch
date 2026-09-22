@@ -148,22 +148,24 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   [sur1-dr01-hosted-worker-rehearsal.md](docs/sur1-dr01-hosted-worker-rehearsal.md),
   [sur1-dr01-redrive.md](docs/sur1-dr01-redrive.md) and
   [sur1-dr01-final-rehearsal.md](docs/sur1-dr01-final-rehearsal.md) before touching anything here.
-- **Telegram outbound is built, and the credential and one private destination are now proved
-  live. Nothing has ever been sent.** One adapter behind the existing provider boundary sends
-  the frozen message and its signed link, selected by `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`;
-  the fake provider remains the default everywhere and is what CI, every test and the local
-  stack use. On **2026-09-21** `pp channel check` and `pp channel check --chat-id <numeric-id>`
-  were run against the real Bot API from a developer machine: `getMe` returned the expected bot
-  and `getChat` returned the requested private chat. **That is reachability, not delivery** — no
+- **Telegram outbound is built and the deployed transport is now switched on. Nothing has ever
+  been sent.** One adapter behind the existing provider boundary sends the frozen message and
+  its signed link, selected by `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`; the fake provider remains
+  the default everywhere and is what CI, every test and the local stack use. On **2026-09-22 the
+  existing host was migrated in place** through `ssm:StartSession`, without a release, a reboot,
+  a host replacement or an IAM change: the committed `converge.sh` channel block was reproduced
+  on the host, which read every value from SSM with its **own instance role**, so no credential
+  passed through the operator's shell. The deployed `api` and `worker` now report
+  `provider: telegram`, a forged approval link moved from `503 CUSTOMER_LINKS_NOT_CONFIGURED` to
+  `404 LINK_NOT_FOUND`, and smoke is 12/12. **That is a configured transport, not delivery** — no
   `sendMessage` has ever been called from this repository, no message has reached a second
-  device, and no deployed process has ever had `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`. The
-  deployed second-device proof is still G8's. **On 2026-09-21 the deployment was released to
-  `aeb46d2bdb7f` and the turn-on was refused**: the four customer-channel settings can only reach
-  a deployed process through `env/api.env`, which cloud-init writes once per instance, so
-  switching the transport on needs a destructive confirmation and then a host replacement. The
-  config-path correction that moves those settings into the layer a release owns is **committed
-  and deliberately unapplied**; no parameter it names exists. See
-  [deployed-customer-channel.md](docs/deployed-customer-channel.md).
+  device, and **no chat id is bound**, so the switched-on transport reaches nobody. The deployed
+  second-device proof is still G8's. The host's `converge.sh` is still the stale one, so
+  `env/channel.env` is hand-written rather than derived and a rotated token would not be picked
+  up until the migration is re-run or the host is replaced. See
+  [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 8, which also records
+  why `deploy.sh config` must not be used to carry this: it rewrites `image-tag` from HEAD and
+  would name an image no `images` stage ever built.
   **Telegram inbound stays unbuilt and deliberately so**: a second route for the word `YES`
   would be a second consent parser. The Bot API offers no idempotency key, so a retry in the
   uncertain window is a real duplicate *message* and never a duplicate effect; that is the
