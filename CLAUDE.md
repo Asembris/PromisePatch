@@ -166,6 +166,16 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 8, which also records
   why `deploy.sh config` must not be used to carry this: it rewrites `image-tag` from HEAD and
   would name an image no `images` stage ever built.
+  **The first delivery was attempted on 2026-09-22 and is blocked on the world, not the
+  transport.** The private chat is verified and the deployed `worker` reports `provider:
+  telegram`, but the deployed fixture is nine days past its anchor, so no deployed case and no
+  exception the demo world can express yields an `APPROVAL_REQUIRED` band — everything fails
+  closed to `BLOCKED` and reaches the owner, never a customer. The non-destructive roll is
+  **permanently refused** on this host by the outbox and approval rows it already holds, and the
+  destructive repair truncates the customers table, so **a binding taken before that repair is
+  erased by it**. Nothing was bound, nothing was sent and nothing was written. See
+  [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 9 for the ordered
+  next step.
   **Telegram inbound stays unbuilt and deliberately so**: a second route for the word `YES`
   would be a second consent parser. The Bot API offers no idempotency key, so a retry in the
   uncertain window is a real duplicate *message* and never a duplicate effect; that is the

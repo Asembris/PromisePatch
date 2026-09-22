@@ -610,3 +610,178 @@ The transport is on. What remains is a destination and then a proposal, in that 
    will then dispatch to a real device — the first `sendMessage` this repository has ever made.
 
 Neither was performed here, and neither is authorised by this document.
+
+## 9. The first real delivery attempted, and the world that could not host it
+
+Date: 2026-09-22, after section 8 and in a separate session. Identity
+`arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment`,
+account `265243686715`, region `us-east-1`, profile `promisepatch`, verified before anything was
+read and unchanged throughout.
+
+**Nothing was sent, nothing was bound, and nothing was written anywhere.** The transport section 8
+switched on is live and correct; the destination was verified against Telegram; and the delivery
+still did not happen, because **the deployed demo world is nine days past its anchor and no longer
+contains a promise a customer can be asked about.** That is a property of the seeded data, not a
+defect in any code path, and the repair for it is destructive and an operator's to choose.
+
+Section 8.8 is answered here: its step 2 cannot be taken, and its step 1 must not be taken before
+the repair, for the reason in section 9.5.
+
+### 9.1 Entry, and the live state measured before anything
+
+| | value |
+|---|---|
+| HEAD / tree / `origin/main` | `37ca23a76260`, tracked tree clean, equal to `origin/main` |
+| CI on `d532db93` | 13 `success`, 1 failure: `effect sets (expected red until 16/16)` |
+| Stack status / last updated | `UPDATE_COMPLETE` / `2026-09-21T19:28:32Z`, unchanged, no change sets |
+| `ImageTag` / `HostAmiId` / `SeedDemoFixtureOnFirstBoot` | `aeb46d2bdb7f` / `ami-0fa4996c14e7d501e` / `false` |
+| Host instance / AMI / launch | `i-087c742587f83d61d` / `ami-0fa4996c14e7d501e` / `2026-09-18T10:19:33Z`, `running` |
+| Host kernel `boot_id` / uptime since | `eb889c14-2aa2-462a-a0c6-e73ff8886014` / `2026-09-21 19:30:20` |
+| `/healthz` image / process `boot_id` | `aeb46d2bdb7f` / `b0124ede-182c-4210-9604-74e4d69d6291` |
+| `api` / `worker` | `healthy` and `running`, `RestartCount` **0** on both |
+| Deployed runtime provider | `pp channel check` **inside `worker`**: `provider: telegram`, `getMe` reachable, no message sent |
+| Forged approval `GET` | `404 LINK_NOT_FOUND` — the API holds the link secret and refused on the merits |
+| Fixture | `hollow-oak`, `anchor_at` `2026-09-13T18:35:32.020039Z`, digest `f6cb717c...d81be4` |
+| Cases | 4 — one `PLANNED`, two `RESOLVED`, one `NEEDS_HUMAN_INTERPRETATION` |
+| Outbox | 2 rows, **both `DELIVERED`**, 2 carrying a `provider_ref`, newest `2026-09-13T18:36:46Z` |
+| `approval_requests` / `approval_decisions` / `plan_approvals` | 1 / 0 / 0 |
+| Customers | 6, all `telegram`, **every address 4 characters** |
+
+**No `PENDING` and no `IN_FLIGHT` outbox row exists**, so nothing was queued that a restart or a
+provider switch could have flushed at a person. Every one of those rows is identical to sections
+8.2 and 8.5, which is the point: the host has not moved since the migration.
+
+### 9.2 The destination is ready, and that is proved
+
+`pp channel check --chat-id` was run against the chat the operator holds, with the bot credential
+the deployment stores. `getMe` and `getChat` only; the preflight contains no `sendMessage` and no
+inbound path of any kind.
+
+```text
+channel:  telegram
+bot:      @PromisePatchDemoBot (id 8519260202)
+chat:     <not echoed> (private)
+provider: telegram
+result:   reachable; no message was sent
+```
+
+The id Telegram returned is **equal to the id asked about** and the chat is **`private`** — both
+checked by comparison rather than by eye, because the id itself is a real person's identifier and
+is not printed, logged or committed. It was read from gitignored local state, so **no `getUpdates`
+call was needed or made**, and the id never entered an AWS API call, a Session Manager parameter
+or this repository.
+
+So the half of the delivery that section 8.7 called *"reaches nobody, because there is no
+destination"* now has a verified destination waiting. It is still not bound, for the reason in
+9.5.
+
+### 9.3 No deployed case can produce an approval proposal
+
+The four cases were read, and only one is in a state a confirmation could act on.
+
+| case | state | can it propose? |
+|---|---|---|
+| `637b8f53-0b07-5c75-82ec-96ebd13fa8da` | `PLANNED` | **no** — see below |
+| `744f5f78-0059-5d40-a15b-37a0d87199bf` | `RESOLVED` | no, settled |
+| `7e6319bc-ed3b-5df5-ac46-5f96dbaa13a5` | `RESOLVED` | no, settled |
+| `e66c5060-fddd-5724-b846-6c75af70e462` | `NEEDS_HUMAN_INTERPRETATION` | no, and unrecoverable without a reset |
+
+`pp case-status` on the one `PLANNED` case reports an exception of category `STOCK_UNUSABLE`
+grounded on `res-heavy-cream` — **not** the canonical raspberry incident — and six tracks of which
+five are `UNAFFECTED via R-UNREACH (NOT_REACHABLE)` and one, `pr-e`, is `BLOCKED via R-UNKNOWN
+(NO_CONSTRAINT_SNAPSHOT)`. **Every one of the six prints `no recovery option`.** `pr-b` — Tomas
+Lindqvist on `EXT-B`, the customer `bind-demo-customer` derives and the only promise in the demo
+whose recovery waits on a person — is one of the five unreachable ones.
+
+A confirmation of that plan would therefore raise **zero** customer approval requests. It would
+escalate `pr-e` to the owner and spend a human approval to do it, which is a write with no
+delivery at the end of it, so it was not performed.
+
+### 9.4 And no fresh exception could either, because the world is stale
+
+The obvious next thought — report a new exception through the ordinary intake path, which alters
+no timestamp and reseeds nothing — was checked before it was acted on, against the engine rather
+than by argument. `promise_graph` is pure and takes `now` explicitly, so the question is directly
+computable: load the committed fixture at **the deployed anchor** and classify every promise at
+**today's clock**.
+
+| exception | at its own anchor | today |
+|---|---|---|
+| `raspberry_only` | `APPROVAL_REQUIRED` 1 (`pr-b`, 1 valid option), `BLOCKED` 2, `UNAFFECTED` 3 | **`BLOCKED` 4, `UNAFFECTED` 2** |
+| `whole_delivery` | `APPROVAL_REQUIRED` 1 (`pr-b`, 1 valid option), `BLOCKED` 2, `UNAFFECTED` 3 | **`BLOCKED` 4, `UNAFFECTED` 2** |
+| `cream_unusable` | `UNAFFECTED` 6 | `UNAFFECTED` 6 |
+| `deck_oven_down` | `AUTO_RECOVERABLE` 2, `BLOCKED` 1, `UNAFFECTED` 3 | **`UNAFFECTED` 6** |
+
+**At today's clock the deployed world yields no `APPROVAL_REQUIRED` band from any exception it can
+express.** The raspberry incident that used to ask a customer now fails closed to `BLOCKED` on four
+promises and reaches nobody, which is the invariant working: unknown or expired state goes to the
+owner, never to a customer. This is the decay [demo-world-roll.md](demo-world-roll.md) measures —
+*"a seed is good for the rest of its own bakery day and no longer"* — observed nine days in.
+
+So there was no case to select and no case to make. The instruction under which this work ran said
+to stop rather than to force eligibility, and stopping is also what the product's own rules
+require: making a customer reachable again means moving the world, and moving the world is the
+operation in 9.5.
+
+### 9.5 Why the binding was **not** performed, though it was authorised
+
+`pp channel bind-demo-customer` was authorised for this work and was deliberately not run. The
+reason is an ordering fact that was not visible when that step was written:
+
+- **The non-destructive repair is permanently refused on this host.** `reanchor.reanchor_world`
+  moves the world without truncating anything, and it refuses outright if *any* row exists in
+  `outbox_messages`, `inbound_replies`, `approval_requests` or `approval_decisions` — unscoped by
+  case and unscoped by time. This deployment holds 2 outbox rows and 1 approval request from
+  2026-09-13. [demo-world-roll.md](demo-world-roll.md) states that this refusal is **monotone and
+  permanent**, and that the only statement which removes those rows is the reset's `TRUNCATE`.
+- **The destructive repair erases a binding.** `pp reset-demo-state` truncates the domain rows
+  PromisePatch owns, which returns the demo customer to the fixture's own committed address. The
+  binding module says as much about itself, and a binding taken now would be gone the moment the
+  world is made current.
+
+Binding first would therefore have written a real person's chat id into a row that the very next
+required step deletes, and would have spent the operator's live chat window to do it. The
+destination was verified instead — which proves the same reachability and writes nothing.
+
+### 9.6 Nothing was written, anywhere
+
+| | before | after |
+|---|---|---|
+| `outbox_messages` | 2, both `DELIVERED` | **2, both `DELIVERED`**, newest `2026-09-13T18:36:46Z` |
+| rows with a `provider_ref` | 2 | 2 |
+| `approval_requests` / `approval_decisions` / `plan_approvals` | 1 / 0 / 0 | **1 / 0 / 0** |
+| cases | 4, `id:state` digest `29b37014d418b0f0aea8e5f55eef54ce` | **4, digest identical** |
+| customers with a real chat id | 0, all six addresses 4 characters | **0, all six unchanged** |
+| fixture `anchor_at` / digest | `...020039Z` / `f6cb717c...d81be4` | unchanged |
+| `sendMessage` or dispatch lines in `api` + `worker` logs | — | **0** |
+| `api` / `worker` `RestartCount` | 0 / 0 | **0 / 0** |
+| Host kernel `boot_id` | `eb889c14...` | **identical — no reboot** |
+| Stack status / change sets | `UPDATE_COMPLETE` / none | unchanged / none |
+
+**No AWS resource was created, updated or deleted.** No SSM parameter was written — not even
+`compose`, which section 8 moved. No release was run, no host was replaced or rebooted, no IAM
+policy was read, broadened or written. Every host command went through `ssm:StartSession` with
+`AWS-StartNonInteractiveCommand` and every one of them was a read. `sendMessage` has still never
+been called from this repository.
+
+### 9.7 The next step, in the order it has to happen
+
+The transport is on and a verified private chat is waiting. What is missing is a world with a
+customer in it, and the repair for that destroys the four deployed cases. **That is an operator's
+decision and is not authorised by this document.** When somebody takes it, the order is not
+negotiable:
+
+1. **Decide to lose the four deployed cases.** Two are `RESOLVED`, one is
+   `NEEDS_HUMAN_INTERPRETATION`, and the `PLANNED` one shows no authority band. The repair is the
+   four-step one in [demo-fixture-anchoring.md](demo-fixture-anchoring.md), *Bringing a running
+   deployment back to the story*: reseed, reset the External Order System, restart the worker,
+   sign in again.
+2. **Re-message the bot from the phone**, because the repair invalidates nothing about Telegram
+   but the operator's chat window is what `getChat` verifies against.
+3. **`pp channel bind-demo-customer --chat-id <numeric-id>`, on the host, after the reseed.**
+   Before it, the reseed erases it.
+4. **One proposal through the ordinary workflow** on the case provisioning opens against the fresh
+   world, whose `EXT-B` band is the one waiting on a customer — and the approval it queues is
+   dispatched by the real adapter to a real device.
+
+Step 4 is still the first `sendMessage` this repository has ever made, and it is still unmade.
