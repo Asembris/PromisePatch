@@ -191,7 +191,13 @@ class EffectEvidenceView(BaseModel):
 
 
 class ApprovalEvidenceView(BaseModel):
-    """What was asked of one customer and what came back. No channel, no reply text."""
+    """What was asked of one customer and what came back. No channel, no reply text.
+
+    ``provider_ref`` reaches this model already reduced to its channel kind -- see
+    :func:`~promisepatch.domain.disclosure.redact_channel`. This response is served to a browser
+    over the public internet, and a Telegram receipt spelled in full would have put a real
+    person's chat id on a page anybody holding the case id could open.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

@@ -272,8 +272,28 @@ def test_a_named_chat_is_proved_reachable_with_a_second_read(
     result = runner.invoke(app, ["channel", "check", "--chat-id", CHAT])
 
     assert result.exit_code == 0, result.output
-    assert f"{CHAT} (private)" in result.stdout
+    assert "private (id not echoed)" in result.stdout
     assert api.methods == ["getMe", "getChat"]
+
+
+def test_the_chat_id_is_not_echoed_back_to_the_terminal(
+    monkeypatch: pytest.MonkeyPatch, credentialled: None
+) -> None:
+    """The operator typed it, so echoing it tells them nothing and costs a disclosure.
+
+    This command is run inside the deployed container over ``ssm:StartSession``, and what it
+    prints lands in a session transcript and a scrollback buffer that the person on the other
+    end of the chat is not party to. ``bind-demo-customer`` beside it has always refused to
+    echo the id; this one did, and now both answer the question that was actually asked --
+    whether the bot can reach that chat -- without naming whose chat it is.
+    """
+    scripted(monkeypatch, ScriptedBotApi(bot_ok(), chat_ok()))
+
+    result = runner.invoke(app, ["channel", "check", "--chat-id", CHAT])
+
+    assert result.exit_code == 0, result.output
+    assert CHAT not in result.stdout
+    assert "reachable; no message was sent" in result.stdout
 
 
 def test_a_chat_the_bot_has_never_met_is_reported_as_unreachable(

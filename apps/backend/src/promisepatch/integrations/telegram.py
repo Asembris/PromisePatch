@@ -13,10 +13,11 @@ the list of what it is *not* is the design:
   on the surface that already existed, into the consent protocol that already existed. Adding
   a second door through which the word ``YES`` could arrive would be adding a second consent
   parser, and there is exactly one.
-* **It edits nothing it is given.** §13.6's wording is frozen, so the text goes out verbatim
-  and is sent with no ``parse_mode`` at all -- Telegram must not read an asterisk in a recipe
-  name as markup and quietly drop it. The signed link is appended on its own line, beside the
-  words rather than inside them, exactly as the payload carries it.
+* **It edits nothing it is given.** The wording is frozen -- §13.6's, as amended by ADR-0021 --
+  so the text goes out verbatim and is sent with no ``parse_mode`` at all: Telegram must not
+  read an asterisk in a recipe name as markup and quietly drop it. The signed link is appended
+  on its own line, beside the words rather than inside them, exactly as the payload carries it.
+  Since ADR-0021 the words point *at* that line, which is the one place a customer can answer.
 
 **What it costs to be honest about idempotency.** The Bot API has no idempotency key:
 ``sendMessage`` called twice sends two messages, and there is no header, parameter or
@@ -32,6 +33,13 @@ So the duplicate is a second copy of one proposal on a customer's phone. It is n
 proposal, a second authority or a second effect on an order. That is stated rather than
 engineered around, because engineering around it here would mean inventing a claim the Bot API
 does not support.
+
+**Where the customer's address may appear.** In the ``chat_id`` of the outbound request, in the
+``provider_ref`` this adapter returns, and in the outbox row and audit ledger that store it --
+and in none of the three logs, terminals or HTTP responses those are read out on. The adapter's
+own log line reports the channel *kind* and the idempotency key; the address is reduced by
+:func:`promisepatch.domain.disclosure.redact_channel` on the way out, and the row keeps it whole
+because the row is what a redelivery and an idempotency check are decided against.
 
 **Where the credential may appear.** In the URL of the outbound request, and nowhere else. It
 is not in the client's ``base_url``, not in a logged field, not in a recorded error and not in
@@ -57,6 +65,7 @@ from typing import Any, Final
 import httpx2
 
 from promisepatch.config import CustomerChannelProvider, Settings
+from promisepatch.domain import disclosure
 from promisepatch.domain.model import EFFECT_MESSAGE_SEND, DeliveryOutcome, DeliveryStatus
 from promisepatch.observability import get_logger
 
@@ -232,11 +241,18 @@ class TelegramAdapter:
             # Neither the words nor the link. The text is a customer's own business and the
             # link is possession: a log line carrying one would hand an approval to whoever
             # reads the logs, which is precisely the party the signature exists to exclude.
+            #
+            # And not the chat id either, in any of the three places it used to reach. This
+            # line went to CloudWatch through the deployed compose's ``awslogs`` driver, so
+            # ``chat_id`` and the address inside ``provider_ref`` put a real person's Telegram
+            # identifier into a log group -- the one piece of care ``channel_binding`` takes
+            # everywhere else and this line did not. ``idempotency_key`` is what correlates a
+            # delivery with its outbox row, and it names nobody.
             "worker.telegram.sent",
-            chat_id=chat_id,
+            channel_kind=CHANNEL_KIND,
             idempotency_key=idempotency_key,
             status=outcome.status.value,
-            provider_ref=outcome.provider_ref,
+            provider_ref=disclosure.redact_channel(outcome.provider_ref),
             attempt_error=outcome.error,
         )
         return outcome

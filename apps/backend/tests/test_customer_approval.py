@@ -43,7 +43,7 @@ from _intake_support import physical as physical
 from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import ApprovalRequestState, ParserKind
 from promisepatch.db.models import ApprovalDecision, ApprovalRequest, InboundReply
-from promisepatch.domain import approvals, cases, messaging, recovery
+from promisepatch.domain import analysis, approvals, cases, messaging, recovery
 from promisepatch.domain.adapters import FakeEffectAdapter, ProviderBehaviour
 from promisepatch.domain.model import DeliveryOutcome, DeliveryStatus
 
@@ -281,11 +281,120 @@ async def test_the_message_says_what_changes_and_how_to_answer(physical: Intake)
     effects = [row for row in await physical.effects() if row.kind == approvals.EFFECT_MESSAGE_SEND]
     text = effects[0].payload["text"]
 
-    assert messaging.CONSENT_INSTRUCTION in text
+    # That it carries *an* answering instruction, rather than which one. Which one is decided
+    # by the deployment's link configuration, is unit-tested in ``test_consent_parser.py``, and
+    # is enforced on this very path by ``carries_required_literals`` -- which the workflow runs
+    # before enqueueing anything and which refuses the instruction this deployment did not owe.
+    # So a wrong choice does not fall through to a laxer assertion here; it raises before the
+    # row exists at all.
+    assert any(instruction in text for instruction in messaging.CONSENT_INSTRUCTIONS)
     assert request.option_code in text
     assert "Tomas" in text
     assert "EXT-B" in text
     assert effects[0].payload["channel_address"] == TOMAS_CHANNEL.partition(":")[2]
+
+
+CHAT = "1234567890"
+"""A chat id of the shape a real one has, for the provider below to stamp a reference with."""
+
+
+class TelegramShapedAdapter(FakeEffectAdapter):
+    """The fake provider, answering a customer message the way the Telegram adapter does.
+
+    Subclassed rather than mocked so everything else about the flow stays real: the outbox, the
+    continuation, the request row and the case transitions are the ones the ordinary tests
+    drive. The single difference is the string the provider hands back for a message, which is
+    where a customer's address enters this system -- ``telegram:<chat id>:<message id>``.
+
+    Without this the whole suite runs on ``fake-<hex>`` references, which carry no address and
+    so could never have caught the disclosure this exists to prove is closed.
+    """
+
+    async def deliver(self, *, kind: str, payload: Any, idempotency_key: str) -> DeliveryOutcome:
+        outcome = await super().deliver(kind=kind, payload=payload, idempotency_key=idempotency_key)
+        if kind != approvals.EFFECT_MESSAGE_SEND or outcome.status is not DeliveryStatus.DELIVERED:
+            return outcome
+        return DeliveryOutcome(
+            status=DeliveryStatus.DELIVERED, provider_ref=f"telegram:{CHAT}:4242"
+        )
+
+
+async def test_a_customers_chat_id_never_reaches_the_status_projection(
+    physical: Intake,
+) -> None:
+    """The surface ``pp case-status`` and ``GET /api/cases/{id}`` are both built from.
+
+    Until this was closed, a Telegram receipt reached three readers: the operator terminal, an
+    HTTP response served over the public internet, and the evidence drawer the deployed SPA
+    renders it into. All three read this one projection, so masking it here is what closes all
+    three -- and asserting it here is what proves they stay closed.
+
+    The durable rows are deliberately *not* asserted to be masked. They keep the whole
+    reference, because that is what a redelivery is reasoned about against and what lets a
+    reader who is entitled to ask learn which chat was reached. The rule is about boundaries,
+    not about storage, and this test is both halves of it.
+    """
+    adapter = TelegramShapedAdapter()
+    case_id = await waiting_case(physical, adapter=adapter)
+
+    status = await analysis.read_case_status(physical.database, case_id=case_id)
+    rendered = [
+        track for track in status.tracks if track.approval is not None and track.approval.sent_at
+    ]
+    assert rendered, "the case must really have asked somebody for this to prove anything"
+
+    for track in status.tracks:
+        if track.approval is not None:
+            assert track.approval.provider_ref == "telegram:***"
+        for effect in track.effects:
+            assert CHAT not in str(effect.provider_ref)
+
+    # And the row underneath still holds it, which is the other half of the same rule.
+    request = await the_request(physical)
+    assert request.provider_ref == f"telegram:{CHAT}:4242"
+
+
+async def test_the_message_promises_a_link_exactly_when_one_is_attached(
+    physical: Intake,
+) -> None:
+    """The regression that would replace the one ADR-0021 removed, on the row really written.
+
+    A message reading "open the secure link below" with nothing below it would be the same
+    defect in a new spelling: an instruction naming a way to answer that the message does not
+    provide. The wording and the URL are decided from one reading of one setting -- in
+    ``approvals._draft`` and ``approvals._approval_url`` -- and this says so about the payload.
+
+    It asserts an equivalence rather than a value, so it holds whichever way the environment
+    running it is configured, and fails the moment the two sides stop agreeing.
+    """
+    await waiting_case(physical)
+    effects = [row for row in await physical.effects() if row.kind == approvals.EFFECT_MESSAGE_SEND]
+    payload = effects[0].payload
+    text = payload["text"]
+
+    promises_a_link = messaging.CONSENT_INSTRUCTION in text
+    carries_a_link = bool(payload.get("approval_url"))
+    assert promises_a_link is carries_a_link
+
+    if not promises_a_link:
+        assert messaging.CONSENT_WITHOUT_LINK_INSTRUCTION in text
+
+
+async def test_no_customer_message_ever_asks_for_a_reply(physical: Intake) -> None:
+    """There is no inbound path, so nothing written to a customer may tell them to use one.
+
+    Asserted over the text of every customer-facing effect this case produced rather than over
+    a builder, because a builder is not what reaches a phone. A real customer followed the old
+    instruction into the bot's chat on 2026-09-22 and reached nothing.
+    """
+    await waiting_case(physical)
+    effects = [row for row in await physical.effects() if row.kind == approvals.EFFECT_MESSAGE_SEND]
+    assert effects
+
+    for effect in effects:
+        lowered = str(effect.payload["text"]).lower()
+        for forbidden in ("reply", "respond", "text back", "send yes"):
+            assert forbidden not in lowered
 
 
 async def test_the_track_waits_only_once_the_message_was_accepted(physical: Intake) -> None:

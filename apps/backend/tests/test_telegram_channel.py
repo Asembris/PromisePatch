@@ -14,7 +14,11 @@ The properties this module exists to hold are not "the HTTP call is shaped right
   the same key, the same words and the same link, which is the at-least-once guarantee the
   outbox states rather than an exactly-once one nobody can provide;
 * **the credential reaches nothing but the request line** -- not a log, not an error recorded
-  on a row, not a ``repr`` in a traceback.
+  on a row, not a ``repr`` in a traceback;
+* **the customer's chat id reaches nothing but the request line and the row** -- not the log
+  line this adapter writes, which on the deployed host goes to CloudWatch through compose's
+  ``awslogs`` driver, and not the ``provider_ref`` as anything but a channel kind once it is
+  read back out.
 
 What is deliberately absent is any test of an inbound path, because there is no inbound path:
 a customer answers through the signed link on the surface that already existed, and this
@@ -463,6 +467,48 @@ async def test_neither_the_words_nor_the_link_are_logged(
 
     assert LINK not in caplog.text
     assert CONSENT_INSTRUCTION not in caplog.text
+
+
+async def test_the_chat_id_is_not_logged_in_any_field(
+    capsys: pytest.CaptureFixture[str], scripted: Telegram
+) -> None:
+    """The leak this adapter shipped with, asserted over the line as it is really rendered.
+
+    ``worker.telegram.sent`` carried ``chat_id`` as its own field and carried it again inside
+    ``provider_ref``, and the deployed compose ships that line to a CloudWatch log group
+    through the ``awslogs`` driver. So a real person's Telegram identifier sat in a log group --
+    the one piece of care ``channel_binding`` takes everywhere else and this line did not.
+
+    Captured from stdout rather than through ``caplog``, because the renderer is what a log
+    group receives and a test reading the stdlib record would be asserting about a string
+    nobody ships. It is asserted over the whole line rather than a named field, so a future
+    field carrying the address under another name fails here too.
+    """
+    outcome = await deliver(scripted)
+    written = capsys.readouterr().out
+
+    assert outcome.status is DeliveryStatus.DELIVERED
+    assert "worker.telegram.sent" in written
+    assert CHAT not in written
+    assert "chat_id" not in written
+    assert "telegram:***" in written
+    # The correlating identifier survives, because it names nobody and is what an operator
+    # joins a delivery to its outbox row with.
+    assert KEY in written
+
+
+async def test_the_delivered_reference_still_carries_the_address_for_the_row() -> None:
+    """Redaction is a boundary rule, not a storage rule, and this is the half that stores.
+
+    The outbox row keeps the whole reference: it is the provider's own receipt, it is what a
+    redelivery is reasoned about against, and the ledger is where a reader who is entitled to
+    ask *which* chat was reached finds the answer. What must not carry it is the log line
+    above and the projection an operator screen and an HTTP response are built from.
+    """
+    telegram = Telegram(ok(4242))
+    outcome = await deliver(telegram)
+
+    assert outcome.provider_ref == f"telegram:{CHAT}:4242"
 
 
 async def test_the_redaction_is_installed_while_the_adapter_is_open_and_not_after() -> None:

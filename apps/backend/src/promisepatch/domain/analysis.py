@@ -81,7 +81,7 @@ from promisepatch.db.models import Promise as PromiseRow
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
-from promisepatch.domain import messaging, plan_identity
+from promisepatch.domain import disclosure, messaging, plan_identity
 from promisepatch.domain.cases import (
     CASE_RECONCILING,
     CASE_REVALIDATING,
@@ -1295,6 +1295,12 @@ class EffectStatus:
     how a person answers "did that actually reach the order system, and can I prove it" without
     opening a database. Nothing sensitive is in either -- they are our own identifiers and the
     provider's own receipt, not the content of anybody's order.
+
+    ``provider_ref`` is the one that had to be made true. A Telegram receipt is
+    ``telegram:<chat id>:<message>``, so the "provider's own receipt" was also a real person's
+    Telegram identifier, on a terminal and in an HTTP response. It is reduced here to its
+    channel kind by :func:`~promisepatch.domain.disclosure.redact_channel`; the outbox row keeps
+    the whole of it, which is where a reference belongs and where idempotency reads it from.
     """
 
     kind: str
@@ -1321,6 +1327,11 @@ class ApprovalStatus:
     Deliberately without the customer's channel address and without a word of what they wrote.
     Both are in the database, where a reader has to be entitled to look; what an operator needs
     on a terminal is which request, until when, and whether it has been answered.
+
+    That sentence was true of every field but ``provider_ref``, which carried the address inside
+    a Telegram receipt and therefore carried it onto the terminal this docstring says it stays
+    off. It is masked to its channel kind on the way in, so the claim above is now a property of
+    the type rather than a description of most of it.
     """
 
     request_id: UUID
@@ -1713,7 +1724,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                             kind=effect.kind,
                             state=effect.state,
                             idempotency_key=effect.idempotency_key,
-                            provider_ref=effect.provider_ref,
+                            provider_ref=disclosure.redact_channel(effect.provider_ref),
                             attempts=effect.attempts,
                             result=effect.result,
                             delivered_at=effect.delivered_at,
@@ -2020,16 +2031,33 @@ async def _revalidation_status(
         deciding_check=result.get("deciding_check"),
         detail=result.get("detail"),
         fingerprint=result.get("fingerprint"),
-        checks=tuple(
-            RevalidationCheck(
-                index=int(check["index"]),
-                name=str(check["name"]),
-                passed=bool(check["passed"]),
-                expected=str(check["expected"]),
-                actual=str(check["actual"]),
-            )
-            for check in result.get("checks", [])
-        ),
+        checks=tuple(_revalidation_check(check) for check in result.get("checks", [])),
+    )
+
+
+def _revalidation_check(check: Mapping[str, Any]) -> RevalidationCheck:
+    """One stored check, with any customer address taken out of the pair it compared.
+
+    Check 8 compares two channel identities and is the only one of the ten whose evidence *is*
+    an address; the other nine pass through untouched, because
+    :func:`~promisepatch.domain.disclosure.redact_comparison` masks nothing it does not
+    recognise.
+
+    The stored row is not edited. ``case_steps.result`` and the ``REVALIDATION_CHECK`` audit
+    rows keep both real values, which is what makes the ledger able to answer *which* address
+    answered when somebody with the standing to ask needs to know. This is the projection an
+    operator screen and an HTTP response are built from, and neither of those has that standing.
+    """
+    passed = bool(check["passed"])
+    expected, actual = disclosure.redact_comparison(
+        str(check["expected"]), str(check["actual"]), passed=passed
+    )
+    return RevalidationCheck(
+        index=int(check["index"]),
+        name=str(check["name"]),
+        passed=passed,
+        expected=expected,
+        actual=actual,
     )
 
 
@@ -2076,7 +2104,7 @@ async def _approval_status(connection: AsyncConnection, track_id: UUID) -> Appro
         decided=request.decided,
         sent_at=request.sent_at,
         deadline=request.deadline,
-        provider_ref=request.provider_ref,
+        provider_ref=disclosure.redact_channel(request.provider_ref),
         decision=None if decision is None else decision.decision,
         parser=None if decision is None else decision.parser,
         replies=int(replies or 0),

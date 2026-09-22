@@ -397,7 +397,13 @@ def channel_check_command(
     typer.echo(f"channel:  {CHANNEL_KIND}")
     typer.echo(f"api:      {API_ORIGIN}")
     typer.echo(f"bot:      @{bot.username} (id {bot.id})")
-    typer.echo(f"chat:     {chat.id} ({chat.type})" if chat else "chat:     not checked")
+    # The type and not the id, matching ``bind-demo-customer`` below. The operator typed the id
+    # to get here, so echoing it tells them nothing -- but this command is run inside the
+    # deployed container over ``ssm:StartSession``, and what it prints lands in a session
+    # transcript and a scrollback buffer that the person on the other end of the chat is not
+    # party to. What the command was asked is whether the bot can reach that chat, and the
+    # answer to that is ``reachable``.
+    typer.echo(f"chat:     {chat.type} (id not echoed)" if chat else "chat:     not checked")
     typer.echo(f"provider: {settings.customer_channel_provider.value}")
     typer.echo("result:   reachable; no message was sent")
 
