@@ -54,6 +54,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from promise_graph.model import ApprovalRequestState
+from promisepatch.config import get_settings
 from promisepatch.db.models import (
     ApprovalRequest,
     Customer,
@@ -253,14 +254,21 @@ async def _request_confirmation(
     ``CONFIRMATION_PENDING`` request is still an open one; and any decision, ever.
     """
     addressee = await _addressee(connection, binding.order_id)
+    # The same single read the request itself is composed against, for the same reason: the
+    # prompt names the way this deployment can be answered, and a prompt that named a different
+    # one from the message it follows would be two sets of instructions in one conversation.
+    link_available = get_settings().customer_links_configured
     text = messaging.build_confirmation_prompt(
         messaging.ApprovalMessage(
             customer_name=addressee.customer_name,
             order_reference=addressee.order_external_id,
             option_code=binding.option_code,
+            link_available=link_available,
         )
     )
-    if not messaging.carries_confirmation_literals(text, option_code=binding.option_code):
+    if not messaging.carries_confirmation_literals(
+        text, option_code=binding.option_code, link_available=link_available
+    ):
         # §13.6's pre-send check, applied to this message as well as to the request. The words
         # a customer is told to reply with are a fixed string in the builder and are never
         # drafted, so this cannot fail today -- and the guard predates any drafter on purpose.

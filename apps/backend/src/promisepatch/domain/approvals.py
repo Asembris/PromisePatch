@@ -539,20 +539,29 @@ async def _request(
     material = _material(snapshot, track=track, option=option)
     request_id = request_id_for(track.id, option.id)
     code = option_code_for(option.id)
+    settings = get_settings()
+    # Read once and used for both the wording and the guard, because the two have to agree
+    # about the same deployment. Composing the text against one answer and checking it against
+    # a second read would be a race nobody could see -- and the message a customer receives is
+    # the one artefact of this whole protocol that cannot be corrected afterwards.
+    link_available = settings.customer_links_configured
     text = messaging.build_approval_request(
         messaging.ApprovalMessage(
             customer_name=material.customer_name,
             order_reference=material.order_external_id,
             option_code=code,
             due_at=material.due_at,
-            timezone=get_settings().bakery_tz,
+            timezone=settings.bakery_tz,
             from_product=material.from_product,
             to_product=material.to_product,
             affected_resource=material.affected_resource,
             substitute_resource=material.substitute_resource,
+            link_available=link_available,
         )
     )
-    if not messaging.carries_required_literals(text, option_code=code):
+    if not messaging.carries_required_literals(
+        text, option_code=code, link_available=link_available
+    ):
         # §13.6's pre-send check. It cannot fail while the text is composed from a template;
         # it exists because the slice that lets a model draft the wording is the one where it
         # can, and a guard added after the drafter is a guard that was once absent.

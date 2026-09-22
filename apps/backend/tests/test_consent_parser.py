@@ -102,18 +102,75 @@ def _message(**overrides: object) -> messaging.ApprovalMessage:
         "to_product": "Another Cake (v2)",
         "affected_resource": "Raspberries",
         "substitute_resource": "Strawberries",
+        # The deployed shape. Every real message this product has sent carried a signed link,
+        # and the form without one is exercised by name below rather than by default, so a
+        # test that forgets to say which deployment it means gets the one that exists.
+        "link_available": True,
     }
     values.update(overrides)
     return messaging.ApprovalMessage(**values)  # type: ignore[arg-type]
 
 
-def test_the_message_carries_the_frozen_reply_instruction_verbatim() -> None:
-    """§13.6's sentence, word for word, and the option code beside it."""
+def test_the_message_carries_the_frozen_answering_instruction_verbatim() -> None:
+    """ADR-0021's sentence, word for word, and the option code beside it.
+
+    The second clause is §13.6's own and is unchanged. The first is the amendment: it names
+    the link, because the link is the only thing that opens the consent protocol.
+    """
     text = messaging.build_approval_request(_message())
 
     assert messaging.CONSENT_INSTRUCTION in text
-    assert "Reply YES to approve this change or NO to decline it." in text
+    assert "Open the secure link below to approve or decline this change." in text
     assert "If you decline, the bakery will follow up." in text
+    assert "OPT-ABC123" in text
+
+
+def test_no_message_ever_tells_a_customer_to_reply() -> None:
+    """The regression this change exists for, asserted as an absence rather than a rewrite.
+
+    A real customer typed a literal ``YES`` into the bot's own chat on 2026-09-22 because the
+    message told them to, and it reached nothing: no inbound reply, no decision, and not one
+    ``getUpdates`` call in the deployment's whole history. There is no inbound path and there
+    is deliberately not going to be one, so no message may ask for a reply on the channel.
+    """
+    for text in (
+        messaging.build_approval_request(_message()),
+        messaging.build_approval_request(_message(link_available=False)),
+        messaging.build_confirmation_prompt(_message()),
+        messaging.build_confirmation_prompt(_message(link_available=False)),
+        messaging.build_supersede_notice(_message()),
+    ):
+        lowered = text.lower()
+        for forbidden in ("reply", "respond", "text back", "send yes", "answer yes"):
+            assert forbidden not in lowered
+
+
+def test_only_the_link_is_offered_as_a_way_to_answer() -> None:
+    """The message points at exactly one door, and it is the signed one.
+
+    ``build_approval_request`` never renders the URL -- the transport appends it beside the
+    words -- so what is asserted here is that the words name that line and offer no second way.
+    """
+    text = messaging.build_approval_request(_message())
+
+    assert "secure link below" in text
+    assert "http" not in text
+    for other_door in ("@", "call us", "phone", "email"):
+        assert other_door not in text.lower()
+
+
+def test_a_deployment_that_mints_no_link_asks_for_nothing_at_all() -> None:
+    """With no link there is no surface to answer on, so the message stops being a question.
+
+    Both of its claims hold by construction: nothing is amended without consent, and an
+    unanswered request reaches its deadline and puts the promise on its owner's desk.
+    """
+    text = messaging.build_approval_request(_message(link_available=False))
+
+    assert messaging.CONSENT_WITHOUT_LINK_INSTRUCTION in text
+    assert messaging.CONSENT_INSTRUCTION not in text
+    assert "secure link" not in text
+    assert "nothing about your order changes because of it" in text
     assert "OPT-ABC123" in text
 
 
@@ -147,6 +204,24 @@ def test_a_message_missing_its_detail_still_carries_its_instruction() -> None:
     assert "OPT-ABC123" in text
 
 
+def test_the_confirmation_prompt_points_at_the_link_in_both_deployments() -> None:
+    """The prompt a non-literal reply earns names the same door the request named.
+
+    Two sets of instructions in one conversation would be worse than the one wrong set this
+    change removes, so the prompt and the request are composed against a single reading of the
+    same setting.
+    """
+    with_link = messaging.build_confirmation_prompt(_message())
+    without = messaging.build_confirmation_prompt(_message(link_available=False))
+
+    assert messaging.CONFIRMATION_INSTRUCTION in with_link
+    assert "secure link in our earlier message" in with_link
+    assert messaging.CONFIRMATION_WITHOUT_LINK_INSTRUCTION in without
+    assert messaging.CONFIRMATION_INSTRUCTION not in without
+    assert "OPT-ABC123" in with_link
+    assert "OPT-ABC123" in without
+
+
 def test_the_supersede_notice_says_the_order_changed_and_asks_for_nothing() -> None:
     """§14.4's one message: it tells, it does not ask, and it claims no write was made."""
     text = messaging.build_supersede_notice(_message())
@@ -176,26 +251,59 @@ def test_the_supersede_guard_refuses_a_notice_that_invites_a_reply() -> None:
     assert messaging.carries_supersede_literals(good, option_code="OPT-ABC123") is True
     assert messaging.carries_supersede_literals(good, option_code="OPT-OTHER") is False
     assert messaging.carries_supersede_literals("nothing here", option_code="OPT-ABC123") is False
-    assert (
-        messaging.carries_supersede_literals(
-            good + chr(10) + messaging.CONSENT_INSTRUCTION, option_code="OPT-ABC123"
+    # Every form of both instructions, not merely the one this deployment sends. A guard that
+    # knew only the link spelling would stop catching the other the moment it existed.
+    for instruction in (*messaging.CONSENT_INSTRUCTIONS, *messaging.CONFIRMATION_INSTRUCTIONS):
+        assert (
+            messaging.carries_supersede_literals(
+                good + chr(10) + instruction, option_code="OPT-ABC123"
+            )
+            is False
         )
-        is False
-    )
 
 
 def test_the_pre_send_guard_refuses_a_message_missing_either_literal() -> None:
     """The check exists before the drafter it will one day check."""
-    assert messaging.carries_required_literals("nothing here", option_code="OPT-ABC123") is False
     assert (
-        messaging.carries_required_literals(messaging.CONSENT_INSTRUCTION, option_code="OPT-ABC123")
+        messaging.carries_required_literals(
+            "nothing here", option_code="OPT-ABC123", link_available=True
+        )
         is False
     )
     assert (
         messaging.carries_required_literals(
-            f"{messaging.CONSENT_INSTRUCTION} OPT-ABC123", option_code="OPT-ABC123"
+            messaging.CONSENT_INSTRUCTION, option_code="OPT-ABC123", link_available=True
+        )
+        is False
+    )
+    assert (
+        messaging.carries_required_literals(
+            f"{messaging.CONSENT_INSTRUCTION} OPT-ABC123",
+            option_code="OPT-ABC123",
+            link_available=True,
         )
         is True
+    )
+
+
+def test_the_pre_send_guard_refuses_the_instruction_the_deployment_did_not_owe() -> None:
+    """A message promising a link nobody will attach must not pass, and nor must its opposite.
+
+    This is why ``link_available`` is required rather than defaulted on the guard: the check is
+    worth having only if it is told which sentence was owed.
+    """
+    with_link = messaging.build_approval_request(_message())
+    without = messaging.build_approval_request(_message(link_available=False))
+
+    assert (
+        messaging.carries_required_literals(
+            with_link, option_code="OPT-ABC123", link_available=False
+        )
+        is False
+    )
+    assert (
+        messaging.carries_required_literals(without, option_code="OPT-ABC123", link_available=True)
+        is False
     )
 
 

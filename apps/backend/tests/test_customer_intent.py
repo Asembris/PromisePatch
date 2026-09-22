@@ -242,7 +242,13 @@ async def test_the_canonical_sentence_produces_exactly_one_prompt(physical: Inta
 
     prompts = await confirmations(physical, request.id)
     assert len(prompts) == 1
-    assert messaging.CONFIRMATION_INSTRUCTION in prompts[0].payload["text"]
+    # An instruction, rather than which one: the choice follows the deployment's link
+    # configuration, is pinned by name in ``test_consent_parser.py``, and is enforced on this
+    # path by ``carries_confirmation_literals`` before the prompt is ever enqueued.
+    assert any(
+        instruction in prompts[0].payload["text"]
+        for instruction in messaging.CONFIRMATION_INSTRUCTIONS
+    )
     assert request.option_code in prompts[0].payload["text"]
     assert approvals.AUDIT_APPROVAL_CONFIRMATION_REQUESTED in await audit_types(physical, case_id)
 
@@ -304,7 +310,10 @@ async def test_every_unreadable_reply_asks_and_decides_nothing(physical: Intake,
     assert (await physical.case(case_id)).state == cases.CASE_WAITING
     prompts = await confirmations(physical, request.id)
     assert len(prompts) == 1
-    assert messaging.CONFIRMATION_INSTRUCTION in prompts[0].payload["text"]
+    assert any(
+        instruction in prompts[0].payload["text"]
+        for instruction in messaging.CONFIRMATION_INSTRUCTIONS
+    )
     assert (await physical.replies())[0].apparent_intent is None
 
 
@@ -321,9 +330,15 @@ async def test_the_prompt_does_not_repeat_the_reply_or_guess_at_it(physical: Int
 
     text = (await confirmations(physical, request.id))[0].payload["text"]
     assert CANONICAL not in text
-    for word in ("APPARENT", "approve", "sounds like", "we think", "you said"):
+    for word in ("APPARENT", "sounds like", "we think", "you said"):
         assert word not in text
-    assert messaging.CONFIRMATION_INSTRUCTION in text
+    # "approve" was in that list while the prompt named two words to reply with and so had no
+    # reason to say it at all. ADR-0021's prompt offers both choices by name, so the rule the
+    # word was a proxy for -- no anchor toward either answer -- is asserted directly, and more
+    # tightly than a ban was: whichever of the two the text names, it names the other as often.
+    lowered = text.lower()
+    assert lowered.count("approve") == lowered.count("decline")
+    assert any(instruction in text for instruction in messaging.CONFIRMATION_INSTRUCTIONS)
 
 
 async def test_the_prompt_carries_the_frozen_idempotency_key(physical: Intake) -> None:
@@ -838,15 +853,33 @@ def test_an_apparent_intent_is_not_a_decision() -> None:
 
 
 def test_the_confirmation_wording_is_the_frozen_sentence() -> None:
-    """§13.6, quoted. A pure assertion, because a customer-facing literal deserves one."""
+    """§13.6 as amended by ADR-0021, quoted. A customer-facing literal deserves a pure assertion.
+
+    The sentence changed once, deliberately and on the record: it used to name two words to
+    reply with, on a channel that has no inbound path and never will, and a real customer
+    followed it into nothing on 2026-09-22. It now names the link, which is the only thing that
+    reaches the consent protocol. The literal is pinned here so the next change to it is also
+    deliberate.
+    """
     assert (
         messaging.CONFIRMATION_INSTRUCTION
-        == "To confirm this change, reply YES. Reply NO to decline."
+        == "To approve or decline this change, use the secure link in our earlier message."
+    )
+    assert (
+        messaging.CONFIRMATION_WITHOUT_LINK_INSTRUCTION
+        == "This message cannot take your answer. The bakery will follow up."
     )
     text = messaging.build_confirmation_prompt(
         messaging.ApprovalMessage(
-            customer_name="Tomas", order_reference="SO-1", option_code="OPT-ABCDEF"
+            customer_name="Tomas",
+            order_reference="SO-1",
+            option_code="OPT-ABCDEF",
+            link_available=True,
         )
     )
-    assert messaging.carries_confirmation_literals(text, option_code="OPT-ABCDEF")
-    assert not messaging.carries_confirmation_literals("reply however you like", option_code="X")
+    assert messaging.carries_confirmation_literals(
+        text, option_code="OPT-ABCDEF", link_available=True
+    )
+    assert not messaging.carries_confirmation_literals(
+        "reply however you like", option_code="X", link_available=True
+    )
