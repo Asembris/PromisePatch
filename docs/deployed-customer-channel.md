@@ -1044,3 +1044,204 @@ opening the signed link the message carries and choosing on the web. Nobody has 
 2. The worker then executes the recovery the decision authorises, `pr-b`'s track settles, and the
    case leaves `WAITING`. `pp case-status --case a3810ae5-...` on the host is how to watch it.
 3. Nothing else needs doing first. The transport, the destination and the world are all in place.
+
+## 11. The customer answered on the web, and the recovery it authorised was applied
+
+Date: 2026-09-22, after section 10 and in a separate session. Identity
+`arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment`,
+account `265243686715`, region `us-east-1`, profile `promisepatch`, verified before anything was
+read and unchanged throughout.
+
+**A real customer opened the signed link in the message section 10 delivered, chose APPROVE on
+the web page, and PromisePatch revalidated that consent against current truth before applying
+it.** That closes section 10.9 and completes the first real customer-authority loop this
+repository has ever run end to end. No second proposal was made, no second message was sent, and
+`sendMessage` has still been called exactly once in this deployment's history.
+
+Sections 3 and 6 through 10 are left exactly as written. This section records the later truth
+beside them.
+
+### 11.1 Entry, and the state measured before the customer acted
+
+| | value |
+|---|---|
+| HEAD / tree / `origin/main` | `b2e813fccba1`, tracked tree clean, equal to `origin/main` |
+| Stack status / last updated / change sets | `UPDATE_COMPLETE` / `2026-09-21T19:28:32Z` / none |
+| `ImageTag` / `HostAmiId` / `SeedDemoFixtureOnFirstBoot` | `aeb46d2bdb7f` / `ami-0fa4996c14e7d501e` / `false` |
+| Host instance / AMI / launch | `i-087c742587f83d61d` / `ami-0fa4996c14e7d501e` / `2026-09-18T10:19:33Z` |
+| Host kernel `boot_id` / uptime since | `eb889c14-2aa2-462a-a0c6-e73ff8886014` / `2026-09-21 19:30:20` |
+| RDS | `promisepatch-prod`, `db-U2JWQBTINX6W6GAB56EOTHOCSM`, `available`, private, encrypted |
+| `/healthz` image / process `boot_id` | `aeb46d2bdb7f` / `b0124ede-182c-4210-9604-74e4d69d6291` |
+| Containers | five running; `RestartCount` **0** on `api`, `worker`, `caddy`, `mcp` |
+| Deployed runtime provider | `pp channel check` **inside `worker`**: `provider: telegram` |
+| Forged approval `GET` | `404 LINK_NOT_FOUND` |
+| Case | `a3810ae5-6337-559b-8b97-47023bc0094c`, **`WAITING`** |
+| Approval request | `e9832010-...` (`OPT-4D3FFD`), **`SENT`**, deadline `2026-09-22T21:47:06.452592Z`, replies 0 |
+| `approval_decisions` / `inbound_replies` | **0 / 0** |
+| `approval_requests` / `plan_approvals` | 1 / 1 |
+| Outbox | 2 rows: `MESSAGE_SEND` `DELIVERED` attempts 1, `ORDER_AMEND` `DELIVERED` attempts 1 |
+| `sendMessage` / `getUpdates` calls in the worker's entire log history | **1 / 0** |
+| `audit_events` / `domain_events` | 198 / 261 |
+| Fixture | `hollow-oak`, anchor `2026-09-22T16:47:06.452592Z`, digest `3a33a523...59e89d` |
+| Customers | 6; only `cus-tomas` bound (address length 10), the other five 4-character placeholders |
+
+**The request was live, and that was established rather than assumed.** The *database's* clock
+read `2026-09-22T17:36:12Z` against a deadline of `21:47:06Z`. The API answered a forged token
+`404` rather than `503`, so it holds the link secret; neither `api` nor `worker` had restarted
+since the message was minted, so the secret that verifies is the secret that signed.
+
+The revalidation inputs the request captured at send time, recorded before they could be
+compared: order version **1**, recipe `rv-raspberry-rose-2`, constraint hash `3841dc04...5a87c`,
+track fingerprint `b8a8096a...8523a`. Live at that moment: `EXT-B` version **1** `ACCEPTED`,
+`ol-b` pinned to `rv-raspberry-rose-2`, `task-ol-b` `SCHEDULED` starting `22:47:06Z`.
+
+### 11.2 The customer's decision, proved from system state
+
+The operator opened the link in the delivered message on the phone and chose **APPROVE**.
+Nothing in this session opened, clicked or followed that link, and no link was minted here.
+
+| claim | evidence |
+|---|---|
+| exactly one decision exists | `approval_decisions` **1** |
+| it belongs to the existing request | `request_id` `e9832010-58df-576b-bcb6-708106ade78c`, the `SENT` row from section 10 |
+| the decision is an approval | `decision` **`APPROVE`** |
+| it came from the literal parser | `parser` **`LITERAL`**, `raw_text` `yes` |
+| possession, not identity, carried it | `provider_message_id` `link:69c047c7-...`, the id `approvals.link_message_id` derives from *request and channel* -- so a second press of either button proposes an id the database already holds and writes nothing |
+| the sender matched the channel asked | `sender_identity` equals the request's `customer_channel`, server-derived from the link's signature and never from a request body |
+| the request moved off `SENT` | state **`ANSWERED`**, `decided = true`, `replies 1` |
+| Telegram inbound played no part | `getUpdates` calls **0**; the reply arrived as an `inbox_events` row of source `customer-reply` with `transport: customer-link` |
+| no plan authority was spent | `plan_approvals` **1**, unchanged -- the customer's yes spent no worker approval, which is the separation of ADR-0018 holding |
+
+The signature, possession and expiry checks were honoured by construction: `_possession` refuses
+a token that does not verify before any handler runs, and an unverifiable one is `404` whatever
+the reason -- forged, malformed or never-existed alike.
+
+### 11.3 The worker revalidated against current truth, and that is the load-bearing evidence
+
+`REVALIDATE_RECOVERY` ran on the durable worker and wrote **ten** `REVALIDATION_CHECK` audit
+rows, each carrying the two values it compared. Every row's `authority` is `NONE` and its actor
+is `SYSTEM`: the checks are evidence, and evidence authorises nothing.
+
+| # | check | expected | actual | |
+|---|---|---|---|---|
+| 1 | track and case are waiting | `track=WAITING_FOR_CUSTOMER case=WAITING` | same | pass |
+| 2 | order state and version unchanged | `ACCEPTED or AMENDED @ v1` | `ACCEPTED @ v1` | pass |
+| 3 | pinned recipe version unchanged | `rv-raspberry-rose-2` | `rv-raspberry-rose-2` | pass |
+| 4 | constraint snapshot unchanged | `3841dc04...5a87c` | `3841dc04...5a87c` | pass |
+| 5 | substitute still available | `>= 2.200` | `3.200` | pass |
+| 6 | production task not started and still ahead | `SCHEDULED or HELD by a3810ae5-... and start > 2026-09-22T17:40:10.652625Z` | `SCHEDULED and start 2026-09-22T22:47:06.452592Z` | pass |
+| 7 | approval deadline not passed | `now <= 2026-09-22T21:47:06.452592Z` | `2026-09-22T17:40:10.652625Z` | pass |
+| 8 | sender is the order's approval channel | the request's channel | the same, `via` the same | pass |
+| 9 | decision came from the literal parser | `LITERAL` | `LITERAL` | pass |
+| 10 | one unspent decision, bound to this plan | one decision for `e9832010-...` on track `f8c0e808-...` option `4d3ffd00-...` | `1 decision(s)` for the same three | pass |
+
+Outcome **`PROCEED`**.
+
+**This is a re-read, not a replay of the plan.** `_revalidate` calls
+`analysis.fresh_snapshot(connection)` -- never the snapshot planning or the approval used -- and
+checks 2, 3, 4 and 5 are that fresh snapshot being compared against what the request captured
+when it was sent. Check 6 reads the live production task and compares its start to the current
+clock; check 7 compares the deadline to the *database's* clock rather than to whether a timer
+has run. The snapshot instant, `17:40:10.652625Z`, is later than the decision instant,
+`17:40:10.544403Z`, which is what says the world was read after the customer spoke and not
+before.
+
+**No drift was manufactured.** Nothing was amended, re-pinned, consumed or started in order to
+provoke a refusal; the world was left exactly as the customer found it, and it happened still to
+be true. The refusal paths therefore remain unexercised live, and that is stated rather than
+implied.
+
+### 11.4 The recovery, applied
+
+`REVALIDATE_RECOVERY` enqueued `APPLY_RECOVERY` -- the same crash-safe saga an automatic track
+uses, under the same stable idempotency key. Only the authorisation differed.
+
+```text
+effect ORDER_AMEND DELIVERED (attempt 1, ref amd-e735e9398046)
+  key pp:amend:f8c0e808-...:4d3ffd00-...:1
+  provider reported: external_order_id EXT-B, external_line_id ol-b,
+    item_id rv-raspberry-rose-3, previous_version 1, external_version 2,
+    state AMENDED, replayed False
+```
+
+| claim | evidence |
+|---|---|
+| only the authorised substitution executed | one new effect, keyed to pr-b's track and to option `4d3ffd00-...` = `OPT-4D3FFD`, the option the request named |
+| the durable effect settled | `ORDER_AMEND` `DELIVERED`, **attempts 1** |
+| the provider reference persisted | `amd-e735e9398046`, and `replayed False` |
+| pr-b settled | track `WAITING_FOR_CUSTOMER` to **`RECOVERED`**; `ol-b` `rv-raspberry-rose-2` to **`rv-raspberry-rose-3`**; `EXT-B` `ACCEPTED @ v1` to **`AMENDED @ v2`** |
+| the case left `WAITING` | `WAITING` to **`RESOLVED`** |
+| no duplicate effect | 3 outbox rows, **3 distinct idempotency keys** |
+| no second message | `MESSAGE_SEND` rows **1**; `sendMessage` calls in the worker's entire log history **1** |
+
+The step ledger records the whole path: `RECEIVE_CUSTOMER_REPLY` `DONE`, `REVALIDATE_RECOVERY`
+`DONE`, `APPLY_RECOVERY` `DONE` (now 2, one per recovered track), `FINALIZE_RECOVERY` `DONE`
+(2), `RECONCILE_CASE` `SKIPPED` -- skipped because the transition that settled the last
+non-terminal track had already finished the case.
+
+### 11.5 Unrelated state, unchanged
+
+| promise | before | after |
+|---|---|---|
+| `pr-a` / `EXT-A` | `RECOVERED`, `AMENDED @ v2`, `amd-40e195e65abe` | **identical** |
+| `pr-c` / `EXT-C` | `ESCALATED` to the owner, `ACCEPTED @ v1` | **identical** |
+| `pr-d` / `EXT-D` | `ESCALATED` to the owner, `ACCEPTED @ v1` | **identical** |
+| `pr-e` / `EXT-E` | `UNAFFECTED`, `ACCEPTED @ v1` | **identical** |
+| `pr-f` / `EXT-F` | `UNAFFECTED`, `ACCEPTED @ v1` | **identical** |
+
+The five unrelated tracks and their five orders hash to
+`512375621d0065fbff83be4b5c3636bbc08a501f5052d8af668d52dee6ed72c0` before and after -- computed
+over the same rows on both sides, so the equality is a comparison rather than a restatement.
+Five of the six customers still carry four-character placeholders, so no dispatch could have
+reached a second person. `plan_approvals` is still 1 and `approval_requests` is still 1.
+
+Both ledgers only grew: `audit_events` 198 to 218, `domain_events` 261 to 277.
+
+### 11.6 The deployment, unmoved
+
+Deployment smoke: **12/12 passed, 0 failed, 0 skipped**, including `deployed-image`, which still
+reports `aeb46d2bdb7f`, and the five refusal checks.
+
+| | before | after |
+|---|---|---|
+| Stack status / last updated / change sets | `UPDATE_COMPLETE` / `2026-09-21T19:28:32Z` / none | **all unchanged** |
+| Host instance / AMI / launch time | `i-087c742587f83d61d` / `ami-0fa4996c14e7d501e` / `2026-09-18T10:19:33Z` | **all unchanged** |
+| Host kernel `boot_id` / uptime since | `eb889c14-...` / `2026-09-21 19:30:20` | **identical -- no reboot** |
+| `/healthz` process `boot_id` | `b0124ede-...` | **identical -- `api` never restarted** |
+| RDS `DbiResourceId` / status / access | `db-U2JWQBTINX6W6GAB56EOTHOCSM` / `available` / private, encrypted | unchanged |
+| Container `RestartCount` | 0 on `api`, `worker`, `caddy`, `mcp` | **0 on all four** |
+| Fixture name / anchor / digest | `hollow-oak` / `...16:47:06.452592Z` / `3a33a523...59e89d` | **all unchanged** |
+
+**No AWS resource was created, updated or deleted.** No SSM parameter was written, no release was
+run, no change set was built, no stack was updated, no host was replaced or rebooted, and no IAM
+policy was broadened. Every host command went through `ssm:StartSession` with
+`AWS-StartNonInteractiveCommand`, and every one of them was a read. `ssm:SendCommand` is still
+not granted and was not used.
+
+### 11.7 What was not done, and the honest limitations
+
+- **No second proposal was made and no second message was sent.** `sendMessage` has been called
+  exactly once in this deployment's history, and that call was section 10's.
+- **No refusal path was exercised live.** The world did not move between the message and the
+  answer, so `STALE`, `EXPIRED`, `UNAUTHORIZED` and `NOOP` remain proved only by their tests.
+  Manufacturing drift to demonstrate one was out of scope, and inventing a stale world in order
+  to watch a refusal would have been staging rather than measuring.
+- **The chat id reaches the operator read surface, not only the logs.** Section 10.8 recorded
+  `worker.telegram.sent` carrying `chat_id` into CloudWatch. `pp case-status` prints the same
+  identifier inside the approval request's `provider_ref` (`telegram:<id>:<msg>`), and the
+  decision and reply rows carry it as `sender_identity`. So reading a case out loud discloses a
+  real person's Telegram identifier. It is masked everywhere in this document and was masked in
+  every read after the first. It is recorded rather than fixed, because this work was scoped to
+  docs and the defect blocks no correctness.
+- **The host's `converge.sh` is still the stale one**, unchanged, so `env/channel.env` remains
+  hand-written rather than derived. Section 8.7's consequence is unchanged.
+- **The world still decays from its 2026-09-22 anchor**, and the non-destructive roll is still
+  refused on this host. The next repair is the destructive one and will erase the binding.
+
+### 11.8 What this closes
+
+Section 10.9 is answered in full: the link was opened, the single option was approved, the worker
+executed the recovery that decision authorised, pr-b settled, and the case left `WAITING`. The
+loop from a spoken physical exception, through a worker's plan confirmation, to a real customer's
+web decision, through ten revalidation checks, to an amendment on the external order system, has
+now run once end to end against a real phone and a real deployment.

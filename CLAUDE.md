@@ -174,16 +174,31 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   `pp channel bind-demo-customer`, and one plan confirmation on the operator console queued
   exactly one customer approval, which the durable worker dispatched. Telegram answered
   `200 OK`, the `provider_ref` is persisted, the `MESSAGE_SEND` row is `DELIVERED` at one
-  attempt, and the operator confirmed exactly one message on the device. **Nothing has been
-  approved or declined**: the request is `SENT` and the case is `WAITING`. The ordering is
+  attempt, and the operator confirmed exactly one message on the device. The ordering is
   load-bearing and is not negotiable — **reseed, then bind, then propose** — because the reset
   truncates `customers` and erases a binding taken before it. See
   [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 10.
+  **The customer then answered that message on the web, and the loop closed.** The signed
+  possession link was opened on the phone and `APPROVE` chosen; exactly one
+  `approval_decisions` row exists, `APPROVE` via the `LITERAL` parser, bound to the existing
+  `pr-b` request, which moved `SENT` → `ANSWERED`. The durable worker wrote all ten
+  `REVALIDATION_CHECK` rows against a **fresh** snapshot — `_revalidate` calls
+  `analysis.fresh_snapshot`, never the one planning or the approval used — every check passed,
+  and only then did `APPLY_RECOVERY` run. `EXT-B` went `ACCEPTED @ v1` → `AMENDED @ v2`, `ol-b`
+  `rv-raspberry-rose-2` → `rv-raspberry-rose-3`, `pr-b` settled `RECOVERED`, and the case left
+  `WAITING` for `RESOLVED`. `plan_approvals` stayed `1`: a customer's yes spends no worker
+  approval. No refusal path was exercised live and no drift was manufactured, so `STALE`,
+  `EXPIRED`, `UNAUTHORIZED` and `NOOP` remain proved only by their tests. **The chat id reaches
+  the operator read surface too** — `pp case-status` prints it inside `provider_ref`, and the
+  decision and reply rows carry it as `sender_identity` — which widens the known logging defect
+  and is recorded, not fixed. See
+  [deployed-customer-channel.md](docs/deployed-customer-channel.md) section 11.
   **Telegram inbound stays unbuilt and deliberately so**: a second route for the word `YES`
   would be a second consent parser. That is now measured rather than asserted — after the
-  delivery above the operator typed a literal `YES` into the bot's own chat and it reached
-  nothing: `inbound_replies` 0, `approval_decisions` 0, the request still `SENT`, and zero
-  `getUpdates` calls ever made. The Bot API offers no idempotency key, so a retry in the
+  delivery above, and **before** the web approval, the operator typed a literal `YES` into the
+  bot's own chat and it reached nothing: `inbound_replies` 0, `approval_decisions` 0, the
+  request still `SENT` at that point, and zero `getUpdates` calls ever made. The single
+  `inbound_replies` row this deployment now holds came from the signed link, not from Telegram. The Bot API offers no idempotency key, so a retry in the
   uncertain window is a real duplicate *message* and never a duplicate effect; that is the
   at-least-once case `outbox.py` already names, and it is disclosed rather than engineered
   around. Correcting a physical fact is CLI-only. A customer answers on the web, through a
@@ -339,7 +354,7 @@ read the source document rather than a paraphrase of it.
 | SUR-1 parity correction (five defects closed, ablation reach open) | [sur1-parity-correction.md](docs/sur1-parity-correction.md) |
 | Consent, withdrawal and confirmation | [a-spoken-yes.md](docs/a-spoken-yes.md), [bounded-withdrawal.md](docs/bounded-withdrawal.md), [mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md), [customer-intent-classifier-removal.md](docs/customer-intent-classifier-removal.md) |
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md), [customer-message-transport.md](docs/customer-message-transport.md) |
-| Deployed customer channel (released; turn-on blocked, nothing sent) | [deployed-customer-channel.md](docs/deployed-customer-channel.md) |
+| Deployed customer channel (switched on, one real delivery, one real web approval) | [deployed-customer-channel.md](docs/deployed-customer-channel.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |
