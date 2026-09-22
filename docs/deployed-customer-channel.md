@@ -7,6 +7,13 @@ happen, and nothing was sent.** A structural blocker was found, is recorded in f
 reached anybody, no chat id has been bound anywhere, and the deployed customer channel is still
 the fake provider.
 
+> **Extended on 2026-09-22 by [section 7](#7-the-turn-on-attempted-again-and-measured).** The
+> status line above is left as written. A second attempt at the turn-on read the live state,
+> found that the three SSM parameters section 5 says do not exist have since been created, and
+> **measured** — rather than inferred — that the deployed processes still load no channel
+> configuration at all. The blocker of section 3 is unchanged and is now the only thing left.
+> No AWS resource was created, updated or deleted while section 7 was written.
+
 This closes nothing in [customer-message-transport.md](customer-message-transport.md) section
 *What is not proven*. Every line of that list is still true.
 
@@ -205,3 +212,157 @@ Stated so the next attempt does not rediscover section 3. **None of this was per
 
 Steps 1, 2 and 4 are each a decision with a cost outside this repository. That is why this
 document ends here rather than with a message on a phone.
+
+---
+
+## 7. The turn-on attempted again, and measured
+
+Date: 2026-09-22. Identity
+`arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment`,
+account `265243686715`, region `us-east-1`, profile `promisepatch`, verified before anything
+else ran and unchanged throughout.
+
+**Nothing was mutated.** No AWS resource was created, updated or deleted; no change set was
+built; no stack was updated; no instance was rebooted or replaced; no fixture was reset; no IAM
+was broadened; no chat id was bound; and no message was sent. Every AWS call below is a read,
+and every application call is a `GET` or the read-only observer session of ADR-0013.
+
+### 7.1 Entry
+
+HEAD `d532db93ce07`, tracked tree clean, `main` equal to `origin/main`. The `pr` workflow is
+green on that exact commit — 13 of 14 checks `success`, the fourteenth being
+`effect sets (expected red until 16/16)`, which is the red this repository expects.
+
+### 7.2 One claim in section 5 that is no longer true
+
+Section 5 said, and is left as written because it was true when written:
+
+> *No parameter it names exists: `customer-channel-provider`, `telegram-bot-token` and
+> `customer-link-secret` were all deliberately left uncreated.*
+
+All three exist now. They were created on 2026-09-21, after section 5 was written, by the
+`channel` stage this document's section 4 added — which is also where commit `741ccb3` comes
+from: *"ssm refuses tags with overwrite, so tag the provider on create"* is a defect found by
+running that stage against the real SSM API, and `stage_channel`'s own comment records it.
+
+| parameter | type | created | value |
+|---|---|---|---|
+| `/promisepatch/prod/customer-link-secret` | `SecureString` | 2026-09-21T19:29:02Z | present, not read out |
+| `/promisepatch/prod/telegram-bot-token` | `SecureString` | 2026-09-21T19:29:53Z | present, not read out |
+| `/promisepatch/prod/customer-channel-provider` | `String` | 2026-09-21T19:31:32Z | `telegram` |
+
+`ssm:ListTagsForResource` is **not** granted to the developer role, so the tags were not read
+and **IAM was not broadened to read them**. The names, types and timestamps are the evidence.
+
+The fourth setting, `PP_CUSTOMER_LINK_BASE_URL`, is deliberately not a parameter: `converge.sh`
+derives it as `https://$TLS_HOSTNAME`, and the stack's `TlsHostname` output is
+`184.194.40.87.sslip.io`. So the base URL this deployment would mint links against is
+`https://184.194.40.87.sslip.io` — HTTPS, and the name its certificate is already issued for.
+
+### 7.3 The live state, read before anything and again after
+
+Identical in every field. Nothing between the two reads mutated anything, and the second read
+is what says so rather than the absence of a mutating call.
+
+| | before | after |
+|---|---|---|
+| stack status / last updated | `UPDATE_COMPLETE` / `2026-09-21T19:28:32Z` | unchanged |
+| `ImageTag` / `HostAmiId` / `SeedDemoFixtureOnFirstBoot` | `aeb46d2bdb7f` / `ami-0fa4996c14e7d501e` / `false` | unchanged |
+| `HostInstanceId` | `i-087c742587f83d61d` | `i-087c742587f83d61d` |
+| EC2 `ImageId` / state / launch time | `ami-0fa4996c14e7d501e` / `running` / `2026-09-18T10:19:33Z` | unchanged |
+| RDS `DbiResourceId` / status / created | `db-U2JWQBTINX6W6GAB56EOTHOCSM` / `available` / `2026-09-11T11:19:51Z` | unchanged |
+| SSM `image-tag` | `aeb46d2bdb7f` | `aeb46d2bdb7f` |
+| `/healthz` `image` / `boot_id` | `aeb46d2bdb7f` / `bad27044-…` | unchanged, **same `boot_id`** |
+| migration | `0009_human_plan_approval`, at head | unchanged |
+| fixture `loaded_at` / `anchor_at` / digest | `2026-09-13T18:35:32.148240Z` / `…020039Z` / `f6cb717c…` | unchanged |
+| cases | 4 | **4, and the payload is byte-identical** |
+| change sets on the stack | none | none |
+
+The unchanged `boot_id` is the load-bearing one: it says the host was not restarted, which no
+comparison of stack parameters could say on its own. The case list was fetched twice through
+`POST /api/auth/demo-session` and hashed; both reads are `2633a37fa759b21ade5c08b5…`.
+
+### 7.4 The deployed runtime loads no channel configuration, and that is now measured
+
+Section 5 asserted this from the definition. It is now observed, by one `GET` that writes
+nothing, decides nothing and sends nothing:
+
+```text
+GET /api/customer/approval/not-a-real-token
+503 {"error":{"code":"CUSTOMER_LINKS_NOT_CONFIGURED", ...}}
+```
+
+`_possession` in [`routers/customer.py`](../apps/backend/src/promisepatch/api/routers/customer.py)
+raises `UNCONFIGURED` only when `settings.customer_link_secret is None`; a *configured* process
+answers a forged token `404 LINK_NOT_FOUND` instead. So the deployed API holds no
+`PP_CUSTOMER_LINK_SECRET`, which means `env/channel.env` did not reach it — and `api` and
+`worker` name the same two `env_file` entries, so the worker is on the fake provider for the
+same reason. **A `503` here is the runtime stating its own configuration**, which is a stronger
+claim than reading the composition and reasoning about it.
+
+The stack's deployed template was read back and contains **zero** occurrences of `channel.env`
+or `customer-channel-provider`. The correction of section 4 has still never reached the stack,
+let alone the host.
+
+### 7.5 Why it still cannot be switched on
+
+Unchanged from section 3, and now with the middle step measured rather than argued:
+
+1. SSM says `telegram` and holds both secrets. **Nothing on the host reads them**, because
+   `env/channel.env` is written only by `converge.sh`.
+2. `converge.sh` is written by `UserData`, which cloud-init runs once per instance. Instance
+   `i-087c742587f83d61d` has existed since 2026-09-13, so its `converge.sh` predates the channel
+   block entirely. Section 7.4 is that fact showing up in the runtime.
+3. `infrastructure` would carry the corrected template, and a `UserData` change is answered
+   `Replacement: Conditional` — which this repository has twice observed resolving to an
+   **in-place** stop/start that "leaves the instance id alone and the files on its disk
+   untouched", in the `Host` resource's own comment and in
+   [non-destructive-release.md](non-destructive-release.md) section 11.4. An in-place update
+   does not re-run cloud-init, so it would restart the live deployment and leave `converge.sh`
+   exactly as stale as it is now.
+4. So the turn-on needs a **replaced instance**, which is section 6 step 2 and is the one thing
+   this session was not authorised to do: `host-image` was excluded by name, and the only other
+   way to force a replacement is renaming the `Host` logical resource — an `Add` of a new
+   logical id plus a `Remove`, which is outside `INFRASTRUCTURE_MAY_REPLACE` and which
+   `stage_infrastructure` refuses outright rather than accepting an instance id for.
+
+Neither route was taken and no change set was built, so **`infrastructure` is still unrun
+against this stack and no claim is made here about what it would propose.** Section 7.3's
+"after" column is what says the deployment is where it was.
+
+### 7.6 The Telegram preflight, run against the credential the deployment stores
+
+`pp channel check` — `getMe` only, no `--chat-id`, no `sendMessage` — was run against the
+**SSM-stored** credential rather than the developer one, because the question worth answering is
+whether the token this deployment would send with is a working bot. The two turned out to be the
+same credential, compared by equality and never printed.
+
+```text
+channel:  telegram
+api:      https://api.telegram.org
+bot:      @PromisePatchDemoBot (id 8519260202)
+chat:     not checked
+provider: fake
+result:   reachable; no message was sent
+```
+
+`provider: fake` is the *local* shell's provider, which the command prints beside its answer for
+exactly this reason: **a working credential is not a switched-on transport.** No chat was
+checked, so nothing here touches a customer or a destination.
+
+### 7.7 What was not done, stated plainly
+
+- **No message was sent.** `sendMessage` remains uncalled from this repository, live or
+  otherwise.
+- **No chat id was bound**, and `bind-demo-customer` was not run.
+- **No proposal was triggered**, nothing was approved or declined, and no outbox row, approval
+  request or audit row was created by anything in this session.
+- **No deployed process has `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`**, and section 7.4 is the
+  measurement that says so rather than an assumption.
+- **`infrastructure` was not run**, not even to build and delete a plan. **`host-image` was not
+  run.** **No host was replaced or restarted.**
+- **No IAM policy was broadened**, including the `ssm:ListTagsForResource` denial of 7.2, which
+  was recorded and left in place.
+- The step that remains is section 6 step 2, unchanged: a replaced instance, which orders the
+  certificate again against Let's Encrypt's five-duplicates-a-week limit for this name, and
+  which the database and its four cases survive because `SeedDemoFixtureOnFirstBoot` is `false`.
