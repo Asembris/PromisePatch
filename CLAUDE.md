@@ -362,7 +362,7 @@ git diff --cached --stat
 gitignored, local-only and **authoritative whenever present**. Read them before deciding
 anything they cover. Never modify them unless explicitly asked. Never commit them.
 
-`docs/adr/` holds every architectural decision, `0001` through `0021`. The ones that constrain
+`docs/adr/` holds every architectural decision, `0001` through `0022`. The ones that constrain
 day-to-day work most: [0008](docs/adr/0008-remove-runtime-customer-intent-classifier.md) (no
 runtime intent classifier), [0011](docs/adr/0011-conversational-orchestrator-authority.md) (the
 orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-principal.md) and
@@ -375,7 +375,9 @@ is installed at a run-local anchor; production keeps the ordinary clock), and
 [0020](docs/adr/0020-a-scored-benchmark-hosts-the-product-s-own-worker.md) (a scored benchmark
 hosts the product's own worker; no deployed process ever learns the benchmark exists), and
 [0021](docs/adr/0021-a-customer-answers-on-the-web-and-their-address-stays-in-the-database.md)
-(a customer answers on the web, and their address stays in the database).
+(a customer answers on the web, and their address stays in the database), and
+[0022](docs/adr/0022-an-approval-episode-is-opened-by-the-confirmation-that-asks.md) (an
+approval episode is one track asked under one confirmed plan; a re-ask is a new request).
 
 ## Historical record
 
