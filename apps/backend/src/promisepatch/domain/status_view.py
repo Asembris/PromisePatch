@@ -26,7 +26,7 @@ not restate it, because a paraphrase of "planned" is one word away from "done".
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -161,13 +161,34 @@ _AUTHORITY_BAND: Final[dict[Authority, str]] = {
 }
 
 
-def headline_sentence(headline: CaseHeadline) -> str:
+FIRST_PLAN_TRACK_STATES: Final[frozenset[str]] = frozenset({"PENDING", "UNAFFECTED", "LINKED"})
+"""Every state a track can be in the first time its case is planned.
+
+Nothing has executed before a first confirmation, so planning writes only these. A planned case
+holding any other track state has been confirmed before and acted on it -- changed an order,
+messaged a customer, handed a promise to the owner -- and was then re-planned (§14.4, ADR-0023).
+"""
+
+_REPLANNED_SENTENCE: Final = "Re-planned, and waiting for you. What was done before stays done."
+"""The ``PLANNED`` sentence for a case that already acted. "Nothing has been done yet" would be
+said beside a promise the same screen shows as changed, and read aloud over it."""
+
+
+def has_acted(track_states: Iterable[str]) -> bool:
+    """Whether a case holding these track states has carried anything out before."""
+    return any(state not in FIRST_PLAN_TRACK_STATES for state in track_states)
+
+
+def headline_sentence(headline: CaseHeadline, *, acted: bool = False) -> str:
     """The one sentence bound to a headline, for a caller that has a headline and no case.
 
     The case list has exactly that: a durable state per row and no reason to load six tracks to
     say what the state means. Reading the table through a function rather than exporting it
-    keeps one place that decides what a headline says out loud.
+    keeps one place that decides what a headline says out loud. ``acted`` is :func:`has_acted`
+    of the case's tracks; it changes only the ``PLANNED`` sentence, never the headline.
     """
+    if acted and headline is CaseHeadline.PLANNED:
+        return _REPLANNED_SENTENCE
     return _HEADLINE_SENTENCE[headline]
 
 
@@ -380,7 +401,9 @@ def project(status: CaseStatus) -> CaseView:
     return CaseView(
         case_id=str(status.case_id),
         headline=headline,
-        sentence=_HEADLINE_SENTENCE[headline],
+        sentence=headline_sentence(
+            headline, acted=has_acted(track.state for track in status.tracks)
+        ),
         needs_owner_attention=status.needs_owner_attention,
         exception_category=status.category,
         exception_phrase=closed_phrase(FactId.CASE_EXCEPTION, status.category),

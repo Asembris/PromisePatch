@@ -54,7 +54,7 @@ from promisepatch.api.schemas.cases import (
     RevalidationEvidenceView,
     TrackEvidenceView,
 )
-from promisepatch.db.models import Case, CaseReport
+from promisepatch.db.models import Case, CaseReport, Track
 from promisepatch.domain import analysis, causal, status_view
 from promisepatch.orchestrator import policy
 
@@ -126,19 +126,30 @@ async def openings(connection: AsyncConnection) -> dict[UUID, str]:
     return {row.case_id: row.raw_text for row in rows}
 
 
+async def _cases_that_acted(connection: AsyncConnection) -> set[UUID]:
+    """Cases holding a track no first plan writes, so the list says what the workspace says."""
+    rows = await connection.execute(
+        select(Track.case_id)
+        .where(Track.state.not_in(sorted(status_view.FIRST_PLAN_TRACK_STATES)))
+        .distinct()
+    )
+    return set(rows.scalars())
+
+
 async def summaries(connection: AsyncConnection, *, limit: int) -> CaseListResponse:
     """Every case, newest first, with just enough of each to choose one."""
     rows = (
         await connection.execute(select(Case).order_by(Case.opened_at.desc(), Case.id).limit(limit))
     ).all()
     texts = await openings(connection)
+    acted = await _cases_that_acted(connection)
     return CaseListResponse(
         cases=tuple(
             CaseSummaryView(
                 case_id=row.id,
                 state=row.state,
                 headline=_headline(row.state).value,
-                sentence=status_view.headline_sentence(_headline(row.state)),
+                sentence=status_view.headline_sentence(_headline(row.state), acted=row.id in acted),
                 needs_owner_attention=row.needs_owner_attention,
                 reported_text=texts.get(row.id),
                 opened_at=row.opened_at,

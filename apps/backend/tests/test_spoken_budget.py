@@ -171,6 +171,23 @@ def test_every_case_headline_is_inside_its_budget(state: str) -> None:
     assert words(spoken) <= budget(state), f"{state}: {words(spoken)} words\n{spoken}"
 
 
+def test_a_re_planned_case_is_inside_the_plan_budget() -> None:
+    """The canonical shape after a re-plan: its longer sentence still fits the plan budget."""
+    subject = case(
+        "PLANNED",
+        threatened(0, "AUTO_RECOVERABLE", state="RECOVERED"),
+        threatened(1, "APPROVAL_REQUIRED", state="RECOVERED"),
+        threatened(2, "APPROVAL_REQUIRED"),
+        threatened(3, "BLOCKED", state="ESCALATED"),
+        untouched(4),
+        untouched(5),
+    )
+    spoken = render_spoken(project(subject))
+
+    assert spoken.startswith("Re-planned, and waiting for you.")
+    assert words(spoken) <= budget("PLANNED"), f"{words(spoken)} words: {spoken}"
+
+
 def test_a_case_before_analysis_has_no_promise_to_count() -> None:
     """The scope of the budget claim above, asserted rather than assumed.
 

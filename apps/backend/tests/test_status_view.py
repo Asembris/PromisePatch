@@ -667,6 +667,45 @@ def test_a_pending_track_in_a_case_that_has_not_planned_yet_claims_nothing() -> 
     assert view.threatened[0].state is PromiseState.AWAITING_PLAN
 
 
+FIRST_PLAN = "Planned, and waiting for you. Nothing has been done yet."
+RE_PLANNED = "Re-planned, and waiting for you. What was done before stays done."
+
+
+def test_a_first_plan_says_nothing_has_been_done_yet() -> None:
+    """Every state a first plan can hold: the sentence is exactly what it has always been."""
+    view = project(
+        case(
+            "PLANNED",
+            track(state="PENDING", classification="APPROVAL_REQUIRED"),
+            track(state="UNAFFECTED", classification="UNAFFECTED", customer="Lena"),
+            track(state="LINKED", customer="Priya"),
+        )
+    )
+    assert view.sentence == FIRST_PLAN
+    assert render(view).splitlines()[0] == FIRST_PLAN
+
+
+@pytest.mark.parametrize("earlier", ["RECOVERED", "APPLYING", "ESCALATED"])
+def test_a_re_planned_case_never_says_nothing_has_been_done(earlier: str) -> None:
+    """ADR-0023: a planned case that already acted says so, and everything else stays the same.
+
+    The headline, the plan offered and the next action are the ``PLANNED`` ones; only the
+    sentence stops claiming nothing happened beside a promise the same view shows as changed.
+    """
+    view = project(
+        case(
+            "PLANNED",
+            track(state=earlier, classification="APPROVAL_REQUIRED", customer="Priya"),
+            track(state="PENDING", classification="APPROVAL_REQUIRED"),
+        )
+    )
+    assert view.headline is CaseHeadline.PLANNED
+    assert view.sentence == RE_PLANNED
+    assert view.plan_id == "a" * 64
+    assert view.next_action.owner is ActionOwner.YOU
+    assert "Nothing has been done yet" not in render(view)
+
+
 def test_every_durable_case_state_has_a_headline() -> None:
     """The schema's own list, so a new state is a failing test rather than a silent default."""
     durable = {
