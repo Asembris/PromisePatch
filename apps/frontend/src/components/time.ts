@@ -4,6 +4,11 @@
  * Display only. Nothing here is compared, sorted or fed back to the backend: ordering is the
  * backend's, and a string parsed for display is never allowed to become an input to a
  * decision. An unparseable value is shown as it arrived rather than silently blanked.
+ *
+ * A date and time names the zone it is in. Each surface renders a moment in its own reader's
+ * clock, while the sentences the backend composes — the spoken status, the customer's message —
+ * say the same moment in a clock they name, such as `(UTC)`. Two unlabelled readings of one
+ * deadline, an hour or more apart on the same screen, read as two deadlines.
  */
 const TIME = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
 const DATE_TIME = new Intl.DateTimeFormat(undefined, {
@@ -11,6 +16,7 @@ const DATE_TIME = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   hour: '2-digit',
   minute: '2-digit',
+  timeZoneName: 'short',
 })
 
 function parse(value: string): Date | null {
