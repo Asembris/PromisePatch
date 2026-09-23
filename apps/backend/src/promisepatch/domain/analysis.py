@@ -91,6 +91,8 @@ from promisepatch.domain.cases import (
     case_successors,
     case_timers,
     revalidate_step_key,
+    track_in,
+    track_scoped_key,
 )
 from promisepatch.domain.model import (
     EFFECT_MESSAGE_SEND,
@@ -177,15 +179,17 @@ def plan_step_key(statement_id: UUID) -> str:
     return f"plan:{statement_id}"
 
 
-def replan_step_key(track_id: UUID) -> str:
-    """The re-plan one stale track calls for. §14.4 re-plans *that promise only*.
+def replan_step_key(track_id: UUID, scope: UUID | None = None) -> str:
+    """The re-plan one stale approval calls for. §14.4 re-plans *that promise only*.
 
     Named after the track rather than after a statement, because nothing was said: what asked
-    for this was the world moving under an approval, and the track is the only identity the
-    request has. A second stale transition on the same track proposes the identical key and the
-    unique index declines it.
+    for this was the world moving under an approval. ``scope`` is the stale request's
+    :func:`~promisepatch.domain.approvals.ask_scope` -- ``None`` for a track's first ask, the
+    request itself for a re-ask (ADR-0022) -- so a second stale transition on the *same* request
+    proposes the identical key and the unique index declines it, while a re-asked request that
+    goes stale in its turn is re-planned in its turn.
     """
-    return f"replan:{track_id}"
+    return track_scoped_key("replan", track_id, scope)
 
 
 def supersede_idempotency_key(request_id: UUID) -> str:
@@ -205,8 +209,8 @@ def statement_of(step_key: str) -> UUID:
 
 
 def track_of(step_key: str) -> UUID:
-    """The track a re-plan step is about, read back out of its key."""
-    return UUID(step_key.partition(":")[2])
+    """The track a re-plan step is about, read back out of either shape of its key."""
+    return track_in(step_key)
 
 
 # ------------------------------------------------------------------------------ event names
@@ -648,6 +652,8 @@ async def _replan(
         # Somebody already re-planned it, or it was settled another way. Re-planning again would
         # replace a plan that is now current with one derived a second time from the same rows.
         return _skipped(STEP_REPLAN_TRACK, f"track={track.state}")
+    if not await _replans_the_carried_request(connection, track=track, step_key=step_key):
+        return _skipped(STEP_REPLAN_TRACK, f"request={track.approval_request_id}")
 
     exception = await _bound_exception(connection, case.id)
     snapshot = await fresh_snapshot(connection)
@@ -758,6 +764,25 @@ async def _replan(
             "supersede_notice": None if notice is None else notice.idempotency_key,
         },
     )
+
+
+async def _replans_the_carried_request(
+    connection: AsyncConnection, *, track: Any, step_key: str
+) -> bool:
+    """Whether this re-plan is about the request the stale track still carries.
+
+    A stale track is re-planned for the one request whose revalidation refused it. A re-plan
+    keyed for any other -- an earlier ask this track has already moved past -- supersedes
+    nothing it was asked to. Deferred import: the approval protocol reads this module.
+    """
+    from promisepatch.domain.approvals import step_names
+
+    request = (
+        await connection.execute(
+            select(ApprovalRequest).where(ApprovalRequest.id == track.approval_request_id)
+        )
+    ).one_or_none()
+    return step_names(step_key, request)
 
 
 async def _supersede_notice(connection: AsyncConnection, *, track: Any) -> EmitEffect | None:
@@ -1716,7 +1741,12 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                 )
             ).all()
             approval = await _approval_status(connection, track.id)
-            revalidated = await _revalidation_status(connection, track.case_id, track.id)
+            revalidated = await _revalidation_status(
+                connection,
+                track.case_id,
+                track.id,
+                request_id=None if approval is None else approval.request_id,
+            )
             tracks.append(
                 TrackStatus(
                     track_id=track.id,
@@ -2074,14 +2104,29 @@ async def _escalations(connection: AsyncConnection, case_id: UUID) -> dict[str, 
 
 
 async def _revalidation_status(
-    connection: AsyncConnection, case_id: UUID, track_id: UUID
+    connection: AsyncConnection, case_id: UUID, track_id: UUID, *, request_id: UUID | None
 ) -> RevalidationStatus | None:
-    """The ten checks this track was put through, as the step that ran them recorded them."""
+    """The ten checks the shown request was put through, as the step that ran them recorded them.
+
+    The request is the one :func:`_approval_status` shows beside it. A re-asked track also carries
+    its first ask's checklist, which refused a yes to a question that has since been replaced;
+    showing that beside the new question would present one request's answer as another's
+    (ADR-0022). Deferred import: the approval protocol reads this module.
+    """
+    from promisepatch.domain.approvals import ask_scope
+
+    if request_id is None:
+        return None
+    request = (
+        await connection.execute(select(ApprovalRequest).where(ApprovalRequest.id == request_id))
+    ).one_or_none()
+    if request is None:
+        return None
     row = (
         await connection.execute(
             select(CaseStep.result).where(
                 CaseStep.case_id == case_id,
-                CaseStep.step_key == revalidate_step_key(track_id),
+                CaseStep.step_key == revalidate_step_key(track_id, ask_scope(request)),
                 CaseStep.state.in_(("DONE", "SKIPPED")),
             )
         )

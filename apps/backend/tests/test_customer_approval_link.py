@@ -645,7 +645,9 @@ async def test_a_yes_that_went_stale_is_never_told_the_next_plan_s_progress(
     await physical.confirm(case_id)
     await physical.drain(limit=60)
 
-    assert (await track_of(physical, case_id, B)).state != recovery.TRACK_STALE
+    re_asked = await track_of(physical, case_id, B)
+    assert re_asked.state == cases.TRACK_WAITING_FOR_CUSTOMER
+    assert re_asked.approval_request_id not in (None, request.id)
     assert await reading(customer, token) == (Phase.APPROVED, NO_LONGER_APPLIES, False)
     decisions = await physical.decisions()
     assert len(decisions) == 1 and decisions[0].request_id == request.id
@@ -657,10 +659,11 @@ def test_a_track_that_no_longer_carries_the_request_is_never_reported_as_its_cha
 ) -> None:
     """The rule behind the test above, for the states a later plan could move the track into.
 
-    Today's fixture re-plans the canonical promise back to needing its customer, and the case
-    does not ask again, so these are not reached live. They are what a re-plan to an automatic
-    change, or a second ask, would put in front of a superseded link: none of them may speak for
-    it, and none of them may keep the page re-reading.
+    The fixture re-plans the canonical promise back to needing its customer, and since ADR-0022
+    the case asks again, so ``WAITING_FOR_CUSTOMER`` is reached live by the test above and the
+    others follow a yes to the second request. They are what a re-plan to an automatic change,
+    or a second ask, puts in front of a superseded link: none of them may speak for it, and none
+    of them may keep the page re-reading.
     """
     for phase in (Phase.APPROVED, Phase.SUPERSEDED):
         assert customer_view._awaiting_outcome(phase, track_state, carried=False) is False

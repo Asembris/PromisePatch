@@ -83,9 +83,35 @@ def reconcile_step_key(case_id: UUID) -> str:
     return f"reconcile:{case_id}"
 
 
-def revalidate_step_key(track_id: UUID) -> str:
-    """One revalidation per track. A second delivery collides on ``(case_id, step_key)``."""
-    return f"revalidate:{track_id}"
+def revalidate_step_key(track_id: UUID, scope: UUID | None = None) -> str:
+    """One revalidation per approval request. A second delivery collides on ``(case_id, step_key)``.
+
+    ``scope`` is :func:`promisepatch.domain.approvals.ask_scope` of the request being checked:
+    ``None`` for a track's first ask, which keeps the per-track key it has always had, and the
+    request's own id for a re-ask (ADR-0022). Without it a re-asked track would propose the key
+    its first, stale revalidation already settled, and the index would decline the second.
+    """
+    return track_scoped_key("revalidate", track_id, scope)
+
+
+def track_scoped_key(prefix: str, track_id: UUID, scope: object | None) -> str:
+    """``prefix:<track>``, or ``prefix:<track>:<scope>`` when the step belongs to one episode.
+
+    The track stays first in every shape, so a reader that only wants the track reads it the same
+    way from a key written before ADR-0022 as from one written after.
+    """
+    return f"{prefix}:{track_id}" if scope is None else f"{prefix}:{track_id}:{scope}"
+
+
+def track_in(step_key: str) -> UUID:
+    """The track a track-scoped key names: the first identity after its prefix."""
+    return UUID(step_key.split(":")[1])
+
+
+def scope_in(step_key: str) -> str | None:
+    """What a track-scoped key names after its track, or ``None`` for a per-track key."""
+    parts = step_key.split(":", 2)
+    return parts[2] if len(parts) == 3 else None
 
 
 def case_of(step_key: str) -> UUID:

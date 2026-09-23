@@ -105,7 +105,10 @@ from promisepatch.domain.cases import (
     LockedCase,
     case_events,
     case_successors,
+    scope_in,
     settled_case_state,
+    track_in,
+    track_scoped_key,
 )
 from promisepatch.domain.model import (
     EFFECT_MESSAGE_SEND as _EFFECT_MESSAGE_SEND,
@@ -139,7 +142,6 @@ from promisepatch.domain.recovery import (
     mark_stale,
     set_track,
     skipped,
-    track_of,
 )
 from promisepatch.graph.channel import split_channel
 from promisepatch.observability import get_logger
@@ -188,19 +190,26 @@ CUSTOMER_INTENT_STEP_KINDS: Final[frozenset[str]] = frozenset({STEP_INTERPRET_CU
 """Kinds routed to the module that asks again, which is a different module on purpose."""
 
 
-def request_step_key(track_id: UUID) -> str:
-    """One approval request per track, whatever happens to the process that enqueued it."""
-    return f"approval:{track_id}"
+def request_step_key(track_id: UUID, plan_id: str | None = None) -> str:
+    """One approval request per episode, whatever happens to the process that enqueued it.
+
+    An episode is one track asked under one confirmed plan (ADR-0022). ``plan_id`` is ``None``
+    for a track's first ask, which is unique by construction and keeps ``approval:<track>``; a
+    re-ask after §14.4's re-plan names the plan whose confirmation asked, so it is a new step
+    rather than a replay of the settled one -- and a replayed confirmation of that same plan
+    proposes the identical key and is declined.
+    """
+    return track_scoped_key("approval", track_id, plan_id)
 
 
-def sent_step_key(track_id: UUID) -> str:
-    """The step a delivered approval message makes runnable. Same identity as the request."""
-    return f"approval-sent:{track_id}"
+def sent_step_key(track_id: UUID, scope: UUID | None = None) -> str:
+    """The step a delivered approval message makes runnable. Scoped as its request is."""
+    return track_scoped_key("approval-sent", track_id, scope)
 
 
-def abandon_step_key(track_id: UUID) -> str:
+def abandon_step_key(track_id: UUID, scope: UUID | None = None) -> str:
     """The other ending, for a message that will not be attempted again."""
-    return f"approval-abandoned:{track_id}"
+    return track_scoped_key("approval-abandoned", track_id, scope)
 
 
 def expire_step_key(request_id: UUID) -> str:
@@ -238,15 +247,45 @@ def inbox_of(step_key: str) -> UUID:
 # ------------------------------------------------------------------------------ derived names
 
 
-def request_id_for(track_id: UUID, option_id: UUID) -> UUID:
-    """The identity of *the* approval need for one track and one option.
+def request_id_for(track_id: UUID, option_id: UUID, plan_id: str | None = None) -> UUID:
+    """The identity of one approval episode's request: one track, one option, one plan.
 
     Derived rather than minted, so the request is unique in the database and not merely unique
     in whichever process happened to create it: a second attempt at the same logical ask
     proposes the same primary key and PostgreSQL declines it. §13.6 allows one request per
-    track and one option per request, and this is that rule expressed as a key.
+    track at a time and one option per request, and this is that rule expressed as a key.
+
+    ``plan_id`` is what makes §14.4's re-ask a *new* request (ADR-0022). A re-plan usually
+    re-chooses the very option the customer was first asked about, so a key of track and option
+    alone reproduced the superseded request's id -- the insert wrote nothing and the track was
+    bound back to a request that was superseded and already answered. A track's first ask passes
+    ``None`` and keeps the identity it has always had.
     """
-    return uuid5(NAMESPACE, f"approval:{track_id}:{option_id}")
+    name = f"approval:{track_id}:{option_id}"
+    return uuid5(NAMESPACE, name if plan_id is None else f"{name}:{plan_id}")
+
+
+def ask_scope(request: Any) -> UUID | None:
+    """Which episode a request belongs to, in the terms every later step key is built from.
+
+    ``None`` for a track's first ask -- whose id is the per-track derivation of its own track and
+    option -- and the request's own id for every re-ask, whose derivation includes a plan and so
+    can never equal it. Read from the row itself, so no step has to be told which it is.
+    """
+    first = request_id_for(request.track_id, request.option_id)
+    return None if request.id == first else request.id
+
+
+def step_names(step_key: str, request: Any) -> bool:
+    """Whether a step keyed for one request is about ``request``, the one the track carries now.
+
+    A per-track key names the track's first ask; a scoped key names the request it carries. A
+    step about any other request -- one a re-plan has since superseded -- acts on nothing.
+    """
+    if request is None:
+        return False
+    scope = scope_in(step_key)
+    return ask_scope(request) == (None if scope is None else UUID(scope))
 
 
 def reply_id_for(provider_message_id: str) -> UUID:
@@ -295,7 +334,8 @@ def confirmation_idempotency_key(request_id: UUID, reply_id: UUID) -> str:
     """§12.3's ``pp:confirm:{approval_request_id}:{inbound_reply_id}``, exactly.
 
     Both halves are server-derived and neither moves: the request id is a ``uuid5`` of the
-    track and option, and the reply id is a ``uuid5`` of the provider's message id. So every
+    track, the option and -- for a re-ask -- the plan that asked, and the reply id is a
+    ``uuid5`` of the provider's message id. So every
     retry of one logical confirmation -- after a crash, after a lost acknowledgement, after a
     worker was replaced mid-flight -- presents the identical key, and the outbox's unique index
     turns any number of transport attempts into one message the customer should see.
@@ -475,9 +515,15 @@ async def _request(
     if case.state != CASE_EXECUTING:
         return skipped(STEP_REQUEST_APPROVAL, {"case_state": case.state})
 
-    track = await lock_track(connection, track_of(step_key))
+    track = await lock_track(connection, track_in(step_key))
     if track.state != TRACK_PENDING:
         return skipped(STEP_REQUEST_APPROVAL, {"track_state": track.state})
+    if track.approval_request_id is not None:
+        # One live request per track. A track still carrying one is being asked already, and
+        # binding it to a second would leave the first open with nothing pointing at it.
+        return skipped(
+            STEP_REQUEST_APPROVAL, {"approval_request_id": str(track.approval_request_id)}
+        )
     if track.classification != Classification.APPROVAL_REQUIRED.value:
         # Unreachable from a confirmation, and refused anyway. Asking a customer to approve a
         # change their own constraints already permitted would be a message nobody needed.
@@ -537,7 +583,7 @@ async def _request(
         )
 
     material = _material(snapshot, track=track, option=option)
-    request_id = request_id_for(track.id, option.id)
+    request_id = request_id_for(track.id, option.id, scope_in(step_key))
     code = option_code_for(option.id)
     settings = get_settings()
     # Read once and used for both the wording and the guard, because the two have to agree
@@ -618,6 +664,7 @@ async def _request(
                 payload=_message_payload(
                     track=track,
                     request_id=request_id,
+                    scope=None if scope_in(step_key) is None else request_id,
                     material=material,
                     option_code=code,
                     text=text,
@@ -718,6 +765,7 @@ def _message_payload(
     *,
     track: Any,
     request_id: UUID,
+    scope: UUID | None,
     material: _Material,
     option_code: str,
     text: str,
@@ -737,6 +785,10 @@ def _message_payload(
 
     It is ``None`` where the deployment configured no signing secret, which is a closed door
     rather than a missing feature: a link nobody signed is a link anybody could write.
+
+    ``scope`` is the request's :func:`ask_scope`, so the steps this message makes runnable are
+    this request's own. A re-ask's delivery would otherwise propose ``approval-sent:<track>``,
+    already settled by the first ask, and the track would never be marked as waiting.
     """
     return {
         EFFECT_TRACK_ID: str(track.id),
@@ -750,12 +802,12 @@ def _message_payload(
         "text": text,
         CONTINUATION: {
             DELIVERED: {
-                "step_key": sent_step_key(track.id),
+                "step_key": sent_step_key(track.id, scope),
                 "kind": STEP_MARK_APPROVAL_SENT,
                 "track_id": str(track.id),
             },
             FAILED: {
-                "step_key": abandon_step_key(track.id),
+                "step_key": abandon_step_key(track.id, scope),
                 "kind": STEP_ABANDON_APPROVAL,
                 "track_id": str(track.id),
             },
@@ -784,13 +836,17 @@ async def _mark_sent(
     if case.state != CASE_EXECUTING:
         return skipped(STEP_MARK_APPROVAL_SENT, {"case_state": case.state})
 
-    track = await lock_track(connection, track_of(step_key))
+    track = await lock_track(connection, track_in(step_key))
     if track.state != TRACK_PENDING:
         return skipped(STEP_MARK_APPROVAL_SENT, {"track_state": track.state})
 
     request = await _lock_request(connection, track.approval_request_id)
     if request is None:
         raise ApprovalStateError(f"track {track.id} has no approval request to mark sent")
+    if not step_names(step_key, request):
+        # The delivery this step reports was for a request the track no longer carries. A later
+        # ask is marked sent by its own delivery, never by an earlier one's.
+        return skipped(STEP_MARK_APPROVAL_SENT, {"request_id": str(request.id)})
     if request.decided or request.state not in OPEN_APPROVAL_STATES:
         return skipped(STEP_MARK_APPROVAL_SENT, {"request_state": request.state})
 
@@ -906,13 +962,16 @@ async def _abandon(
     reason distinguishes the two ways a message can end up undeliverable, because they are
     different problems: a provider that refused it, and a window that closed while it queued.
     """
-    track = await lock_track(connection, track_of(step_key))
+    track = await lock_track(connection, track_in(step_key))
     if track.state != TRACK_PENDING:
         return skipped(STEP_ABANDON_APPROVAL, {"track_state": track.state})
 
     request = await _lock_request(connection, track.approval_request_id)
     if request is None:
         raise ApprovalStateError(f"track {track.id} has no approval request to abandon")
+    if not step_names(step_key, request):
+        # An earlier ask's failed delivery says nothing about the request the track carries now.
+        return skipped(STEP_ABANDON_APPROVAL, {"request_id": str(request.id)})
 
     expired = request.deadline <= now
     return await _close_request(

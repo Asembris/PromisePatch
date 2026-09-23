@@ -92,6 +92,7 @@ from promisepatch.domain.cases import (
     non_terminal_tracks,
     revalidate_step_key,
     settled_case_state,
+    track_in,
 )
 from promisepatch.domain.model import (
     EVENT_STEP_COMPLETED,
@@ -115,8 +116,8 @@ REVALIDATION_STEP_KINDS: Final[frozenset[str]] = frozenset(
 
 
 def track_of(step_key: str) -> UUID:
-    """The track a revalidation step is about, read back out of its key."""
-    return UUID(step_key.partition(":")[2])
+    """The track a revalidation step is about, read back out of either shape of its key."""
+    return track_in(step_key)
 
 
 # ------------------------------------------------------------------------------- event names
@@ -174,21 +175,28 @@ async def work_for_case(connection: AsyncConnection, case_id: UUID) -> tuple[Cre
     A declined or expired track is included deliberately. There are no ten checks to run for
     it, and there is still a case-level boundary to reach: §14.2's ``REVALIDATING`` is where a
     case goes to find out what its settled requests amount to, whatever the answer was.
+
+    One per request a track *carries*. A re-asked track still has its first ask, superseded and
+    already revalidated; checking it again would be checking an answer to a question nobody is
+    asking any more, and keying the new one by the track would collide with it (ADR-0022).
     """
     rows = (
         await connection.execute(
-            select(Track.id)
-            .join(ApprovalRequest, ApprovalRequest.track_id == Track.id)
+            select(ApprovalRequest)
+            .join(Track, Track.approval_request_id == ApprovalRequest.id)
             .where(
                 Track.case_id == case_id,
                 ApprovalRequest.state.not_in(OPEN_APPROVAL_STATES),
             )
             .order_by(Track.priority, Track.promise_id)
         )
-    ).scalars()
+    ).all()
     return tuple(
-        CreateStep(step_key=revalidate_step_key(track_id), kind=STEP_REVALIDATE_RECOVERY)
-        for track_id in rows
+        CreateStep(
+            step_key=revalidate_step_key(request.track_id, approvals.ask_scope(request)),
+            kind=STEP_REVALIDATE_RECOVERY,
+        )
+        for request in rows
     )
 
 
@@ -213,6 +221,10 @@ async def _revalidate(
     request = await _lock_request(connection, track.approval_request_id)
     if request is None:
         return recovery.skipped(STEP_REVALIDATE_RECOVERY, {"track_state": track.state})
+    if not approvals.step_names(step_key, request):
+        # This checklist was for a request the track no longer carries. Its answer was recorded
+        # when it ran; it is not an answer about the request the customer is being asked now.
+        return recovery.skipped(STEP_REVALIDATE_RECOVERY, {"request_id": str(request.id)})
 
     decision = await _decision_for(connection, request.id)
     if decision is None or decision.decision != ApprovalDecisionKind.APPROVE.value:
@@ -740,7 +752,8 @@ async def _go_stale(
         event_type=EVENT_STEP_COMPLETED,
         successors=(
             CreateStep(
-                step_key=analysis.replan_step_key(track.id), kind=analysis.STEP_REPLAN_TRACK
+                step_key=analysis.replan_step_key(track.id, approvals.ask_scope(request)),
+                kind=analysis.STEP_REPLAN_TRACK,
             ),
         ),
         events=(

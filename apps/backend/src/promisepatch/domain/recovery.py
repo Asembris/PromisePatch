@@ -626,12 +626,16 @@ async def _confirm(
         # confirmation. What it enqueues is permission to *ask*, never permission to apply.
         from promisepatch.domain.approvals import STEP_REQUEST_APPROVAL, request_step_key
 
+        asked_before = await _tracks_asked_before(connection, plan.approval)
         for track in plan.approval:
             await _enqueue(
                 connection,
                 case_id=case_id,
                 track_id=track.id,
-                step_key=request_step_key(track.id),
+                # ADR-0022: a track's first ask keeps its per-track key; a track asked before
+                # was re-planned after §14.4 superseded that request, and this confirmation
+                # opens a new episode named by the plan it confirms.
+                step_key=request_step_key(track.id, plan_id if track.id in asked_before else None),
                 kind=STEP_REQUEST_APPROVAL,
             )
         if not plan.auto and not plan.approval:
@@ -1192,11 +1196,16 @@ async def _approved_and_revalidated(
     if decision is None:
         return False
 
+    # Deferred for the cycle the confirmation's own import names. The PROCEED that counts is the
+    # one recorded for *this* request: a re-asked track also carries its first ask's settled
+    # revalidation, and that answer was about a request the customer's current yes is not.
+    from promisepatch.domain.approvals import ask_scope
+
     revalidated = (
         await connection.execute(
             select(CaseStep.result).where(
                 CaseStep.case_id == track.case_id,
-                CaseStep.step_key == revalidate_step_key(track.id),
+                CaseStep.step_key == revalidate_step_key(track.id, ask_scope(request)),
                 CaseStep.state == "DONE",
             )
         )
@@ -1228,7 +1237,12 @@ async def authorization_provenance(
                 ApprovalRequest.id.label("request_id"),
             )
             .join(ApprovalRequest, ApprovalRequest.id == ApprovalDecision.request_id)
-            .where(ApprovalRequest.track_id == track.id)
+            # The request the track carries, not every request it ever had: a re-asked track's
+            # superseded request keeps its own decision, and that decision authorised nothing.
+            .where(
+                ApprovalRequest.track_id == track.id,
+                ApprovalRequest.id == track.approval_request_id,
+            )
         )
     ).one_or_none()
     if row is None:  # pragma: no cover - authorisation proved it a statement ago
@@ -1894,6 +1908,23 @@ async def set_track(
         raise RecoveryStateError(
             f"track {track.id} changed under a held lock; expected version {track.version}"
         )
+
+
+async def _tracks_asked_before(connection: AsyncConnection, tracks: Sequence[Any]) -> set[UUID]:
+    """Which of these tracks already have an approval request, superseded or not.
+
+    Read under the track locks the confirmation holds. A confirmed case returns to ``PLANNED``
+    only through a re-plan that supersedes the request it replaces, so a track with no request
+    here is being asked for the first time and a track with one is being asked again.
+    """
+    if not tracks:
+        return set()
+    rows = await connection.execute(
+        select(ApprovalRequest.track_id)
+        .where(ApprovalRequest.track_id.in_([track.id for track in tracks]))
+        .distinct()
+    )
+    return set(rows.scalars())
 
 
 async def _enqueue(
