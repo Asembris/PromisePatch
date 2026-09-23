@@ -65,6 +65,20 @@ are spread across the engine, and several modules need to read a track's checkli
 importing the module that runs it.
 """
 
+STEP_REPLAN_TRACK: Final = "REPLAN_TRACK"
+"""§14.4's re-plan of one stale promise, created by the revalidation that found it stale.
+
+Declared here rather than beside its handler in ``analysis`` because it belongs to the same
+revalidation round as :data:`STEP_REVALIDATE_RECOVERY`, and the rule that decides when that round
+is over has to count both (ADR-0023).
+"""
+
+REVALIDATION_ROUND_KINDS: Final[frozenset[str]] = frozenset(
+    {STEP_REVALIDATE_RECOVERY, STEP_REPLAN_TRACK}
+)
+"""The work one revalidation round is made of: every settled request's checks, and every re-plan
+a stale one called for. §14.2 lists all of their outcomes as the round's, per track."""
+
 
 TIMER_PLAN_AUTO_ESCALATION: Final = "PLAN_AUTO_ESCALATION"
 """§14.1's deadline on a plan nobody has confirmed, named as ``ARCHITECTURE_PLAN`` names it.
@@ -127,6 +141,7 @@ claim to be waiting on a customer -- §14.2's "only if at least one approval req
 actually sent" has a second half, which is that everything else already ran.
 """
 
+TRACK_PENDING: Final = "PENDING"
 TRACK_WAITING_FOR_CUSTOMER: Final = "WAITING_FOR_CUSTOMER"
 TRACK_ESCALATED: Final = "ESCALATED"
 
@@ -306,6 +321,35 @@ async def resolvable(
     if await non_terminal_tracks(connection, case_id):
         return False
     return not await _has_unsettled_work(connection, case_id, except_step_key=except_step_key)
+
+
+async def revalidation_round_exit(
+    connection: AsyncConnection, *, case_id: UUID, step_key: str, leaves_a_plan: bool = False
+) -> str | None:
+    """Where a revalidating case goes once this step finishes, or ``None`` if it stays (ADR-0023).
+
+    A round ends once, when its last revalidation or re-plan finishes, whichever claim order the
+    worker happened to take them in. Counting only the revalidations let a sibling's ``PROCEED``
+    move the case to ``RECONCILING`` under a re-plan that could then never run.
+
+    When it ends, the case goes to ``PLANNED`` if a re-plan left a promise waiting for a worker's
+    yes, and to ``RECONCILING`` otherwise. A confirmed case reaches ``REVALIDATING`` only when
+    nothing is runnable, so a ``PENDING`` track here is one a re-plan produced and nothing else.
+    ``leaves_a_plan`` is the re-plan saying so about its own track, whose ``PENDING`` it is writing
+    in the same transaction.
+    """
+    outstanding = select(CaseStep.id).where(
+        CaseStep.case_id == case_id,
+        CaseStep.kind.in_(sorted(REVALIDATION_ROUND_KINDS)),
+        CaseStep.step_key != step_key,
+        CaseStep.state.in_(UNSETTLED_STEP_STATES),
+    )
+    if await connection.scalar(select(exists(outstanding))):
+        return None
+    if leaves_a_plan:
+        return CASE_PLANNED
+    pending = select(Track.id).where(Track.case_id == case_id, Track.state == TRACK_PENDING)
+    return CASE_PLANNED if await connection.scalar(select(exists(pending))) else CASE_RECONCILING
 
 
 async def non_terminal_tracks(connection: AsyncConnection, case_id: UUID) -> tuple[str, ...]:

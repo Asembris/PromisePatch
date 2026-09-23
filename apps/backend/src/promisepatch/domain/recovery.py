@@ -189,15 +189,20 @@ RECOVERY_STEP_KINDS: Final[frozenset[str]] = frozenset(
 )
 
 _APPLICABLE_CASE_STATES: Final[frozenset[str]] = frozenset(
-    {CASE_EXECUTING, CASE_REVALIDATING, CASE_RECONCILING}
+    {CASE_EXECUTING, CASE_REVALIDATING, CASE_RECONCILING, CASE_PLANNED}
 )
 """Case postures in which a recovery step is doing work somebody asked for.
 
 ``EXECUTING`` is the automatic path, released by a worker's confirmation. ``RECONCILING`` is the
 approved path, released by a revalidation that passed. ``REVALIDATING`` is the same case a
-moment earlier, when another track's checks are still outstanding. Everything else -- planned,
-waiting, resolved, cancelled -- means the step is describing work on a case that has moved past
-it, and it skips rather than amending an order nobody is expecting.
+moment earlier, when another track's checks are still outstanding. ``PLANNED`` is the same case
+a moment later, when another track of the same round went stale and was re-planned: §14.2
+returns the case to ``PLANNED`` for *that* track only, and this track's authority -- the plan a
+worker confirmed, its customer's yes, a revalidation that passed -- is untouched by it
+(ADR-0023). Only a revalidation that passed enqueues work a planned case can hold, because a
+confirmed case reaches ``REVALIDATING`` with nothing runnable. Everything else -- waiting,
+resolved, cancelled -- means the step is describing work on a case that has moved past it, and it
+skips rather than amending an order nobody is expecting.
 """
 """Step kinds the worker routes here: each one reads the graph or the outbox to decide."""
 

@@ -89,8 +89,10 @@ from promisepatch.domain.cases import (
     any_escalated,
     case_events,
     case_successors,
+    case_timers,
     non_terminal_tracks,
     revalidate_step_key,
+    revalidation_round_exit,
     settled_case_state,
     track_in,
 )
@@ -587,6 +589,7 @@ async def _proceed(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to),
+        timers=case_timers(moved_to, case_id=case.id),
         successors=(
             CreateStep(
                 step_key=recovery.apply_step_key(track.id), kind=recovery.STEP_APPLY_RECOVERY
@@ -825,6 +828,7 @@ async def _expired(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to, needs_owner_attention=True),
+        timers=case_timers(moved_to, case_id=case.id),
         successors=await case_successors(connection, moved_to, case_id=case.id),
         events=(
             AppendEvent(
@@ -1010,6 +1014,7 @@ async def _no_authority_to_consume(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to),
+        timers=case_timers(moved_to, case_id=case.id),
         successors=await case_successors(connection, moved_to, case_id=case.id),
         events=case_events(moved_to, case_id=case.id),
         result={
@@ -1024,22 +1029,16 @@ async def _no_authority_to_consume(
 async def _case_moves_on(
     connection: AsyncConnection, *, case: LockedCase, step_key: str
 ) -> str | None:
-    """``RECONCILING`` once this was the last revalidation the case had outstanding.
+    """Where the case goes once this was the last of its round, or ``None`` if it stays.
 
     A case with two settled requests has two revalidation steps, and each of them has to be run
     against ``REVALIDATING`` -- so the first to finish must not move the case out from under the
-    second. Reading the ledger for the rest is what makes the answer independent of the order
-    the worker happened to claim them in.
+    second. A re-plan one of them called for is part of the same round and has to run there too,
+    and a round that ends with a re-planned promise ends at ``PLANNED`` (ADR-0023). Reading the
+    ledger for the rest is what makes the answer independent of the order the worker happened to
+    claim them in.
     """
-    outstanding = select(CaseStep.id).where(
-        CaseStep.case_id == case.id,
-        CaseStep.kind == STEP_REVALIDATE_RECOVERY,
-        CaseStep.step_key != step_key,
-        CaseStep.state.in_(("PENDING", "RETRYING", "IN_FLIGHT")),
-    )
-    if await connection.scalar(select(exists(outstanding))):
-        return None
-    return CASE_RECONCILING
+    return await revalidation_round_exit(connection, case_id=case.id, step_key=step_key)
 
 
 # ------------------------------------------------------------------------------- the evidence

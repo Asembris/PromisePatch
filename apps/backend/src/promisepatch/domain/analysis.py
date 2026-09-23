@@ -84,16 +84,17 @@ from promisepatch.db.types import TERMINAL_TRACK_STATES
 from promisepatch.db.uow import Actor, GovernedWrite, UnitOfWork
 from promisepatch.domain import disclosure, messaging, plan_identity
 from promisepatch.domain.cases import (
-    CASE_RECONCILING,
     CASE_REVALIDATING,
     LockedCase,
     case_events,
     case_successors,
     case_timers,
     revalidate_step_key,
+    revalidation_round_exit,
     track_in,
     track_scoped_key,
 )
+from promisepatch.domain.cases import STEP_REPLAN_TRACK as _REPLAN_TRACK_KIND
 from promisepatch.domain.model import (
     EFFECT_MESSAGE_SEND,
     EFFECT_TRACK_ID,
@@ -156,7 +157,7 @@ not happened.
 
 STEP_ANALYZE_IMPACT: Final = "ANALYZE_IMPACT"
 STEP_PLAN_RECOVERY: Final = "PLAN_RECOVERY"
-STEP_REPLAN_TRACK: Final = "REPLAN_TRACK"
+STEP_REPLAN_TRACK: Final = _REPLAN_TRACK_KIND
 
 ANALYSIS_STEP_KINDS: Final[frozenset[str]] = frozenset(
     {STEP_ANALYZE_IMPACT, STEP_PLAN_RECOVERY, STEP_REPLAN_TRACK}
@@ -630,8 +631,10 @@ async def _replan(
     first pass ran -- ``propagate``, ``enumerate_options``, ``classify`` -- against a freshly
     loaded snapshot, and writes the answer for *this promise only*. Every other track of the
     case is left exactly as it is, because the others have already executed, escalated or been
-    found unaffected, and re-deriving a posture somebody has already acted on would be undoing
-    work rather than re-planning it.
+    found unaffected -- or, in a case with another asked promise, are being revalidated or
+    applied in this same round -- and re-deriving a posture somebody has already acted on would
+    be undoing work rather than re-planning it. The case returns to ``PLANNED`` for this track
+    only, and only when the round's last revalidation or re-plan finishes (ADR-0023).
 
     **The old approval does not carry forward.** The request is marked ``SUPERSEDED`` and the
     track is unbound from it, so the fresh plan starts with no consent at all. The customer
@@ -681,7 +684,12 @@ async def _replan(
         if record.state == TRACK_PENDING
         else None
     )
-    moved_to = CASE_PLANNED if plan is not None else CASE_RECONCILING
+    # ADR-0023: the case returns to ``PLANNED`` for this track only, and only once the round is
+    # over. A sibling still being revalidated or re-planned needs the case where it is; a sibling
+    # whose yes already passed carries on applying whatever the case is waiting on.
+    moved_to = await revalidation_round_exit(
+        connection, case_id=case.id, step_key=step_key, leaves_a_plan=plan is not None
+    )
     notice = await _supersede_notice(connection, track=track)
 
     unit_of_work = UnitOfWork(connection)
@@ -709,7 +717,7 @@ async def _replan(
             "reason_detail": record.reason_detail,
             "fingerprint": None if plan is None else plan.fingerprint,
             "chosen_option_id": None if plan is None else _optional(plan.chosen_id),
-            "case_state": moved_to,
+            "case_state": moved_to or case.state,
             "cited": list(record.cited_constraint_ids),
             "supersede_notice": None if notice is None else notice.idempotency_key,
         },
@@ -760,7 +768,7 @@ async def _replan(
             "fingerprint": None if plan is None else plan.fingerprint,
             "options": 0 if plan is None else len(plan.options),
             "chosen": None if plan is None else _optional(plan.chosen_id),
-            "case_state": moved_to,
+            "case_state": moved_to or case.state,
             "supersede_notice": None if notice is None else notice.idempotency_key,
         },
     )
