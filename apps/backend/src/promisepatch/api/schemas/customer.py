@@ -77,9 +77,15 @@ class CustomerApprovalResponse(BaseModel):
     """The differences that exist. Absent where the rows hold none, never a placeholder."""
 
     outcome: str | None = None
-    """What has actually happened to the order since, if anything has."""
+    """What has actually happened to the order since, if anything has -- or, once a yes is on
+    the record and before the change is made, that the order is checked again first."""
 
     answered_at: datetime | None = None
+
+    awaiting_outcome: bool
+    """Whether something is still going to happen on account of this answer, so the page keeps
+    reading. Decided on the server for the reason ``answerable`` is; a browser that inferred it
+    from ``outcome``'s wording would be deciding from a sentence."""
 
 
 __all__ = ["CustomerAnswer", "CustomerAnswerRequest", "CustomerApprovalResponse"]

@@ -498,10 +498,12 @@ export function useWithdrawTurn(): UseMutationResult<
 /**
  * The approval request one link opens.
  *
- * Polled while the answer is stored and not yet read. That window is the worker's, not the
- * browser's — the record is durable the moment the page returns, and what has not happened is
- * the protocol reading it — so the page waits for a decision it can report rather than
- * asserting one. Every other phase is settled, and a settled page polls nothing.
+ * Polled for as long as the server says something is still going to happen: while the answer
+ * is stored and not yet read, and while a recorded yes is being checked against the order as it
+ * now stands and carried to the order system. Both windows are the worker's, not the browser's,
+ * so the page waits for what it can report rather than asserting it — and it keeps waiting past
+ * the decision, because a customer who approved has not yet been told whether anything changed.
+ * Once `awaiting_outcome` is false the page is settled, and a settled page polls nothing.
  *
  * A forged or unknown link is an `ApiError` the caller renders; it is never retried, because
  * a signature does not become valid on a second attempt.
@@ -514,7 +516,7 @@ export function useCustomerApproval(
     queryFn: ({ signal }) => fetchCustomerApproval(token as string, signal),
     enabled: token !== null,
     retry: retryTransportFailures,
-    refetchInterval: (query) => (query.state.data?.phase === 'RECEIVED' ? 2_000 : false),
+    refetchInterval: (query) => (query.state.data?.awaiting_outcome === true ? 2_000 : false),
   })
 }
 

@@ -367,6 +367,94 @@ async def test_the_page_reports_the_decision_only_once_the_protocol_wrote_it(
     assert settled["answered_at"] is not None
 
 
+async def test_an_open_question_and_a_stored_answer_differ_in_whether_the_page_waits(
+    physical: Intake, customer: Customer
+) -> None:
+    """An open question waits for the customer; a stored answer waits for the bakery.
+
+    The page re-reads only while the server says something is still going to happen, so an
+    open question -- whose next move is the customer's press -- asks for no re-reading at all.
+    """
+    await waiting_case(physical)
+    request = await the_request(physical)
+    token = link_for(request)
+
+    assert (await customer.open(token)).json()["awaiting_outcome"] is False
+
+    await customer.press(token, "APPROVE")
+
+    stored = (await customer.open(token)).json()
+    assert stored["phase"] == Phase.RECEIVED
+    assert stored["awaiting_outcome"] is True
+    assert stored["outcome"] is None
+
+
+async def test_a_recorded_yes_says_the_order_is_checked_again_before_it_changes(
+    physical: Intake, customer: Customer
+) -> None:
+    """The instant the page used to stop at: a decision written, nothing revalidated yet.
+
+    A yes is not a change. Between the decision and the amendment the worker re-reads the order
+    as it now stands, so this is what the page says -- and it keeps reading, because the answer
+    to "did it change?" has not been decided yet. Stopping here left a customer holding "your
+    answer is on the record" and nothing else, however long they looked.
+    """
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+    token = link_for(request)
+
+    await customer.press(token, "APPROVE")
+    await physical.drain_until_decided()
+
+    body = (await customer.open(token)).json()
+    assert body["phase"] == Phase.APPROVED
+    assert body["outcome"] == (
+        "Before anything changes, the bakery checks that your order can still be made this way."
+    )
+    assert body["awaiting_outcome"] is True
+    # Still a yes and nothing more: no amendment has been made on the strength of it.
+    assert await promise_state(physical, case_id, B) == status_view.PromiseState.CONSENTED
+
+
+async def test_the_page_stops_waiting_once_the_approved_change_has_settled(
+    physical: Intake, customer: Customer
+) -> None:
+    await waiting_case(physical)
+    request = await the_request(physical)
+    token = link_for(request)
+
+    await customer.press(token, "APPROVE")
+    await physical.drain(limit=60)
+
+    body = (await customer.open(token)).json()
+    assert body["outcome"] == "Your order now shows this change."
+    assert body["awaiting_outcome"] is False
+
+
+async def test_a_decline_leaves_the_page_nothing_to_wait_for(
+    physical: Intake, customer: Customer
+) -> None:
+    await waiting_case(physical)
+    request = await the_request(physical)
+    token = link_for(request)
+
+    await customer.press(token, "DECLINE")
+    await physical.drain(limit=60)
+
+    body = (await customer.open(token)).json()
+    assert body["phase"] == Phase.DECLINED
+    assert body["awaiting_outcome"] is False
+
+
+async def test_a_link_that_opens_nothing_waits_for_nothing(customer: Customer) -> None:
+    token = customer_link.mint(secret=LINK_SECRET, request_id=uuid4(), channel=TOMAS_CHANNEL)
+
+    body = (await customer.open(token)).json()
+
+    assert body["phase"] == Phase.CLOSED
+    assert body["awaiting_outcome"] is False
+
+
 async def test_the_body_carries_no_sender_no_clock_and_no_text(customer: Customer) -> None:
     """The authority model on the wire: there is no field a caller could answer *as* somebody.
 

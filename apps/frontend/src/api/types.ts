@@ -541,9 +541,20 @@ export interface CustomerApprovalResponse {
   to_product: string | null
   affected_resource: string | null
   substitute_resource: string | null
-  /** What has actually happened to the order since, if anything has. */
+  /**
+   * What has actually happened to the order since, if anything has — or, once a yes is on the
+   * record and before the change is made, that the order is checked again first.
+   */
   outcome: string | null
   answered_at: string | null
+  /**
+   * Whether something is still going to happen on account of this answer.
+   *
+   * The server's answer, for the reason `answerable` is: the page keeps reading while this is
+   * true and stops when it is not, and a page that worked it out from the wording of `outcome`
+   * would be deciding from a sentence.
+   */
+  awaiting_outcome: boolean
 }
 
 /** The two answers a button can carry, which are the two the literal parser reads. */

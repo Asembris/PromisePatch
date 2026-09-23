@@ -236,4 +236,5 @@ def _rendered(reading: view.CustomerApprovalView) -> CustomerApprovalResponse:
         substitute_resource=reading.substitute_resource,
         outcome=reading.outcome,
         answered_at=reading.answered_at,
+        awaiting_outcome=reading.awaiting_outcome,
     )

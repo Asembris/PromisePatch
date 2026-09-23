@@ -114,6 +114,16 @@ class CustomerApprovalView:
     substitute_resource: str | None
     outcome: str | None
     answered_at: datetime | None
+    awaiting_outcome: bool
+    """Whether something is still going to happen on account of this answer.
+
+    True while the answer is stored and unread, and while a yes is being checked against the
+    order as it now stands or carried to the order system. False everywhere else -- including
+    every fail-closed view -- because a page that keeps re-reading while this is true must stop
+    once there is nothing left for it to learn. Decided here, from the rows, for the reason
+    ``answerable`` is: a browser that worked out for itself whether the work was finished would
+    be guessing from a sentence.
+    """
 
 
 CLOSED_LINK: Final = CustomerApprovalView(
@@ -129,6 +139,7 @@ CLOSED_LINK: Final = CustomerApprovalView(
     substitute_resource=None,
     outcome=None,
     answered_at=None,
+    awaiting_outcome=False,
 )
 """What a link that does not open this request is shown: the closed phase and no detail at all.
 
@@ -153,6 +164,21 @@ order system's own version was observed to carry it -- which is why "now shows" 
 there and nowhere earlier. A track state absent from this table produces no sentence, so an
 unforeseen posture says nothing rather than something untrue.
 """
+
+_CHECKED_FIRST: Final = (
+    "Before anything changes, the bakery checks that your order can still be made this way."
+)
+"""What an approval is followed by, said while it is being followed by it.
+
+The track is still ``WAITING_FOR_CUSTOMER`` between the decision being written and the change
+going out, because a yes is not yet a change: the worker compares the order, the recipe it pins,
+its constraints, the substitute's stock and the production task against how they stand *now*,
+and only then amends anything. Said only once a yes is on the record, so a stored answer the
+protocol has not read yet is never described as being acted on.
+"""
+
+_SETTLING_AFTER_YES: Final[frozenset[str]] = frozenset({"WAITING_FOR_CUSTOMER", "APPLYING"})
+"""Track states in which an approved change has neither been made nor been refused yet."""
 
 
 async def read(connection: AsyncConnection, *, request_id: UUID, channel: str) -> Any:
@@ -197,9 +223,11 @@ async def read(connection: AsyncConnection, *, request_id: UUID, channel: str) -
     track = (
         await connection.execute(select(Track).where(Track.id == request.track_id))
     ).one_or_none()
+    phase = await _phase(connection, request=request, decision=decision, now=now)
+    track_state = None if track is None else track.state
 
     return CustomerApprovalView(
-        phase=await _phase(connection, request=request, decision=decision, now=now),
+        phase=phase,
         customer_name=None if customer is None else customer.name,
         order_reference=None if order is None else order.external_id,
         option_code=request.option_code,
@@ -213,9 +241,24 @@ async def read(connection: AsyncConnection, *, request_id: UUID, channel: str) -
         substitute_resource=await _resource(
             connection, None if option is None else option.substitute_resource_id
         ),
-        outcome=None if track is None else _OUTCOME.get(track.state),
+        outcome=_outcome(phase, track_state),
         answered_at=None if decision is None else decision.received_at,
+        awaiting_outcome=_awaiting_outcome(phase, track_state),
     )
+
+
+def _outcome(phase: str, track_state: str | None) -> str | None:
+    """What has happened to the order since, or what happens next once a yes is recorded."""
+    if phase == Phase.APPROVED and track_state == "WAITING_FOR_CUSTOMER":
+        return _CHECKED_FIRST
+    return None if track_state is None else _OUTCOME.get(track_state)
+
+
+def _awaiting_outcome(phase: str, track_state: str | None) -> bool:
+    """Whether the page should keep reading: an unread answer, or a yes not yet settled."""
+    if phase == Phase.RECEIVED:
+        return True
+    return phase == Phase.APPROVED and track_state in _SETTLING_AFTER_YES
 
 
 async def _phase(connection: AsyncConnection, *, request: Any, decision: Any, now: datetime) -> str:

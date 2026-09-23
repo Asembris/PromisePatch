@@ -50,6 +50,7 @@ const OPEN = {
   substitute_resource: 'blackberries',
   outcome: null,
   answered_at: null,
+  awaiting_outcome: false,
 }
 
 const CLOSED = {
@@ -66,11 +67,14 @@ const CLOSED = {
   substitute_resource: null,
   outcome: null,
   answered_at: null,
+  awaiting_outcome: false,
 }
 
 /** Answers the read, and answers a POST with whatever the test's own route says. */
 const RECEIVED: Responder = (record) =>
-  record.method === 'POST' ? json({ ...OPEN, phase: 'RECEIVED', answerable: false }) : json(OPEN)
+  record.method === 'POST'
+    ? json({ ...OPEN, phase: 'RECEIVED', answerable: false, awaiting_outcome: true })
+    : json(OPEN)
 
 function arriving(routes: Record<string, Responder> = {}): Backend {
   window.history.pushState({}, '', `/?approve=${LINK}`)
@@ -233,6 +237,65 @@ describe('answering', () => {
     expect(screen.getByTestId('outcome-sentence')).toHaveTextContent(
       'Your order now shows this change.',
     )
+  })
+
+  it('keeps reading past an approval until the server says the change has settled', async () => {
+    // The decision is written before the order is checked again and changed, so the first
+    // APPROVED reading usually has no outcome yet. A page that stopped there left the customer
+    // at "your answer is on the record" for good; this one keeps reading while the server says
+    // something is still going to happen, and says what happened once it has.
+    const checking = {
+      ...OPEN,
+      phase: 'APPROVED',
+      answerable: false,
+      answered_at: '2026-09-18T10:31:00Z',
+      outcome: 'Before anything changes, the bakery checks that your order can still be made this way.',
+      awaiting_outcome: true,
+    }
+    const changed = {
+      ...checking,
+      outcome: 'Your order now shows this change.',
+      awaiting_outcome: false,
+    }
+    let reads = 0
+    arriving({
+      [PATH]: () => {
+        reads += 1
+        return json(reads === 1 ? checking : changed)
+      },
+    })
+    renderApp()
+
+    await screen.findByText('You approved this change')
+    expect(screen.getByTestId('outcome-sentence')).toHaveTextContent(checking.outcome)
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('outcome-sentence')).toHaveTextContent(changed.outcome)
+      },
+      { timeout: 5_000 },
+    )
+  })
+
+  it('stops reading once the server says there is nothing left to learn', async () => {
+    const backend = arriving({
+      [PATH]: () =>
+        json({
+          ...OPEN,
+          phase: 'APPROVED',
+          answerable: false,
+          answered_at: '2026-09-18T10:31:00Z',
+          outcome: 'Your order now shows this change.',
+          awaiting_outcome: false,
+        }),
+    })
+    renderApp()
+
+    await screen.findByText('You approved this change')
+    // Longer than the page's re-read interval, so a page still polling would have asked again.
+    await new Promise((resolve) => setTimeout(resolve, 2_500))
+
+    expect(backend.countOf(PATH)).toBe(1)
   })
 
   it('offers a decline that is not drawn as an error', async () => {
