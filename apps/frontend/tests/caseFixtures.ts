@@ -375,7 +375,7 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
           reason_phrase: 'the change is visible and the order says to ask',
           deadline_at: '2026-03-04T10:05:00+00:00',
           owner: 'CUSTOMER',
-          next_action: 'Nothing. The customer has been asked and has not answered.',
+          next_action: 'Nothing until the customer answers on their approval page.',
           // The explanation layer's own sentence for a request in `SENT`, which is what the
           // backend puts here once the provider has acknowledged delivery.
           consent: 'the customer has been asked and has not answered',

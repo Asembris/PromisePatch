@@ -859,8 +859,25 @@ def test_a_next_action_does_not_restate_the_deadline_beside_it() -> None:
         deadline=NOW,
     )
     promise = project(case("WAITING", waiting)).threatened[0]
-    assert promise.next_action == "Nothing. The customer has been asked and has not answered."
+    assert promise.next_action == "Nothing until the customer answers on their approval page."
     assert "2026" not in promise.next_action
+
+
+def test_an_asked_promise_does_not_say_the_same_sentence_twice() -> None:
+    """The consent line already says the customer was asked and has not answered.
+
+    The next action beside it used to repeat that sentence word for word. It now says what
+    actually moves the promise: the customer's answer, on the page the link opens.
+    """
+    waiting = track(
+        state="WAITING_FOR_CUSTOMER",
+        classification="APPROVAL_REQUIRED",
+        approval=approval(provider_ref="tg-42"),
+    )
+    promise = project(case("WAITING", waiting)).threatened[0]
+    assert promise.state is PromiseState.REQUESTED
+    assert promise.consent == "the customer has been asked and has not answered"
+    assert promise.consent.lower() not in promise.next_action.lower()
 
 
 def test_a_promise_with_no_deadline_claims_no_moment_at_all() -> None:

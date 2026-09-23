@@ -680,7 +680,7 @@ _PROMISE_ACTIONS: Final[dict[PromiseState, str]] = {
     PromiseState.AWAITING_PLAN: "Nothing yet. This promise has not been decided.",
     PromiseState.AUTHORIZED: "Nothing. Your standing preference covers it and it is queued.",
     PromiseState.APPLYING: "Nothing. The order change has gone out and is not confirmed yet.",
-    PromiseState.REQUESTED: "Nothing. The customer has been asked and has not answered.",
+    PromiseState.REQUESTED: "Nothing until the customer answers on their approval page.",
     PromiseState.CONSENTED: "Nothing. The customer agreed and the change is queued.",
     PromiseState.DECLINED: "The owner decides what to offer instead. Nothing else will happen.",
     PromiseState.ESCALATED: (
