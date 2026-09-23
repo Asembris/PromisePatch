@@ -453,6 +453,66 @@ async def test_a_blocked_promise_names_an_owner_a_reason_and_a_next_action(
     assert view.next_action.owner == "OWNER", "band 2 hands the case to the person who can move it"
 
 
+async def test_an_escalated_promise_says_what_stopped_it_apart_from_why_it_was_planned(
+    browser: httpx2.AsyncClient, wired: Boundary, physical: Intake
+) -> None:
+    """Two questions, two answers, both off durable rows.
+
+    ``reason_phrase`` is why the engine classified the promise as it did; the escalation is what
+    the confirming transition recorded when it handed the promise over. Nothing else in the case
+    escalated, so nothing else carries a cause.
+    """
+    case_id = await settled_case(physical, wired)
+
+    view = await workspace(browser, case_id)
+
+    for promise_id in BLOCKED:
+        blocked = promise(view, promise_id)
+        assert blocked.escalation_reason == "BLOCKED"
+        assert blocked.escalation_phrase == (
+            "the confirmed plan had no change it could make to this order"
+        )
+        assert blocked.reason_phrase and blocked.reason_phrase != blocked.escalation_phrase
+        evidence = next(row for row in view.evidence.tracks if row.promise_id == promise_id)
+        assert evidence.escalation_reason == "BLOCKED"
+        assert evidence.escalated_at is not None
+    for promise_id in (AUTO, ASK, *UNTOUCHED):
+        assert promise(view, promise_id).escalation_reason is None
+        assert promise(view, promise_id).escalation_phrase is None
+        evidence = next(row for row in view.evidence.tracks if row.promise_id == promise_id)
+        assert evidence.escalation_reason is None and evidence.escalated_at is None
+
+
+async def test_a_plan_nobody_confirmed_says_so_on_every_promise_it_handed_over(
+    browser: httpx2.AsyncClient, physical: Intake
+) -> None:
+    """The deployed case that could not be explained: covered, and "needs you", and no reason.
+
+    §14.1's window closes on a plan nobody confirmed. Every live promise goes to the owner, and
+    each row now says so in words -- while still saying, separately, why it was planned the way
+    it was. The untouched promises were not live and carry nothing.
+    """
+    case_id = await planned_case(physical)
+    assert await physical.close_plan_window(case_id)
+    await physical.make_work_due()
+    await physical.drain(limit=40)
+
+    view = await workspace(browser, case_id)
+
+    covered = promise(view, AUTO)
+    assert covered.state == "ESCALATED"
+    assert covered.reason_phrase == "the order already pre-approves this substitution"
+    for promise_id in (AUTO, ASK, *BLOCKED):
+        handed_over = promise(view, promise_id)
+        assert handed_over.escalation_reason == "PLAN_UNCONFIRMED"
+        assert handed_over.escalation_phrase == (
+            "nobody confirmed the plan within its time limit, so nothing was changed"
+        )
+    for promise_id in UNTOUCHED:
+        assert promise(view, promise_id).escalation_reason is None
+    assert view.untouched_effect_count == 0
+
+
 async def test_an_effect_still_in_flight_is_not_shown_as_a_completed_one(
     browser: httpx2.AsyncClient, wired: Boundary, physical: Intake
 ) -> None:

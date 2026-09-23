@@ -344,6 +344,17 @@ function PromiseReading({
           {promise.consent}
         </span>
       )}
+      {/* What later stopped the plan, which is a different fact from the reason above: that
+          one is why the promise was planned this way, this is what the transition that handed
+          it to the owner recorded. Without it a promise a standing preference covered can read
+          "needs you" beside a reason that says it was pre-approved, and nothing on the row says
+          which is true — both are. */}
+      {promise.escalation_phrase === null ? null : (
+        <span className="w-full text-owner" data-testid="promise-escalation">
+          <span className="text-label uppercase">stopped because </span>
+          {promise.escalation_phrase}
+        </span>
+      )}
       <span className="w-full text-muted" data-testid="promise-next-action">
         <span className="text-label uppercase">next </span>
         {promise.next_action}

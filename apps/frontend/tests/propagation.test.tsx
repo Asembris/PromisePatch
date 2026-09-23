@@ -62,6 +62,8 @@ function promise(
     deadline_at: null,
     owner: 'YOU',
     next_action: 'Read the plan and confirm it, or leave it as it is.',
+    escalation_reason: null,
+    escalation_phrase: null,
     track_id: `track-${id}`,
     track_state: 'PENDING',
     classification: 'AUTO_RECOVERABLE',
@@ -400,6 +402,55 @@ describe('what the customer answered, on the row', () => {
     expect(status).toHaveAttribute('data-finished', 'false')
     expect(screen.getByTestId('promise-consent')).toHaveTextContent('the customer said yes')
     expect(screen.getByTestId('promise-next-action')).toHaveTextContent('by hand')
+  })
+})
+
+describe('what later stopped a plan, beside why it was made', () => {
+  it('says what stopped a covered promise without taking back why it was covered', () => {
+    // The deployed shape: pre-approved by the order, and then nobody confirmed the plan in
+    // time. Both sentences are the backend's and both are true; the row shows each under its
+    // own label rather than letting "needs you" contradict the reason beside it.
+    draw([
+      band('STANDING_PREFERENCE', 'Covered by a standing preference', [
+        promise('pr-a', 'EXT-A', 'Priya Nair', {
+          state: 'ESCALATED',
+          phrase: 'needs you',
+          owner: 'OWNER',
+          escalation_reason: 'PLAN_UNCONFIRMED',
+          escalation_phrase:
+            'nobody confirmed the plan within its time limit, so nothing was changed',
+          next_action: 'The owner handles this one by hand. Nothing will change until they do.',
+        }),
+      ]),
+    ])
+
+    expect(screen.getByText('the order already pre-approves this substitution')).toBeVisible()
+    expect(screen.getByTestId('promise-escalation')).toHaveTextContent(
+      'stopped because nobody confirmed the plan within its time limit, so nothing was changed',
+    )
+    expect(screen.getByTestId('promise-escalation')).not.toHaveTextContent('PLAN_UNCONFIRMED')
+  })
+
+  it('says nothing about stopping on a promise nothing stopped', () => {
+    draw(LANE)
+
+    expect(screen.queryByTestId('promise-escalation')).not.toBeInTheDocument()
+  })
+
+  it('does not print a token the backend had no words for', () => {
+    draw([
+      band('OWNER', 'Needs the owner', [
+        promise('pr-c', 'EXT-C', 'Okafor-Reyes', {
+          state: 'ESCALATED',
+          phrase: 'needs you',
+          escalation_reason: 'SOMETHING_NEW',
+          escalation_phrase: null,
+        }),
+      ]),
+    ])
+
+    expect(screen.queryByTestId('promise-escalation')).not.toBeInTheDocument()
+    expect(screen.queryByText(/SOMETHING_NEW/)).not.toBeInTheDocument()
   })
 })
 

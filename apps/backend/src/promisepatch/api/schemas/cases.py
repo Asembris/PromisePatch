@@ -151,6 +151,20 @@ class PromiseWorkspaceView(BaseModel):
     )
     owner: str = Field(description="whose move this promise is now")
     next_action: str = Field(description="what moves it, or a sentence saying nothing does")
+    escalation_reason: str | None = Field(
+        default=None,
+        description=(
+            "the workflow's recorded token for what handed this promise to the owner, read from "
+            "the escalating transition's own event, or null when nothing escalated it"
+        ),
+    )
+    escalation_phrase: str | None = Field(
+        default=None,
+        description=(
+            "that cause in the domain's words -- what later stopped the plan, as distinct from "
+            "reason_phrase, which is why the plan was made -- or null"
+        ),
+    )
     track_id: UUID
     track_state: str
     classification: str | None
@@ -255,6 +269,8 @@ class TrackEvidenceView(BaseModel):
     paths: int
     watched_entities: int
     effects: tuple[EffectEvidenceView, ...]
+    escalation_reason: str | None = None
+    escalated_at: datetime | None = None
     approval: ApprovalEvidenceView | None
     revalidation: RevalidationEvidenceView | None
 

@@ -246,6 +246,24 @@ class PromiseView:
     quietly become nobody's, which is exactly the failure the escalation exists to prevent.
     """
 
+    escalation_reason: str | None = None
+    """The workflow's token for what handed this promise to the owner, for the record.
+
+    Read from the transition's own domain event, never from the state beside it. ``None`` for a
+    promise nothing escalated.
+    """
+
+    escalation_phrase: str | None = None
+    """The same cause, in words: what *later* stopped the plan, not why the plan was made.
+
+    :attr:`reason_phrase` answers "why was this promise planned this way" -- the classification
+    the engine made. This answers "and then what stopped it", which is a different question with
+    a different answer: a promise a standing preference covered can still escalate because
+    nobody confirmed the plan in time. A screen that showed only the first answer made a covered
+    promise reading "needs you" look like a contradiction. ``None`` where nothing escalated it,
+    or where this build has no words for the token, so a caller falls back to the token.
+    """
+
 
 @dataclass(frozen=True, slots=True)
 class NextAction:
@@ -412,7 +430,44 @@ def _promise(case_state: str, track: TrackStatus) -> PromiseView:
         owner=_promise_owner(state),
         next_action=_promise_next_action(state),
         consent=_consent(track),
+        escalation_reason=None if track.escalation is None else track.escalation.reason,
+        escalation_phrase=escalation_phrase(
+            None if track.escalation is None else track.escalation.reason
+        ),
     )
+
+
+_ESCALATION_PHRASES: Final[dict[str, str]] = {
+    "BLOCKED": "the confirmed plan had no change it could make to this order",
+    "NO_CHOSEN_OPTION": "no recovery was recorded as chosen for it, which fails closed",
+    "PLAN_UNCONFIRMED": "nobody confirmed the plan within its time limit, so nothing was changed",
+    "PLAN_STALE": "the kitchen changed after the plan was confirmed, so the change was not made",
+    "DOWNSTREAM_UNAVAILABLE": "the order system did not take the change after repeated tries",
+    "MIRROR_NOT_RECONCILED": (
+        "the order system never showed the change back, so it is not counted as made"
+    ),
+    "NO_APPROVAL_WINDOW": "there was no time left to ask the customer before the deadline",
+    "APPROVAL_EXPIRED": "the approval window closed before the change could be made",
+    "APPROVAL_DECLINED": "the customer said no to the change",
+    "MESSAGE_UNDELIVERABLE": "the message to the customer could not be delivered",
+    "CONFIRMATION_UNANSWERED": "the customer replied twice and neither reply was a yes or a no",
+    "WITHDRAWN_AFTER_EFFECTS": (
+        "the exception was withdrawn after something had already gone out, so what stands "
+        "is checked by hand"
+    ),
+}
+"""Words for the escalation reasons the workflow already records. Not a second reason system.
+
+Keyed by the tokens :mod:`~promisepatch.domain.recovery`, :mod:`~promisepatch.domain.approvals`
+and :mod:`~promisepatch.domain.withdrawal` write on the event that escalates a track -- every one
+of them, which a test holds this table to. Nothing here decides that a promise escalated or why;
+it only says, in a clause, what the transition that did it wrote down.
+"""
+
+
+def escalation_phrase(reason: str | None) -> str | None:
+    """The words for one recorded escalation reason, or ``None`` when there are none."""
+    return None if reason is None else _ESCALATION_PHRASES.get(reason)
 
 
 _DECISION_STATES: Final[dict[str, PromiseState]] = {

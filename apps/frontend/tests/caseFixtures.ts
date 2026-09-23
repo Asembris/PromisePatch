@@ -39,6 +39,8 @@ function workspacePromise(
     consent: null,
     owner: 'YOU',
     next_action: 'Read the plan and confirm it, or leave it as it is.',
+    escalation_reason: null,
+    escalation_phrase: null,
     track_id: `track-${promiseId}`,
     track_state: 'PENDING',
     classification: 'AUTO_RECOVERABLE',
@@ -150,6 +152,8 @@ const PLANNED_EVIDENCE: EvidenceView = {
       paths: 2,
       watched_entities: 3,
       effects: [],
+      escalation_reason: null,
+      escalated_at: null,
       approval: null,
       revalidation: null,
     },
@@ -167,6 +171,8 @@ const PLANNED_EVIDENCE: EvidenceView = {
       paths: 1,
       watched_entities: 3,
       effects: [],
+      escalation_reason: null,
+      escalated_at: null,
       approval: null,
       revalidation: null,
     },
@@ -184,6 +190,8 @@ const PLANNED_EVIDENCE: EvidenceView = {
       paths: 1,
       watched_entities: 2,
       effects: [],
+      escalation_reason: null,
+      escalated_at: null,
       approval: null,
       revalidation: null,
     },
@@ -201,6 +209,8 @@ const PLANNED_EVIDENCE: EvidenceView = {
       paths: 0,
       watched_entities: 0,
       effects: [],
+      escalation_reason: null,
+      escalated_at: null,
       approval: null,
       revalidation: null,
     },
@@ -218,6 +228,8 @@ const PLANNED_EVIDENCE: EvidenceView = {
       paths: 0,
       watched_entities: 0,
       effects: [],
+      escalation_reason: null,
+      escalated_at: null,
       approval: null,
       revalidation: null,
     },
@@ -386,6 +398,8 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
           reason_phrase: 'the order carries a no-substitution constraint',
           owner: 'OWNER',
           next_action: 'The owner handles this one by hand. Nothing will change until they do.',
+          escalation_reason: 'BLOCKED',
+          escalation_phrase: 'the confirmed plan had no change it could make to this order',
           track_state: 'ESCALATED',
           classification: 'BLOCKED',
           rule_id: 'R-NOSUB',
@@ -398,7 +412,14 @@ export const SETTLED_CASE: CaseWorkspaceResponse = {
     ...PLANNED_EVIDENCE,
     case_state: 'WAITING',
     tracks: PLANNED_EVIDENCE.tracks.map((track) =>
-      track.promise_id === 'pr-a'
+      track.promise_id === 'pr-c'
+        ? {
+            ...track,
+            track_state: 'ESCALATED',
+            escalation_reason: 'BLOCKED',
+            escalated_at: '2026-03-04T07:05:30+00:00',
+          }
+        : track.promise_id === 'pr-a'
         ? {
             ...track,
             track_state: 'RECOVERED',

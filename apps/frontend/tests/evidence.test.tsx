@@ -138,6 +138,22 @@ describe('the plain-language layer', () => {
     stream.close()
   })
 
+  it('says what later handed a promise to the owner, apart from why it was decided', async () => {
+    const { stream } = mountAtCase()
+
+    const drawer = await openEvidence()
+
+    const rows = within(drawer).getAllByTestId('evidence-plain-row')
+    const blocked = rows.find((row) => row.getAttribute('data-promise-id') === 'pr-c')!
+    expect(blocked).toHaveTextContent('Because the order carries a no-substitution constraint.')
+    expect(within(blocked).getByTestId('evidence-plain-escalation')).toHaveTextContent(
+      'Then it went to the owner, because the confirmed plan had no change it could make to this order.',
+    )
+    const recovered = rows.find((row) => row.getAttribute('data-promise-id') === 'pr-a')!
+    expect(within(recovered).queryByTestId('evidence-plain-escalation')).not.toBeInTheDocument()
+    stream.close()
+  })
+
   it('carries every track, including the ones nothing was done to', async () => {
     const { stream } = mountAtCase()
 
@@ -303,6 +319,18 @@ describe('the technical layer', () => {
     expect(panel).toHaveTextContent('R-PREAPPROVED')
     expect(panel).toHaveTextContent('fp-a0011223344556677')
     expect(panel).toHaveTextContent('pp:amend:track-pr-a:opt:1')
+    stream.close()
+  })
+
+  it('keeps the recorded escalation token beneath the words for it', async () => {
+    const { stream } = mountAtCase()
+    await openEvidence()
+
+    await userEvent.click(screen.getByTestId('evidence-technical'))
+
+    const reasons = screen.getAllByTestId('evidence-escalation-reason')
+    expect(reasons).toHaveLength(1)
+    expect(reasons[0]).toHaveTextContent('escalated · BLOCKED')
     stream.close()
   })
 

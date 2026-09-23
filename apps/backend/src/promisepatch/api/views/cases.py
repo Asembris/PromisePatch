@@ -305,6 +305,8 @@ def _promise(
         consent=item.consent,
         owner=item.owner.value,
         next_action=item.next_action,
+        escalation_reason=item.escalation_reason,
+        escalation_phrase=item.escalation_phrase,
         track_id=UUID(item.track_id),
         track_state=item.track_state,
         classification=item.classification,
@@ -392,6 +394,8 @@ def _track_evidence(track: analysis.TrackStatus) -> TrackEvidenceView:
             )
             for effect in track.effects
         ),
+        escalation_reason=None if track.escalation is None else track.escalation.reason,
+        escalated_at=None if track.escalation is None else track.escalation.occurred_at,
         approval=_approval(track.approval),
         revalidation=_revalidation(track.revalidation),
     )

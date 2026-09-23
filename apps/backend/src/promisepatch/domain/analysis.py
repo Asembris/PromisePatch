@@ -61,6 +61,7 @@ from promisepatch.db.models import (
     CaseStep,
     CommitmentLine,
     Customer,
+    DomainEvent,
     ExceptionClarification,
     InboundReply,
     Order,
@@ -1384,6 +1385,35 @@ class RevalidationStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class EscalationStatus:
+    """Why one track was handed to the owner, as the transition that handed it over recorded it.
+
+    Read from the domain event that transition appended, never worked out from where the track
+    or the case stands now. The reason is the workflow's own token -- ``PLAN_UNCONFIRMED``,
+    ``APPROVAL_DECLINED`` -- and it is a different fact from ``reason_detail``: that one says why
+    the engine classified the promise as it did when the plan was made, and this says what later
+    stopped the plan being carried out. Every path into ``ESCALATED`` writes it, which is why the
+    two are recorded apart rather than one overwriting the other.
+    """
+
+    reason: str
+    occurred_at: datetime
+
+
+ESCALATION_EVENT_TYPES: Final[tuple[str, ...]] = (
+    "track.escalated",
+    "approval.expired",
+    "approval.delivery_failed",
+)
+"""The domain events a transition into ``ESCALATED`` appends, each carrying ``payload.reason``.
+
+Named here as literals because the modules that append them import this one. Most paths append
+``track.escalated``; a request closed by its deadline or by a transport that gave up appends its
+own approval event instead, with the same reason field and the track among its references.
+"""
+
+
+@dataclass(frozen=True, slots=True)
 class PathNodeStatus:
     """One node on a traversed path, with the edge that led into it. A stored row, read back."""
 
@@ -1468,6 +1498,8 @@ class TrackStatus:
     options: tuple[OptionStatus, ...]
     effects: tuple[EffectStatus, ...] = ()
     approval: ApprovalStatus | None = None
+    escalation: EscalationStatus | None = None
+    """What handed this promise to the owner, when something did. ``None`` for every other track."""
     path_rows: tuple[TrackPathStatus, ...] = ()
     """The traversals themselves, in stored order. ``paths`` above is their count.
 
@@ -1655,6 +1687,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
         interpretation = await _interpretation_status(connection, case_id, case.exception_id)
         pending = await _pending_clarification(connection, case_id)
         asked = await _clarification_history(connection, case_id)
+        escalations = await _escalations(connection, case_id)
         tracks: list[TrackStatus] = []
         for track in rows:
             options = (
@@ -1733,6 +1766,7 @@ async def read_case_status(database: RuntimeDatabase, *, case_id: UUID) -> CaseS
                         for effect in effects
                     ),
                     approval=approval,
+                    escalation=escalations.get(str(track.id)),
                 )
             )
         facts = await _node_facts(connection, tracks)
@@ -2008,6 +2042,35 @@ async def _interpretation_status(
         candidates=dict(semantic.get("candidates") or {}),
         last_error=step.error,
     )
+
+
+async def _escalations(connection: AsyncConnection, case_id: UUID) -> dict[str, EscalationStatus]:
+    """Each escalated track's recorded reason, keyed by track id. The latest event wins.
+
+    ``ESCALATED`` is terminal, so a track has at most one; reading in ledger order and keeping
+    the last is what makes that an observation rather than an assumption this relies on.
+    """
+    rows = (
+        await connection.execute(
+            select(DomainEvent.entity_refs, DomainEvent.payload, DomainEvent.occurred_at)
+            .where(
+                DomainEvent.case_id == case_id,
+                DomainEvent.type.in_(ESCALATION_EVENT_TYPES),
+            )
+            .order_by(DomainEvent.seq)
+        )
+    ).all()
+    found: dict[str, EscalationStatus] = {}
+    for row in rows:
+        reason = (row.payload or {}).get("reason")
+        if not isinstance(reason, str):
+            continue
+        for ref in row.entity_refs or ():
+            if isinstance(ref, Mapping) and ref.get("kind") == "track":
+                found[str(ref.get("id"))] = EscalationStatus(
+                    reason=reason, occurred_at=row.occurred_at
+                )
+    return found
 
 
 async def _revalidation_status(

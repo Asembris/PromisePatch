@@ -38,6 +38,8 @@ function untouched(
     consent: null,
     owner: 'NOBODY',
     next_action: 'Nothing. This promise is not reachable from what happened.',
+    escalation_reason: null,
+    escalation_phrase: null,
     track_id: `track-${id}`,
     track_state: 'UNAFFECTED',
     classification: 'UNAFFECTED',

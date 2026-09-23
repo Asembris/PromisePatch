@@ -295,6 +295,17 @@ export interface PromiseWorkspaceView {
   consent: string | null
   owner: string
   next_action: string
+  /**
+   * The workflow's recorded token for what handed this promise to the owner, read by the
+   * backend off the escalating transition's own event. Evidence vocabulary, never shown alone.
+   */
+  escalation_reason: string | null
+  /**
+   * The same cause in the domain's words: what later stopped the plan. A different question
+   * from `reason_phrase`, which is why the plan was made — both are shown, and neither replaces
+   * the other. `null` where nothing escalated the promise or the token has no words.
+   */
+  escalation_phrase: string | null
   track_id: string
   track_state: string
   classification: string | null
@@ -364,6 +375,8 @@ export interface TrackEvidenceView {
   paths: number
   watched_entities: number
   effects: EffectEvidenceView[]
+  escalation_reason: string | null
+  escalated_at: string | null
   approval: ApprovalEvidenceView | null
   revalidation: RevalidationEvidenceView | null
 }

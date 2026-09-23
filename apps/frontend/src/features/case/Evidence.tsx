@@ -171,6 +171,11 @@ function PlainWords({
                   ? 'The reason this was decided under is in the technical record below.'
                   : `Because ${promise.reason_phrase}.`}
               </span>
+              {promise?.escalation_phrase === null || promise?.escalation_phrase === undefined ? null : (
+                <span className="w-full text-owner" data-testid="evidence-plain-escalation">
+                  Then it went to the owner, because {promise.escalation_phrase}.
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -447,6 +452,11 @@ function TechnicalRow({
       <td className="py-1 pr-3">
         {track.track_state}
         <div className="break-all text-muted">{track.track_id}</div>
+        {track.escalation_reason === null ? null : (
+          <div className="text-muted" data-testid="evidence-escalation-reason">
+            escalated · {track.escalation_reason} · {formatDateTime(track.escalated_at)}
+          </div>
+        )}
       </td>
       <td className="py-1 pr-3">
         <Value>{track.rule_id}</Value>

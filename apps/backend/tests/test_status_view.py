@@ -17,10 +17,12 @@ from uuid import UUID, uuid4
 import pytest
 
 from promisepatch.domain.analysis import (
+    ESCALATION_EVENT_TYPES,
     ApprovalStatus,
     CaseStatus,
     ClarificationOptionStatus,
     EffectStatus,
+    EscalationStatus,
     PendingClarification,
     TrackStatus,
 )
@@ -31,6 +33,7 @@ from promisepatch.domain.status_view import (
     Authority,
     CaseHeadline,
     PromiseState,
+    escalation_phrase,
     owner_label,
     project,
     render,
@@ -50,6 +53,7 @@ def track(
     reason: str | None = "raspberries did not arrive",
     approval: ApprovalStatus | None = None,
     deadline: datetime | None = None,
+    escalation: EscalationStatus | None = None,
 ) -> TrackStatus:
     return TrackStatus(
         track_id=uuid4(),
@@ -71,6 +75,7 @@ def track(
         revalidation=None,
         options=(),
         approval=approval,
+        escalation=escalation,
     )
 
 
@@ -401,6 +406,88 @@ def test_a_yes_whose_change_could_not_be_carried_out_is_not_hidden_by_the_escala
     assert promise.state is PromiseState.ESCALATED
     assert promise.phrase == "needs you"
     assert promise.consent == "the customer said yes"
+
+
+# ------------------------------------------- why it was planned, and what stopped it afterwards
+
+
+def escalated(reason: str) -> EscalationStatus:
+    return EscalationStatus(reason=reason, occurred_at=NOW)
+
+
+def test_a_covered_promise_that_escalated_says_why_it_was_planned_and_what_stopped_it() -> None:
+    """The deployed case this exists for: covered by a standing preference, and "needs you".
+
+    Read alone, the classification reason and the state contradict each other. The recorded
+    escalation is the second half of the story, and it is carried beside the first rather than
+    replacing it, because both are true.
+    """
+    covered = track(
+        state="ESCALATED",
+        classification="AUTO_RECOVERABLE",
+        reason="PREAPPROVAL_COVERS",
+        escalation=escalated("PLAN_UNCONFIRMED"),
+    )
+    promise = project(case("RESOLVED", covered)).threatened[0]
+
+    assert promise.phrase == "needs you"
+    assert promise.reason_phrase == "the order already pre-approves this substitution"
+    assert promise.escalation_reason == "PLAN_UNCONFIRMED"
+    assert promise.escalation_phrase == (
+        "nobody confirmed the plan within its time limit, so nothing was changed"
+    )
+
+
+def test_a_promise_nothing_escalated_carries_no_escalation() -> None:
+    promise = project(case("RESOLVED", track(state="RECOVERED"))).threatened[0]
+
+    assert promise.escalation_reason is None
+    assert promise.escalation_phrase is None
+
+
+def test_an_escalation_token_with_no_words_keeps_its_token_and_claims_no_sentence() -> None:
+    odd = track(state="ESCALATED", escalation=escalated("SOMETHING_NEW"))
+    promise = project(case("RESOLVED", odd)).threatened[0]
+
+    assert promise.escalation_reason == "SOMETHING_NEW"
+    assert promise.escalation_phrase is None
+
+
+def test_every_recorded_escalation_reason_has_words() -> None:
+    """Held against the modules that write the tokens, not against a list copied from them."""
+    from promisepatch.domain import approvals, recovery, withdrawal
+
+    written = {
+        value
+        for module in (recovery, approvals, withdrawal)
+        for name, value in vars(module).items()
+        if name.startswith("ESCALATION_") and isinstance(value, str)
+    }
+    assert written, "no escalation reason was found to check"
+    missing = {reason for reason in written if escalation_phrase(reason) is None}
+    assert missing == set()
+
+
+def test_the_escalation_events_read_are_the_ones_the_workflow_appends() -> None:
+    from promisepatch.domain import approvals, recovery
+
+    assert set(ESCALATION_EVENT_TYPES) == {
+        recovery.EVENT_TRACK_ESCALATED,
+        approvals.EVENT_APPROVAL_EXPIRED,
+        approvals.EVENT_APPROVAL_DELIVERY_FAILED,
+    }
+
+
+def test_the_spoken_status_is_unchanged_by_a_recorded_escalation() -> None:
+    """G7 measured the spoken words. The cause is for the screen, and adds nothing to them."""
+    bare = track(state="ESCALATED", classification="BLOCKED", reason="NOSUB_CONSTRAINT")
+    caused = track(
+        state="ESCALATED",
+        classification="BLOCKED",
+        reason="NOSUB_CONSTRAINT",
+        escalation=escalated("BLOCKED"),
+    )
+    assert render(project(case("RESOLVED", caused))) == render(project(case("RESOLVED", bare)))
 
 
 def test_a_closed_window_states_the_closure_and_claims_no_answer() -> None:
