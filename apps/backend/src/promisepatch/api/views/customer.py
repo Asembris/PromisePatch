@@ -180,6 +180,23 @@ protocol has not read yet is never described as being acted on.
 _SETTLING_AFTER_YES: Final[frozenset[str]] = frozenset({"WAITING_FOR_CUSTOMER", "APPLYING"})
 """Track states in which an approved change has neither been made nor been refused yet."""
 
+_ABOUT_THIS_CHANGE: Final[frozenset[str]] = frozenset(
+    {"WAITING_FOR_CUSTOMER", "APPLYING", "RECOVERED"}
+)
+"""Track states whose sentence claims *this* change is being checked, made, or shown.
+
+Each is true only of the request the track is still carrying. A re-plan or a withdrawal
+supersedes the request and unbinds the track from it in one transaction, and a re-planned track
+can then be asked again, or changed automatically, under a plan this customer never saw. Read
+off a superseded request's page, "your order now shows this change" would describe somebody
+else's decision as theirs.
+"""
+
+_NO_LONGER_APPLIES: Final = (
+    "Your order changed after you were asked, so this question no longer applies."
+)
+"""What a superseded request's answer led to: nothing, because it authorises nothing now."""
+
 
 async def read(connection: AsyncConnection, *, request_id: UUID, channel: str) -> Any:
     """Read one request for the holder of a link, or the closed view.
@@ -225,6 +242,9 @@ async def read(connection: AsyncConnection, *, request_id: UUID, channel: str) -
     ).one_or_none()
     phase = await _phase(connection, request=request, decision=decision, now=now)
     track_state = None if track is None else track.state
+    # Whether the track still speaks for this request. Set when the request is created and
+    # cleared only by the transaction that supersedes it, so this is a column, not a guess.
+    carried = track is not None and track.approval_request_id == request.id
 
     return CustomerApprovalView(
         phase=phase,
@@ -241,24 +261,40 @@ async def read(connection: AsyncConnection, *, request_id: UUID, channel: str) -
         substitute_resource=await _resource(
             connection, None if option is None else option.substitute_resource_id
         ),
-        outcome=_outcome(phase, track_state),
+        outcome=_outcome(phase, track_state, carried=carried),
         answered_at=None if decision is None else decision.received_at,
-        awaiting_outcome=_awaiting_outcome(phase, track_state),
+        awaiting_outcome=_awaiting_outcome(phase, track_state, carried=carried),
     )
 
 
-def _outcome(phase: str, track_state: str | None) -> str | None:
-    """What has happened to the order since, or what happens next once a yes is recorded."""
+def _outcome(phase: str, track_state: str | None, *, carried: bool) -> str | None:
+    """What has happened to the order since, or what happens next once a yes is recorded.
+
+    A track that no longer carries this request is not reporting on it. An answer whose request
+    was superseded authorised nothing, and says so whatever the track has done since. A question
+    superseded before anybody answered keeps the sentences that are about the order rather than
+    about this change -- stood down, followed up -- and loses the ones that would claim it.
+    """
+    if not carried:
+        if phase != Phase.SUPERSEDED:
+            return _NO_LONGER_APPLIES
+        if track_state is None or track_state in _ABOUT_THIS_CHANGE:
+            return None
+        return _OUTCOME.get(track_state)
     if phase == Phase.APPROVED and track_state == "WAITING_FOR_CUSTOMER":
         return _CHECKED_FIRST
     return None if track_state is None else _OUTCOME.get(track_state)
 
 
-def _awaiting_outcome(phase: str, track_state: str | None) -> bool:
-    """Whether the page should keep reading: an unread answer, or a yes not yet settled."""
+def _awaiting_outcome(phase: str, track_state: str | None, *, carried: bool) -> bool:
+    """Whether the page should keep reading: an unread answer, or a yes not yet settled.
+
+    A yes whose request has been superseded is settled: nothing it authorised is still going to
+    happen, whatever the track goes on to do under a later plan.
+    """
     if phase == Phase.RECEIVED:
         return True
-    return phase == Phase.APPROVED and track_state in _SETTLING_AFTER_YES
+    return carried and phase == Phase.APPROVED and track_state in _SETTLING_AFTER_YES
 
 
 async def _phase(connection: AsyncConnection, *, request: Any, decision: Any, now: datetime) -> str:

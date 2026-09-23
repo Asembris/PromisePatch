@@ -35,18 +35,28 @@ from uuid import UUID, uuid4
 import httpx2
 import pytest
 import pytest_asyncio
-from _intake_support import RASPBERRY_ONLY, TOMAS_CHANNEL, Intake
+from _intake_support import BAKER, RASPBERRY_ONLY, TOMAS_CHANNEL, Intake
 from _intake_support import physical as physical
 from fastapi import FastAPI
 
 from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import ApprovalRequestState
 from promisepatch.api.views import cases as case_views
+from promisepatch.api.views import customer as customer_view
 from promisepatch.api.views.customer import Phase
 from promisepatch.config import Settings, get_settings
 from promisepatch.db.models import ApprovalDecision, InboundReply
-from promisepatch.domain import analysis, approvals, cases, customer_link, recovery, status_view
+from promisepatch.domain import (
+    analysis,
+    approvals,
+    cases,
+    customer_link,
+    recovery,
+    status_view,
+    withdrawal,
+)
 from promisepatch.domain.adapters import FakeEffectAdapter
+from promisepatch.domain.model import DeliveryOutcome, DeliveryStatus
 
 pytestmark = pytest.mark.integration
 
@@ -444,6 +454,235 @@ async def test_a_decline_leaves_the_page_nothing_to_wait_for(
     body = (await customer.open(token)).json()
     assert body["phase"] == Phase.DECLINED
     assert body["awaiting_outcome"] is False
+
+
+# ============================================ one tab, read at every boundary as the work runs
+#
+# The page re-reads while ``awaiting_outcome`` is true, and never decides that for itself. Each
+# test below holds one link and reads it the way an open tab does -- before the press, after it,
+# after the decision, and after whatever the workflow did next -- so what is proved is the
+# sequence a customer actually watches, not a page opened once everything had settled.
+
+CHECKED_FIRST = (
+    "Before anything changes, the bakery checks that your order can still be made this way."
+)
+CHANGED = "Your order now shows this change."
+FOLLOW_UP = "The bakery will follow up with you about this order."
+STOOD_DOWN = "This request was stood down. Nothing was done to your order because of it."
+NO_LONGER_APPLIES = "Your order changed after you were asked, so this question no longer applies."
+
+
+async def reading(customer: Customer, token: str) -> tuple[str, str | None, bool]:
+    body = (await customer.open(token)).json()
+    return body["phase"], body["outcome"], body["awaiting_outcome"]
+
+
+async def escalation_of(intake: Intake, case_id: UUID, promise_id: str) -> str | None:
+    reason: str | None = (await workspace_line(intake, case_id, promise_id)).escalation_reason
+    return reason
+
+
+async def request_by_id(intake: Intake, request_id: UUID) -> Any:
+    return next(row for row in await intake.requests() if row.id == request_id)
+
+
+async def amendments_of(intake: Intake, case_id: UUID, promise_id: str) -> list[Any]:
+    track = await track_of(intake, case_id, promise_id)
+    return [
+        row for row in await intake.effects_for(track.id) if row.kind == recovery.EFFECT_ORDER_AMEND
+    ]
+
+
+async def test_one_tab_follows_a_yes_from_the_question_to_the_changed_order(
+    physical: Intake, customer: Customer
+) -> None:
+    await waiting_case(physical)
+    token = link_for(await the_request(physical))
+
+    assert await reading(customer, token) == (Phase.OPEN, None, False)
+    await customer.press(token, "APPROVE")
+    assert await reading(customer, token) == (Phase.RECEIVED, None, True)
+    await physical.drain_until_decided()
+    assert await reading(customer, token) == (Phase.APPROVED, CHECKED_FIRST, True)
+    await physical.drain(limit=60)
+    assert await reading(customer, token) == (Phase.APPROVED, CHANGED, False)
+
+
+async def test_one_tab_follows_a_no_to_the_bakery_s_follow_up(
+    physical: Intake, customer: Customer
+) -> None:
+    case_id = await waiting_case(physical)
+    token = link_for(await the_request(physical))
+
+    await customer.press(token, "DECLINE")
+    assert await reading(customer, token) == (Phase.RECEIVED, None, True)
+    await physical.drain(limit=60)
+
+    assert await reading(customer, token) == (Phase.DECLINED, FOLLOW_UP, False)
+    assert await escalation_of(physical, case_id, B) == approvals.ESCALATION_APPROVAL_DECLINED
+
+
+async def test_one_tab_stops_when_nobody_answered_before_the_window_closed(
+    physical: Intake, customer: Customer
+) -> None:
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+    token = link_for(request)
+
+    assert await reading(customer, token) == (Phase.OPEN, None, False)
+    await physical.close_window(request.id)
+    await physical.drain(limit=60)
+
+    assert await reading(customer, token) == (Phase.EXPIRED, FOLLOW_UP, False)
+    assert await escalation_of(physical, case_id, B) == approvals.ESCALATION_APPROVAL_EXPIRED
+
+
+async def test_one_tab_stops_when_the_window_closed_before_a_yes_was_carried_out(
+    physical: Intake, customer: Customer
+) -> None:
+    """Revalidation's check 7: the yes is real and on time, and the authority to act on it is not.
+
+    The page stops re-reading and does not say the order changed; the customer's answer stays
+    theirs on the page, and the worker's row says why the bakery did not act on it.
+    """
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+    token = link_for(request)
+
+    await customer.press(token, "APPROVE")
+    await physical.drain_until_decided()
+    assert await reading(customer, token) == (Phase.APPROVED, CHECKED_FIRST, True)
+    await physical.close_window(request.id)
+    await physical.drain(limit=60)
+
+    assert await reading(customer, token) == (Phase.APPROVED, FOLLOW_UP, False)
+    assert (await track_of(physical, case_id, B)).state == recovery.TRACK_ESCALATED
+    assert await escalation_of(physical, case_id, B) == approvals.ESCALATION_APPROVAL_EXPIRED
+    assert await amendments_of(physical, case_id, B) == []
+
+
+async def test_one_tab_stops_when_the_order_system_refuses_an_approved_change(
+    physical: Intake, customer: Customer
+) -> None:
+    case_id = await waiting_case(physical)
+    token = link_for(await the_request(physical))
+    refusing = FakeEffectAdapter(
+        fail_with=DeliveryOutcome(status=DeliveryStatus.TERMINAL, error="the provider refused it")
+    )
+
+    await customer.press(token, "APPROVE")
+    await physical.drain_until_decided()
+    assert await reading(customer, token) == (Phase.APPROVED, CHECKED_FIRST, True)
+    await physical.drain(worker=physical.worker(adapter=refusing), limit=60)
+
+    assert await reading(customer, token) == (Phase.APPROVED, FOLLOW_UP, False)
+    assert (await track_of(physical, case_id, B)).state == recovery.TRACK_ESCALATED
+    assert await escalation_of(physical, case_id, B) is not None
+
+
+async def test_one_tab_stops_when_the_bakery_withdraws_after_a_yes(
+    physical: Intake, customer: Customer
+) -> None:
+    """A withdrawal is never an undo: the answer stands on the page, and nothing more is coming."""
+    case_id = await waiting_case(physical)
+    token = link_for(await the_request(physical))
+
+    await customer.press(token, "APPROVE")
+    await physical.drain_until_decided()
+    await withdrawal.withdraw_exception(
+        physical.database, case_id=case_id, command_id=uuid4(), worker_id=BAKER
+    )
+    await physical.drain(limit=60)
+
+    phase, outcome, awaiting = await reading(customer, token)
+    assert (phase, awaiting) == (Phase.APPROVED, False)
+    assert outcome in {FOLLOW_UP, STOOD_DOWN}
+    assert await amendments_of(physical, case_id, B) == []
+
+
+async def test_one_tab_stops_when_the_bakery_withdraws_before_an_answer(
+    physical: Intake, customer: Customer
+) -> None:
+    case_id = await waiting_case(physical)
+    token = link_for(await the_request(physical))
+
+    assert await reading(customer, token) == (Phase.OPEN, None, False)
+    await withdrawal.withdraw_exception(
+        physical.database, case_id=case_id, command_id=uuid4(), worker_id=BAKER
+    )
+    await physical.drain(limit=60)
+
+    phase, outcome, awaiting = await reading(customer, token)
+    assert (phase, awaiting) == (Phase.SUPERSEDED, False)
+    assert outcome in {None, FOLLOW_UP, STOOD_DOWN}
+
+
+async def test_a_yes_that_went_stale_is_never_told_the_next_plan_s_progress(
+    physical: Intake, customer: Customer
+) -> None:
+    """The customer said yes to one change; the world moved; the re-plan is not theirs.
+
+    Revalidation refuses the yes, the promise is re-planned, the old request is superseded and
+    the track stops carrying it. A worker then confirms the new plan. The old link says its
+    question no longer applies and stops re-reading, at every point after the supersede -- where
+    it used to fall silent the moment the re-plan left the track ``PENDING``, and would have
+    reported whatever the next plan did to the track as though it were this customer's change.
+    """
+    case_id = await waiting_case(physical)
+    request = await the_request(physical)
+    token = link_for(request)
+
+    await customer.press(token, "APPROVE")
+    await physical.drain_until_decided()
+    assert await reading(customer, token) == (Phase.APPROVED, CHECKED_FIRST, True)
+    await physical.bump_order_version(ho.ORDER_B)
+    await physical.drain(limit=40)
+
+    superseded = await request_by_id(physical, request.id)
+    assert superseded.state == ApprovalRequestState.SUPERSEDED.value
+    assert await reading(customer, token) == (Phase.APPROVED, NO_LONGER_APPLIES, False)
+
+    await physical.confirm(case_id)
+    await physical.drain(limit=60)
+
+    assert (await track_of(physical, case_id, B)).state != recovery.TRACK_STALE
+    assert await reading(customer, token) == (Phase.APPROVED, NO_LONGER_APPLIES, False)
+    decisions = await physical.decisions()
+    assert len(decisions) == 1 and decisions[0].request_id == request.id
+
+
+@pytest.mark.parametrize("track_state", ["WAITING_FOR_CUSTOMER", "APPLYING", "RECOVERED"])
+def test_a_track_that_no_longer_carries_the_request_is_never_reported_as_its_change(
+    track_state: str,
+) -> None:
+    """The rule behind the test above, for the states a later plan could move the track into.
+
+    Today's fixture re-plans the canonical promise back to needing its customer, and the case
+    does not ask again, so these are not reached live. They are what a re-plan to an automatic
+    change, or a second ask, would put in front of a superseded link: none of them may speak for
+    it, and none of them may keep the page re-reading.
+    """
+    for phase in (Phase.APPROVED, Phase.SUPERSEDED):
+        assert customer_view._awaiting_outcome(phase, track_state, carried=False) is False
+        outcome = customer_view._outcome(phase, track_state, carried=False)
+        assert outcome != CHANGED and outcome != CHECKED_FIRST
+    assert customer_view._outcome(Phase.APPROVED, track_state, carried=False) == NO_LONGER_APPLIES
+    assert customer_view._outcome(Phase.SUPERSEDED, track_state, carried=False) is None
+
+
+def test_a_track_still_carrying_the_request_reports_it_exactly_as_before() -> None:
+    assert customer_view._outcome(Phase.APPROVED, "RECOVERED", carried=True) == CHANGED
+    assert customer_view._outcome(Phase.APPROVED, "WAITING_FOR_CUSTOMER", carried=True) == (
+        CHECKED_FIRST
+    )
+    assert customer_view._awaiting_outcome(Phase.APPROVED, "APPLYING", carried=True) is True
+    assert customer_view._awaiting_outcome(Phase.RECEIVED, None, carried=False) is True
+
+
+def test_a_question_withdrawn_before_an_answer_still_says_it_was_stood_down() -> None:
+    """Withdrawal unbinds the track too, and the sentences about the order itself survive it."""
+    assert customer_view._outcome(Phase.SUPERSEDED, "WITHDRAWN", carried=False) == STOOD_DOWN
+    assert customer_view._outcome(Phase.SUPERSEDED, "ESCALATED", carried=False) == FOLLOW_UP
 
 
 async def test_a_link_that_opens_nothing_waits_for_nothing(customer: Customer) -> None:

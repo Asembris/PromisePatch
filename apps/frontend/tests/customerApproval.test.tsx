@@ -277,6 +277,47 @@ describe('answering', () => {
     )
   })
 
+  it('stops reading on the transition to a settled answer, whatever the sentence says', async () => {
+    // A yes that went stale: the tab was re-reading while the bakery checked, the order moved,
+    // and the question was superseded. The server says so and says nothing more is coming. The
+    // page stops on the flag — the sentence it shows is not what decides that — and asks again
+    // for nothing however long it stays open.
+    const checking = {
+      ...OPEN,
+      phase: 'APPROVED',
+      answerable: false,
+      answered_at: '2026-09-18T10:31:00Z',
+      outcome: 'Before anything changes, the bakery checks that your order can still be made this way.',
+      awaiting_outcome: true,
+    }
+    const superseded = {
+      ...checking,
+      outcome: 'Your order changed after you were asked, so this question no longer applies.',
+      awaiting_outcome: false,
+    }
+    let reads = 0
+    const backend = arriving({
+      [PATH]: () => {
+        reads += 1
+        return json(reads === 1 ? checking : superseded)
+      },
+    })
+    renderApp()
+
+    await screen.findByText('You approved this change')
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('outcome-sentence')).toHaveTextContent(superseded.outcome)
+      },
+      { timeout: 5_000 },
+    )
+    const settledAt = backend.countOf(PATH)
+    await new Promise((resolve) => setTimeout(resolve, 2_500))
+
+    expect(backend.countOf(PATH)).toBe(settledAt)
+    expect(screen.getByTestId('outcome-sentence')).not.toHaveTextContent('now shows this change')
+  })
+
   it('stops reading once the server says there is nothing left to learn', async () => {
     const backend = arriving({
       [PATH]: () =>
