@@ -245,6 +245,10 @@ class RevalidationEvidenceView(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     outcome: str
+    outcome_phrase: str | None = Field(
+        default=None,
+        description="the outcome in the domain's published words, or null",
+    )
     deciding_check: int | None
     detail: str | None
     fingerprint: str | None

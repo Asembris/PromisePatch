@@ -355,6 +355,8 @@ export interface RevalidationCheckView {
 
 export interface RevalidationEvidenceView {
   outcome: string
+  /** The outcome in the explanation layer's words, or `null` when the token has none. */
+  outcome_phrase: string | null
   deciding_check: number | null
   detail: string | null
   fingerprint: string | null

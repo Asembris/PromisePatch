@@ -470,6 +470,20 @@ def escalation_phrase(reason: str | None) -> str | None:
     return None if reason is None else _ESCALATION_PHRASES.get(reason)
 
 
+def revalidation_phrase(outcome: str | None) -> str | None:
+    """What a recorded revalidation concluded, in the explanation layer's own words.
+
+    The verdict clause only -- "the plan is still valid", "the approval window closed" -- so an
+    evidence surface prints a sentence where it used to print ``PROCEED``. Not the clause that
+    says what follows: for ``PROCEED`` that is "the approved change is applied", and beside a
+    promise whose amendment is still unconfirmed, or was never observed and went to the owner,
+    it would claim a change nobody saw. Whether the change landed is the promise's own state to
+    say, and it says "changed" only once the order system showed it. ``None`` for a token with
+    no phrase, so the caller shows the token rather than a guess.
+    """
+    return closed_phrase(FactId.REVALIDATION_OUTCOME, outcome)
+
+
 _DECISION_STATES: Final[dict[str, PromiseState]] = {
     "APPROVE": PromiseState.CONSENTED,
     "DECLINE": PromiseState.DECLINED,

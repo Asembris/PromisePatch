@@ -685,6 +685,23 @@ def test_a_question_withdrawn_before_an_answer_still_says_it_was_stood_down() ->
     assert customer_view._outcome(Phase.SUPERSEDED, "ESCALATED", carried=False) == FOLLOW_UP
 
 
+async def test_the_drawer_says_what_revalidation_concluded_in_words_beside_the_token(
+    physical: Intake, customer: Customer
+) -> None:
+    """Layer 3 used to print ``PROCEED``. It prints the explanation layer's verdict, token kept."""
+    case_id = await waiting_case(physical)
+    await customer.press(link_for(await the_request(physical)), "APPROVE")
+    await physical.drain(limit=60)
+
+    status = await analysis.read_case_status(physical.database, case_id=case_id)
+    served = case_views.build(status, opening=None, may_speak=False)
+    evidence = next(row for row in served.evidence.tracks if row.promise_id == B)
+    assert evidence.revalidation is not None
+    assert evidence.revalidation.outcome == "PROCEED"
+    assert evidence.revalidation.outcome_phrase == "the plan is still valid"
+    assert "applied" not in (evidence.revalidation.outcome_phrase or "")
+
+
 async def test_a_link_that_opens_nothing_waits_for_nothing(customer: Customer) -> None:
     token = customer_link.mint(secret=LINK_SECRET, request_id=uuid4(), channel=TOMAS_CHANNEL)
 

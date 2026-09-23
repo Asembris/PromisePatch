@@ -255,6 +255,7 @@ describe('the authority layer', () => {
               ...SETTLED_CASE.evidence.tracks[0]!,
               revalidation: {
                 outcome: 'STALE',
+                outcome_phrase: 'the kitchen moved while the promise was waiting',
                 deciding_check: 2,
                 detail: 'the order moved while the promise was waiting',
                 fingerprint: 'fp-a0011223344556677',
@@ -290,6 +291,76 @@ describe('the authority layer', () => {
     expect(checks[1]).toHaveTextContent('expected 4.000')
     expect(checks[1]).toHaveTextContent('actual 1.200')
     expect(checks[1]).toHaveAttribute('data-passed', 'false')
+    stream.close()
+  })
+
+  it('says what revalidation concluded and what the customer answered in words', async () => {
+    // Layer 3 used to print `Revalidation: PROCEED` and `A decision is recorded: APPROVE`. The
+    // sentences are the backend's; the tokens are still here, one line down and in the record.
+    const answered = SETTLED_CASE.authority_bands[1]!.promises[0]!
+    const { stream } = mountAtCase(() =>
+      json({
+        ...SETTLED_CASE,
+        authority_bands: SETTLED_CASE.authority_bands.map((band) =>
+          band.authority === 'CUSTOMER'
+            ? {
+                ...band,
+                promises: [{ ...answered, state: 'RECOVERED', consent: 'the customer said yes' }],
+              }
+            : band,
+        ),
+        evidence: {
+          ...SETTLED_CASE.evidence,
+          tracks: SETTLED_CASE.evidence.tracks.map((track) =>
+            track.promise_id === 'pr-b'
+              ? {
+                  ...track,
+                  track_state: 'RECOVERED',
+                  approval: {
+                    request_id: 'req-b-0001',
+                    option_code: 'OPT-5',
+                    state: 'ANSWERED',
+                    decided: true,
+                    sent_at: '2026-03-04T07:05:00+00:00',
+                    deadline: '2026-03-04T10:05:00+00:00',
+                    provider_ref: 'telegram',
+                    decision: 'APPROVE',
+                    parser: 'LITERAL',
+                    replies: 1,
+                  },
+                  revalidation: {
+                    outcome: 'PROCEED',
+                    outcome_phrase: 'the plan is still valid',
+                    deciding_check: null,
+                    detail: null,
+                    fingerprint: 'fp-b0011223344556677',
+                    checks: [],
+                  },
+                }
+              : track,
+          ),
+        },
+      }),
+    )
+    await openEvidence()
+
+    await userEvent.click(screen.getByTestId('evidence-authority'))
+
+    const row = screen
+      .getAllByTestId('evidence-authority-row')
+      .find((entry) => entry.getAttribute('data-promise-id') === 'pr-b')!
+    expect(within(row).getByTestId('evidence-approval-line')).toHaveTextContent(
+      'The customer said yes.',
+    )
+    expect(within(row).getByTestId('evidence-approval-line')).not.toHaveTextContent('APPROVE')
+    expect(within(row).getByTestId('evidence-revalidation-verdict')).toHaveTextContent(
+      'Checked again before anything changed: the plan is still valid.',
+    )
+    expect(within(row).getByTestId('evidence-revalidation-token')).toHaveTextContent('PROCEED')
+    expect(row).not.toHaveTextContent('Revalidation: PROCEED')
+
+    await userEvent.click(screen.getByTestId('evidence-technical'))
+    expect(screen.getByTestId('evidence-approval')).toHaveTextContent('ASK · ANSWERED · APPROVE')
     stream.close()
   })
 

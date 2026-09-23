@@ -39,6 +39,7 @@ from promisepatch.domain.status_view import (
     render,
     render_clarification_receipt,
     render_confirmation,
+    revalidation_phrase,
 )
 
 NOW = datetime(2026, 3, 4, 7, 0, tzinfo=UTC)
@@ -488,6 +489,18 @@ def test_the_spoken_status_is_unchanged_by_a_recorded_escalation() -> None:
         escalation=escalated("BLOCKED"),
     )
     assert render(project(case("RESOLVED", caused))) == render(project(case("RESOLVED", bare)))
+
+
+def test_a_revalidation_outcome_is_said_in_the_explanation_layer_s_verdict() -> None:
+    assert revalidation_phrase("PROCEED") == closed_phrase(FactId.REVALIDATION_OUTCOME, "PROCEED")
+    assert revalidation_phrase("STALE") == "the kitchen moved while the promise was waiting"
+    assert revalidation_phrase("SOMETHING_NEW") is None
+    assert revalidation_phrase(None) is None
+
+
+def test_a_passed_revalidation_never_claims_the_change_landed() -> None:
+    """Whether it landed is the promise's own state to say, once the order system showed it."""
+    assert "applied" not in (revalidation_phrase("PROCEED") or "")
 
 
 def test_a_closed_window_states_the_closure_and_claims_no_answer() -> None:

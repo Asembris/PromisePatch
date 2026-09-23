@@ -293,7 +293,7 @@ function WhatWasChecked({
                   {authorityTitle ?? 'Nothing about this promise needs anybody’s permission.'}
                 </span>
               </p>
-              <ApprovalLine approval={track.approval} />
+              <ApprovalLine approval={track.approval} consent={promise?.consent ?? null} />
               <RevalidationChecks revalidation={track.revalidation} />
             </div>
           ))}
@@ -303,15 +303,29 @@ function WhatWasChecked({
   )
 }
 
-/** What one customer was asked, and whether an answer of theirs has been recorded. */
-function ApprovalLine({ approval }: { approval: ApprovalEvidenceView | null }): ReactNode {
+/**
+ * What one customer was asked, and whether an answer of theirs has been recorded.
+ *
+ * The answer is the domain's own sentence for it — "the customer said yes" — carried on the
+ * promise as `consent`, rather than the decision token. The token is in the technical record,
+ * beside the request it was recorded against.
+ */
+function ApprovalLine({
+  approval,
+  consent,
+}: {
+  approval: ApprovalEvidenceView | null
+  consent: string | null
+}): ReactNode {
   if (approval === null) return null
   return (
     <p className="text-muted" data-testid="evidence-approval-line">
       Asked {formatDateTime(approval.sent_at)}, answer due by {formatDateTime(approval.deadline)}.{' '}
-      {approval.decided
-        ? `A decision is recorded: ${approval.decision ?? 'unknown'}.`
-        : 'No decision is recorded.'}{' '}
+      {!approval.decided
+        ? 'No decision is recorded.'
+        : consent === null
+          ? 'A decision is recorded.'
+          : `${consent.charAt(0).toUpperCase()}${consent.slice(1)}.`}{' '}
       {approval.replies} repl{approval.replies === 1 ? 'y' : 'ies'} received.
     </p>
   )
@@ -332,8 +346,17 @@ function RevalidationChecks({
   }
   return (
     <div data-testid="evidence-revalidation" data-outcome={revalidation.outcome}>
-      <p className="text-muted">
-        Revalidation: {revalidation.outcome}
+      {/* The explanation layer's verdict first, and the token, the deciding check and its detail
+          beneath it for a reader who wants to hold the sentence to the record. */}
+      <p className="text-muted" data-testid="evidence-revalidation-verdict">
+        Checked again before anything changed:{' '}
+        {revalidation.outcome_phrase === null
+          ? revalidation.outcome
+          : `${revalidation.outcome_phrase}.`}
+      </p>
+      <p className="font-mono text-state text-muted" data-testid="evidence-revalidation-token">
+        {revalidation.outcome}
+        {revalidation.deciding_check === null ? null : <> · check {revalidation.deciding_check}</>}
         {revalidation.detail === null ? null : <> — {revalidation.detail}</>}
       </p>
       <ul className="mt-1 space-y-0.5">
@@ -493,7 +516,9 @@ function TechnicalRow({
             ))}
             {track.approval === null ? null : (
               <div data-testid="evidence-approval">
-                ASK · {track.approval.state} · <Value>{track.approval.provider_ref}</Value>
+                ASK · {track.approval.state}
+                {track.approval.decision === null ? null : <> · {track.approval.decision}</>} ·{' '}
+                <Value>{track.approval.provider_ref}</Value>
                 <div className="text-muted">{track.approval.request_id}</div>
               </div>
             )}

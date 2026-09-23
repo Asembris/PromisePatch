@@ -425,6 +425,7 @@ def _revalidation(
         return None
     return RevalidationEvidenceView(
         outcome=revalidation.outcome,
+        outcome_phrase=status_view.revalidation_phrase(revalidation.outcome),
         deciding_check=revalidation.deciding_check,
         detail=revalidation.detail,
         fingerprint=revalidation.fingerprint,
