@@ -217,6 +217,17 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
           <VoiceStateChip state={voiceState} />
         </div>
 
+        {/* The case's own sentences are written for the worker who runs it -- "planned, and
+            waiting for you" is the contract's phrase, and it is not reworded here. A reader who
+            may not speak is told who that "you" is before they read the first of them, where it
+            is on the first screen, rather than after them at the foot of the panel. */}
+        {view.may_speak ? null : (
+          <p className="text-sm text-muted" data-testid="conversation-read-only">
+            You are looking at this case. Where it says &ldquo;you&rdquo;, it means the bakery
+            worker handling it: changing it is theirs to do.
+          </p>
+        )}
+
         {/* The whole case, spoken, exactly as the backend renders it. Never trimmed, never
             summarised, and re-read from the authoritative case on every render — so this line
             is current rather than a memory of what was true when the panel opened. */}
@@ -251,17 +262,6 @@ export function Conversation({ view }: { view: CaseWorkspaceResponse }): ReactNo
             {messageFor(failure)}
           </p>
         ) : null}
-
-        {/* The case's own sentences are written for the worker who runs it -- "planned, and
-            waiting for you" is the contract's phrase, and it is not reworded here. A reader who
-            may not speak is told once, where the conversation would otherwise be, who that
-            "you" is. */}
-        {view.may_speak ? null : (
-          <p className="text-sm text-muted" data-testid="conversation-read-only">
-            You are looking at this case. Where it says &ldquo;you&rdquo;, it means the bakery
-            worker handling it: changing it is theirs to do.
-          </p>
-        )}
 
         {mayAnswer ? (
           <TurnComposer

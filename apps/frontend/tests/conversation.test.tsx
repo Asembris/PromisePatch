@@ -202,9 +202,13 @@ describe('the conversation panel', () => {
 
     expect(OBSERVED_CASE.awaiting_confirmation).toBe(true)
     expect(screen.getByTestId('conversation-voice-state')).not.toHaveTextContent(/your yes/i)
-    expect(screen.getByTestId('conversation-read-only')).toHaveTextContent(
-      /means the bakery worker handling it/,
-    )
+    const notice = screen.getByTestId('conversation-read-only')
+    expect(notice).toHaveTextContent(/means the bakery worker handling it/)
+    // Before the first "waiting for you" it explains, not after the last of them.
+    expect(
+      notice.compareDocumentPosition(screen.getByTestId('conversation-speech')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     stream.close()
   })
 
