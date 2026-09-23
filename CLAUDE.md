@@ -85,14 +85,20 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
-  **The deployed image is `4cfb74de7cc2`**, released 2026-09-22 with smoke `12/12`, the host
-  rebooted and never replaced. That release could not go through `deploy.sh stack`: the deployed
-  stack's template predates the channel block, so submitting it reports `Replacement: Conditional`
-  on `Host` and `ElasticIpAssociation` and the guard refuses — correctly. It was carried by a
+  **The deployed image is `931a296decad`**, released 2026-09-23, the host rebooted and never
+  replaced. That release could not go through `deploy.sh stack` — measured again, live: the
+  deployed stack's template predates the channel block, so submitting it reports
+  `Replacement: Conditional` on `Host` and `ElasticIpAssociation` and the guard refuses,
+  correctly, deleting its change set unexecuted. It was carried the way `4cfb74de7cc2` was, by a
   parameter-only change set against the *previously deployed* template, authorised explicitly and
   gated on an empty resource change list. **That is a documented one-off, not a release path**, and
   [non-destructive-release.md](docs/non-destructive-release.md) §10.1's gap is unchanged: the
-  stack's recorded template can only be moved by replacing the host.
+  stack's recorded template can only be moved by replacing the host. **Smoke is `9/12` from this
+  operator machine and the three gaps are not the deployment**: `mcp-requires-bearer`,
+  `origin-refused` and `host-refused` time out in the client while Caddy's own log shows `401` and
+  `403` answered in milliseconds, and the same three probes run *on the host* answer `401`, `403`
+  and `421` in ~20 ms. The local TLS-intercepting antivirus proxy truncates small non-2xx bodies.
+  Do not read those three as a broken deployment, and do not claim `12/12` from here.
 - **The effect-set benchmark headline is `11/16` and is immutable.** The denominator is
   permanently sixteen; a repaired score never replaces it, and `16/16` is a separate release
   condition published beside it. Failing scenarios stay committed failing.
@@ -231,8 +237,8 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   unchanged consent protocol, never a second one. See
   [customer-message-transport.md](docs/customer-message-transport.md) and
   [customer-approval-link.md](docs/customer-approval-link.md).
-- **The four-step destructive demo repair is now one command, proved locally and never run on
-  the deployed host.** `pp restore-demo-world --confirm destroy-and-restore` sequences the repair
+- **The four-step destructive demo repair is one command, and it has now been run on the deployed
+  host.** `pp restore-demo-world --confirm destroy-and-restore` sequences the repair
   `docs/demo-fixture-anchoring.md` wrote down and section 10 above performed: reseed at
   `resolve_demo_anchor(now)`, reset the External Order System, provision the canonical case,
   rebind. **Every refusal is taken before the first destructive statement** — a world that is not
@@ -244,8 +250,19 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   sends no message; `_what_would_be_lost` and the world roll are untouched and unreachable from
   it. Local proof on 2026-09-23: the canonical partition restored, ledgers `176825 → 176838` and
   `227944 → 227962`, every authority counter `0`, 316 related tests green with
-  `test_demo_world_roll` unchanged. **The deployed host was not touched, and the binding-restore
-  path has never met Telegram.** See [demo-world-restore.md](docs/demo-world-restore.md).
+  `test_demo_world_roll` unchanged. **The deployed proof was taken on 2026-09-23**, once, carrying
+  the real Telegram binding across: exit `0`, `binding: restored`, a fresh anchor, one canonical
+  `PLANNED` case, the order book reset to version 1, ledgers `219 → 233` and `279 → 298` with
+  `seq` contiguous from `1`, outbox and every authority counter `0`, exactly one customer bound
+  and five back at placeholders — and **zero `sendMessage`, zero `worker.telegram.sent`** across
+  the whole run. The restored destination still verifies: `returned_id_matches_stored=True`,
+  `chat_type=private`, no message sent, and **the chat id reached no output, log or transcript** —
+  measured, not asserted. The restore rebooted nothing: host `boot_id` unchanged across it, no
+  stack update, no volume removed, certificate and RDS untouched. **Two things it does not say**:
+  no refusal path was exercised live, and **no deployed container holds the settings the command
+  needs** — the reseed's four live in `env/migrate.env` while provisioning and the channel live in
+  `env/api.env`, so the run needed them supplied on the host. That is a defect recorded unfixed.
+  See [demo-world-restore.md](docs/demo-world-restore.md).
 
 `new_roadmap.md` is the authority on what is open and what each gate requires. Read it before
 deciding what to build. Do not restate its contents here.
