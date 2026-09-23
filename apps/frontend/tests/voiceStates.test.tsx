@@ -34,6 +34,18 @@ describe('what the conversation is doing, read off the case', () => {
     expect(caseVoiceState(APPLYING_CASE, settled)).toBe('processing')
   })
 
+  it('never tells a reader who cannot confirm that the plan waits for their yes', () => {
+    // The judge's session on the one case that genuinely awaits a yes. The plan is on offer —
+    // to the worker. The backend says this reader is not them by leaving `confirm` out.
+    const observed = { ...PLANNED_CASE, may_speak: false, permitted_verbs: ['status'] }
+    expect(observed.awaiting_confirmation).toBe(true)
+
+    const state = caseVoiceState(observed, settled)
+
+    expect(state).toBe('waiting')
+    expect(CASE_VOICE_LABEL[state]).not.toMatch(/your yes/i)
+  })
+
   it('is waiting when the case asks nothing of this worker', () => {
     expect(SETTLED_CASE.awaiting_confirmation).toBe(false)
     expect(SETTLED_CASE.question).toBeNull()

@@ -182,6 +182,32 @@ describe('the conversation panel', () => {
     stream.close()
   })
 
+  it('never tells a judge the plan is waiting for their yes, and says whose it is', async () => {
+    // The landing frame of the deployed judge entry: a planned case, read by an observer. The
+    // case's own sentences say "waiting for you" because they were written for the worker, so
+    // the panel says who that is instead of offering the judge a move they do not have.
+    at(`?case=${CASE_ID}`)
+    const stream = new FakeStream()
+    mockBackend({
+      '/api/auth/me': () => json(JUDGE),
+      '/api/promises': () => json(PROMISES),
+      '/api/resources': () => json(RESOURCES),
+      '/api/cases': () => json(CASES),
+      [CASE_PATH]: () => json(OBSERVED_CASE),
+      '/events': () => streamResponse(stream),
+    })
+    renderApp()
+
+    await screen.findByTestId('conversation-panel')
+
+    expect(OBSERVED_CASE.awaiting_confirmation).toBe(true)
+    expect(screen.getByTestId('conversation-voice-state')).not.toHaveTextContent(/your yes/i)
+    expect(screen.getByTestId('conversation-read-only')).toHaveTextContent(
+      /means the bakery worker handling it/,
+    )
+    stream.close()
+  })
+
   // ------------------------------------------------------------------ what a turn actually does
 
   it('sends a confirmation quoting the plan identity the backend presented', async () => {

@@ -39,7 +39,10 @@ export function caseVoiceState(
   if (turn.refused) return 'unavailable'
   if (turn.pending) return 'processing'
   if (view.question !== null) return 'clarifying'
-  if (view.awaiting_confirmation) return 'confirming'
+  // "Waiting for your yes" is said only to a reader whose yes the case would take. A plan on
+  // offer to the worker is nothing an observer can answer, and the backend says which reader
+  // this is by leaving `confirm` out of their verbs.
+  if (view.awaiting_confirmation && view.permitted_verbs.includes('confirm')) return 'confirming'
   if (view.headline === 'UNDERSTANDING' || view.headline === 'WORKING') return 'processing'
   return 'waiting'
 }

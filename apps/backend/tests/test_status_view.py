@@ -27,9 +27,11 @@ from promisepatch.domain.analysis import (
 from promisepatch.domain.explanations import FactId, closed_phrase
 from promisepatch.domain.status_view import (
     CASE_HEADLINES,
+    ActionOwner,
     Authority,
     CaseHeadline,
     PromiseState,
+    owner_label,
     project,
     render,
     render_clarification_receipt,
@@ -780,3 +782,19 @@ def test_a_promise_with_no_deadline_claims_no_moment_at_all() -> None:
     assert promise.deadline_at is None
     assert promise.deadline_phrase is None
     assert "by " not in render(project(case("PLANNED", escalated)))
+
+
+def test_a_reader_who_may_not_act_is_not_told_the_move_is_theirs() -> None:
+    """The judge's session reads a planned case. "You" there offers a move it does not have."""
+    planned = track(state="PENDING", classification="AUTO_RECOVERABLE")
+    action = project(case("PLANNED", planned)).next_action
+
+    assert action.owner is ActionOwner.YOU
+    assert owner_label(action.owner, reader_may_act=True) == "You" == action.owner_label
+    assert owner_label(action.owner, reader_may_act=False) == "The worker"
+
+
+@pytest.mark.parametrize("owner", [item for item in ActionOwner if item is not ActionOwner.YOU])
+def test_every_other_owner_is_named_the_same_whoever_reads_it(owner: ActionOwner) -> None:
+    """Only the pronoun is relative to the reader. "The owner" is the owner to everybody."""
+    assert owner_label(owner, reader_may_act=False) == owner_label(owner, reader_may_act=True)

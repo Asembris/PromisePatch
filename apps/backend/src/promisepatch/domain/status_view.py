@@ -573,6 +573,24 @@ _OWNER_LABEL: Final[dict[ActionOwner, str]] = {
     ActionOwner.NOBODY: "Nobody",
 }
 
+_UNADDRESSED_WORKER_LABEL: Final = "The worker"
+"""``YOU``, named for a reader who is not the worker it means."""
+
+
+def owner_label(owner: ActionOwner, *, reader_may_act: bool) -> str:
+    """Whose move it is, named for the person actually reading it.
+
+    ``YOU`` is the worker who can move this case, and every sentence that names it was written
+    for them. A reader the domain will not let act on the case -- the judge's observer session
+    is the one there is -- is not that worker, and "You" beside an instruction to confirm a plan
+    offers them a move they do not have. For that reader the same owner is named in the third
+    person. Only the name changes: the owner, the action and every permission are exactly what
+    the projection decided, and the domain still refuses the reader whatever the label says.
+    """
+    if owner is ActionOwner.YOU and not reader_may_act:
+        return _UNADDRESSED_WORKER_LABEL
+    return _OWNER_LABEL[owner]
+
 
 _PROMISE_OWNERS: Final[dict[PromiseState, ActionOwner]] = {
     PromiseState.UNTOUCHED: ActionOwner.NOBODY,

@@ -772,6 +772,27 @@ async def test_an_observer_is_offered_no_verb_that_would_change_anything(
     assert view.permitted_verbs == ("status",)
 
 
+async def test_an_observer_is_not_told_the_worker_s_move_is_theirs(
+    runtime_settings: Settings, physical: Intake, browser: httpx2.AsyncClient
+) -> None:
+    """Band 2 answers "whose move is it?", and for the judge's session the answer is not "You".
+
+    The planned case asks the worker for a yes. Read by the worker it says so in the second
+    person; read by an observer the same owner and the same sentence are named in the third, so
+    the one reader the domain refuses is never handed a move beside the refusal.
+    """
+    case_id = await planned_case(physical)
+
+    worker_view = await workspace(browser, case_id)
+    async with Observing(runtime_settings) as client:
+        observed = await workspace(client, case_id)
+
+    assert worker_view.next_action.owner == observed.next_action.owner == "YOU"
+    assert worker_view.next_action.action == observed.next_action.action
+    assert worker_view.next_action.owner_label == "You"
+    assert observed.next_action.owner_label == "The worker"
+
+
 async def test_a_planned_case_offers_the_worker_a_confirmation(
     browser: httpx2.AsyncClient, physical: Intake
 ) -> None:

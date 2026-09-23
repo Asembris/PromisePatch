@@ -180,9 +180,11 @@ def build(
         needs_owner_attention=view.needs_owner_attention,
         question=_question(view),
         clarifications=tuple(_clarification(item) for item in status.clarifications),
+        # Named for this caller, for the reason the verbs below are narrowed for them: a reader
+        # who may not speak is not the "You" the projection's label was written for.
         next_action=NextActionView(
             owner=view.next_action.owner.value,
-            owner_label=view.next_action.owner_label,
+            owner_label=status_view.owner_label(view.next_action.owner, reader_may_act=may_speak),
             action=view.next_action.action,
         ),
         authority_bands=_bands(view, chains),
