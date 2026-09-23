@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { formatDateTime } from '../src/components/time'
 import {
   apiError,
   json,
@@ -134,6 +135,38 @@ describe('arriving on an approval link', () => {
     expect(screen.queryByText(/in place of/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Due /)).not.toBeInTheDocument()
     expect(screen.queryByText('unknown')).not.toBeInTheDocument()
+  })
+
+  it('tells the customer when the question closes', async () => {
+    // The message names the order's due time and not this one, so the page is the only place a
+    // customer learns by when they must answer. Printed, never compared.
+    arriving()
+    renderApp()
+
+    await screen.findByText('We need your decision')
+
+    expect(screen.getByTestId('answer-by')).toHaveTextContent(
+      `Please answer by ${formatDateTime(OPEN.answer_by) ?? ''}.`,
+    )
+  })
+
+  it('names no closing time the backend did not send', async () => {
+    arriving({ [PATH]: () => json({ ...OPEN, answer_by: null }) })
+    renderApp()
+
+    await screen.findByText('We need your decision')
+
+    expect(screen.queryByTestId('answer-by')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve this change' })).toBeInTheDocument()
+  })
+
+  it('says the change is made only on the customer’s own yes', async () => {
+    arriving()
+    renderApp()
+
+    await screen.findByText('We need your decision')
+
+    expect(document.body.textContent).toMatch(/we make this change only if you approve it/i)
   })
 
   it('states no price, because nothing in the product holds one', async () => {

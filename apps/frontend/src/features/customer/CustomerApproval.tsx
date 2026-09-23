@@ -139,6 +139,7 @@ export function CustomerApproval({ token }: { token: string }): ReactNode {
 
         {view.answerable ? (
           <Choice
+            answerBy={formatDateTime(view.answer_by)}
             onAnswer={(choice) => {
               answer.mutate(choice)
             }}
@@ -230,18 +231,34 @@ function Line({
  * Both are disabled while one is in flight. Not to prevent a duplicate — a second press is
  * already harmless, absorbed by a unique index on the server — but because a page that looked
  * pressable while it was sending would invite somebody to press the *other* one.
+ *
+ * Above them, when the question closes. The message on their channel names the order's due
+ * time and not this one, so without this line a customer is asked for a decision and never told
+ * by when. It is the request's own deadline, printed and never compared: whether the window is
+ * still open is `answerable`, and that is the server's.
+ *
+ * Below them, whose decision this is. The change is made only on their yes — that is the whole
+ * of the consent protocol, and a page asking for a decision should say so rather than leave it
+ * to be inferred from the heading.
  */
 function Choice({
+  answerBy,
   onAnswer,
   pending,
   failed,
 }: {
+  answerBy: string | null
   onAnswer: (choice: 'APPROVE' | 'DECLINE') => void
   pending: boolean
   failed: boolean
 }): ReactNode {
   return (
     <section className="space-y-3">
+      {answerBy === null ? null : (
+        <p className="text-sm text-ink" data-testid="answer-by">
+          Please answer by {answerBy}.
+        </p>
+      )}
       <div className="flex flex-col gap-3">
         <button
           type="button"
@@ -265,7 +282,10 @@ function Choice({
         </button>
       </div>
       {/* Declining does not un-spoil an ingredient, so this never promises the original. */}
-      <p className="text-xs text-muted">If you decline, the bakery will follow up with you.</p>
+      <p className="text-xs text-muted">
+        We make this change only if you approve it. If you decline, the bakery will follow up
+        with you.
+      </p>
       {failed ? (
         <p className="text-sm text-owner" role="alert">
           That did not reach the bakery. Nothing was recorded — please try again.
