@@ -446,6 +446,18 @@ describe('reload and reconnect', () => {
     stream.close()
   })
 
+  it('says a failed list read plainly, and not in the feed’s vocabulary', async () => {
+    const { stream } = mount({ '/api/cases': () => apiError(500, 'INTERNAL', 'boom') })
+
+    expect(
+      await screen.findByText(/The list of cases could not be read/, {}, { timeout: 5000 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Nothing about any case has changed/)).toBeInTheDocument()
+    expect(screen.queryByText(/next event/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/No case has been opened/)).not.toBeInTheDocument()
+    stream.close()
+  })
+
   it('says so when there is no case rather than showing an empty workspace', async () => {
     const { stream } = mount({ '/api/cases': () => json(NO_CASES) })
 

@@ -27,7 +27,10 @@ export function CaseList({ onOpen }: { onOpen: (caseId: string) => void }): Reac
       {cases.isPending ? (
         <Message>Loading cases…</Message>
       ) : cases.isError ? (
-        <Message tone="bad">Cases could not be loaded. They will be retried on the next event.</Message>
+        <Message tone="bad">
+          The list of cases could not be read. Nothing about any case has changed; the screen will
+          try again by itself.
+        </Message>
       ) : cases.data.cases.length === 0 ? (
         <Message>
           No case has been opened. A case starts when somebody says what went wrong.
