@@ -204,8 +204,15 @@ def test_the_destructive_reset_is_never_reached_for_a_hosted_target() -> None:
 
 
 def destructive_test_modules() -> list[Path]:
-    """Every module in the backend suite that can empty a table."""
-    calls_reset = re.compile(r"reset_demo_state\s*\(")
+    """Every module in the backend suite that can empty a table.
+
+    Both names, because a truncation is reachable through two functions now. ``pp
+    restore-demo-world`` sequences the reset behind three more steps and resolves its own
+    migration connection from the settings it is handed, so a module that drives it is exactly
+    as destructive as one that calls the reset directly -- and would be invisible to a scan
+    that only knew the older name.
+    """
+    calls_reset = re.compile(r"(?:reset_demo_state|restore_demo_world)\s*\(")
     found = [
         path
         for path in sorted(TESTS.glob("*.py"))

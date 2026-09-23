@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import typer
 
 from promise_graph.model import ApprovalRequestState
-from promisepatch import provisioning
+from promisepatch import demo_restore, provisioning
 from promisepatch.config import LlmProvider, Settings, get_settings
 from promisepatch.db import RuntimeDatabase, build_engine
 from promisepatch.db.uow import Actor
@@ -577,6 +577,105 @@ def ensure_demo_case_command() -> None:
         typer.echo(f"detail:   {outcome.detail}")
 
 
+@app.command(name="restore-demo-world")
+def restore_demo_world_command(
+    confirm: Annotated[
+        str,
+        typer.Option(
+            "--confirm",
+            help=(
+                f"Type {demo_restore.CONFIRMATION!r} to destroy this deployment's demo state "
+                "and rebuild it. Required unless --dry-run."
+            ),
+        ),
+    ] = "",
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Ask every precondition and write nothing at all."
+    ),
+) -> None:
+    """Rebuild the canonical demo world: reseed, reset the order book, provision, rebind.
+
+    The four-step repair ``docs/demo-fixture-anchoring.md`` wrote down and
+    ``docs/deployed-customer-channel.md`` section 10 performed, sequenced once so it does not
+    have to be remembered. **It is destructive**: step one truncates every table PromisePatch
+    owns except the two ledgers of record, so every case, effect, approval request, reply and
+    session on this deployment goes, and the history of what they did survives only in
+    ``audit_events`` and ``domain_events``.
+
+    **The order is the part that cannot be got wrong by hand.** The reset truncates ``customers``,
+    so a demo customer bound to a real chat before it is silently erased; and the External Order
+    System keeps its own store, which a PromisePatch reset does not reach, so skipping it leaves
+    an order book carrying the destroyed cases' amendments against a mirror rebuilt at version 1.
+
+    **It refuses before it destroys.** A database not holding the demo fixture by name, a
+    customer topology this command did not create, an effect still ``PENDING`` or ``IN_FLIGHT``,
+    an unreachable order system, and a bound destination the provider will not confirm each leave
+    the world exactly as it is.
+
+    **It mints no authority and sends nothing.** No plan is confirmed, no approval request and no
+    decision is created, and no customer message leaves. The case it leaves behind is ``PLANNED``.
+
+    **It prints no chat id.** A preserved destination is carried in memory and written back
+    through ``pp channel bind-demo-customer``'s own service; what is reported is whether one was
+    restored, never what it was.
+
+    Exit codes: ``0`` restored or inspected, ``1`` not confirmed or a step failed, ``2`` this is
+    not a canonical demo world, ``3`` a bound destination could not be carried across.
+    """
+    settings = get_settings()
+    try:
+        outcome = asyncio.run(_run_restore_demo_world(settings, confirm=confirm, dry_run=dry_run))
+    except demo_restore.WorldNotRestorableError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from error
+    except demo_restore.BindingNotRestorableError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=3) from error
+    except (RuntimeError, ValueError) as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+    _echo_restore(outcome, settings)
+
+
+def _echo_restore(outcome: demo_restore.RestoreOutcome, settings: Settings) -> None:
+    """Counts, states and words. Never an address, a token or a link."""
+    typer.echo(f"action:   {outcome.action.value}")
+    typer.echo(f"before:   {_census_line(outcome.before)}")
+    if outcome.action is demo_restore.Restored.INSPECTED:
+        typer.echo(f"binding:  {outcome.binding.value} (would be carried across)")
+        typer.echo("result:   nothing was written")
+        return
+
+    local = outcome.anchor.astimezone(ZoneInfo(settings.bakery_tz)) if outcome.anchor else None
+    typer.echo(f"after:    {_census_line(outcome.after)}")
+    typer.echo(f"anchor:   {outcome.anchor.isoformat() if outcome.anchor else '-'}")
+    typer.echo(f"local:    {local.isoformat() if local else '-'} {settings.bakery_tz}")
+    typer.echo(f"digest:   {outcome.digest or '-'}")
+    typer.echo(f"rows:     {outcome.rows_written}")
+    typer.echo(f"orders:   {outcome.orders_reset} reset in the external order system")
+    provisioned = outcome.provisioned
+    typer.echo(f"case:     {provisioned.case_id if provisioned else '-'}")
+    typer.echo(f"state:    {provisioned.state if provisioned else '-'}")
+    typer.echo(f"binding:  {outcome.binding.value}")
+    typer.echo(f"ledgers:  {'grew only' if outcome.ledgers_only_grew else 'CHECK THIS'}")
+    typer.echo("result:   restored; no plan was confirmed and no message was sent")
+
+
+def _census_line(census: demo_restore.Census | None) -> str:
+    """One line of counts. Every field here is a number, a name or a boolean."""
+    if census is None:
+        return "-"
+    return (
+        f"fixture={census.fixture_name} cases={census.cases} live={census.live_cases} "
+        f"outbox={census.outbox_total} unsettled={census.outbox_unsettled} "
+        f"requests={census.approval_requests} decisions={census.approval_decisions} "
+        f"approvals={census.plan_approvals} replies={census.inbound_replies} "
+        f"audit={census.audit_events} events={census.domain_events} "
+        f"bound={census.demo_customer_bound}"
+    )
+
+
 @app.command(name="report-exception")
 def report_exception_command(
     text: str = typer.Argument(..., help="What the worker said, verbatim."),
@@ -1064,6 +1163,45 @@ async def _run_ensure_demo_case(settings: Settings) -> provisioning.ProvisionOut
         return await provisioning.ensure_demo_case(
             runner.database, cycles=runner, settings=settings
         )
+
+
+async def _run_restore_demo_world(
+    settings: Settings, *, confirm: str, dry_run: bool
+) -> demo_restore.RestoreOutcome:
+    """The four steps, driven by the deployment's own worker wiring.
+
+    ``built`` rather than a hand-rolled :class:`~promisepatch.worker.Worker`, for the reason
+    ``pp ensure-demo-case`` uses it: the cycles that carry the canonical case must reach exactly
+    the providers the deployed worker reaches, or the case a judge lands on was built by a
+    second wiring nobody deployed.
+    """
+    from promisepatch import worker as worker_module
+
+    async with worker_module.built(settings) as runner:
+        return await demo_restore.restore_demo_world(
+            runner.database,
+            cycles=runner,
+            settings=settings,
+            confirmation=confirm,
+            verify=lambda address: _verify_destination(settings, address),
+            dry_run=dry_run,
+        )
+
+
+async def _verify_destination(settings: Settings, address: str) -> VerifiedDestination:
+    """Ask the provider to confirm one preserved destination, exactly as a binding would.
+
+    This is the seam :data:`promisepatch.demo_restore.DestinationVerifier` exists for: the
+    restore sits below :mod:`promisepatch.integrations` and cannot reach a Bot API client, so
+    the two reads happen here -- ``getMe`` and ``getChat``, no ``sendMessage``, on a connection
+    closed before anything is destroyed. Only ever called when a destination was actually bound.
+    """
+    bot, chat = await _run_channel_check(settings, chat_id=address)
+    if chat is None:  # pragma: no cover - `locate` answers or raises
+        raise RuntimeError("the provider returned no chat for the bound destination")
+    return VerifiedDestination(
+        chat_id=chat.id, chat_type=chat.type, bot_id=bot.id, bot_username=bot.username
+    )
 
 
 async def _run_reset(settings: Settings, anchor: datetime) -> ResetOutcome:

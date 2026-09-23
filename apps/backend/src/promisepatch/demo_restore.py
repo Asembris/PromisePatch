@@ -51,7 +51,8 @@ that reaches nobody.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -297,6 +298,7 @@ async def restore_demo_world(
     settings: Settings,
     confirmation: str = "",
     verify: DestinationVerifier | None = None,
+    order_client: httpx2.AsyncClient | None = None,
     now: datetime | None = None,
     dry_run: bool = False,
 ) -> RestoreOutcome:
@@ -330,7 +332,9 @@ async def restore_demo_world(
         _require_demo_world(before)
         preserved = await _preserved_binding(connection)
     _require_nothing_in_flight(before)
-    await _require_order_system(base_url, timeout=settings.order_system_timeout_seconds)
+    await _require_order_system(
+        base_url, timeout=settings.order_system_timeout_seconds, client=order_client
+    )
     destination = await _reverified(preserved, verify=verify)
 
     if dry_run:
@@ -351,7 +355,9 @@ async def restore_demo_world(
     reset = await _reseed(settings, anchor=anchor, now=moment)
 
     # 2. The External Order System, which keeps its own store and is not reached by step 1.
-    orders = await _reset_order_book(base_url, timeout=settings.order_system_timeout_seconds)
+    orders = await _reset_order_book(
+        base_url, timeout=settings.order_system_timeout_seconds, client=order_client
+    )
 
     # 3. The canonical case, through provisioning's own path. Nothing is written directly.
     provisioned = await provisioning.ensure_demo_case(database, cycles=cycles, settings=settings)
@@ -520,7 +526,9 @@ async def _reverified(
     return destination
 
 
-async def _require_order_system(base_url: str, *, timeout: float) -> None:
+async def _require_order_system(
+    base_url: str, *, timeout: float, client: httpx2.AsyncClient | None = None
+) -> None:
     """Read the simulator's liveness before anything is destroyed.
 
     Step 2 is not optional and cannot be deferred: an order book still carrying the destroyed
@@ -529,8 +537,8 @@ async def _require_order_system(base_url: str, *, timeout: float) -> None:
     here, where refusing costs nothing.
     """
     try:
-        async with httpx2.AsyncClient(timeout=timeout) as client:
-            response = await client.get(f"{base_url}{ORDER_HEALTH_PATH}")
+        async with _http(client, timeout=timeout) as http:
+            response = await http.get(f"{base_url}{ORDER_HEALTH_PATH}")
     except httpx2.HTTPError as error:
         raise OrderSystemUnreachableError(
             f"the external order system could not be reached ({type(error).__name__}); its "
@@ -567,7 +575,9 @@ async def _reseed(settings: Settings, *, anchor: datetime, now: datetime) -> Res
         await engine.dispose()
 
 
-async def _reset_order_book(base_url: str, *, timeout: float) -> int:
+async def _reset_order_book(
+    base_url: str, *, timeout: float, client: httpx2.AsyncClient | None = None
+) -> int:
     """Step 2: the External Order System's own admin route, and never a volume.
 
     ``docker compose down -v`` would empty the order system's store and take ``caddy-data`` --
@@ -575,8 +585,8 @@ async def _reset_order_book(base_url: str, *, timeout: float) -> int:
     Encrypt's rate limits for a demo that is about to be watched.
     """
     try:
-        async with httpx2.AsyncClient(timeout=timeout) as client:
-            response = await client.post(f"{base_url}{ORDER_RESET_PATH}")
+        async with _http(client, timeout=timeout) as http:
+            response = await http.post(f"{base_url}{ORDER_RESET_PATH}")
     except httpx2.HTTPError as error:
         raise OrderSystemUnreachableError(
             f"the external order system could not be reset ({type(error).__name__}); "
@@ -589,6 +599,25 @@ async def _reset_order_book(base_url: str, *, timeout: float) -> int:
         )
     body: Any = response.json()
     return int(body.get("orders", 0)) if isinstance(body, dict) else 0
+
+
+@asynccontextmanager
+async def _http(
+    client: httpx2.AsyncClient | None, *, timeout: float
+) -> AsyncIterator[httpx2.AsyncClient]:
+    """The caller's HTTP client, or one owned for the length of a single call.
+
+    The seam exists for the same reason ``cycles`` and ``verify`` do, and for one more: the
+    backend suite runs the real External Order System as a second ASGI application in its own
+    process, so a test that could not hand this module that client would have to be skipped
+    wherever no simulator is listening on a socket -- which is every CI job. A caller's client
+    is used and left open; an owned one is closed however the call ends.
+    """
+    if client is not None:
+        yield client
+        return
+    async with httpx2.AsyncClient(timeout=timeout) as owned:
+        yield owned
 
 
 # ------------------------------------------------------------------------------------- reading
