@@ -231,6 +231,21 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   unchanged consent protocol, never a second one. See
   [customer-message-transport.md](docs/customer-message-transport.md) and
   [customer-approval-link.md](docs/customer-approval-link.md).
+- **The four-step destructive demo repair is now one command, proved locally and never run on
+  the deployed host.** `pp restore-demo-world --confirm destroy-and-restore` sequences the repair
+  `docs/demo-fixture-anchoring.md` wrote down and section 10 above performed: reseed at
+  `resolve_demo_anchor(now)`, reset the External Order System, provision the canonical case,
+  rebind. **Every refusal is taken before the first destructive statement** — a world that is not
+  the demo fixture by name, a customer topology this did not create, a `PENDING` or `IN_FLIGHT`
+  outbox row, an unreachable order system, or a bound destination the provider will not confirm.
+  A binding is **carried in memory and written back through `bind_demo_customer_channel`**, the
+  one binding mechanism there is; nothing is persisted anywhere new and the address reaches no
+  output, no log and no `repr`. It confirms no plan, creates no approval request or decision and
+  sends no message; `_what_would_be_lost` and the world roll are untouched and unreachable from
+  it. Local proof on 2026-09-23: the canonical partition restored, ledgers `176825 → 176838` and
+  `227944 → 227962`, every authority counter `0`, 316 related tests green with
+  `test_demo_world_roll` unchanged. **The deployed host was not touched, and the binding-restore
+  path has never met Telegram.** See [demo-world-restore.md](docs/demo-world-restore.md).
 
 `new_roadmap.md` is the authority on what is open and what each gate requires. Read it before
 deciding what to build. Do not restate its contents here.
@@ -247,6 +262,7 @@ deciding what to build. Do not restate its contents here.
 | `apps/backend/src/promisepatch/mcp/` | The MCP transport. Forbidden the domain, the database and SQLAlchemy. |
 | `apps/backend/src/promisepatch/orchestrator/` | The conversational client. Holds no authority. |
 | `apps/backend/src/promisepatch/worker.py` | The durable workflow worker. |
+| `apps/backend/src/promisepatch/demo_restore.py` | The guarded destructive demo repair. Demo tooling, never a general reset. |
 | `apps/frontend/` | The case workspace. Renders; never decides. |
 | `apps/order-simulator/` | The External Order System, a separate application. |
 | `evals/` | The measurement surface. Never becomes production. |
@@ -384,5 +400,6 @@ read the source document rather than a paraphrase of it.
 | Deployed customer channel (switched on, one real delivery, one real web approval) | [deployed-customer-channel.md](docs/deployed-customer-channel.md) |
 | Customer copy and address disclosure (both closed, deployed) | [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
+| Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |

@@ -149,3 +149,17 @@ Encrypt's rate limits for a demo that is about to be watched.
 day it was taken on and no longer, which is asserted by
 `test_a_seeded_world_stops_telling_the_story_at_the_next_bakery_midnight`. Seeding the morning of
 a recording is fine; seeding a week before it is the state this document was written about.
+
+## Later: the four steps are one command
+
+**Recorded beside what is above rather than edited into it.** Nothing in this document is
+withdrawn: the four steps are still what happens, in this order, and the costs stated under
+*What it destroys* are still what they cost.
+
+Since 2026-09-23 they are also `pp restore-demo-world --confirm destroy-and-restore`, which
+sequences them, refuses before it destroys anything, and carries a bound demo customer across
+the truncate that would otherwise erase it. Step 4 above — *sign in again* — is still true and
+is still the operator's, because `sessions` is still truncated.
+
+See [demo-world-restore.md](demo-world-restore.md). It has been proved locally and **has never
+been run on the deployed host**.

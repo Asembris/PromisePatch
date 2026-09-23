@@ -233,6 +233,13 @@ A few properties are worth knowing before you use it:
   operator command that replaces every domain row PromisePatch owns, and the sessions go with
   them. A browser watching the live feed will see the resulting domain event, refetch, be told
   its session is gone, and return to the sign-in screen. That is current, intended behaviour.
+- **`pp restore-demo-world` is the whole demo repair, and it is destructive.** The reset above is
+  one of its four steps: it reseeds, resets the External Order System's own order book, opens the
+  canonical case, and puts back a demo customer binding the reset would otherwise erase. It
+  requires `--confirm destroy-and-restore`, refuses anything that is not a canonical demo world
+  before it destroys anything, and never confirms a plan or sends a message. `--dry-run` reports
+  what it would find and writes nothing. See
+  [docs/demo-world-restore.md](docs/demo-world-restore.md).
 - **The MCP endpoint is a separate process, and cannot reach the database.** It is the surface
   a third-party MCP client is pointed at, and it reaches a case the way any other client would:
   an authenticated HTTP call to the API's `/internal/intents`. An import-linter contract stops

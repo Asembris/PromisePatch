@@ -178,3 +178,14 @@ case, and the roll keeps the world current without anybody being asked again.**
 
 If that repair is never taken, the deployment behaves exactly as it does today: a stale world, a
 refusal in the log, and no case destroyed.
+
+## Later: the repair this points at is now one command
+
+**Recorded beside what is above rather than edited into it.** The roll is unchanged, its four
+questions are unchanged, and the refusal is still monotone and permanent for the reasons stated
+above — none of which this weakens.
+
+What changed is only the *way out* it points at. Since 2026-09-23 the four-step repair in
+`docs/demo-fixture-anchoring.md` is also `pp restore-demo-world --confirm destroy-and-restore`.
+It is still destructive, still an operator's decision, and still the thing that has to follow a
+recorded demo. See [demo-world-restore.md](demo-world-restore.md).
