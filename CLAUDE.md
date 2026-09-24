@@ -87,7 +87,10 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
 **`4529a802e34e`**, audited read-only at repo HEAD `da7ceca`, with `pr` green on that code and
 **no known Phase 7 P0 or P1**. **G8 remains open, separately**: none of its five deployed
 rehearsals has been run, and an open G8 does not reopen Phase 7. See
-[phase7-closeout.md](docs/phase7-closeout.md).
+[phase7-closeout.md](docs/phase7-closeout.md). **The five-run rehearsal protocol is predeclared**
+and both rehearsal concerns — the restore env union and the worker-start world roll — were
+reproduced against the RC and classified **not blockers**; no code change is needed before
+rehearsal #1. See [g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md).
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -454,6 +457,7 @@ read the source document rather than a paraphrase of it.
 | Phase 7 deployed behavioural proof (real loop closed on `abbbd11006f7`; one P1 recorded unfixed) | [phase7-deployed-behavioral-proof.md](docs/phase7-deployed-behavioral-proof.md) |
 | Phase 7 approval-log privacy repair (P1 closed, `4529a802e34e` deployed, loop re-proved) | [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) |
 | Phase 7 closeout (closed; RC frozen at `4529a802e34e`; no known P0/P1; G8 open) | [phase7-closeout.md](docs/phase7-closeout.md) |
+| G8 rehearsal protocol and preparation (protocol predeclared; env union and start-up roll not blockers) | [g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
