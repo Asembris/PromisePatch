@@ -25,13 +25,18 @@ from typing import Any
 import pytest
 from scripts.verify_effect_set_manifest import (
     EXPECTED_SCENARIOS,
+    MANIFEST_V2_PATH,
     Manifest,
     load,
     problems,
+    started_orders,
 )
 
 FROZEN_CONTENT_HASH = "d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc"
 FROZEN_VERSION = "1.0.0"
+
+V2_CONTENT_HASH = "77286e77a2919244118a7c39ace7632290ecca50eacf4318e45a4a72606cb0dd"
+V2_VERSION = "2.0.0"
 
 
 @pytest.fixture
@@ -223,3 +228,118 @@ def test_a_missing_scenario_is_refused(manifest: Manifest) -> None:
     found = broken(manifest, mutate)
     assert any("expected 16 scenarios" in problem for problem in found)
     assert any("roadmap items are not" in problem for problem in found)
+
+
+# ---------------------------------------------------- v2: the separately versioned correction
+#
+# v2 corrects one rule of v1 and nothing else: R1 becomes conditional on the order's production
+# task not having started. v1 is not edited, not weakened and not re-verified under v2's rule;
+# the tests below prove all three, and pin v2's own identity exactly as v1's is pinned above.
+
+
+@pytest.fixture
+def corrected() -> Manifest:
+    return load(MANIFEST_V2_PATH)
+
+
+def _s12(document: dict[str, Any]) -> dict[str, Any]:
+    return next(scenario for scenario in document["scenarios"] if scenario["id"] == "S12")
+
+
+def _confirmed(scenario: dict[str, Any]) -> dict[str, Any]:
+    return next(point for point in scenario["checkpoints"] if point["name"] == "CONFIRMED")
+
+
+def test_the_corrected_manifest_has_its_own_published_identity(corrected: Manifest) -> None:
+    assert corrected.version == V2_VERSION
+    assert corrected.content_hash == V2_CONTENT_HASH
+    assert corrected.content_hash != FROZEN_CONTENT_HASH
+
+
+def test_the_corrected_manifest_is_coherent(corrected: Manifest) -> None:
+    assert problems(corrected) == ()
+
+
+def test_the_fixture_has_exactly_one_started_task_and_it_is_ahmeds() -> None:
+    assert started_orders() == frozenset({"ord-e"})
+
+
+def test_the_rule_is_chosen_by_the_hashed_major_version(
+    manifest: Manifest, corrected: Manifest
+) -> None:
+    assert not manifest.started_work_escalates_without_a_hold
+    assert corrected.started_work_escalates_without_a_hold
+
+
+def test_v1_still_refuses_ahmeds_escalation_without_a_hold(manifest: Manifest) -> None:
+    """v1's R1 is unconditional exactly as frozen: v2's corrected S12 label is invalid under it."""
+
+    def mutate(document: dict[str, Any]) -> None:
+        point = _confirmed(_s12(document))
+        point["effects_added"] = [
+            effect
+            for effect in point["effects_added"]
+            if (effect["order"], effect["kind"]) != ("ord-e", "task_hold")
+        ]
+
+    assert any("ord-e escalates without a task hold (R1)" in p for p in broken(manifest, mutate))
+
+
+def test_v2_refuses_a_hold_on_work_that_had_already_started(corrected: Manifest) -> None:
+    def mutate(document: dict[str, Any]) -> None:
+        _confirmed(_s12(document))["effects_added"].append(
+            {"order": "ord-e", "kind": "task_hold", "count": 1}
+        )
+
+    assert any("R1, conditional" in problem for problem in broken(corrected, mutate))
+
+
+def test_v2_still_refuses_an_unheld_escalation_on_scheduled_work(corrected: Manifest) -> None:
+    """The exemption is the started set and nothing wider: ord-c's task is SCHEDULED."""
+
+    def mutate(document: dict[str, Any]) -> None:
+        point = _confirmed(_s12(document))
+        point["effects_added"] = [
+            effect
+            for effect in point["effects_added"]
+            if (effect["order"], effect["kind"]) != ("ord-c", "task_hold")
+        ]
+
+    assert any("ord-c escalates without a task hold (R1)" in p for p in broken(corrected, mutate))
+
+
+def test_v2_differs_from_v1_only_by_its_declared_delta(
+    manifest: Manifest, corrected: Manifest
+) -> None:
+    """One rule, one effect, one rationale sentence, and the metadata that says so."""
+    original, revised = manifest.document, corrected.document
+
+    assert revised["correction"]["corrects"] == {
+        "name": original["name"],
+        "version": FROZEN_VERSION,
+        "content_hash": FROZEN_CONTENT_HASH,
+    }
+    assert revised["correction"]["kind"] == "label correction, not product repair"
+
+    carried = ("name", "schema_version", "authored_by", "fixture", "pass_rule")
+    assert {key: revised[key] for key in carried} == {key: original[key] for key in carried}
+    assert set(revised) - set(original) == {"correction"}
+    assert set(original) <= set(revised)
+
+    vocabulary = dict(revised["vocabulary"])
+    frozen_vocabulary = dict(original["vocabulary"])
+    assert vocabulary["labelling_rules"][1:] == frozen_vocabulary["labelling_rules"][1:]
+    assert vocabulary["labelling_rules"][0] != frozen_vocabulary["labelling_rules"][0]
+    del vocabulary["labelling_rules"], frozen_vocabulary["labelling_rules"]
+    assert vocabulary == frozen_vocabulary
+
+    for before, after in zip(original["scenarios"], revised["scenarios"], strict=True):
+        if before["id"] != "S12":
+            assert after == before
+            continue
+        expected = copy.deepcopy(before)
+        point = _confirmed(expected)
+        point["effects_added"].remove({"order": "ord-e", "kind": "task_hold", "count": 1})
+        expected["rationale"]["ord-e"] = after["rationale"]["ord-e"]
+        assert after == expected
+        assert after["rationale"]["ord-e"].startswith(before["rationale"]["ord-e"])

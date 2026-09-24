@@ -3,7 +3,8 @@
 This is a **structural** verifier and deliberately nothing more. It answers three questions:
 
 1. Is the manifest still the document whose hash was published? -- a canonical SHA-256 over
-   ``scenarios.v1.json``, recomputed from the bytes on disk.
+   ``scenarios.v1.json`` (or the separately versioned ``scenarios.v2.json``), recomputed from the
+   bytes on disk.
 2. Is it internally coherent? -- sixteen scenarios, one per roadmap item, disjoint partitions
    covering exactly the declared case universe, ordered checkpoints, a closed effect and
    refusal vocabulary, and the two labelling implications (``owner_escalation`` holds a task,
@@ -11,6 +12,13 @@ This is a **structural** verifier and deliberately nothing more. It answers thre
 3. Does it name entities that exist? -- every order, promise, line, version, constraint and
    customer identifier is checked against ``promise_graph.examples.hollow_oak``, so the
    manifest cannot drift into a scenario universe of its own.
+
+Two manifests exist and neither replaces the other. ``v1`` is the frozen original, scored once for
+the immutable 11/16 headline, and its R1 is checked exactly as it was frozen: every escalation
+holds a task, unconditionally. ``v2`` is a label correction of v1 (see
+``docs/effect-set-manifest-v2.md``) whose R1 is conditional: an order whose production task the
+fixture records as ``STARTED`` is escalated without a hold, and may never carry one. The started
+set is read from the fixture's own task states, never from a per-scenario flag.
 
 **It never asks PromisePatch what it would classify.** Nothing here imports the classifier, the
 propagation pass, the option enumerator or any part of the backend, and no expected label is
@@ -22,10 +30,12 @@ property that makes the suite worth running.
 Run it with no arguments to print the identity and the coherence result::
 
     uv run python scripts/verify_effect_set_manifest.py
+    uv run python scripts/verify_effect_set_manifest.py --manifest v2
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import sys
@@ -35,9 +45,12 @@ from pathlib import Path
 from typing import Any
 
 from promise_graph.examples import hollow_oak
+from promise_graph.model import TaskState
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = REPOSITORY_ROOT / "docs" / "effect-sets" / "scenarios.v1.json"
+MANIFEST_V2_PATH = REPOSITORY_ROOT / "docs" / "effect-sets" / "scenarios.v2.json"
+MANIFEST_PATHS = {"v1": MANIFEST_PATH, "v2": MANIFEST_V2_PATH}
 
 EXPECTED_SCENARIOS = 16
 PARTITION_NAMES = ("auto_repairable", "consent_required", "blocked", "untouched")
@@ -62,6 +75,15 @@ class Manifest:
     @property
     def scenarios(self) -> list[dict[str, Any]]:
         return list(self.document["scenarios"])
+
+    @property
+    def started_work_escalates_without_a_hold(self) -> bool:
+        """Whether this manifest's R1 is the conditional rule of v2 rather than v1's.
+
+        Decided by the manifest's own major version, which is inside the hashed document, so a
+        v1 manifest cannot acquire the conditional rule without ceasing to be v1.
+        """
+        return int(self.version.split(".")[0]) >= 2
 
     @property
     def content_hash(self) -> str:
@@ -89,6 +111,16 @@ def _fixture_identities() -> dict[str, frozenset[str]]:
         "constraints": frozenset(snapshot.constraints),
         "customers": frozenset(snapshot.customers),
     }
+
+
+def started_orders() -> frozenset[str]:
+    """The orders whose production task the frozen fixture records as already ``STARTED``."""
+    snapshot = hollow_oak.hollow_oak()
+    return frozenset(
+        snapshot.order_lines[task.order_line_id].order_id
+        for task in snapshot.tasks.values()
+        if task.state is TaskState.STARTED
+    )
 
 
 def _fixture_problems(manifest: Manifest) -> Iterator[str]:
@@ -135,9 +167,10 @@ def _scenario_problems(manifest: Manifest) -> Iterator[str]:
     if items != list(range(1, EXPECTED_SCENARIOS + 1)):
         yield f"roadmap items are not 1..{EXPECTED_SCENARIOS} exactly once: {items}"
 
+    started = started_orders() if manifest.started_work_escalates_without_a_hold else frozenset()
     for scenario in scenarios:
         yield from _one_scenario_problems(
-            scenario, universe, effect_kinds, refusal_kinds, checkpoint_names
+            scenario, universe, effect_kinds, refusal_kinds, checkpoint_names, started
         )
 
 
@@ -147,6 +180,7 @@ def _one_scenario_problems(
     effect_kinds: frozenset[str],
     refusal_kinds: frozenset[str],
     checkpoint_names: list[str],
+    started: frozenset[str] = frozenset(),
 ) -> Iterator[str]:
     sid = scenario["id"]
 
@@ -218,7 +252,13 @@ def _one_scenario_problems(
         for order in universe:
             escalations = cumulative.get((order, "owner_escalation"), 0)
             holds = cumulative.get((order, "task_hold"), 0)
-            if escalations and not holds:
+            if order in started:
+                if holds:
+                    yield (
+                        f"{sid}/{checkpoint['name']}: {order}'s task had already started, so it "
+                        f"may not carry a task hold (R1, conditional)"
+                    )
+            elif escalations and not holds:
                 yield f"{sid}/{checkpoint['name']}: {order} escalates without a task hold (R1)"
             amendments = cumulative.get((order, "order_amendment"), 0)
             reservations = cumulative.get((order, "reservation_change"), 0)
@@ -240,8 +280,16 @@ def problems(manifest: Manifest) -> tuple[str, ...]:
     return (*_fixture_problems(manifest), *_scenario_problems(manifest))
 
 
-def main() -> int:
-    manifest = load()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--manifest",
+        choices=tuple(MANIFEST_PATHS),
+        default="v1",
+        help="Which manifest to verify. v1 is the frozen original; v2 is its label correction.",
+    )
+    args = parser.parse_args(argv)
+    manifest = load(MANIFEST_PATHS[args.manifest])
     found = problems(manifest)
 
     print(f"manifest      {manifest.name} v{manifest.version}")
