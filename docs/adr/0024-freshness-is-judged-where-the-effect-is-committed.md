@@ -1,6 +1,8 @@
 # ADR-0024 — Freshness is judged where the effect is committed
 
-Status: accepted
+Status: accepted — amended by
+[ADR-0026](0026-a-first-dispatch-that-provably-sends-nothing-is-judged-again.md) on where
+"nothing has been sent" ends
 Date: 2026-09-24
 Phase: 7
 
