@@ -362,7 +362,7 @@ git diff --cached --stat
 gitignored, local-only and **authoritative whenever present**. Read them before deciding
 anything they cover. Never modify them unless explicitly asked. Never commit them.
 
-`docs/adr/` holds every architectural decision, `0001` through `0024`. The ones that constrain
+`docs/adr/` holds every architectural decision, `0001` through `0026`. The ones that constrain
 day-to-day work most: [0008](docs/adr/0008-remove-runtime-customer-intent-classifier.md) (no
 runtime intent classifier), [0011](docs/adr/0011-conversational-orchestrator-authority.md) (the
 orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-principal.md) and
@@ -382,7 +382,13 @@ approval episode is one track asked under one confirmed plan; a re-ask is a new 
 returns the case to `PLANNED` for that track only; a revalidation round ends once), and
 [0024](docs/adr/0024-freshness-is-judged-where-the-effect-is-committed.md) (the approval deadline
 governs the answer; the production start is re-judged in the transaction that commits the
-amendment, and nothing after that commit refuses it).
+amendment), and
+[0025](docs/adr/0025-an-answer-is-revalidated-when-it-arrives.md) (an answer is revalidated when
+it arrives, not when a silent sibling's window closes; `RECONCILING` finishes its change first and
+may be entered more than once), and
+[0026](docs/adr/0026-a-first-dispatch-that-provably-sends-nothing-is-judged-again.md) (an
+amendment's first dispatch claim, `attempts == 1`, re-judges the production start and refuses
+unsent; from the second claim nothing refuses it).
 
 ## Historical record
 
@@ -423,6 +429,7 @@ read the source document rather than a paraphrase of it.
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md), [customer-message-transport.md](docs/customer-message-transport.md) |
 | Deployed customer channel (switched on, one real delivery, one real web approval) | [deployed-customer-channel.md](docs/deployed-customer-channel.md) |
 | Customer copy and address disclosure (both closed, deployed) | [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md) |
+| Phase 7 local release-candidate gate (closed locally, not deployed) | [phase7-local-rc-correctness.md](docs/phase7-local-rc-correctness.md), [phase7-local-rc-final.md](docs/phase7-local-rc-final.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
