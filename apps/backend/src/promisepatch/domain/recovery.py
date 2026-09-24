@@ -90,6 +90,7 @@ from promisepatch.db.events import append_event
 from promisepatch.db.models import (
     ApprovalDecision,
     ApprovalRequest,
+    AuditEvent,
     Case,
     CaseStep,
     Order,
@@ -1281,6 +1282,46 @@ async def authorization_provenance(
     }
 
 
+_APPROVAL_CHAIN: Final = (
+    "approval_request_id",
+    "approval_decision_id",
+    "customer_decision",
+    "parser",
+    "provider_message_id",
+    "sender_identity",
+)
+"""The provenance keys that name a customer's consent, as :func:`authorization_provenance` wrote
+them on the audit row that applied the amendment."""
+
+
+async def _applied_authority(
+    connection: AsyncConnection, *, track: Any, idempotency_key: str
+) -> tuple[str, Mapping[str, Any]]:
+    """The authority that released this amendment, as the transaction that emitted it recorded it.
+
+    Completion does not decide authority again. By the time an amendment is delivered the track
+    is ``APPLYING``, a posture :func:`authorization_for` rightly grants nothing to, and a guess
+    from the option alone would name the policy under a change a customer approved. The row
+    written in the same transaction as the effect, under the same idempotency key, is the one
+    answer that cannot drift from what actually permitted it.
+    """
+    row = (
+        await connection.execute(
+            select(AuditEvent.authority, AuditEvent.provenance).where(
+                AuditEvent.track_id == track.id,
+                AuditEvent.type == AUDIT_RECOVERY_APPLIED,
+                AuditEvent.after["idempotency_key"].astext == idempotency_key,
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise RecoveryStateError(
+            f"track {track.id} is finishing amendment {idempotency_key} with no applied audit"
+        )
+    chain = {name: row.provenance[name] for name in _APPROVAL_CHAIN if name in row.provenance}
+    return row.authority, chain
+
+
 async def mark_stale(
     connection: AsyncConnection,
     *,
@@ -1412,11 +1453,12 @@ async def _finalize(
             worker=worker,
             detail=outstanding,
         )
+    authority, chain = await _applied_authority(connection, track=track, idempotency_key=key)
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
         event_type=AUDIT_RECOVERY_COMPLETED,
         actor=Actor(kind="SYSTEM", id=worker),
-        authority="CONSTRAINT" if option and option.cited_constraint_ids else "POLICY",
+        authority=authority,
         rule_id=None if option is None else option.approval_rule,
         case_id=case.id,
         track_id=track.id,
@@ -1427,7 +1469,12 @@ async def _finalize(
             "provider_ref": effect.provider_ref,
             "idempotency_key": key,
         },
-        provenance={"step_key": step_key, "worker": worker, "attempts": effect.attempts},
+        provenance={
+            "step_key": step_key,
+            "worker": worker,
+            "attempts": effect.attempts,
+            **chain,
+        },
         occurred_at=now,
     ) as write:
         await set_track(write, track=track, state=TRACK_RECOVERED)
