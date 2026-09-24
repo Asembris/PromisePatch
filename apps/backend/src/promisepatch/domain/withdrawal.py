@@ -73,7 +73,7 @@ from promisepatch.domain.cases import (
     TIMER_PLAN_AUTO_ESCALATION,
     apply_case_change,
     lock_case,
-    reconcile_step_key,
+    reconcile_step,
 )
 from promisepatch.domain.intake import actor_for, require_permitted, require_worker
 from promisepatch.domain.model import (
@@ -679,7 +679,7 @@ async def _enqueue_reconcile(connection: AsyncConnection, *, case_id: UUID) -> N
             id=uuid4(),
             case_id=case_id,
             track_id=None,
-            step_key=reconcile_step_key(case_id),
+            step_key=(await reconcile_step(connection, case_id)).step_key,
             kind=STEP_RECONCILE_CASE,
             state="PENDING",
             attempts=0,

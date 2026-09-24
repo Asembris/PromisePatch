@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from typing import Final
 from uuid import UUID
 
-from sqlalchemy import exists, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from promise_graph.model import ApprovalRequestState
@@ -92,9 +92,27 @@ PLAN_CONFIRMATION_WINDOW: Final = timedelta(minutes=10)
 """§14.1: "awaiting worker 'yes'. Auto-escalates to owner after 10 min.\""""
 
 
-def reconcile_step_key(case_id: UUID) -> str:
-    """One reconciliation per case, whatever transition happened to reach the boundary."""
-    return f"reconcile:{case_id}"
+RECOVERY_WORK_KINDS: Final[frozenset[str]] = frozenset(
+    {"APPLY_RECOVERY", "FINALIZE_RECOVERY", "ABANDON_RECOVERY"}
+)
+"""The steps that carry an approved or automatic change from its decision to its settlement.
+
+Named here by value rather than imported, because ``recovery`` reads this module to decide where
+a case stands and a module-level import in both directions would be a cycle; a test pins these to
+``recovery``'s own constants. ``RECONCILING`` does not move on while one of them is outstanding
+(ADR-0025): the case is still making a change, and it must not claim to be waiting.
+"""
+
+
+def reconcile_step_key(case_id: UUID, entry: int = 0) -> str:
+    """One reconciliation per entry into ``RECONCILING``, whatever transition reached it.
+
+    The first entry keeps the key it has always had. A case can come back to the boundary after
+    waiting on another customer (ADR-0025), and the *n*-th return, after *n* reconciliations have
+    settled, is ``reconcile:<case>:<n>`` -- so a second transition reaching the same boundary while
+    its reconciliation is outstanding still proposes the same key, and the index declines it.
+    """
+    return f"reconcile:{case_id}" if entry == 0 else f"reconcile:{case_id}:{entry}"
 
 
 def revalidate_step_key(track_id: UUID, scope: UUID | None = None) -> str:
@@ -129,8 +147,8 @@ def scope_in(step_key: str) -> str | None:
 
 
 def case_of(step_key: str) -> UUID:
-    """The case a reconciliation step is about, read back out of its key."""
-    return UUID(step_key.partition(":")[2])
+    """The case a reconciliation step is about, read back out of either shape of its key."""
+    return UUID(step_key.split(":")[1])
 
 
 RUNNABLE_TRACK_STATES: Final[tuple[str, ...]] = ("PENDING", "APPLYING")
@@ -142,6 +160,7 @@ actually sent" has a second half, which is that everything else already ran.
 """
 
 TRACK_PENDING: Final = "PENDING"
+TRACK_APPLYING: Final = "APPLYING"
 TRACK_WAITING_FOR_CUSTOMER: Final = "WAITING_FOR_CUSTOMER"
 TRACK_ESCALATED: Final = "ESCALATED"
 
@@ -254,20 +273,26 @@ async def settled_case_state(
     * ``EXECUTING -> WAITING``: nothing runnable is left and at least one track is genuinely
       waiting on a customer. A track still ``PENDING`` or ``APPLYING`` blocks it, which is what
       makes "do not wait while A is still applying" structural rather than a matter of ordering.
-    * ``EXECUTING -> REVALIDATING``: the same, except the customer has already answered.
+    * ``EXECUTING -> REVALIDATING``: the same, except a customer has already answered.
     * ``EXECUTING -> RECONCILING``: nothing runnable is left and there is nobody to wait for at
       all -- §14.2's "an all-AUTO/BLOCKED case never waits".
-    * ``WAITING -> REVALIDATING``: no approval request can be answered any more, because every
-      one of them has been decided or has expired.
-    * ``RECONCILING -> RESOLVED`` / ``RECONCILING -> WAITING``: the reconciling boundary is
-      finished when no track is non-terminal and nothing durable is outstanding; if another
-      track is still waiting on its own customer, the case goes back to waiting instead.
+    * ``WAITING -> REVALIDATING``: a literal approval arrived that nothing has checked yet, or no
+      approval request can be answered any more. §14.2 makes a decision its own exit, so one
+      customer's yes is not held for a sibling who has not answered (ADR-0025).
+    * ``REVALIDATING -> REVALIDATING``: an approval that arrives during a round joins it. The move
+      is what makes its checklist part of the round, and the round still ends once (ADR-0023).
+    * ``RECONCILING -> REVALIDATING`` / ``-> WAITING`` / ``-> RESOLVED``: once no change is still
+      being made, an approval that arrived meanwhile is checked, a track still waiting on its own
+      customer is waited on, and a case with nothing left resolves.
 
-    A case that finishes executing to find its request *already* answered goes straight to
+    A case that finishes executing to find a request *already* answered goes straight to
     ``REVALIDATING``. §14.2 permits ``EXECUTING`` to skip ``WAITING`` when there is nothing to
     wait for, and a customer who replied while the last recovery was still running is exactly
     that: entering ``WAITING`` would be waiting for an answer already in the database, and
     nothing would ever come to wake it.
+
+    ``PLANNED`` has no exit here. It waits on a worker's yes for a re-planned track (ADR-0023),
+    and an answer recorded meanwhile is checked by whichever transition leaves it.
 
     ``except_step_key`` names the step this transition is itself executing. That step is
     outstanding right now and will be settled by the same commit, so counting it would make a
@@ -281,9 +306,15 @@ async def settled_case_state(
             return None
         if not await _has_waiting_track(connection, case.id):
             return CASE_RECONCILING
+        if await has_unchecked_approval(connection, case.id):
+            return CASE_REVALIDATING
         return CASE_WAITING if await _has_open_approval(connection, case.id) else CASE_REVALIDATING
     if case.state == CASE_WAITING:
+        if await has_unchecked_approval(connection, case.id):
+            return CASE_REVALIDATING
         return None if await _has_open_approval(connection, case.id) else CASE_REVALIDATING
+    if case.state == CASE_REVALIDATING:
+        return CASE_REVALIDATING if await has_unchecked_approval(connection, case.id) else None
     if case.state == CASE_RECONCILING:
         return await _settled_reconciling(connection, case.id, except_step_key=except_step_key)
     return None
@@ -292,13 +323,26 @@ async def settled_case_state(
 async def _settled_reconciling(
     connection: AsyncConnection, case_id: UUID, *, except_step_key: str | None
 ) -> str | None:
-    """§14.2's two exits from ``RECONCILING``, decided from rows alone.
+    """The exits from ``RECONCILING``, decided from rows alone (§14.2, ADR-0025).
+
+    Nothing leaves while a change is still being made: ``RECONCILING`` is where approved changes
+    are applied, and ``WAITING`` is the state in which nothing consequential runs. The recovery
+    step that settles last asks this again, so the case never waits on a reconciliation that has
+    already run.
+
+    Then an approval that arrived meanwhile is checked -- against a world in which the change
+    just made has settled, so §14.3's check 5 counts it among the tracks "already RECOVERED" --
+    and a track still waiting on its own open request is waited on.
 
     ``RESOLVED`` requires every track terminal *and* nothing outstanding, which is §23's list
     read off the database rather than restated: a track still ``PENDING``, ``APPLYING``,
     ``WAITING_FOR_CUSTOMER`` or ``STALE`` is a non-terminal track, and an undelivered effect or
     an unfinished re-plan is an unsettled step of the same case.
     """
+    if await _recovery_in_flight(connection, case_id, except_step_key=except_step_key):
+        return None
+    if await has_unchecked_approval(connection, case_id):
+        return CASE_REVALIDATING
     if await _has_waiting_track(connection, case_id) and await _has_open_approval(
         connection, case_id
     ):
@@ -396,6 +440,83 @@ async def _has_waiting_track(connection: AsyncConnection, case_id: UUID) -> bool
     return bool(await connection.scalar(select(exists(waiting))))
 
 
+async def has_unchecked_approval(connection: AsyncConnection, case_id: UUID) -> bool:
+    """Whether a customer's literal yes is in the database and nothing has checked it yet.
+
+    A track still ``WAITING_FOR_CUSTOMER`` whose carried request is answered and decided, with no
+    revalidation step under that request's key. A decline or an expiry is never one: both escalate
+    the track where they happen. A refused-as-unauthorised answer is not one either, because its
+    checklist ran. Read from rows, so it is the same answer whichever transition asks (ADR-0025).
+
+    The import is deferred for the reason :func:`case_successors` gives: the module that builds
+    request identities reads this one to decide where a case stands.
+    """
+    from promisepatch.domain.approvals import ask_scope
+
+    answered = (
+        await connection.execute(
+            select(ApprovalRequest)
+            .join(Track, Track.approval_request_id == ApprovalRequest.id)
+            .where(
+                Track.case_id == case_id,
+                Track.state == TRACK_WAITING_FOR_CUSTOMER,
+                ApprovalRequest.state == ApprovalRequestState.ANSWERED.value,
+                ApprovalRequest.decided.is_(True),
+            )
+        )
+    ).all()
+    for request in answered:
+        checked = select(CaseStep.id).where(
+            CaseStep.case_id == case_id,
+            CaseStep.step_key == revalidate_step_key(request.track_id, ask_scope(request)),
+        )
+        if not await connection.scalar(select(exists(checked))):
+            return True
+    return False
+
+
+async def _recovery_in_flight(
+    connection: AsyncConnection, case_id: UUID, *, except_step_key: str | None
+) -> bool:
+    """Whether a change is still being made: a track ``APPLYING``, or recovery work unsettled.
+
+    The step half covers the moment between a ``PROCEED`` and its ``APPLY_RECOVERY``, when the
+    track has not yet left ``WAITING_FOR_CUSTOMER`` but its change is already decided.
+    """
+    applying = select(Track.id).where(Track.case_id == case_id, Track.state == TRACK_APPLYING)
+    if await connection.scalar(select(exists(applying))):
+        return True
+    work = select(CaseStep.id).where(
+        CaseStep.case_id == case_id,
+        CaseStep.kind.in_(sorted(RECOVERY_WORK_KINDS)),
+        CaseStep.state.in_(UNSETTLED_STEP_STATES),
+    )
+    if except_step_key is not None:
+        work = work.where(CaseStep.step_key != except_step_key)
+    return bool(await connection.scalar(select(exists(work))))
+
+
+async def reconcile_step(connection: AsyncConnection, case_id: UUID) -> CreateStep:
+    """The reconciliation this entry into ``RECONCILING`` needs, keyed by how many have settled.
+
+    One per entry rather than one per case (ADR-0025). A reconciliation still outstanding has the
+    index this proposes, so a second transition reaching the same boundary is declined by the
+    unique index; one that has settled does not stand in the way of the next return.
+    """
+    settled = await connection.scalar(
+        select(func.count())
+        .select_from(CaseStep)
+        .where(
+            CaseStep.case_id == case_id,
+            CaseStep.kind == STEP_RECONCILE_CASE,
+            CaseStep.state.not_in(UNSETTLED_STEP_STATES),
+        )
+    )
+    return CreateStep(
+        step_key=reconcile_step_key(case_id, int(settled or 0)), kind=STEP_RECONCILE_CASE
+    )
+
+
 async def _has_open_approval(connection: AsyncConnection, case_id: UUID) -> bool:
     """Whether any request on this case could still receive an authoritative answer.
 
@@ -435,7 +556,7 @@ async def case_successors(
     no lock this transaction does not already hold.
     """
     if moved_to == CASE_RECONCILING:
-        return (CreateStep(step_key=reconcile_step_key(case_id), kind=STEP_RECONCILE_CASE),)
+        return (await reconcile_step(connection, case_id),)
     if moved_to == CASE_REVALIDATING:
         from promisepatch.domain.revalidation import work_for_case
 

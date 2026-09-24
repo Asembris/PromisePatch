@@ -96,6 +96,7 @@ from promisepatch.domain import consent, customer_link, messaging
 from promisepatch.domain.analysis import NAMESPACE, fresh_snapshot
 from promisepatch.domain.cases import (
     CASE_EXECUTING,
+    CASE_PLANNED,
     CASE_RECONCILING,
     CASE_RESOLVED,
     CASE_REVALIDATING,
@@ -436,6 +437,7 @@ text attached, which is the one reading of those words anybody is entitled to ma
 
 
 LIVE_CASE_STATES: Final[tuple[str, ...]] = (
+    CASE_PLANNED,
     CASE_EXECUTING,
     CASE_WAITING,
     CASE_REVALIDATING,
@@ -444,22 +446,21 @@ LIVE_CASE_STATES: Final[tuple[str, ...]] = (
 )
 """Case states in which an inbound reply is still worth reading.
 
-The last two are there because §14.2's duplicate rule outlives the case: "a second distinct
-reply to an already-answered request is acknowledged to the customer and audited". A customer
-does not know the case has finished, and a reply that arrived one second too late is exactly
-the one somebody will later ask about -- so it is stored and the ledger says what was made of
-it, rather than being dropped because the workflow had moved on.
+``RESOLVED`` is there because §14.2's duplicate rule outlives the case: "a second distinct reply
+to an already-answered request is acknowledged to the customer and audited". A customer does not
+know the case has finished, and a reply that arrived one second too late is exactly the one
+somebody will later ask about -- so it is stored and the ledger says what was made of it, rather
+than being dropped because the workflow had moved on.
 
-Reading one cannot become deciding one. Every path to a decision below requires the request to
-be open and undecided, and a case only reaches these states once its requests are settled.
-"""
-"""Case states in which a customer's reply is still worth reading.
+The others are there because one customer's request can still be open while a sibling's answer
+is being checked, applied or re-planned (ADR-0025). A literal answer read in any of them is
+recorded exactly as it would be in ``WAITING``, and the case's own rule decides when it is
+checked; ``PLANNED`` in particular waits on a worker's yes for a re-planned track and does not
+move on a sibling's answer. Skipping the reply instead would lose it: a second press of the same
+signed link proposes the same reply id and writes nothing.
 
-``REVALIDATING`` is in the list deliberately. A second reply to a request that has already been
-answered arrives *after* the case has moved on, and §14.2 says it is acknowledged and audited
-rather than dropped -- so the transition still has to run in order to record that it changed
-nothing. It cannot decide anything: the request is decided, and the check that says so is two
-lines below the one that let it in.
+Reading one is not deciding one. Every path to a decision below requires the request to be open,
+undecided and inside its deadline, and to have come from the request's own channel.
 """
 
 
@@ -1264,7 +1265,8 @@ async def _record_decision(
     later reply, timer, worker or owner can overwrite it, and there is no code path that could.
 
     An approval does not apply anything. §14.3's ten checks have not run, so the track stays
-    ``WAITING_FOR_CUSTOMER`` and the case moves to ``REVALIDATING`` once nothing is outstanding.
+    ``WAITING_FOR_CUSTOMER`` and the case moves to ``REVALIDATING`` for it as soon as the case can
+    take it -- not when a sibling's customer has answered too (ADR-0025).
     A decline is different only in that there is nothing left to revalidate: the track escalates
     to the owner, and the customer is never told the original will arrive, because it may not.
     """

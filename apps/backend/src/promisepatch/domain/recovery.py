@@ -121,7 +121,7 @@ from promisepatch.domain.cases import (
     case_events,
     case_successors,
     lock_case,
-    reconcile_step_key,
+    reconcile_step,
     revalidate_step_key,
     settled_case_state,
 )
@@ -653,7 +653,7 @@ async def _confirm(
                 connection,
                 case_id=case_id,
                 track_id=None,
-                step_key=reconcile_step_key(case_id),
+                step_key=(await reconcile_step(connection, case_id)).step_key,
                 kind=STEP_RECONCILE_CASE,
             )
 

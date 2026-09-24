@@ -166,25 +166,39 @@ async def one_round(intake: Intake, order: str, *, b_answer: str = "YES") -> Rou
 
     B's customer says ``b_answer``; C's says yes, to a world that then moves under it.
 
-    The product creates both revalidations in one transaction, so their claim order falls to
-    their random ids. Deferring one until the other has run is the only lever, and each order is
-    one the worker can take on its own.
+    Since ADR-0025 a yes is checked as soon as it arrives, so B's yes opens the round and C's
+    joins it; a no opens nothing, and C's answer opens the round for both. B's checklist is held
+    only until C's reply has been read, which is what puts both answers in one round -- the shape
+    this module is about. From there the two revalidations run in ``order``: deferring one until
+    the other has run is the only lever, and each order is one the worker can take on its own.
     """
     case_id, b, c = await asked_twice(intake)
     b_request = await intake.request_for(b.id)
     c_request = await intake.request_for(c.id)
 
     await intake.deliver_reply(b_request.id, b_answer, sender=TOMAS_CHANNEL)
-    await intake.drain(limit=10)
-    assert (await intake.case(case_id)).state == cases.CASE_WAITING
+    runner = intake.worker()
+    for _ in range(10):
+        if len(await intake.decisions()) == 1:
+            break
+        await runner.run_once()
+    held = await intake.step_named(case_id, cases.revalidate_step_key(b.id))
+    if b_answer == "YES":
+        assert (await intake.case(case_id)).state == cases.CASE_REVALIDATING
+        assert held is not None and held.state == "PENDING"
+        await intake.defer(held.id)
+    else:
+        assert (await intake.case(case_id)).state == cases.CASE_WAITING
+        assert held is None
     await intake.bump_order_version(ho.ORDER_C)
     await intake.deliver_reply(c_request.id, "YES", sender=OKAFOR_CHANNEL)
-    runner = intake.worker()
     for _ in range(10):
         if len(await intake.decisions()) == 2:
             break
         await runner.run_once()
     assert (await intake.case(case_id)).state == cases.CASE_REVALIDATING
+    if held is not None:
+        await intake.release(held.id)
 
     first, second = (c, b) if order == "stale_first" else (b, c)
     later = await intake.step_named(case_id, cases.revalidate_step_key(second.id))

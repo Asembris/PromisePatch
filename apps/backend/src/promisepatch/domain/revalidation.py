@@ -1125,6 +1125,10 @@ async def _reconcile(
     A reconciliation that arrives while work is still outstanding does nothing and says so. It
     is not the only path to ``RESOLVED``: whichever transition settles the last track asks the
     same question of the same rows, so a case never depends on this step having run last.
+
+    It is also where a case that has finished its changes goes back to waiting on a customer who
+    has not answered, or on to check an answer that arrived meanwhile (ADR-0025); the
+    revalidations that move enqueues are its successors.
     """
     if case.state != CASE_RECONCILING:
         return recovery.skipped(STEP_RECONCILE_CASE, {"case_state": case.state})
@@ -1160,6 +1164,8 @@ async def _reconcile(
         disposition=Disposition.DONE,
         event_type=EVENT_STEP_COMPLETED,
         case_change=CaseChange(state=moved_to, needs_owner_attention=attention or None),
+        # An answer that arrived while a change was being made is checked from here (ADR-0025).
+        successors=await case_successors(connection, moved_to, case_id=case.id),
         events=case_events(moved_to, case_id=case.id),
         result={
             "outcome": moved_to,
