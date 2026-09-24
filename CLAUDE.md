@@ -362,7 +362,7 @@ git diff --cached --stat
 gitignored, local-only and **authoritative whenever present**. Read them before deciding
 anything they cover. Never modify them unless explicitly asked. Never commit them.
 
-`docs/adr/` holds every architectural decision, `0001` through `0023`. The ones that constrain
+`docs/adr/` holds every architectural decision, `0001` through `0024`. The ones that constrain
 day-to-day work most: [0008](docs/adr/0008-remove-runtime-customer-intent-classifier.md) (no
 runtime intent classifier), [0011](docs/adr/0011-conversational-orchestrator-authority.md) (the
 orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-principal.md) and
@@ -379,7 +379,10 @@ hosts the product's own worker; no deployed process ever learns the benchmark ex
 [0022](docs/adr/0022-an-approval-episode-is-opened-by-the-confirmation-that-asks.md) (an
 approval episode is one track asked under one confirmed plan; a re-ask is a new request), and
 [0023](docs/adr/0023-a-re-plan-returns-the-case-to-planned-for-that-track-only.md) (a re-plan
-returns the case to `PLANNED` for that track only; a revalidation round ends once).
+returns the case to `PLANNED` for that track only; a revalidation round ends once), and
+[0024](docs/adr/0024-freshness-is-judged-where-the-effect-is-committed.md) (the approval deadline
+governs the answer; the production start is re-judged in the transaction that commits the
+amendment, and nothing after that commit refuses it).
 
 ## Historical record
 
