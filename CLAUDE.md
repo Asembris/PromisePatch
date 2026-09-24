@@ -100,7 +100,10 @@ instance. See [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md). **Rehearsal R3 PASS
 (2026-09-24, 3 of 5), judged against the corrected §10.2 row. The owner's APPROVE, pressed while
 the worker was stopped, persisted only as one inbox row in state `RECEIVED`; two snapshots 65 s
 apart were identical. After the restart, the new instance consumed it exactly once, through to
-`RESOLVED`. See [g8-rehearsal-r3.md](docs/g8-rehearsal-r3.md). R4 and R5 are unrun.
+`RESOLVED`. See [g8-rehearsal-r3.md](docs/g8-rehearsal-r3.md). **Rehearsal R4 PASSED**
+(2026-09-24, 4 of 5): the worker was restarted after the case was `RESOLVED`, and the restart wrote
+nothing — `PRESENT`, `rolled: false`, and the stability record byte-identical before and in two
+snapshots 69 s apart. See [g8-rehearsal-r4.md](docs/g8-rehearsal-r4.md). R5 is unrun.
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -471,6 +474,7 @@ read the source document rather than a paraphrase of it.
 | G8 rehearsal R1 (PASS; restart while waiting for consent; frozen reader embedded) | [g8-rehearsal-r1.md](docs/g8-rehearsal-r1.md) |
 | G8 rehearsal R2 (PASS; plan confirmed while the worker was stopped) | [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md) |
 | G8 rehearsal R3 (PASS; customer answered while the worker was stopped) | [g8-rehearsal-r3.md](docs/g8-rehearsal-r3.md) |
+| G8 rehearsal R4 (PASS; worker restarted after RESOLVED, wrote nothing) | [g8-rehearsal-r4.md](docs/g8-rehearsal-r4.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
