@@ -401,7 +401,9 @@ async def _still_worth_sending(
     """
     from promisepatch.domain.approvals import refuse_if_window_closed
 
-    return await refuse_if_window_closed(database, kind=claim.kind, payload=claim.payload)
+    return await refuse_if_window_closed(
+        database, kind=claim.kind, payload=claim.payload, attempts=claim.attempts
+    )
 
 
 async def _continue(connection: AsyncConnection, *, claim: EffectClaim, on: str) -> None:

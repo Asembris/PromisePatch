@@ -1503,7 +1503,7 @@ async def bind_customer_reply(
 
 
 async def refuse_if_window_closed(
-    database: RuntimeDatabase, *, kind: str, payload: Mapping[str, Any]
+    database: RuntimeDatabase, *, kind: str, payload: Mapping[str, Any], attempts: int = 1
 ) -> DeliveryOutcome | None:
     """Refuse an approval message whose window closed while it waited to be sent.
 
@@ -1515,6 +1515,10 @@ async def refuse_if_window_closed(
 
     Returns ``None`` for every effect that is not an approval message, and for every approval
     message that is still valid.
+
+    ``attempts`` is the claim's own count, and it decides only what the refusal may *say*. At one
+    it is provably the first claim, so the message was never sent. After that an earlier attempt
+    may have reached the customer, and the row must not claim otherwise (ADR-0026).
     """
     if kind != EFFECT_MESSAGE_SEND:
         return None
@@ -1538,7 +1542,12 @@ async def refuse_if_window_closed(
     if request.deadline <= now:
         return DeliveryOutcome(
             status=DeliveryStatus.TERMINAL,
-            error="the approval window closed before the message could be delivered",
+            error=(
+                "the approval window closed before the message was sent"
+                if attempts == 1
+                else "the approval window closed before this attempt; an earlier attempt may "
+                "already have reached the customer"
+            ),
         )
     return None
 

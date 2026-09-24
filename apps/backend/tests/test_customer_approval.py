@@ -43,7 +43,7 @@ from _intake_support import physical as physical
 from promise_graph.examples import hollow_oak as ho
 from promise_graph.model import ApprovalRequestState, ParserKind
 from promisepatch.db.models import ApprovalDecision, ApprovalRequest, InboundReply
-from promisepatch.domain import analysis, approvals, cases, messaging, recovery
+from promisepatch.domain import analysis, approvals, cases, crash, messaging, recovery
 from promisepatch.domain.adapters import FakeEffectAdapter, ProviderBehaviour
 from promisepatch.domain.model import DeliveryOutcome, DeliveryStatus
 
@@ -495,6 +495,69 @@ async def test_a_message_whose_window_closed_while_queued_is_never_delivered(
         ApprovalRequestState.EXPIRED.value
     )
     assert (await physical.case(case_id)).state != cases.CASE_WAITING
+
+
+async def test_a_message_refused_at_its_first_claim_says_it_was_not_sent(physical: Intake) -> None:
+    """The request step commits the message and the worker dies; the window closes; one claim.
+
+    A claim at one attempt is provably the first, so the refusal may say the message was not
+    sent -- and the customer's provider saw no call carrying its key.
+    """
+    case_id = await confirmed_case(physical)
+    await physical.defer_approvals(case_id)
+    await physical.drain(limit=40)
+    await physical.release_approvals(case_id)
+    with crash.arm(crash.AFTER_TRANSITION_COMMIT), pytest.raises(crash.WorkerDied):
+        await physical.worker(identity="died").run_once()
+    request = await the_request(physical)
+    key = approvals.message_idempotency_key(request.id)
+    (queued,) = [row for row in await physical.effects() if row.idempotency_key == key]
+    assert (queued.state, queued.attempts) == ("PENDING", 0)
+
+    await physical.close_window(request.id)
+    adapter = FakeEffectAdapter()
+    await physical.drain(worker=physical.worker(adapter=adapter), limit=40)
+
+    assert [call for call in adapter.attempts if call.idempotency_key == key] == []
+    (refused,) = [row for row in await physical.effects() if row.idempotency_key == key]
+    assert (refused.state, refused.attempts) == ("FAILED", 1)
+    assert refused.last_error == "the approval window closed before the message was sent"
+    assert (await track_of(physical, case_id, B)).state == recovery.TRACK_ESCALATED
+
+
+async def test_a_window_closing_after_an_uncertain_attempt_claims_nothing_it_cannot_know(
+    physical: Intake,
+) -> None:
+    """The provider took the message and the answer was lost; the window closed before the retry.
+
+    The retry is refused, as it should be -- nobody can answer a closed question -- but the row
+    must not say the window closed "before the message could be delivered": it was delivered.
+    """
+    case_id = await confirmed_case(physical)
+    await physical.defer_approvals(case_id)
+    await physical.drain(limit=40)
+    adapter = FakeEffectAdapter(script=[ProviderBehaviour.APPLY_THEN_LOSE_RESPONSE])
+    await physical.release_approvals(case_id)
+    await physical.drain(worker=physical.worker(adapter=adapter), limit=40)
+    request = await the_request(physical)
+    key = approvals.message_idempotency_key(request.id)
+    (uncertain,) = [row for row in await physical.effects() if row.idempotency_key == key]
+    assert (uncertain.state, uncertain.attempts) == ("PENDING", 1)
+    assert adapter.effect_for(key) is not None  # the customer has it
+
+    await physical.close_window(request.id)
+    await physical.make_effect_due(uncertain.id)
+    await physical.drain(worker=physical.worker(adapter=adapter), limit=40)
+
+    assert len([call for call in adapter.attempts if call.idempotency_key == key]) == 1
+    (refused,) = [row for row in await physical.effects() if row.idempotency_key == key]
+    assert (refused.state, refused.attempts) == ("FAILED", 2)
+    assert "could be delivered" not in refused.last_error
+    assert refused.last_error == (
+        "the approval window closed before this attempt; an earlier attempt may already have "
+        "reached the customer"
+    )
+    assert (await track_of(physical, case_id, B)).state == recovery.TRACK_ESCALATED
 
 
 # =========================================================================== the case waits
