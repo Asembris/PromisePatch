@@ -1,6 +1,7 @@
 # ADR-0023 — A re-plan returns the case to PLANNED for that track only
 
-Status: accepted
+Status: accepted — amended by [ADR-0025](0025-an-answer-is-revalidated-when-it-arrives.md) on
+which states read a reply and where `RECONCILING` goes next
 Date: 2026-09-23
 Phase: 6
 
