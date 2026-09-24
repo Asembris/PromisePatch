@@ -365,7 +365,9 @@ jobs:
   backend:
     name: backend + postgres
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Green runs took 17-19 minutes by 2026-09-24 and 20 killed one at ~99% with no failure.
+    # Raise this as the suite grows; never shrink the suite to fit it.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
