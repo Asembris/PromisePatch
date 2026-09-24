@@ -94,7 +94,9 @@ rehearsal #1. See [g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md
 R1 PASSED** (2026-09-24, 1 of 5 on `4529a802e34e`): worker restarted while waiting for the
 customer, then a real APPROVE applied exactly once on the new instance. The frozen evidence reader
 (sha256 `c9731c8f…`) is embedded in [g8-rehearsal-r1.md](docs/g8-rehearsal-r1.md); R2–R5 must use
-those bytes.
+those bytes. **Rehearsal R2 PASSED** (2026-09-24, 2 of 5): the plan was confirmed in `api` while
+the worker was stopped, and the queued work was dispatched once, at attempt 1, by the next
+instance. See [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md).
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -463,6 +465,7 @@ read the source document rather than a paraphrase of it.
 | Phase 7 closeout (closed; RC frozen at `4529a802e34e`; no known P0/P1; G8 open) | [phase7-closeout.md](docs/phase7-closeout.md) |
 | G8 rehearsal protocol and preparation (protocol predeclared; env union and start-up roll not blockers) | [g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md) |
 | G8 rehearsal R1 (PASS; restart while waiting for consent; frozen reader embedded) | [g8-rehearsal-r1.md](docs/g8-rehearsal-r1.md) |
+| G8 rehearsal R2 (PASS; plan confirmed while the worker was stopped) | [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
