@@ -85,8 +85,10 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
-  **The deployed image is `931a296decad`**, released 2026-09-23, the host rebooted and never
-  replaced. That release could not go through `deploy.sh stack` — measured again, live: the
+  **The deployed image is `abbbd11006f7`**, the Phase 7 release candidate, released 2026-09-24 the
+  same way, the host rebooted and never replaced, and the demo world restored once with the
+  Telegram binding carried across; see [phase7-rc-deployment.md](docs/phase7-rc-deployment.md).
+  The `931a296decad` release of 2026-09-23 could not go through `deploy.sh stack` — measured again, live: the
   deployed stack's template predates the channel block, so submitting it reports
   `Replacement: Conditional` on `Host` and `ElasticIpAssociation` and the guard refuses,
   correctly, deleting its change set unexecuted. It was carried the way `4cfb74de7cc2` was, by a
@@ -429,7 +431,8 @@ read the source document rather than a paraphrase of it.
 | Customer approval transport | [customer-approval-link.md](docs/customer-approval-link.md), [customer-message-transport.md](docs/customer-message-transport.md) |
 | Deployed customer channel (switched on, one real delivery, one real web approval) | [deployed-customer-channel.md](docs/deployed-customer-channel.md) |
 | Customer copy and address disclosure (both closed, deployed) | [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md) |
-| Phase 7 local release-candidate gate (closed locally, not deployed) | [phase7-local-rc-correctness.md](docs/phase7-local-rc-correctness.md), [phase7-local-rc-final.md](docs/phase7-local-rc-final.md) |
+| Phase 7 local release-candidate gate (closed locally) | [phase7-local-rc-correctness.md](docs/phase7-local-rc-correctness.md), [phase7-local-rc-final.md](docs/phase7-local-rc-final.md) |
+| Phase 7 RC deployment (`abbbd11006f7` deployed, demo world restored once, not pushed) | [phase7-rc-deployment.md](docs/phase7-rc-deployment.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
