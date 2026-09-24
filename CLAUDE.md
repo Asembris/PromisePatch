@@ -96,10 +96,11 @@ customer, then a real APPROVE applied exactly once on the new instance. The froz
 (sha256 `c9731c8f…`) is embedded in [g8-rehearsal-r1.md](docs/g8-rehearsal-r1.md); R2–R5 must use
 those bytes. **Rehearsal R2 PASSED** (2026-09-24, 2 of 5): the plan was confirmed in `api` while
 the worker was stopped, and the queued work was dispatched once, at attempt 1, by the next
-instance. See [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md). **R3 is unrun, and its row was
-corrected before any spend**: the web answer only stores an inbox row, and the worker writes the
-decision. So while stopped, expect inbox 1 `RECEIVED`, decisions 0 and the request `SENT`. See
-[g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md) §10.
+instance. See [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md). **Rehearsal R3 PASSED**
+(2026-09-24, 3 of 5), judged against the corrected §10.2 row. The owner's APPROVE, pressed while
+the worker was stopped, persisted only as one inbox row in state `RECEIVED`; two snapshots 65 s
+apart were identical. After the restart, the new instance consumed it exactly once, through to
+`RESOLVED`. See [g8-rehearsal-r3.md](docs/g8-rehearsal-r3.md). R4 and R5 are unrun.
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -469,6 +470,7 @@ read the source document rather than a paraphrase of it.
 | G8 rehearsal protocol and preparation (protocol predeclared; env union and start-up roll not blockers) | [g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md) |
 | G8 rehearsal R1 (PASS; restart while waiting for consent; frozen reader embedded) | [g8-rehearsal-r1.md](docs/g8-rehearsal-r1.md) |
 | G8 rehearsal R2 (PASS; plan confirmed while the worker was stopped) | [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md) |
+| G8 rehearsal R3 (PASS; customer answered while the worker was stopped) | [g8-rehearsal-r3.md](docs/g8-rehearsal-r3.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
