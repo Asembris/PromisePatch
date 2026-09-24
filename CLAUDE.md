@@ -85,9 +85,10 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
-  **The deployed image is `abbbd11006f7`**, the Phase 7 release candidate, released 2026-09-24 the
-  same way, the host rebooted and never replaced, and the demo world restored once with the
-  Telegram binding carried across; see [phase7-rc-deployment.md](docs/phase7-rc-deployment.md).
+  **The deployed image is `4529a802e34e`**, the approval-log privacy repair, released 2026-09-24 by
+  the same parameter-only change set (`Changes: []`), the host rebooted and never replaced; see
+  [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md). The Phase 7
+  RC `abbbd11006f7` before it is [phase7-rc-deployment.md](docs/phase7-rc-deployment.md).
   The `931a296decad` release of 2026-09-23 could not go through `deploy.sh stack` — measured again, live: the
   deployed stack's template predates the channel block, so submitting it reports
   `Replacement: Conditional` on `Host` and `ElasticIpAssociation` and the guard refuses,
@@ -271,6 +272,11 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   approval-link token, whose payload base64-encodes the customer's chat id, is logged verbatim by the
   `api` and `caddy` access logs, which ship to CloudWatch. A plaintext address scan cannot see it. See
   [phase7-deployed-behavioral-proof.md](docs/phase7-deployed-behavioral-proof.md).
+  **That P1 is closed on `4529a802e34e`**: every backend log line and both Caddy loggers redact the
+  link in both URL forms, and the real loop was re-proved with zero recoverable token in any
+  container log or in CloudWatch. Two spent, non-actionable tokens remain in CloudWatch history
+  until retention expires them; see
+  [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md).
 
 `new_roadmap.md` is the authority on what is open and what each gate requires. Read it before
 deciding what to build. Do not restate its contents here.
@@ -440,6 +446,7 @@ read the source document rather than a paraphrase of it.
 | Phase 7 local release-candidate gate (closed locally) | [phase7-local-rc-correctness.md](docs/phase7-local-rc-correctness.md), [phase7-local-rc-final.md](docs/phase7-local-rc-final.md) |
 | Phase 7 RC deployment (`abbbd11006f7` deployed, demo world restored once, not pushed) | [phase7-rc-deployment.md](docs/phase7-rc-deployment.md) |
 | Phase 7 deployed behavioural proof (real loop closed on `abbbd11006f7`; one P1 recorded unfixed) | [phase7-deployed-behavioral-proof.md](docs/phase7-deployed-behavioral-proof.md) |
+| Phase 7 approval-log privacy repair (P1 closed, `4529a802e34e` deployed, loop re-proved) | [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
