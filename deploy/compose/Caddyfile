@@ -8,13 +8,25 @@
 # that authenticated on their behalf would move the authority boundary out of the code that
 # the import-linter contract constrains.
 
+# An approval link is a possession credential (ADR-0021), in `?approve=` or the approval path.
+# No log line keeps it: the access log, the error log (the default logger) and any Referer or
+# redirect Location that could carry it. docs/phase7-approval-log-privacy-repair.md
+(redact) {
+	format filter {
+		wrap json
+		request>uri regexp "(approve=|approval/)[^?&#]+|v1\.[\w-]{20,}\.[\w-]{20,}" "${1}REDACTED"
+		request>headers>Referer delete
+		resp_headers>Location delete
+	}
+}
+
 {
-	# An explicit, reachable contact so a certificate problem arrives as mail rather than as an
-	# outage: set /promisepatch/<env>/acme-contact and the host passes it through. The default
-	# is empty rather than a made-up address, because ACME registration validates the contact
-	# and an unresolvable domain fails the certificate order outright -- no contact is allowed,
-	# a contact nobody can receive mail at is not.
+	# A reachable contact, from /promisepatch/<env>/acme-contact, so a certificate problem arrives
+	# as mail. Empty rather than made up: ACME validates it, and a dead domain fails the order.
 	email "{$ACME_CONTACT:}"
+	log default {
+		import redact
+	}
 }
 
 {$TLS_HOSTNAME} {
@@ -57,11 +69,9 @@
 		reverse_proxy api:8000
 	}
 
-	# The intent API is reachable from the `mcp` container over the private network and
-	# from nowhere else. That used to be true because `handle /api*` was an allowlist and
-	# everything else fell through to a 404; the catch-all below ends the allowlist, so
-	# the refusal is stated here instead of inherited -- and `scripts/deployment_smoke.py`
-	# asserts it from outside the deployment rather than trusting this line.
+	# The intent API is reachable from the `mcp` container and from nowhere else. The catch-all
+	# below ends the old allowlist, so the refusal is stated rather than inherited, and
+	# `scripts/deployment_smoke.py` asserts it from outside.
 	handle /internal* {
 		respond 404
 	}
@@ -76,22 +86,19 @@
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin"
 		-Server
 	}
 
 	log {
 		output stdout
-		format json
+		import redact
 	}
 }
 
-# Anything addressed to a name this deployment does not serve. Without this block Caddy has no
-# site for such a request and answers its "no site matched" default -- an empty 200, which a
-# client cannot tell from success. The request is refused either way and never reaches the
-# protocol; what this fixes is the deployment saying so. It does not move the authority
-# boundary: the MCP server's own Host allowlist, Origin allowlist and bearer check stay exactly
-# where P5.1 put them, in front of the protocol, for every request Caddy does pass through.
-# The named site above is more specific, so it continues to win for the real hostname.
+# A name this deployment does not serve. Without this block Caddy answers an empty 200, which a
+# client cannot tell from success. It moves no authority: the MCP server's own Host, Origin and
+# bearer checks stay where P5.1 put them. The named site above is more specific and still wins.
 :443 {
 	respond "this deployment does not serve that name" 421
 }

@@ -1854,6 +1854,83 @@ def test_every_other_route_still_wins_against_the_catch_all() -> None:
         )
 
 
+# A customer approval link, shaped exactly as `domain.customer_link` mints one: `v1`, a payload
+# long enough to hold a request id and a channel, and a 43-character HMAC. Made up; opens nothing.
+SENTINEL_TOKEN = (
+    "v1.djEfNjljMDQ3YzctMDAwMC00MDAwLTgwMDAtMDAwMDAwMDBhYmNkH3RnOjk4NzY1NDMyMTA"
+    ".Ms4nHTsf8xKw6OTNsXjIgIN7oGXIE45M7UNHy0PnTZ0"
+)
+
+
+def _redaction_snippet() -> list[str]:
+    directives = _caddy_directives()
+    start = _handle_index(directives, "(redact) {")
+    end = directives.index("}", directives.index("}", start) + 1)
+    return directives[start : end + 1]
+
+
+def _uri_redaction() -> tuple[re.Pattern[str], str]:
+    """The `request>uri` filter, as Python can apply it. RE2 and `re` agree on this pattern."""
+    [line] = [line for line in _redaction_snippet() if line.startswith("request>uri regexp ")]
+    pattern, replacement = re.findall(r'"([^"]*)"', line)
+    return re.compile(pattern), replacement.replace("${1}", r"\g<1>")
+
+
+def test_both_loggers_the_proxy_writes_import_the_approval_link_redaction() -> None:
+    """The access log is one logger; a failed upstream is logged by the default one.
+
+    Measured with `caddy:2.10-alpine` before this was written: a 502 on the approval route put
+    the request's URI in an `http.log.error.log0` line on the *default* logger, which a filter
+    on the site's `log` alone never sees. docs/phase7-approval-log-privacy-repair.md.
+    """
+    directives = _caddy_directives()
+    default = _handle_index(directives, "log default {")
+    site = _handle_index(directives, "log {")
+    assert directives[default + 1] == "import redact"
+    assert directives[site + 1 : site + 3] == ["output stdout", "import redact"]
+    snippet = _redaction_snippet()
+    assert "request>headers>Referer delete" in snippet, "the page's address rides in Referer"
+    assert "resp_headers>Location delete" in snippet, "the :80 redirect repeats the whole URI"
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        f"/?approve={SENTINEL_TOKEN}",
+        f"/?case=abc&approve={SENTINEL_TOKEN}&x=1",
+        f"/api/customer/approval/{SENTINEL_TOKEN}",
+        f"/api/customer/approval/{SENTINEL_TOKEN}?approve={SENTINEL_TOKEN}",
+        f"/somewhere/else/{SENTINEL_TOKEN}",
+    ],
+)
+def test_the_proxy_logs_no_approval_token_in_either_form(uri: str) -> None:
+    pattern, replacement = _uri_redaction()
+    redacted = pattern.sub(replacement, uri)
+    for part in SENTINEL_TOKEN.split(".")[1:]:
+        assert part not in redacted, f"{uri!r} is logged as {redacted!r}"
+    assert "REDACTED" in redacted
+
+
+def test_the_proxy_keeps_the_rest_of_the_request_line() -> None:
+    pattern, replacement = _uri_redaction()
+    assert pattern.sub(replacement, f"/?case=abc&approve={SENTINEL_TOKEN}&x=1") == (
+        "/?case=abc&approve=REDACTED&x=1"
+    )
+    for uri in ("/api/cases/abc?case=abc", "/api/conversation/approve", "/assets/index-v1.2.3.js"):
+        assert pattern.sub(replacement, uri) == uri
+
+
+def test_a_page_s_address_is_not_repeated_in_the_requests_it_makes() -> None:
+    """`strict-origin` sends the origin alone, so `/?approve=` never reaches a Referer.
+
+    Not `no-referrer`: under it a browser sends `Origin: null` on a same-origin POST, and
+    `api.routers.auth._check_origin` would refuse every sign-in the page makes.
+    """
+    directives = _caddy_directives()
+    assert 'Referrer-Policy "strict-origin"' in directives
+    assert not any("no-referrer" in line for line in directives)
+
+
 # ------------------------------------------------------------------ the image the host runs
 
 
