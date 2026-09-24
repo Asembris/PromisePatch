@@ -265,6 +265,12 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
   needs** — the reseed's four live in `env/migrate.env` while provisioning and the channel live in
   `env/api.env`, so the run needed them supplied on the host. That is a defect recorded unfixed.
   See [demo-world-restore.md](docs/demo-world-restore.md).
+- **The deployed RC has run the real customer loop once, end to end** (2026-09-24): restore, plan
+  confirmation, one Telegram delivery, a real web `APPROVE`, ten revalidation checks, `EXT-B` v1 → v2,
+  case `RESOLVED`, `HUMAN_APPROVAL` throughout. **It found a P1, recorded and not fixed**: the
+  approval-link token, whose payload base64-encodes the customer's chat id, is logged verbatim by the
+  `api` and `caddy` access logs, which ship to CloudWatch. A plaintext address scan cannot see it. See
+  [phase7-deployed-behavioral-proof.md](docs/phase7-deployed-behavioral-proof.md).
 
 `new_roadmap.md` is the authority on what is open and what each gate requires. Read it before
 deciding what to build. Do not restate its contents here.
@@ -433,6 +439,7 @@ read the source document rather than a paraphrase of it.
 | Customer copy and address disclosure (both closed, deployed) | [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md) |
 | Phase 7 local release-candidate gate (closed locally) | [phase7-local-rc-correctness.md](docs/phase7-local-rc-correctness.md), [phase7-local-rc-final.md](docs/phase7-local-rc-final.md) |
 | Phase 7 RC deployment (`abbbd11006f7` deployed, demo world restored once, not pushed) | [phase7-rc-deployment.md](docs/phase7-rc-deployment.md) |
+| Phase 7 deployed behavioural proof (real loop closed on `abbbd11006f7`; one P1 recorded unfixed) | [phase7-deployed-behavioral-proof.md](docs/phase7-deployed-behavioral-proof.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
