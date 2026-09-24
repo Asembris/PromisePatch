@@ -90,7 +90,11 @@ rehearsals has been run, and an open G8 does not reopen Phase 7. See
 [phase7-closeout.md](docs/phase7-closeout.md). **The five-run rehearsal protocol is predeclared**
 and both rehearsal concerns — the restore env union and the worker-start world roll — were
 reproduced against the RC and classified **not blockers**; no code change is needed before
-rehearsal #1. See [g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md).
+rehearsal #1. See [g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md). **Rehearsal
+R1 PASSED** (2026-09-24, 1 of 5 on `4529a802e34e`): worker restarted while waiting for the
+customer, then a real APPROVE applied exactly once on the new instance. The frozen evidence reader
+(sha256 `c9731c8f…`) is embedded in [g8-rehearsal-r1.md](docs/g8-rehearsal-r1.md); R2–R5 must use
+those bytes.
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -458,6 +462,7 @@ read the source document rather than a paraphrase of it.
 | Phase 7 approval-log privacy repair (P1 closed, `4529a802e34e` deployed, loop re-proved) | [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) |
 | Phase 7 closeout (closed; RC frozen at `4529a802e34e`; no known P0/P1; G8 open) | [phase7-closeout.md](docs/phase7-closeout.md) |
 | G8 rehearsal protocol and preparation (protocol predeclared; env union and start-up roll not blockers) | [g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md) |
+| G8 rehearsal R1 (PASS; restart while waiting for consent; frozen reader embedded) | [g8-rehearsal-r1.md](docs/g8-rehearsal-r1.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
