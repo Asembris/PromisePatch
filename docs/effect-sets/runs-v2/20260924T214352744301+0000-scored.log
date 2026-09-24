@@ -1,0 +1,27 @@
+................                                                         [100%]Running teardown with pytest sessionfinish...
+
+
+manifest      promisepatch-effect-sets v2.0.0
+manifest_sha  77286e77a2919244118a7c39ace7632290ecca50eacf4318e45a4a72606cb0dd
+runner        1.1.0
+kind          scored
+
+  S01  PASS
+  S02  PASS
+  S03  PASS
+  S04  PASS
+  S05  PASS
+  S06  PASS
+  S07  PASS
+  S08  PASS
+  S09  PASS
+  S10  PASS
+  S11  PASS
+  S12  PASS
+  S13  PASS
+  S14  PASS
+  S15  PASS
+  S16  PASS
+
+capture       D:\PromisePatch\docs\effect-sets\runs-v2\20260924T214352744301+0000-scored.json
+exit 0

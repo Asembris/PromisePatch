@@ -1,0 +1,146 @@
+{
+  "command": [
+    "scripts/run_effect_sets.py",
+    "--scored",
+    "--manifest",
+    "v2"
+  ],
+  "environment": {
+    "aws_credentials_configured": false,
+    "model_provider_configured": true,
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.0",
+    "transport_fixtures": "The customer channel and the external order system are local fixtures driven in process. Local replay is not proof of live delivery."
+  },
+  "finished_at": "2026-09-24T21:46:20.273520+00:00",
+  "implementation_sha": "ec76050389e56cd205bdc8dd6d23e3938dc20d7f",
+  "kind": "scored",
+  "manifest": "promisepatch-effect-sets",
+  "manifest_sha": "77286e77a2919244118a7c39ace7632290ecca50eacf4318e45a4a72606cb0dd",
+  "manifest_version": "2.0.0",
+  "outcomes": [
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S01"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S02"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S03"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S04"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S05"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S06"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S07"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S08"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S09"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S10"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S11"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S12"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S13"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S14"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S15"
+    },
+    {
+      "diffs": [],
+      "outcome": "PASS",
+      "reason": "",
+      "scenario": "S16"
+    }
+  ],
+  "protocol": "docs/effect-set-run-protocol.md",
+  "runner_version": "1.1.0",
+  "score": {
+    "of": 16,
+    "passed": 16
+  },
+  "started_at": "2026-09-24T21:43:52.744301+00:00",
+  "unwired": [],
+  "wired": [
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10",
+    "S11",
+    "S12",
+    "S13",
+    "S14",
+    "S15",
+    "S16"
+  ],
+  "working_tree_dirty": true
+}
