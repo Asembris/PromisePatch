@@ -10,14 +10,24 @@ makes an edit to the manifest fail the suite rather than quietly move the target
 This module reads. It never classifies, never imports the engine or the backend, and holds no
 opinion about whether a label is right -- exactly like `scripts/verify_effect_set_manifest.py`,
 and for the same reason.
+
+**Which frozen document is read is chosen once, by the runner, and defaults to v1.** Two exist:
+`scenarios.v1.json`, the original that scored the immutable 11/16, and `scenarios.v2.json`, its
+separately versioned label correction (`docs/effect-set-manifest-v2.md`). The runner names its
+choice in ``PP_EFFECT_SET_MANIFEST`` for the pytest process it starts; with nothing named, every
+reader here and every identity assertion is v1's exactly as before. Each document is asserted
+against its own published hash, so neither can stand in for the other.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Final
+
+from scripts.run_effect_sets import MANIFEST_VARIABLE
 
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[3]
 MANIFEST_PATH: Final = REPOSITORY_ROOT / "docs" / "effect-sets" / "scenarios.v1.json"
@@ -25,14 +35,37 @@ MANIFEST_PATH: Final = REPOSITORY_ROOT / "docs" / "effect-sets" / "scenarios.v1.
 PUBLISHED_SHA: Final = "d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc"
 """The identity published in `docs/effect-set-manifest.md` and frozen at commit 9a7f4a8."""
 
+MANIFEST_V2_PATH: Final = REPOSITORY_ROOT / "docs" / "effect-sets" / "scenarios.v2.json"
+
+PUBLISHED_V2_SHA: Final = "77286e77a2919244118a7c39ace7632290ecca50eacf4318e45a4a72606cb0dd"
+"""The identity published in `docs/effect-set-manifest-v2.md`, the label correction of v1."""
+
+MANIFESTS: Final = {
+    "v1": (MANIFEST_PATH, PUBLISHED_SHA),
+    "v2": (MANIFEST_V2_PATH, PUBLISHED_V2_SHA),
+}
+
 PARTITIONS: Final = ("auto_repairable", "consent_required", "blocked", "untouched")
 
 Partition = dict[str, frozenset[str]]
 Effects = dict[tuple[str, str], int]
 
 
+def selected() -> str:
+    """The manifest this process judges against: the runner's choice, or v1 when none is named."""
+    choice = os.environ.get(MANIFEST_VARIABLE) or "v1"
+    if choice not in MANIFESTS:
+        raise ValueError(f"{MANIFEST_VARIABLE}={choice!r} names no manifest: {sorted(MANIFESTS)}")
+    return choice
+
+
+def published_sha() -> str:
+    """The published identity of the selected manifest."""
+    return MANIFESTS[selected()][1]
+
+
 def manifest() -> dict[str, Any]:
-    return dict(json.loads(MANIFEST_PATH.read_text(encoding="utf-8")))
+    return dict(json.loads(MANIFESTS[selected()][0].read_text(encoding="utf-8")))
 
 
 def identity(document: dict[str, Any] | None = None) -> str:

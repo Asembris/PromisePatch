@@ -13,9 +13,10 @@ partial credit, no tolerance, no "close enough" partition and no diff that is me
 A scenario is ``PASS`` when it produced no difference at all and a nonpass otherwise.
 
 **The expectation is read, never passed in.** :func:`judge` takes a scenario *identifier* and
-loads that scenario out of ``docs/effect-sets/scenarios.v1.json`` itself, after asserting the
-document's published identity. A caller therefore cannot hand it a hand-typed expectation, and a
-test that wanted to soften a label would have to edit the frozen manifest and break its hash.
+loads that scenario out of the selected frozen manifest itself (``scenarios.v1.json`` unless the
+runner named its v2 correction), after asserting that document's own published identity. A
+caller therefore cannot hand it a hand-typed expectation, and a test that wanted to soften a
+label would have to edit the frozen manifest and break its hash.
 
 **It observes nothing.** Everything it judges arrives as an :class:`Observation` the caller read
 off the real system. This module imports no engine, no backend, no database and no fixture, so
@@ -33,13 +34,13 @@ from typing import Any, Final
 
 from _effect_sets import (
     PARTITIONS,
-    PUBLISHED_SHA,
     Effects,
     Partition,
     checkpoint_names,
     cumulative_effects_at,
     identity,
     partition_at,
+    published_sha,
     scenario,
 )
 from scripts.run_effect_sets import FAIL, HARNESS_FAILURE, PASS, SINK_VARIABLE
@@ -160,7 +161,9 @@ def judge(scenario_id: str, observed: Mapping[str, Observation]) -> Verdict:
     apart. An observation of a checkpoint the manifest does not declare is the same fault from
     the other side -- the harness watched something this scenario makes no claim about.
     """
-    assert identity() == PUBLISHED_SHA, "the frozen manifest is not the document that was published"
+    assert identity() == published_sha(), (
+        "the frozen manifest is not the document that was published"
+    )
 
     document = scenario(scenario_id)
     declared = checkpoint_names(document)

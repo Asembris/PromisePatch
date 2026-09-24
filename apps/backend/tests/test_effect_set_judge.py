@@ -27,13 +27,16 @@ from _effect_set_judge import (
     record,
 )
 from _effect_sets import (
+    PUBLISHED_SHA,
+    PUBLISHED_V2_SHA,
     Effects,
     checkpoint_names,
     cumulative_effects_at,
     partition_at,
+    published_sha,
     scenario,
 )
-from scripts.run_effect_sets import FAIL, HARNESS_FAILURE, PASS, SINK_VARIABLE
+from scripts.run_effect_sets import FAIL, HARNESS_FAILURE, MANIFEST_VARIABLE, PASS, SINK_VARIABLE
 
 CANONICAL = "S01"
 """A scenario with all four partitions populated and every effect kind in play."""
@@ -279,3 +282,36 @@ def test_a_failing_verdict_raises_with_every_difference_in_the_message() -> None
 
 def test_a_passing_verdict_raises_nothing() -> None:
     assert_passes(Verdict(scenario=CANONICAL, outcome=PASS))
+
+
+# ------------------------------------------------------------ which frozen manifest is judged
+
+
+def test_one_observation_is_judged_against_whichever_manifest_the_runner_named(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ahmed escalated without a hold: a FAIL under v1's R1 and a PASS under v2's.
+
+    The observation is built from v2's own labels, so what is under test is only that the
+    selection reaches the judge and that each manifest is asserted against its own identity.
+    """
+    monkeypatch.setenv(MANIFEST_VARIABLE, "v2")
+    assert published_sha() == PUBLISHED_V2_SHA
+    unheld = exactly("S12")
+    assert judge("S12", unheld).outcome == PASS
+
+    monkeypatch.delenv(MANIFEST_VARIABLE)
+    assert published_sha() == PUBLISHED_SHA
+    verdict = judge("S12", unheld)
+    assert verdict.outcome == FAIL
+    assert {(diff.checkpoint, diff.subject) for diff in verdict.diffs} == {
+        ("CONFIRMED", "ord-e/task_hold"),
+        ("CONSENT_SETTLED", "ord-e/task_hold"),
+        ("SETTLED", "ord-e/task_hold"),
+    }
+
+
+def test_a_manifest_nobody_published_is_refused_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(MANIFEST_VARIABLE, "v3")
+    with pytest.raises(ValueError, match="names no manifest"):
+        judge("S12", {})

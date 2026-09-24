@@ -28,20 +28,27 @@ from typing import Any
 
 import pytest
 from scripts.run_effect_sets import (
+    CAPTURE_DIRECTORY,
+    CAPTURE_V2_DIRECTORY,
+    CAPTURES,
     FAIL,
     HARNESS_FAILURE,
+    MANIFEST_VARIABLE,
     PASS,
+    PUBLISHED,
     PUBLISHED_SHA,
+    PUBLISHED_V2_SHA,
     RUNNER_VERSION,
     WIRED,
     Outcome,
     capture,
+    execute,
     main,
     read_sink,
     reconcile,
     write_capture,
 )
-from scripts.verify_effect_set_manifest import Manifest, load
+from scripts.verify_effect_set_manifest import MANIFEST_PATHS, Manifest, load
 
 EXPECTED_SCENARIOS = 16
 
@@ -288,3 +295,71 @@ def test_a_capture_is_written_as_one_json_file_named_for_its_kind(
     assert path.parent == tmp_path
     assert path.name.endswith("-development.json")
     assert json.loads(path.read_text(encoding="utf-8"))["manifest_sha"] == PUBLISHED_SHA
+
+
+# ---------------------------------------------------------- v2: the separately versioned correction
+
+
+def test_the_corrected_manifest_is_pinned_and_is_not_the_original() -> None:
+    corrected = load(MANIFEST_PATHS["v2"])
+    assert corrected.content_hash == PUBLISHED_V2_SHA
+    assert corrected.version == "2.0.0"
+
+
+def test_the_runner_judges_v1_unless_told_otherwise() -> None:
+    """The default is the original, so CI's expected-red job and every old command are unchanged."""
+    assert PUBLISHED["v1"] == PUBLISHED_SHA
+    assert CAPTURES["v1"] == CAPTURE_DIRECTORY
+    assert CAPTURES["v2"] == CAPTURE_V2_DIRECTORY
+    assert CAPTURE_V2_DIRECTORY != CAPTURE_DIRECTORY
+
+
+def test_the_child_judges_the_manifest_the_run_names_and_never_an_inherited_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: list[dict[str, str]] = []
+
+    def record_environment(*args: Any, **kwargs: Any) -> Any:
+        seen.append(dict(kwargs["env"]))
+        return type("Completed", (), {"returncode": 0})()
+
+    monkeypatch.setattr("scripts.run_effect_sets.subprocess.run", record_environment)
+    monkeypatch.setenv(MANIFEST_VARIABLE, "v2")
+
+    execute(tmp_path / "sink.jsonl")
+    execute(tmp_path / "sink.jsonl", choice="v2")
+
+    assert [environment[MANIFEST_VARIABLE] for environment in seen] == ["v1", "v2"]
+
+
+def test_the_check_mode_verifies_the_corrected_manifest_against_its_own_pin(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["--manifest", "v2", "--check"]) == 0
+
+    printed = capsys.readouterr().out
+    assert PUBLISHED_V2_SHA in printed
+    assert "v2.0.0" in printed
+    assert PUBLISHED_SHA not in printed
+
+
+def test_a_corrected_run_captures_its_own_manifest_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    choices: list[str] = []
+
+    def pretend_to_run(sink: Path, *, choice: str = "v1", **kwargs: Any) -> int:
+        choices.append(choice)
+        return 0
+
+    monkeypatch.setattr("scripts.run_effect_sets.execute", pretend_to_run)
+
+    main(["--manifest", "v2", "--capture-directory", str(tmp_path)])
+
+    assert choices == ["v2"]
+    (path,) = tmp_path.iterdir()
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["manifest_sha"] == PUBLISHED_V2_SHA
+    assert document["manifest_version"] == "2.0.0"
+    assert document["runner_version"] == RUNNER_VERSION
+    assert document["kind"] == "development"

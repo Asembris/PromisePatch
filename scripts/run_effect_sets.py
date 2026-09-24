@@ -30,6 +30,11 @@ Check the clone, with no database and no container::
 Run the wired scenarios against the local stack::
 
     uv run python scripts/with_local_env.py -- uv run python scripts/run_effect_sets.py
+
+Two frozen manifests exist and ``--manifest`` chooses between them; it defaults to ``v1``, the
+original whose first scored run is the immutable 11/16 headline. ``v2`` is its separately
+versioned label correction (``docs/effect-set-manifest-v2.md``), scored only as G8's release
+condition and captured under ``docs/effect-sets/runs-v2/`` so its record never sits among v1's.
 """
 
 from __future__ import annotations
@@ -56,13 +61,28 @@ ROOT: Final = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.verify_effect_set_manifest import Manifest, load, problems  # noqa: E402
+from scripts.verify_effect_set_manifest import (  # noqa: E402
+    MANIFEST_PATHS,
+    Manifest,
+    load,
+    problems,
+)
 
-RUNNER_VERSION: Final = "1.0.0"
-"""Bumped whenever the harness changes how it observes or judges. Recorded in every capture."""
+RUNNER_VERSION: Final = "1.1.0"
+"""Bumped whenever the harness changes how it observes or judges. Recorded in every capture.
+
+``1.1.0`` adds the choice of manifest. Observation and the pass rule are unchanged from ``1.0.0``;
+what moved is which frozen document the expectations are read from.
+"""
 
 PUBLISHED_SHA: Final = "d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc"
 """The identity published in `docs/effect-set-manifest.md` and frozen at commit 9a7f4a8."""
+
+PUBLISHED_V2_SHA: Final = "77286e77a2919244118a7c39ace7632290ecca50eacf4318e45a4a72606cb0dd"
+"""The identity published in `docs/effect-set-manifest-v2.md`, the label correction of v1."""
+
+MANIFEST_VARIABLE: Final = "PP_EFFECT_SET_MANIFEST"
+"""Names the runner's manifest choice to the pytest process, which judges against nothing else."""
 
 WIRED: Final[tuple[str, ...]] = (
     "S01",
@@ -99,6 +119,11 @@ SINK_VARIABLE: Final = "PP_EFFECT_SET_SINK"
 """The file each scenario appends its verdict to, as one JSON object per line."""
 
 CAPTURE_DIRECTORY: Final = ROOT / "docs" / "effect-sets" / "runs"
+
+CAPTURE_V2_DIRECTORY: Final = ROOT / "docs" / "effect-sets" / "runs-v2"
+
+PUBLISHED: Final = {"v1": PUBLISHED_SHA, "v2": PUBLISHED_V2_SHA}
+CAPTURES: Final = {"v1": CAPTURE_DIRECTORY, "v2": CAPTURE_V2_DIRECTORY}
 
 PROTOCOL: Final = "docs/effect-set-run-protocol.md"
 
@@ -297,13 +322,21 @@ def write_capture(document: dict[str, Any], *, directory: Path) -> Path:
 # -------------------------------------------------------------------------------- the run
 
 
-def execute(sink: Path, *, selection: Sequence[str] = ()) -> int:
-    """Run the scenario suite with a sink to report into, and hand back pytest's own code."""
+def execute(sink: Path, *, choice: str = "v1", selection: Sequence[str] = ()) -> int:
+    """Run the scenario suite with a sink to report into, and hand back pytest's own code.
+
+    The manifest choice is always written into the child's environment, overriding anything it
+    would have inherited, so the document the suite judges against is the one this run names in
+    its capture and never one an ambient variable chose.
+    """
     command = [sys.executable, "-m", "pytest", SCENARIO_SUITE, "-q"]
     if selection:
         command += ["-k", " or ".join(selection)]
     completed = subprocess.run(
-        command, cwd=ROOT, env={**os.environ, SINK_VARIABLE: str(sink)}, check=False
+        command,
+        cwd=ROOT,
+        env={**os.environ, SINK_VARIABLE: str(sink), MANIFEST_VARIABLE: choice},
+        check=False,
     )
     return completed.returncode
 
@@ -329,14 +362,14 @@ def render(manifest: Manifest, outcomes: Sequence[Outcome], *, kind: str) -> Non
         )
 
 
-def check(manifest: Manifest) -> int:
+def check(manifest: Manifest, *, published: str = PUBLISHED_SHA) -> int:
     """The clean-clone step: identity, coherence and wiring, with nothing else running."""
     print(f"manifest      {manifest.name} v{manifest.version}")
     print(f"manifest_sha  {manifest.content_hash}")
-    print(f"published     {PUBLISHED_SHA}")
+    print(f"published     {published}")
     print(f"runner        {RUNNER_VERSION}")
 
-    if manifest.content_hash != PUBLISHED_SHA:
+    if manifest.content_hash != published:
         print("\nREFUSED: this is not the document whose hash was published.")
         return 1
     found = problems(manifest)
@@ -371,23 +404,37 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--manifest",
+        choices=tuple(PUBLISHED),
+        default="v1",
+        help=(
+            "Which frozen manifest to judge against. v1 is the original; v2 is its separately "
+            "versioned label correction, scored only as G8's release condition."
+        ),
+    )
+    parser.add_argument(
         "--capture-directory",
         type=Path,
-        default=CAPTURE_DIRECTORY,
-        help="Where the run's immutable capture is written.",
+        default=None,
+        help=(
+            "Where the run's immutable capture is written. Defaults to docs/effect-sets/runs "
+            "for v1 and docs/effect-sets/runs-v2 for v2."
+        ),
     )
     args = parser.parse_args(argv)
 
-    manifest = load()
+    choice: str = args.manifest
+    published = PUBLISHED[choice]
+    manifest = load(MANIFEST_PATHS[choice])
 
-    if manifest.content_hash != PUBLISHED_SHA:
+    if manifest.content_hash != published:
         print("REFUSED: the manifest is not the document whose hash was published.")
-        print(f"  published  {PUBLISHED_SHA}")
+        print(f"  published  {published}")
         print(f"  on disk    {manifest.content_hash}")
         return 1
 
     if args.check:
-        return check(manifest)
+        return check(manifest, published=published)
 
     unwired = [str(s["id"]) for s in manifest.scenarios if s["id"] not in WIRED]
     if args.scored and unwired:
@@ -405,7 +452,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with tempfile.TemporaryDirectory() as workspace:
         sink = Path(workspace) / "verdicts.jsonl"
-        execute(sink)
+        execute(sink, choice=choice)
         reported = read_sink(sink)
 
     finished_at = datetime.now(UTC)
@@ -418,7 +465,7 @@ def main(argv: list[str] | None = None) -> int:
         finished_at=finished_at,
         outcomes=outcomes,
     )
-    path = write_capture(document, directory=args.capture_directory)
+    path = write_capture(document, directory=args.capture_directory or CAPTURES[choice])
 
     render(manifest, outcomes, kind=kind)
     print(f"\ncapture       {path}")
