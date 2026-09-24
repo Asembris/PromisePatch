@@ -25,6 +25,11 @@
  * the page says so in those terms. The decision is a row written under the case lock, past the
  * sender check and the deadline check, and this screen reports it only once it exists.
  *
+ * **It never says nothing happened when it cannot know.** A read or an answer that fails in
+ * transit proves nothing about the order or about the answer: the server commits an answer
+ * before it replies, so a lost reply can follow a kept answer. After a failed answer the page
+ * reads the same request again and reports that reading; until it arrives, it claims nothing.
+ *
  * On colour: the choice is drawn in the `ask` channel — the authority tone that means *the
  * customer decides* — and never in `brand`. `brand` is the colour a worker presses to confirm a
  * plan, and the visual system keeps customer consent and worker confirmation off one another's
@@ -116,7 +121,7 @@ export function CustomerApproval({ token }: { token: string }): ReactNode {
           <p className="text-sm text-muted">
             {unknownLink
               ? 'If you were expecting a question about an order, please contact the bakery.'
-              : 'Nothing about your order has changed; this page simply cannot read it. Try again in a moment.'}
+              : 'This page could not read your order just now, so it cannot say what is recorded. Try again in a moment.'}
           </p>
         </div>
       </Shell>
@@ -144,7 +149,8 @@ export function CustomerApproval({ token }: { token: string }): ReactNode {
               answer.mutate(choice)
             }}
             pending={answer.isPending}
-            failed={answer.isError}
+            uncertain={answer.isError}
+            checking={answer.isError && reading.isFetching}
           />
         ) : (
           <Settled view={view} />
@@ -240,18 +246,26 @@ function Line({
  * Below them, whose decision this is. The change is made only on their yes — that is the whole
  * of the consent protocol, and a page asking for a decision should say so rather than leave it
  * to be inferred from the heading.
+ *
+ * After an answer that failed in transit, whether it was kept is unknown, and the page says
+ * exactly that. The buttons stay disabled while the request is read again; if that reading
+ * still shows the question open, they come back, because a second answer is harmless: the
+ * server keeps one answer per link and a second press — of either button — writes nothing.
  */
 function Choice({
   answerBy,
   onAnswer,
   pending,
-  failed,
+  uncertain,
+  checking,
 }: {
   answerBy: string | null
   onAnswer: (choice: 'APPROVE' | 'DECLINE') => void
   pending: boolean
-  failed: boolean
+  uncertain: boolean
+  checking: boolean
 }): ReactNode {
+  const disabled = pending || checking
   return (
     <section className="space-y-3">
       {answerBy === null ? null : (
@@ -262,7 +276,7 @@ function Choice({
       <div className="flex flex-col gap-3">
         <button
           type="button"
-          disabled={pending}
+          disabled={disabled}
           onClick={() => {
             onAnswer('APPROVE')
           }}
@@ -272,7 +286,7 @@ function Choice({
         </button>
         <button
           type="button"
-          disabled={pending}
+          disabled={disabled}
           onClick={() => {
             onAnswer('DECLINE')
           }}
@@ -286,11 +300,17 @@ function Choice({
         We make this change only if you approve it. If you decline, the bakery will follow up
         with you.
       </p>
-      {failed ? (
-        <p className="text-sm text-owner" role="alert">
-          That did not reach the bakery. Nothing was recorded — please try again.
+      {!uncertain ? null : checking ? (
+        <p className="text-sm text-owner" role="status">
+          We could not confirm that your answer reached the bakery. Checking what is recorded…
         </p>
-      ) : null}
+      ) : (
+        <p className="text-sm text-owner" role="alert">
+          We could not confirm that your answer reached the bakery. The question still shows as
+          open, so you can answer again. If your first answer did arrive, it stands, and a second
+          one changes nothing.
+        </p>
+      )}
     </section>
   )
 }

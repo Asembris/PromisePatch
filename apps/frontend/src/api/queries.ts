@@ -527,6 +527,11 @@ export function useCustomerApproval(
  * the answer the server returns *is* the reading taken after the write committed. There is no
  * optimistic update here and there must not be: the one thing this page may never do is show a
  * decision before the protocol has written one.
+ *
+ * A failure is not a refusal. The server commits the answer *before* it builds the response, so
+ * a response that never arrived -- a dropped connection, a proxy that gave up, a 5xx raised after
+ * the commit -- can follow an answer that is already kept. The page therefore does not decide
+ * what a failure meant: it reads the same request again, and says what that reading says.
  */
 export function useAnswerCustomerApproval(
   token: string | null,
@@ -537,5 +542,6 @@ export function useAnswerCustomerApproval(
     onSuccess: (reading) => {
       client.setQueryData(customerApprovalKey(token ?? ''), reading)
     },
+    onError: () => client.invalidateQueries({ queryKey: customerApprovalKey(token ?? '') }),
   })
 }

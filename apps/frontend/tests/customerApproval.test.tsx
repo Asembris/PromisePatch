@@ -368,19 +368,55 @@ describe('answering', () => {
     expect(document.body.textContent).not.toMatch(/as (originally )?ordered|as first agreed/i)
   })
 
-  it('says nothing was recorded when the answer did not reach the bakery', async () => {
-    arriving({
+  it('does not claim nothing was recorded when an answer fails in transit', async () => {
+    // A 503 can be raised after the answer committed, so it proves nothing about the answer.
+    // The page reads the same request again and reports that reading; here the reading still
+    // shows the question open, so the choice comes back -- with no claim about the first press.
+    const backend = arriving({
       [PATH]: (record) => (record.method === 'POST' ? apiError(503, 'UNAVAILABLE') : json(OPEN)),
+    })
+    renderApp()
+    await screen.findByText('We need your decision')
+    const readsBefore = backend.requests.filter(
+      (entry) => entry.url === PATH && entry.method === 'GET',
+    ).length
+
+    await userEvent.click(screen.getByRole('button', { name: 'Approve this change' }))
+
+    await screen.findByRole('alert')
+    expect(screen.getByRole('alert')).toHaveTextContent('could not confirm')
+    expect(document.body.textContent).not.toMatch(/nothing was recorded/i)
+    const readsAfter = backend.requests.filter(
+      (entry) => entry.url === PATH && entry.method === 'GET',
+    ).length
+    expect(readsAfter).toBeGreaterThan(readsBefore)
+    expect(screen.getByRole('button', { name: 'Approve this change' })).toBeEnabled()
+  })
+
+  it('reports a kept answer whose response was lost from a fresh reading of the request', async () => {
+    // The server commits the answer and then the connection drops. The page must not say the
+    // answer failed, and must not offer the question again: it reads the request, finds the
+    // answer kept, and says so.
+    let kept = false
+    const backend = arriving({
+      [PATH]: (record) => {
+        if (record.method === 'POST') {
+          kept = true
+          throw new TypeError('network error')
+        }
+        return json(kept ? { ...OPEN, phase: 'RECEIVED', answerable: false } : OPEN)
+      },
     })
     renderApp()
     await screen.findByText('We need your decision')
 
     await userEvent.click(screen.getByRole('button', { name: 'Approve this change' }))
 
-    await screen.findByRole('alert')
-    expect(screen.getByRole('alert')).toHaveTextContent('Nothing was recorded')
-    // Still answerable: a failed send left the question exactly where it was.
-    expect(screen.getByRole('button', { name: 'Approve this change' })).toBeInTheDocument()
+    await screen.findByText('Thank you — we have your answer')
+    expect(screen.queryByRole('button', { name: 'Approve this change' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Decline' })).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/nothing was recorded|did not reach/i)
+    expect(backend.requests.filter((entry) => entry.method === 'POST')).toHaveLength(1)
   })
 })
 
@@ -443,7 +479,9 @@ describe('a question that is not open', () => {
       },
       { timeout: 10_000 },
     )
-    expect(document.body.textContent).toMatch(/nothing about your order has changed/i)
+    // A failed read proves nothing about the order, so the page claims nothing about it.
+    expect(document.body.textContent).toMatch(/cannot say what is recorded/i)
+    expect(document.body.textContent).not.toMatch(/nothing about your order has changed/i)
   })
 })
 
