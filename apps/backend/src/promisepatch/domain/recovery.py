@@ -134,6 +134,8 @@ from promisepatch.domain.model import (
     EVENT_STEP_SKIPPED,
     AppendEvent,
     CaseChange,
+    DeliveryOutcome,
+    DeliveryStatus,
     Disposition,
     EmitEffect,
     StepOutcome,
@@ -1104,6 +1106,60 @@ async def _apply(
     )
 
 
+UNSENT_PAST_PRODUCTION_START: Final = "refused unsent at its first dispatch"
+"""How an amendment refused before any provider call says so on its outbox row (ADR-0026).
+
+The prefix of ``last_error`` on a row settled ``FAILED`` at one attempt with no provider reference.
+The row is where the failure continuation reads it from, because the continuation runs in a later
+transaction than the refusal and must end the track as the refusal meant, not as a provider
+failure: nothing was sent, so ``DOWNSTREAM_UNAVAILABLE`` would say something untrue.
+"""
+
+
+async def refuse_if_production_started(
+    database: RuntimeDatabase, *, kind: str, payload: Mapping[str, Any], attempts: int
+) -> DeliveryOutcome | None:
+    """Refuse an amendment's first dispatch if its production start has passed (ADR-0026).
+
+    ``APPLY_RECOVERY`` judged the start when it committed the effect. What stays provable after
+    that is narrower and lasts exactly as long: every claim commits its increment before any
+    provider call, so a claim at ``attempts == 1`` is the first and **no earlier call exists**.
+    That is the last instant at which "nothing has been sent" is known, so it is where check 6's
+    time half is asked once more. A start that cannot be read fails closed, as it does at apply.
+
+    From the second claim on the answer is always ``None``: an earlier claim may have reached the
+    order system, and a refusal then could record "not changed" for an order that has changed.
+    Returns ``None`` for every effect that is not an order amendment.
+    """
+    if kind != EFFECT_ORDER_AMEND or attempts != 1:
+        return None
+    line = payload.get("order_line_id")
+    async with database.connect() as connection:
+        now = await database_now(connection)
+        start = None if line is None else await _scheduled_start(connection, str(line))
+    if start is not None and now < start:
+        return None
+    reason = (
+        "the production task's start is unknown"
+        if start is None
+        else f"production start {start.isoformat()} is not after {now.isoformat()}"
+    )
+    return DeliveryOutcome(
+        status=DeliveryStatus.TERMINAL, error=f"{UNSENT_PAST_PRODUCTION_START}: {reason}"
+    )
+
+
+def refused_unsent(effect: Any) -> bool:
+    """Whether an outbox row is an amendment :func:`refuse_if_production_started` stopped unsent."""
+    return (
+        effect is not None
+        and effect.state == "FAILED"
+        and effect.attempts == 1
+        and effect.provider_ref is None
+        and str(effect.last_error or "").startswith(UNSENT_PAST_PRODUCTION_START)
+    )
+
+
 def _amend_payload(*, track: Any, option: Any, order: Any) -> Mapping[str, Any]:
     """What the order system is being asked to do, and what to do here once it answers.
 
@@ -1344,7 +1400,9 @@ async def mark_stale(
     the same transaction, so it leaves the track in a state something is already coming to carry
     off again. These callers are the confirmation-driven ones, where no such successor exists
     and where deriving one would replace a plan a worker confirmed with a plan nobody has seen,
-    applied on a confirmation given for a different one.
+    applied on a confirmation given for a different one -- and the first dispatch of an amendment
+    that found its production start already passed and sent nothing (ADR-0026), for which a fresh
+    plan would spend the customer's yes on something they were never asked about.
 
     Leaving the track ``STALE`` regardless is what this used to do, and ``STALE`` is not
     terminal: the case could not reconcile, could not resolve, and no timer, step or sweep could
@@ -1672,6 +1730,20 @@ async def _abandon(
         return skipped(STEP_ABANDON_RECOVERY, {"track_state": track.state})
 
     key = await _applied_key(connection, track)
+    effect = await _effect_for(connection, key)
+    if refused_unsent(effect):
+        # Never sent: its first claim found the production start already passed (ADR-0026). The
+        # order system was never asked, so this ends as a refusal at apply would -- the owner
+        # decides, the scheduled work is held -- and not as the order system's failure.
+        return await mark_stale(
+            connection,
+            case=case,
+            track=track,
+            now=now,
+            worker=worker,
+            step_key=step_key,
+            detail=str(effect.last_error),
+        )
     unit_of_work = UnitOfWork(connection)
     async with unit_of_work.governed(
         event_type=AUDIT_RECOVERY_ABANDONED,

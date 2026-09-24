@@ -24,9 +24,10 @@ trip, and a provider that hangs would become a database problem. The claim commi
 is called with nothing held, and the result is recorded in a third, fenced transaction.
 
 Between the claim and the call sits exactly one question about what an effect *means*: may this
-still be sent at all. It is asked because one effect genuinely expires -- an approval request may
-not be delivered after the window in which the customer could have answered it has closed -- and
-the answer is recorded as a terminal failure, so the row's own continuation decides what that
+still be sent at all. It is asked because two effects genuinely expire -- an approval request may
+not be delivered after the window in which the customer could have answered it has closed, and an
+order amendment may not reach the order system for the first time after its production start --
+and the answer is recorded as a terminal failure, so the row's own continuation decides what that
 means. The dispatcher stays ignorant of everything else, which is what keeps it a dispatcher.
 """
 
@@ -391,17 +392,28 @@ async def _still_worth_sending(
     """Whether this claimed effect may be delivered at all, or must be refused unsent.
 
     The dispatcher's one concession to what an effect *means*, and it is narrow on purpose: the
-    only question it asks is "may this still be sent", never "what should happen next". It exists
-    because one effect really does expire -- an approval request may not be delivered after the
-    window in which the customer could have answered it has closed (§13.6) -- and a generic
-    outbox cannot know that on its own.
+    only question it asks is "may this still be sent", never "what should happen next". Two
+    effects have such a rule, and a generic outbox cannot know either on its own:
 
-    Deferred import, because the consent protocol enqueues the effects this module delivers.
-    Returns ``None`` for every effect that has no such rule, which is all of them but one.
+    * an approval request may not be delivered after the window in which the customer could have
+      answered it has closed (§13.6), on any claim;
+    * an order amendment may not reach the order system for the first time after its line's
+      production start (ADR-0026) -- on the **first** claim only, because ``claim.attempts == 1``
+      is the one proof that no earlier call exists. From the second claim on, an earlier attempt
+      may already have changed the order, and nothing here refuses it.
+
+    Deferred imports, because both modules enqueue the effects this module delivers. Returns
+    ``None`` for every effect that has no such rule.
     """
     from promisepatch.domain.approvals import refuse_if_window_closed
+    from promisepatch.domain.recovery import refuse_if_production_started
 
-    return await refuse_if_window_closed(
+    closed = await refuse_if_window_closed(
+        database, kind=claim.kind, payload=claim.payload, attempts=claim.attempts
+    )
+    if closed is not None:
+        return closed
+    return await refuse_if_production_started(
         database, kind=claim.kind, payload=claim.payload, attempts=claim.attempts
     )
 
