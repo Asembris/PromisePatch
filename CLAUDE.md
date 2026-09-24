@@ -96,7 +96,10 @@ customer, then a real APPROVE applied exactly once on the new instance. The froz
 (sha256 `c9731c8f…`) is embedded in [g8-rehearsal-r1.md](docs/g8-rehearsal-r1.md); R2–R5 must use
 those bytes. **Rehearsal R2 PASSED** (2026-09-24, 2 of 5): the plan was confirmed in `api` while
 the worker was stopped, and the queued work was dispatched once, at attempt 1, by the next
-instance. See [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md).
+instance. See [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md). **R3 is unrun, and its row was
+corrected before any spend**: the web answer only stores an inbox row, and the worker writes the
+decision. So while stopped, expect inbox 1 `RECEIVED`, decisions 0 and the request `SENT`. See
+[g8-rehearsal-preparation.md](docs/g8-rehearsal-preparation.md) §10.
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).

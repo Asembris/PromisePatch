@@ -458,3 +458,85 @@ blocking:
 **Deployed rehearsal #1 (R1)** under section 3, with the owner authorising its restore, plan
 confirmation, one real approval message and its restart. First fix the evidence reader and record
 its sha256.
+
+## 10. Pre-run amendment to R3 (2026-09-24, before R3 was run)
+
+This section is a later truth recorded beside the predeclaration. Sections 1–9 above are left
+exactly as they were committed. **R3 had not been run when this was written.** It was authorised,
+and then, before any restore, confirmation or message, the session read the frozen RC's answer
+path and found that R3's row in §3.2 predicts something the RC does not do by design. The owner
+chose to correct the row first and run R3 in a later session. Nothing was spent: no restore, no
+plan confirmation, no message, no stop or start, no AWS call.
+
+### 10.1 What §3.2 says, and why it is wrong
+
+R3's "while down" column says the customer presses APPROVE while no worker runs and **"the
+decision is recorded"**. The code at `4529a802e34e` shows otherwise:
+
+- **`api` writes one row.** The signed-link answer (`answer_approval`,
+  `apps/backend/src/promisepatch/api/routers/customer.py`) writes one row in a transaction of its
+  own and commits it before responding. The row is an `inbox_events` row with source
+  `customer-reply`, state `RECEIVED` and `provider_event_id` equal to
+  `approvals.link_message_id(request, channel)`. That is all it writes. A second press proposes
+  the same id and writes nothing (`on_conflict_do_nothing`). The module's own contract says it
+  "does not run the worker" and never reports a decision it has not seen.
+- **The worker writes the rest.** Everything else is written by the worker:
+  - `inbox.process_one` (`worker.py`) binds the row to its case and enqueues
+    `RECEIVE_CUSTOMER_REPLY`;
+  - that step, under the case → track → request locks, checks the sender and that the request is
+    still open;
+  - it checks the deadline against the database clock **at processing time**;
+  - only then does it write the `inbound_replies` row, the one `approval_decisions` row, the
+    request `SENT` → `ANSWERED`, and audit `APPROVAL_DECISION_RECORDED` `HUMAN_APPROVAL` by
+    `CUSTOMER cus-tomas`.
+
+So with no worker running, no decision can exist. That is the consent protocol's single writer
+working as designed (§13–§14, ADR-0021, ADR-0025). A literal reading of the row would have made
+R3 a permanent FAIL whose cause was the predeclaration, not the product.
+
+### 10.2 R3's row, corrected
+
+Restore, plan confirmation and delivery are unchanged. So are `stop worker` and `start worker` by
+the documented mechanism, every other §3.1 item, and every checkpoint in the §3.1 table. Only
+R3's "while down" expectation, and what the start must then show, are replaced.
+
+**While no worker runs, after the owner's one press**, all of these must hold:
+
+- exactly one `inbox_events` row of source `customer-reply`, state `RECEIVED`, for this request's
+  link message id;
+- `inbound_replies` 0 and `approval_decisions` 0;
+- the request still `SENT`, `decided=false`, and the track still `WAITING_FOR_CUSTOMER`;
+- the case still `WAITING`;
+- no `APPROVAL_DECISION_RECORDED` row and no `REVALIDATION_CHECK` row;
+- no `RECOVERY_*` row and no new outbox row;
+- `EXT-B` still v1, in the mirror and in the order system;
+- `sendMessage` unchanged and `getUpdates` 0;
+- no re-anchor;
+- the unrelated digest equal to the `CONFIRMED` reading;
+- two read-only snapshots taken at least 60 s apart, equal except `db_now`.
+
+**After `start worker`, the new instance must:**
+
+1. take the inbox row once (`PROCESSED`);
+2. run `RECEIVE_CUSTOMER_REPLY` once;
+3. write one `inbound_replies` row and one `approval_decisions` row (`APPROVE`, `LITERAL`, sender
+   equal to the request's channel), move the request to `ANSWERED` and write
+   `APPROVAL_DECISION_RECORDED` `HUMAN_APPROVAL`;
+4. then run the §3.1 `CONSENT_SETTLED` and `SETTLED` checkpoints exactly as written, with every
+   row after the start carrying the new instance id.
+
+The `CONSENT_SETTLED` checkpoint is therefore judged after the start rather than while down. None
+of its requirements is removed or loosened.
+
+**Timing.** The deadline is judged when the worker processes the reply, not when the owner
+presses. The worker must therefore be started well inside the approval window, which closes at
+anchor + 5 h. §3.1's finish before `22:00Z` already guarantees that.
+
+### 10.3 What this amendment does not do
+
+- **No other rehearsal changes.** It changes no criterion for R1, R2, R4 or R5, and no §3.1
+  checkpoint, exactly-once, untouched, privacy or restart item.
+- **No product code changes.** It changes no code, test or deployment file, and the RC stays
+  `4529a802e34e`.
+- **R3 has not run.** It runs in a later session against §10.2, with the owner's fresh
+  authorisation and the frozen reader `c9731c8f…`.
