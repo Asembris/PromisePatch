@@ -103,7 +103,10 @@ apart were identical. After the restart, the new instance consumed it exactly on
 `RESOLVED`. See [g8-rehearsal-r3.md](docs/g8-rehearsal-r3.md). **Rehearsal R4 PASSED**
 (2026-09-24, 4 of 5): the worker was restarted after the case was `RESOLVED`, and the restart wrote
 nothing — `PRESENT`, `rolled: false`, and the stability record byte-identical before and in two
-snapshots 69 s apart. See [g8-rehearsal-r4.md](docs/g8-rehearsal-r4.md). R5 is unrun.
+snapshots 69 s apart. See [g8-rehearsal-r4.md](docs/g8-rehearsal-r4.md). **Rehearsal R5 PASSED**
+(2026-09-24, 5 of 5): R1's restart while waiting for the customer, repeated, matched R1 on every
+semantic invariant. **All five rehearsals have passed; G8 stays open on its other items.** See
+[g8-rehearsal-r5.md](docs/g8-rehearsal-r5.md).
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -475,6 +478,7 @@ read the source document rather than a paraphrase of it.
 | G8 rehearsal R2 (PASS; plan confirmed while the worker was stopped) | [g8-rehearsal-r2.md](docs/g8-rehearsal-r2.md) |
 | G8 rehearsal R3 (PASS; customer answered while the worker was stopped) | [g8-rehearsal-r3.md](docs/g8-rehearsal-r3.md) |
 | G8 rehearsal R4 (PASS; worker restarted after RESOLVED, wrote nothing) | [g8-rehearsal-r4.md](docs/g8-rehearsal-r4.md) |
+| G8 rehearsal R5 (PASS; R1 repeated, reproduced on every semantic invariant) | [g8-rehearsal-r5.md](docs/g8-rehearsal-r5.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
 | Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | Order system | [order-system.md](docs/order-system.md) |
