@@ -1022,6 +1022,25 @@ async def _apply(
             detail=f"fingerprint {planned} -> {current}",
         )
 
+    # Check 6's other half, which no fingerprint can hold: the rows say when the work starts,
+    # only the clock says whether that is still ahead. This transaction is the last instant at
+    # which nothing has been sent, so it is where the answer must still be yes (ADR-0024).
+    start = await _scheduled_start(connection, option.order_line_id)
+    if start is None or now >= start:
+        return await mark_stale(
+            connection,
+            case=case,
+            track=track,
+            now=now,
+            worker=worker,
+            step_key=step_key,
+            detail=(
+                "the production task's start is unknown"
+                if start is None
+                else f"production start {start.isoformat()} is not after {now.isoformat()}"
+            ),
+        )
+
     order = await _order_of(connection, track.promise_id)
     key = amend_idempotency_key(
         track_id=track.id, option_id=option.id, order_version=order.external_version
@@ -1843,6 +1862,14 @@ async def current_fingerprint(
         [(row.entity_type, row.entity_id) for row in rows], promise_id=track.promise_id
     )
     return fingerprint(snapshot or await fresh_snapshot(connection), scope).hash
+
+
+async def _scheduled_start(connection: AsyncConnection, order_line_id: str) -> datetime | None:
+    """When the production task for one order line is due to begin, or ``None`` if unknown."""
+    start: datetime | None = await connection.scalar(
+        select(ProductionTask.scheduled_start).where(ProductionTask.order_line_id == order_line_id)
+    )
+    return start
 
 
 async def _order_of(connection: AsyncConnection, promise_id: str) -> Any:
