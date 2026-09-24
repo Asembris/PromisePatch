@@ -85,8 +85,8 @@ comprehension check, declined by the project owner. **G8 is the open gate.**
 
 **Phase 7 is CLOSED** (2026-09-24). The release candidate is frozen at deployed code SHA
 **`4529a802e34e`**, audited read-only at repo HEAD `da7ceca`, with `pr` green on that code and
-**no known Phase 7 P0 or P1**. **G8 remains open, separately**: none of its five deployed
-rehearsals has been run, and an open G8 does not reopen Phase 7. See
+**no known Phase 7 P0 or P1**. **G8 remains open, separately**: its five deployed rehearsals
+have now been run (below), and an open G8 does not reopen Phase 7. See
 [phase7-closeout.md](docs/phase7-closeout.md). **The five-run rehearsal protocol is predeclared**
 and both rehearsal concerns — the restore env union and the worker-start world roll — were
 reproduced against the RC and classified **not blockers**; no code change is needed before
@@ -106,7 +106,10 @@ nothing — `PRESENT`, `rolled: false`, and the stability record byte-identical 
 snapshots 69 s apart. See [g8-rehearsal-r4.md](docs/g8-rehearsal-r4.md). **Rehearsal R5 PASSED**
 (2026-09-24, 5 of 5): R1's restart while waiting for the customer, repeated, matched R1 on every
 semantic invariant. **All five rehearsals have passed; G8 stays open on its other items.** See
-[g8-rehearsal-r5.md](docs/g8-rehearsal-r5.md).
+[g8-rehearsal-r5.md](docs/g8-rehearsal-r5.md). **The remaining gaps are audited** against the
+roadmap's literal G8 text: 12 CLOSED, 8 PARTIAL, 2 OPEN. The two OPEN rows are 16/16 on the
+release candidate and the curated DEVELOPMENT evidence. A live STALE is not owed, and no product
+change is justified yet. See [g8-remaining-gaps-audit.md](docs/g8-remaining-gaps-audit.md).
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -480,6 +483,7 @@ read the source document rather than a paraphrase of it.
 | G8 rehearsal R4 (PASS; worker restarted after RESOLVED, wrote nothing) | [g8-rehearsal-r4.md](docs/g8-rehearsal-r4.md) |
 | G8 rehearsal R5 (PASS; R1 repeated, reproduced on every semantic invariant) | [g8-rehearsal-r5.md](docs/g8-rehearsal-r5.md) |
 | Demo world and seeded case | [seeded-demo-case.md](docs/seeded-demo-case.md), [demo-fixture-anchoring.md](docs/demo-fixture-anchoring.md), [demo-world-roll.md](docs/demo-world-roll.md) |
-| Demo world restore (local proof only) | [demo-world-restore.md](docs/demo-world-restore.md) |
+| Demo world restore (local and deployed proof) | [demo-world-restore.md](docs/demo-world-restore.md) |
+| G8 remaining-gaps audit (12 CLOSED, 8 PARTIAL, 2 OPEN; 16/16 owed, live STALE not) | [g8-remaining-gaps-audit.md](docs/g8-remaining-gaps-audit.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |
