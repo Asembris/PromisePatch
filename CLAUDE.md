@@ -113,8 +113,18 @@ change is justified yet. See [g8-remaining-gaps-audit.md](docs/g8-remaining-gaps
 **G8's 16/16 release condition is now met against the separately versioned v2 label correction**
 (`77286e77…b0dd`, R1 conditional on work not having started; S12's hold is the only label moved),
 on code product-identical to `4529a802e34e`, in one predeclared run. **The headline stays 11/16
-against v1, immutable**, and v1 is byte-identical. G8 stays open on row 9 and the PARTIAL rows. See
-[g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md).
+against v1, immutable**, and v1 is byte-identical. See
+[g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md). **Evidence
+packaging (2026-09-26) closed rows 9, 12 and 21.** They are the curated DEVELOPMENT package, the
+contribution provenance and the measured demo funnel. G8 now stands at **17 CLOSED, 5 PARTIAL, 0
+OPEN**. The PARTIAL rows:
+- row 1: an executable demo-contract runner is required and was not built;
+- rows 11 and 20: the fresh clone at `D:\pp-g8-fresh-clone` got four of five standalone steps
+  green before a host blue screen, and its tests and the effect-set `uv sync --frozen` check are
+  unrun;
+- rows 13 and 15: the freeze session's.
+
+See [g8-evidence-packaging.md](docs/g8-evidence-packaging.md).
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -491,5 +501,6 @@ read the source document rather than a paraphrase of it.
 | Demo world restore (local and deployed proof) | [demo-world-restore.md](docs/demo-world-restore.md) |
 | G8 remaining-gaps audit (12 CLOSED, 8 PARTIAL, 2 OPEN; 16/16 owed, live STALE not) | [g8-remaining-gaps-audit.md](docs/g8-remaining-gaps-audit.md) |
 | G8 effect-set release condition (v2 label correction; 16/16 once, beside the immutable v1 11/16) | [effect-set-manifest-v2.md](docs/effect-set-manifest-v2.md), [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md) |
+| G8 evidence packaging (rows 9, 12, 21 closed; 17/5/0; runner ruling; fresh-clone status) | [g8-evidence-packaging.md](docs/g8-evidence-packaging.md), [g8-development-evidence.md](docs/g8-development-evidence.md), [g8-demo-funnel.md](docs/g8-demo-funnel.md), [g8-contribution-provenance.md](docs/g8-contribution-provenance.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |
