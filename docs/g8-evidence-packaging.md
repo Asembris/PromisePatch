@@ -134,17 +134,18 @@ verdict, and the 2026-09-26 column is the status now, with the page that moved i
 | 17 | immutable first run, 11/16 | CLOSED | CLOSED | |
 | 18 | every fix SHA published, rerun separately | PARTIAL | CLOSED | [g8-effect-set-release-condition.md](g8-effect-set-release-condition.md) §3, §6 |
 | 19 | 16/16 on the release candidate | OPEN | CLOSED, against v2 | [g8-effect-set-release-condition.md](g8-effect-set-release-condition.md) §6 |
-| 20 | effect-set clean-clone command tested | PARTIAL | **PARTIAL** | §5: `uv sync --frozen` not run |
+| 20 | effect-set clean-clone command tested | PARTIAL | **CLOSED** | [g8-effect-set-fresh-clone-proof.md](g8-effect-set-fresh-clone-proof.md): `uv sync --frozen` and both manifests' `--check` and verifiers, exit 0 on the same fresh clone |
 | 21 | demo funnel with 0/U and effect counts | PARTIAL | **CLOSED** | [g8-demo-funnel.md](g8-demo-funnel.md), `1232a55` |
 | 22 | developer-authored disclosure | CLOSED | CLOSED | |
 
-**Counts: 22 rows. 18 CLOSED, 4 PARTIAL, 0 OPEN.**
+**Counts: 22 rows. 19 CLOSED, 3 PARTIAL, 0 OPEN.**
 
-- CLOSED: 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 17, 18, 19, 21, 22.
-- PARTIAL: 1, 13, 15, 20.
+- CLOSED: 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 17, 18, 19, 20, 21, 22.
+- PARTIAL: 1, 13, 15.
 - Moved to CLOSED by this session: **9, 12, 21**. Rows 18 and 19 were closed by the
   release-condition session and are listed here for the running total. Row 11 was closed later
-  the same day by [g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md).
+  the same day by [g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md), and
+  row 20 after it by [g8-effect-set-fresh-clone-proof.md](g8-effect-set-fresh-clone-proof.md).
 
 **Row 4 still holds only on `4529a802e34e`.** If closing any PARTIAL row produces a new image,
 the rehearsal count restarts on the new SHA.
@@ -322,5 +323,6 @@ Record each command's exit code and full output in a new page beside this one. T
    - restate the commit count in the provenance record at that SHA;
    - write the G8 closeout.
 
-G8 stays **OPEN** until rows 1, 13, 15 and 20 are each met. Row 11 is met; see
-[g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md). Phase 8 does not close before G8.
+G8 stays **OPEN** until rows 1, 13 and 15 are each met. Row 11 is met; see
+[g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md). Row 20 is met; see
+[g8-effect-set-fresh-clone-proof.md](g8-effect-set-fresh-clone-proof.md). Phase 8 does not close before G8.
