@@ -87,8 +87,10 @@ src = [
     "evals",
 ]
 # The R1 rehearsal record embeds the frozen G8 evidence reader, sha256 c9731c8f…, which R2-R5
-# verified byte for byte. Frozen evidence is never rewritten, so the formatter may not touch it.
-extend-exclude = ["docs/g8-rehearsal-r1.md"]
+# verified byte for byte. The DEVELOPMENT evidence page embeds its generator, sha256 aee15151…,
+# which reproduces the published package. Frozen evidence is never rewritten, so the formatter
+# may not touch either.
+extend-exclude = ["docs/g8-rehearsal-r1.md", "docs/g8-development-evidence.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "DTZ", "SIM", "RET", "T20", "RUF"]
