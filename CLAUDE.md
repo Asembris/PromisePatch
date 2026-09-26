@@ -116,12 +116,12 @@ on code product-identical to `4529a802e34e`, in one predeclared run. **The headl
 against v1, immutable**, and v1 is byte-identical. See
 [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md). **Evidence
 packaging (2026-09-26) closed rows 9, 12 and 21.** They are the curated DEVELOPMENT package, the
-contribution provenance and the measured demo funnel. G8 now stands at **17 CLOSED, 5 PARTIAL, 0
-OPEN**. The PARTIAL rows:
+contribution provenance and the measured demo funnel. **Row 11 closed later the same day**: the standalone
+tests passed on the fresh clone at `D:\pp-g8-fresh-clone`, 335 passed, exit `0`, reusing its venv
+with nothing installed. See [g8-standalone-fresh-clone-proof.md](docs/g8-standalone-fresh-clone-proof.md).
+G8 now stands at **18 CLOSED, 4 PARTIAL, 0 OPEN**. The PARTIAL rows:
 - row 1: an executable demo-contract runner is required and was not built;
-- rows 11 and 20: the fresh clone at `D:\pp-g8-fresh-clone` got four of five standalone steps
-  green before a host blue screen, and its tests and the effect-set `uv sync --frozen` check are
-  unrun;
+- row 20: the fresh clone's effect-set `uv sync --frozen` check is unrun;
 - rows 13 and 15: the freeze session's.
 
 See [g8-evidence-packaging.md](docs/g8-evidence-packaging.md).
@@ -502,5 +502,6 @@ read the source document rather than a paraphrase of it.
 | G8 remaining-gaps audit (12 CLOSED, 8 PARTIAL, 2 OPEN; 16/16 owed, live STALE not) | [g8-remaining-gaps-audit.md](docs/g8-remaining-gaps-audit.md) |
 | G8 effect-set release condition (v2 label correction; 16/16 once, beside the immutable v1 11/16) | [effect-set-manifest-v2.md](docs/effect-set-manifest-v2.md), [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md) |
 | G8 evidence packaging (rows 9, 12, 21 closed; 17/5/0; runner ruling; fresh-clone status) | [g8-evidence-packaging.md](docs/g8-evidence-packaging.md), [g8-development-evidence.md](docs/g8-development-evidence.md), [g8-demo-funnel.md](docs/g8-demo-funnel.md), [g8-contribution-provenance.md](docs/g8-contribution-provenance.md) |
+| G8 row 11 standalone engine proof (fresh clone, 335 passed, closed) | [g8-standalone-fresh-clone-proof.md](docs/g8-standalone-fresh-clone-proof.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |

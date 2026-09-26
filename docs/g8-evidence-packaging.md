@@ -125,7 +125,7 @@ verdict, and the 2026-09-26 column is the status now, with the page that moved i
 | 8 | head-of-line measured and corrected | CLOSED | CLOSED | |
 | 9 | curated redacted DEVELOPMENT evidence | OPEN | **CLOSED** | [g8-development-evidence.md](g8-development-evidence.md), `d6c5d16` |
 | 10 | public license/source | CLOSED | CLOSED | re-read today: `public`, `Apache-2.0` |
-| 11 | standalone engine from a clean clone | PARTIAL | **PARTIAL** | §5: four of five steps exit 0 on a fresh clone; the tests never completed |
+| 11 | standalone engine from a clean clone | PARTIAL | **CLOSED** | [g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md): the fifth step, the tests, 335 passed, exit 0 on the same fresh clone |
 | 12 | contribution provenance within window | PARTIAL | **CLOSED** | [g8-contribution-provenance.md](g8-contribution-provenance.md), `7f4b9e2` |
 | 13 | exact release SHA passes required CI | PARTIAL | PARTIAL | freeze session |
 | 14 | deployed version verified | CLOSED | CLOSED | not re-read today |
@@ -138,12 +138,13 @@ verdict, and the 2026-09-26 column is the status now, with the page that moved i
 | 21 | demo funnel with 0/U and effect counts | PARTIAL | **CLOSED** | [g8-demo-funnel.md](g8-demo-funnel.md), `1232a55` |
 | 22 | developer-authored disclosure | CLOSED | CLOSED | |
 
-**Counts: 22 rows. 17 CLOSED, 5 PARTIAL, 0 OPEN.**
+**Counts: 22 rows. 18 CLOSED, 4 PARTIAL, 0 OPEN.**
 
-- CLOSED: 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 17, 18, 19, 21, 22.
-- PARTIAL: 1, 11, 13, 15, 20.
+- CLOSED: 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 17, 18, 19, 21, 22.
+- PARTIAL: 1, 13, 15, 20.
 - Moved to CLOSED by this session: **9, 12, 21**. Rows 18 and 19 were closed by the
-  release-condition session and are listed here for the running total.
+  release-condition session and are listed here for the running total. Row 11 was closed later
+  the same day by [g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md).
 
 **Row 4 still holds only on `4529a802e34e`.** If closing any PARTIAL row produces a new image,
 the rehearsal count restarts on the new SHA.
@@ -321,4 +322,5 @@ Record each command's exit code and full output in a new page beside this one. T
    - restate the commit count in the provenance record at that SHA;
    - write the G8 closeout.
 
-G8 stays **OPEN** until rows 1, 11, 13, 15 and 20 are each met. Phase 8 does not close before G8.
+G8 stays **OPEN** until rows 1, 13, 15 and 20 are each met. Row 11 is met; see
+[g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md). Phase 8 does not close before G8.
