@@ -14,7 +14,10 @@ phases and its acceptance criteria are in
 
 Plan phases P1–P5 are in: the scaffold, tokens, fonts, brand assets, every section's static
 content, the data modules and build-time render (P3), the interactive sections (P4), and the
-hero (P5).
+hero (P5). P6 (the Playwright suite, accessibility and budgets) is in, with one target not met:
+Lighthouse mobile performance (see the plan's S4 notes). P7's content audit is done and is **not**
+closed: five copy discrepancies against the repository record are listed in the plan, awaiting
+the owner.
 
 **One model, two renders.** The prototype's tables live in `src/data/`. Pure renderers in
 `src/render/` turn a table plus a state into HTML. At build time the plugin replaces each
@@ -47,11 +50,13 @@ each phase's end, and nothing animates. QA switches: `?renderer=svg`, `?motion=r
 same keys as JSON in `localStorage['pp-qa']`. `window.__ppHero.seek(t)` draws time `t` for
 reference captures.
 
-Not yet built: the Playwright suite (P6), the Pages workflow (P8).
+Not yet built: the Pages workflow (P8).
 
 Responsive and accessibility fixes beyond the prototype: below 400px a revalidation check's value
 drops under its description; below 360px the hero stage is 48px taller and its tags track
-tighter so no label runs into another; under `pointer: coarse` the stepper, scenario, trace,
+tighter so no label runs into another; past matrix cells (opacity .72) and pending revalidation
+checks (opacity .75, `--muted` mark) meet WCAG AA contrast, and the scenario buttons grow rather
+than clip under the WCAG 1.4.12 text-spacing overrides; under `pointer: coarse` the stepper, scenario, trace,
 Copy and hero buttons are at least 44px tall.
 
 ## Run it
@@ -78,6 +83,40 @@ npm run preview
 `SHOWCASE_BASE=/` to serve at the root instead.
 
 ## Check it
+
+```bash
+npm run check
+```
+
+The release gate: production build, the four offline gates below, then the Playwright suite. It
+exits non-zero on any failure. `npm test` runs the suite alone against an existing `dist/`.
+
+The suite (`tests/`, Chromium only, `@playwright/test` and `@axe-core/playwright`) runs against
+`vite preview` of the production build under `/PromisePatch/`, never the dev server:
+
+- `layout.spec.js`: widths 320–1920 (14 of them): no horizontal overflow, nothing crossing the
+  viewport, no text under 11px outside the stage and diagram, nothing `hidden` rendered, no
+  clipped control, the stage's designed height, and every breakpoint form.
+- `fallbacks.spec.js`, `webgl-disabled.spec.js`: no JavaScript, `?renderer=svg`, WebGL off in the
+  browser, the three.js chunk held (SVG at 4 s, stage never blank) or failing, and three.js
+  requested only after the first rendered frame.
+- `hero.spec.js`: `seek()` at 0.95 / 4.3 / 5.8 / 8.2 on desktop and mobile, keyboard, both
+  reduced-motion switches, a live preference change, pausing off-screen and in a hidden tab.
+- `interaction.spec.js`: stepper, *Play case*, orders A–F, the mobile current-stage form, R3 and
+  the labelled illustration, every trace lighting only its path, Copy of the two SHAs.
+- `a11y.spec.js`: axe (zero serious or critical, no rule disabled) at 390 and 1440 with and
+  without JavaScript, on the illustration and on the pending gate; landmarks and headings; the
+  skip link; a full Tab walk; pressed state; the R1–R5 table; colour-alone; text spacing; 44px
+  targets under a coarse pointer.
+- `content.spec.js`: the content rules of `tools/content-rules.mjs` (shared with `verify:content`)
+  over the live DOM after about forty interaction states, with a negative control; no token on
+  the page; every request on the Pages origin; CLS and the first contentful frame.
+
+Chromium comes from `npx playwright install chromium`. Locally the suite runs one worker: on the
+development machine concurrent browsers stall loopback requests (reproduced against a plain static
+server too); `PW_WORKERS=2` overrides, and CI uses two.
+
+The offline gates, also runnable alone after a build:
 
 ```bash
 npm run verify
@@ -125,7 +164,9 @@ some.html`.
 | `public/assets/og-preview-1200x630.png` | The social preview, byte-for-byte from the handoff. |
 | `public/apple-touch-icon.png` | 180 × 180 on `#111A2B`, rendered once by `tools/render-touch-icon.mjs`. |
 | `tools/vite-plugin-showcase.js` | Injects the renders and facts; copies the brand SVGs and the notices into the build; preloads the display font. |
-| `tools/verify-assets.mjs`, `verify-content.mjs`, `verify-links.mjs`, `check-budgets.mjs` | The four gates above; `runtime-strings.mjs` collects what `verify-content` checks beyond the no-JS page, hero captions and labels included. |
+| `tools/verify-assets.mjs`, `verify-content.mjs`, `verify-links.mjs`, `check-budgets.mjs` | The four offline gates above; `runtime-strings.mjs` collects what `verify-content` checks beyond the no-JS page, hero captions and labels included. |
+| `tools/content-rules.mjs` | The content rules themselves, pure; run by `verify-content` over the built page and by `tests/content.spec.js` over the live DOM. |
+| `playwright.config.js`, `tests/` | The Playwright suite above, against `vite preview` of the production build. |
 | `THIRD_PARTY_NOTICES.md` | Font attribution, the SIL OFL 1.1 text and the three.js MIT licence; shipped in `dist/` too. |
 
 ## Assets
