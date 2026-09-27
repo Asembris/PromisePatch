@@ -1,184 +1,340 @@
-# PromisePatch
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/promisepatch-icon-on-dark.svg">
+    <img src="brand/promisepatch-icon-on-light.svg" width="72" height="72" alt="PromisePatch">
+  </picture>
+</p>
 
-[![product gate](https://github.com/Asembris/PromisePatch/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/Asembris/PromisePatch/actions/workflows/pr.yml)
-[![effect sets: 11/16, red on purpose](https://github.com/Asembris/PromisePatch/actions/workflows/effect-sets.yml/badge.svg?branch=main)](docs/effect-set-first-scored-run.md)
+<h1 align="center">PromisePatch</h1>
 
-Two badges, because they answer two different questions, and the second one needs reading before
-it is wondered about.
+<p align="center">
+  <b>The model understands. The deterministic protocol authorizes.</b><br>
+  One spoken report of a physical failure becomes a selective, consent-respecting recovery of the
+  customer promises it actually reaches, and nothing else.
+</p>
 
-The **first** is the product gate: thirteen jobs, ruff through the whole-stack browser suite.
-Its red means a regression, and that is the only thing it means.
+<p align="center">
+  <img src="docs/assets/promisepatch-hero.svg" width="100%"
+       alt="Animated walkthrough: a raspberry delivery fails; six orders are checked and split into AUTO, ASK, BLOCKED and UNAFFECTED lanes; the pre-approved swap is applied; the customer answers YES on a signed link; the approved change is revalidated against a fresh snapshot before it runs; the two unaffected orders receive zero effects.">
+</p>
 
-The **second is red on purpose and is meant to stay red.** It runs the sixteen frozen effect-set
-scenarios, whose [first scored run](docs/effect-set-first-scored-run.md) is published at
-**11/16**. Five of the sixteen disagreed with labels written by hand before the runner existed;
-four of those five — S08, then S06, S07 and S13 — have since been repaired, each with its own fix
-SHA, and **S12 stays committed *failing*** with its exact diffs published, because its label
-applies a manifest-wide rule that is false for work the kitchen had already started
-([`docs/started-work-contract.md`](docs/started-work-contract.md)). No repaired run has been
-scored; a development run is not a score.
-`docs/effect-set-run-protocol.md` forbids weakening, skipping,
-deselecting, removing or marking any of them expected-to-fail — so this badge goes green only
-when the remaining disagreements are repaired, and a green tick before then would mean a scenario
-had been quietly weakened. **11/16 is the permanent headline**: it is never replaced by a
-repaired score, and the denominator is never smaller than sixteen.
+<p align="center">
+  <a href="https://184.194.40.87.sslip.io"><img src="https://img.shields.io/badge/Open_the_live_app-8390F2?style=for-the-badge" alt="Open the live app"></a>
+  <a href="#60-second-judge-path"><img src="https://img.shields.io/badge/60--second_judge_path-182238?style=for-the-badge" alt="60-second judge path"></a>
+  <a href="#proof-index"><img src="https://img.shields.io/badge/Proof_index-182238?style=for-the-badge" alt="Proof index"></a>
+  <a href="https://github.com/Asembris/PromisePatch/actions/runs/36310794944"><img src="https://img.shields.io/badge/Release_CI-13_of_13_jobs-2E7D5B?style=for-the-badge" alt="Release CI: 13 of 13 jobs on the release SHA"></a>
+</p>
 
-When a delivery does not arrive, the expensive problem is not the inventory — it is the
-customer promises somebody already made. PromisePatch lets a frontline bakery worker report
-one physical-world exception by voice, then identifies every accepted customer promise that
-exception threatens, coordinates bounded recovery, obtains customer approval through the
-customer's own channel where that order's recorded constraints require it, resumes
-asynchronously, revalidates against the current state, and reconciles the affected systems —
-while leaving every unaffected promise untouched.
+<p align="center">
+  <a href="https://github.com/Asembris/PromisePatch/actions/workflows/pr.yml"><img src="https://github.com/Asembris/PromisePatch/actions/workflows/pr.yml/badge.svg?branch=main" alt="product gate"></a>
+  <a href="docs/p5.1-mcp-transport-spine.md"><img src="https://img.shields.io/badge/MCP-2025--11--25_%C2%B7_Streamable_HTTP-182238" alt="MCP 2025-11-25, Streamable HTTP"></a>
+  <a href="docs/adr/0007-runtime-semantic-model-nova-2-lite.md"><img src="https://img.shields.io/badge/Amazon_Bedrock-Nova_2_Lite-182238" alt="Amazon Bedrock, Nova 2 Lite"></a>
+  <a href="docs/p6.2-first-deployment.md"><img src="https://img.shields.io/badge/AWS-EC2_%2B_RDS-182238" alt="AWS: EC2 and RDS"></a>
+  <img src="https://img.shields.io/badge/Python-3.12-182238" alt="Python 3.12">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-182238" alt="Apache-2.0"></a>
+</p>
 
-## Status
+> **0 of 2 untouched orders received an incident-caused effect, in each of five deployed restart
+> rehearsals** of the canonical case, while the four threatened orders were recovered or escalated.
+> Measured on the frozen deployment, counted per effect type:
+> [the demo funnel](docs/g8-demo-funnel.md).
 
-An active hackathon build. What exists today is the deterministic engine
-(`packages/promise-graph`), the backend with its audited PostgreSQL write boundary, the durable
-case engine, the Live Operations screen, the external order-system integration — a separate
-order system that owns order state, a signed event ingress, and governed recovery amendments
-pushed back at it — the semantic boundary an Amazon Bedrock model answers through, now wired
-into exception intake, an authenticated **MCP Streamable HTTP endpoint** carrying all five
-intent tools -- report, clarify, confirm, withdraw and status -- and the case workspace a
-worker and a judge read a case on.
+## 60-second judge path
 
-**It is deployed.** `https://184.194.40.87.sslip.io` serves the single-page application and the
-same API, event stream and MCP endpoint over TLS on one `t4g.small` in `us-east-1b`, against a
-private encrypted RDS PostgreSQL. Twelve deployment smoke checks pass, five of them asserting a
-refusal. See [`docs/p6.2-first-deployment.md`](docs/p6.2-first-deployment.md) and
-[`docs/p7.3-deployed-judge-surface.md`](docs/p7.3-deployed-judge-surface.md). The host serves
-`b62779d6e975`, which predates the customer approval surface below; it has not been redeployed
-since.
+1. **The problem**: [why a missed delivery is a promise problem, not an inventory problem](#the-problem).
+2. **The scenario**: [one failed raspberry delivery, six orders, four lanes](#the-canonical-scenario),
+   or open the [live app](https://184.194.40.87.sslip.io) and press *Look around a real case*
+   (read-only, no account).
+3. **The authority model**: [who may change what, and what the model is never allowed to do](#how-authority-works).
+4. **The measured results**: [three numbers, each with its caveat](#measured-evidence).
+5. **The architecture**: [one diagram showing where the model stops](#architecture).
+6. **The proof**: [the proof index](#proof-index) links every claim to its committed record.
 
-**How a customer answers.** The Telegram channel is **not built** — nothing delivers the
-message. What a customer answers *on* is real: a signed possession link, carried in the
-outbound message's payload, opens a page that writes one literal answer into the unchanged
-consent protocol. It proves possession and never identity, and it is in this repository rather
-than on the deployed host. See
-[`docs/customer-approval-link.md`](docs/customer-approval-link.md).
+## The problem
 
-**The measured voice number.** Ten predeclared voice turns were recorded, and **9 of 10 started a
-truthful spoken response within four seconds of speech ending** — the gate is 9, so it passes by
-exactly one turn, with the failing turn missing the threshold by 807.8 ms. A first run is
-published void, in full, with its `K = 1/10`. Both runs, every timing, the failures and the
-conditions — including that the measurement ran on the local stack and so carries no
-public-internet round trip — are in
-[`docs/g7-ten-turn-voice-measurement.md`](docs/g7-ten-turn-voice-measurement.md), against the
-setup fixed beforehand in
-[`docs/g7-ten-turn-voice-predeclaration.md`](docs/g7-ten-turn-voice-predeclaration.md). This is a
-usability gate, not a production latency SLA.
+A made-to-order bakery accepts promises against supply it expects to receive. Then, one morning,
+the raspberries do not arrive.
 
-## The frozen effect-set manifest
+Replanning the inventory is the easy part. The hard part is the promises already made: which
+customer orders does this failure actually reach? Which may be changed under a substitution the
+customer already agreed to, which need the customer to say yes, which must go to the owner
+because no permitted recovery exists, and which must not be touched at all? A frontline worker
+has to answer that in the middle of a shift. A language model can help understand what they
+said, but it must never be the thing that decides.
 
-Sixteen scenarios, hand-labelled from stipulated facts, committed before the runner that
-executes them existed. Each declares the orders it expects in each partition at each ordered
-checkpoint, and the exact operational effects and refusals it expects — including the zeros.
+## What PromisePatch does
+
+| | step | who decides |
+|---|---|---|
+| 1 | A worker reports the failure by voice or text: *"today's raspberry delivery didn't arrive."* | the worker attests the physical fact |
+| 2 | PromisePatch understands the report and asks one clarifying question if needed. | deterministic lexicon first; a model only for phrasing it cannot read |
+| 3 | It finds every accepted customer promise the failure reaches. | the deterministic engine |
+| 4 | It puts each promise in exactly one authority lane: **AUTO**, **ASK**, **BLOCKED** or **UNAFFECTED**. | recorded constraints and pre-authored recipe versions |
+| 5 | A worker confirms the plan that was read out, bound to that plan's identity. | a human, in a signed-in session |
+| 6 | Pre-authorized changes run; the owner gets the blocked ones, with scheduled work held. | the protocol |
+| 7 | A customer who must agree gets one message and answers on a signed web link. | the customer, with a literal `YES` or `NO` |
+| 8 | Before that yes is acted on, ten checks run against a **fresh** snapshot. | the protocol |
+| 9 | The change is written to the external order system as a governed amendment. | the order system stays the system of record |
+
+Promises the failure does not reach get no message, no write, no reservation change, no task hold
+and no audit event.
+
+## The canonical scenario
+
+The Hollow Oak bakery fixture: six accepted orders, one missing raspberry delivery. The worker
+clarifies *"just raspberries - the strawberries came."* This case was provisioned, restored and
+run five times on the deployed release candidate
+([funnel](docs/g8-demo-funnel.md), [case definition](docs/seeded-demo-case.md)).
+
+| order | lane | why | settled outcome |
+|---|---|---|---|
+| A | **AUTO** | a substitution the customer's recorded preference already allows | amended in the order system, v1 → v2 |
+| B | **ASK** | a substitution the customer must approve | one Telegram message; `YES` on the signed link; revalidated; amended v1 → v2 |
+| C | **BLOCKED** | the customer's constraint forbids substitution | escalated to the owner; scheduled work held |
+| D | **BLOCKED** | no pre-authored recipe version exists | escalated to the owner; scheduled work held |
+| E | **UNAFFECTED** | no raspberries in it | untouched: 0 effects |
+| F | **UNAFFECTED** | no raspberries in it | untouched: 0 effects |
+
+The customers, recipes and order system are labelled fixtures and a simulator. The Telegram
+message and the web approval are real.
+
+## Measured evidence
+
+Three numbers, as the roadmap requires them to be reported. Each has a caveat, and the caveat is
+part of the result.
+
+| result | what it is | read this first |
+|---|---|---|
+| **11/16** | The **permanent headline**. The first scored run of sixteen frozen effect-set scenarios against the v1 manifest, which was hand-labelled before the runner existed. Five failed, and the result is never replaced. | [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) |
+| **16/16** | A **separate** release condition, not a re-score of v1. It was run once against **v2**, a separately versioned label correction in which one label moved: S12's hold, because started kitchen work is never held ([ADR-0017](docs/adr/0017-a-blocked-promise-does-not-hold-a-started-task.md)). The code was product-identical to the deployed release candidate. The other four v1 failures were implementation defects, fixed under published SHAs. | [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md) |
+| **0/2** | Untouched orders that received an incident-caused effect, in each of **five** deployed rehearsals. Each one restarted the worker at a different point: while waiting for the customer, across the plan confirmation, across the answer, after resolution, and the first again. Per rehearsal: 2 amendments, 1 customer message, 2 task holds, 3 outbox rows, all delivered on attempt 1. | [g8-demo-funnel.md](docs/g8-demo-funnel.md) |
+| **9/10** | Voice turns in which a truthful spoken response began within four seconds of speech ending. The gate was 9, so it passed by one turn. | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) |
+
+What those numbers do **not** say:
+
+- The effect sets are **developer-authored, finite and public**. They are not an independent or
+  held-out benchmark. The effect-set CI workflow stays red on purpose, because it judges v1.
+- The funnel is **one fixture measured five times**. It shows the demo repeats, not a reliability
+  rate.
+- The voice result comes from a **second run**. The first run (`K = 1/10`) was voided after its
+  intervals had been computed, which the predeclared protocol forbids, and the
+  [claims audit](docs/claims-audit.md) says a strict reader may treat run 2 as a best-of-two. Both
+  runs are published in full. They ran on the local stack, with no public-internet round trip,
+  using the browser's own speech APIs.
+
+The release itself: `pr` run
+[`36310794944`](https://github.com/Asembris/PromisePatch/actions/runs/36310794944) passed 13 of 13
+jobs on the exact release SHA, the whole-stack browser job among them.
+
+## How authority works
+
+**The model understands; the deterministic protocol authorizes.** Every rule below is enforced in
+code and tests, not by convention. Import-linter contracts forbid the model boundary, the MCP
+server and the conversational client from reaching the domain or the database.
+
+- **Model output is never authority.** A model may propose a reading of a sentence, checked
+  against the bakery's own vocabulary. It cannot write a row, record consent, attest a physical
+  fact or choose a recovery. The canonical raspberry report costs **zero** model calls, and a test
+  asserts it.
+- **Worker plan approval and customer consent are different things**, with different parsers,
+  records and words. A customer's yes never spends a worker approval, and the reverse is also
+  true.
+- **Customer consent is a literal `YES`, an option code or `NO`.** Free text is at most an
+  apparent intent that can trigger one confirmation prompt.
+- **A service credential is not a person.** Holding the MCP bearer token proves a process. The
+  actor and the clock are always server-derived, and an MCP `confirm` can only spend an approval a
+  human wrote in a signed-in session
+  ([ADR-0018](docs/adr/0018-a-plan-confirmation-spends-a-human-approval.md)).
+- **A confirmation binds to the plan that was read out.** Stale, wrong-case, replayed and repeated
+  confirmations fail closed.
+- **A yes is perishable.** An approved change runs only after ten checks pass against a fresh
+  snapshot. A change that is no longer true is refused as `STALE` and re-planned.
+- **Recovery only selects pre-authored recipe versions.** Nothing invents a substitute at runtime.
+- **Unknown or conflicting state fails closed to `BLOCKED`**, never to `UNAFFECTED`.
+- **Started work is never reported as stopped.** Scheduled work on a blocked promise is held;
+  work that has already started is escalated to its owner instead.
+- **A withdrawal is never an undo.** It stops future work and reverses no physical fact.
+
+More detail: [semantic-boundary.md](docs/semantic-boundary.md),
+[mcp-human-confirmation-boundary.md](docs/mcp-human-confirmation-boundary.md),
+[started-work-contract.md](docs/started-work-contract.md),
+[bounded-withdrawal.md](docs/bounded-withdrawal.md) and the ADRs in [`docs/adr/`](docs/adr/).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    worker["Bakery worker<br/>browser · voice or text"]
+    agent["Alexa+-style agent<br/>any MCP client"]
+    mcp["MCP server<br/>Streamable HTTP · 2025-11-25<br/>no database access"]
+    api["Intent API<br/>actor and clock are server-derived"]
+    model["Semantic boundary<br/>Amazon Bedrock<br/>proposes a reading"]
+    engine["promise_graph<br/>reach · partition · revalidate<br/>pure, deterministic"]
+    wf["Durable workflow<br/>case state machine + step ledger<br/>PostgreSQL"]
+    oms["External order system<br/>system of record"]
+    tg["Telegram<br/>outbound message"]
+    link["Signed web link<br/>literal YES or NO"]
+    customer(("Customer"))
+
+    agent -->|bearer token| mcp -->|service token| api
+    worker -->|"session: the only place<br/>a plan approval is written"| api
+    api --> wf
+    wf -. "the words" .-> model
+    model -. "a candidate reading,<br/>never authority" .-> wf
+    wf <--> engine
+    wf -->|"governed amendment,<br/>after revalidation"| oms
+    oms -->|signed events| wf
+    wf --> tg --> customer --> link --> wf
+
+    classDef authority fill:#1B2644,stroke:#8390F2,stroke-width:2px,color:#F7F8FC
+    classDef understanding fill:#1B2644,stroke:#AEB6C8,stroke-dasharray:5 4,color:#F7F8FC
+    classDef outside fill:#111A2B,stroke:#76819A,color:#F7F8FC
+    class engine,wf,api authority
+    class model understanding
+    class worker,agent,mcp,oms,tg,link,customer outside
+```
+
+Solid indigo borders mark where authority lives. The dashed node is understanding only.
+
+- **`promise_graph`** ([`packages/promise-graph`](packages/promise-graph)) is a pure package.
+  It handles reachability, temporal availability, allocation, impact classification, recovery
+  validation, snapshot fingerprints and the revalidation checklist. It does no I/O, reads no
+  environment and never calls the clock, so every customer-affecting decision can be tested
+  without the cloud.
+- **The backend** ([`apps/backend`](apps/backend)) runs as `api`, `worker` and `mcp`: a persisted
+  case state machine with a step ledger and an audited PostgreSQL write boundary. The worker is
+  stateless: restarting it is the recovery mechanism, and outstanding work resumes from its rows.
+- **The external order system** ([`apps/order-simulator`](apps/order-simulator)) is a separate
+  application with its own store. PromisePatch mirrors it and pushes governed amendments; neither
+  reads the other's storage ([order-system.md](docs/order-system.md)).
+- **The case workspace** ([`apps/frontend`](apps/frontend)) renders the case and never decides.
+
+## Alexa+ and MCP
+
+PromisePatch exposes its five intent tools (**report, clarify, confirm, withdraw, status**) over
+an authenticated MCP endpoint: Streamable HTTP, protocol revision **`2025-11-25`**, pinned with a
+test. That endpoint is what an Alexa+ agent, or any other MCP client, would call. Unauthenticated
+callers are refused before the protocol layer, and unlisted `Origin` and `Host` values are
+rejected.
+
+**This is not a native Alexa+ integration**, and none is claimed. The Alexa+ experience is
+simulated by MCP clients that call the real endpoint: the repository's own conversational client
+(`pp converse`) and the official SDK client in the protocol suite. In the browser, voice uses the
+browser's own speech recognition and synthesis and reaches the same application services as a
+typed turn. No spoken phrase carries authority that a typed one could not.
+
+See [p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) (transport),
+[p5.2-mcp-clarification-and-confirmation.md](docs/p5.2-mcp-clarification-and-confirmation.md)
+(tool contract) and [p5.3-conversational-orchestrator.md](docs/p5.3-conversational-orchestrator.md)
+(the client, which holds no authority).
+
+## AWS deployment
+
+The app is live at **<https://184.194.40.87.sslip.io>**. It runs on one EC2 `t4g.small` in
+`us-east-1` behind Caddy with a Let's Encrypt certificate, against a private, encrypted RDS
+PostgreSQL. IMDSv2 is required, and the instance role calls Amazon Bedrock; no AWS key is held
+anywhere. It serves the case workspace, the API, the event stream and the MCP endpoint.
 
 | | |
 |---|---|
-| Manifest | `promisepatch-effect-sets` v1.0.0, 16 scenarios |
-| File | [`docs/effect-sets/scenarios.v1.json`](docs/effect-sets/scenarios.v1.json) |
-| **Manifest SHA** | `d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc` |
-| Frozen at commit | `9a7f4a899ade132507f015f65688c8be8b373827` |
+| frozen deployed product/image SHA | `4529a802e34e`, reported by `GET /healthz` |
+| frozen repository release SHA | `56c302366b3ddc0d824c1588a4a9ddbd193ed891` |
+| relationship | two different commits whose deployable product paths are tree-identical ([g8-closeout.md](docs/g8-closeout.md) §3) |
+| customer channel | Telegram outbound is live; one message was delivered per rehearsal. Customers answer through the signed web link ([deployed-customer-channel.md](docs/deployed-customer-channel.md)) |
+| feature freeze | declared 2026-09-27; any later change to a product path voids it |
 
-Recompute that hash and check the manifest's coherence with no database, no credential and no
-network:
+How it got there: [p6.2-first-deployment.md](docs/p6.2-first-deployment.md),
+[phase7-rc-deployment.md](docs/phase7-rc-deployment.md),
+[phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) (the image
+that runs now) and [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md).
+
+## Judge demo and reproduction
+
+**On the live app.** Press *Look around a real case*. It opens a read-only observer session with
+no account. You can read everything, including the evidence drawer, and change nothing, because
+the domain refuses every write from that principal
+([ADR-0016](docs/adr/0016-a-judge-principal-stays-read-only.md)).
+
+**From a clone, with nothing but Python and uv.** These need no database, no container and no
+credential:
 
 ```bash
-uv run python scripts/verify_effect_set_manifest.py
+uv run python scripts/verify_effect_set_manifest.py   # recompute the frozen v1 manifest hash
+uv run python scripts/run_effect_sets.py --check      # prove the clone is complete and intact
+uv run pytest packages/promise-graph                  # the deterministic engine's own suite
 ```
 
-The labels are **not** derived from PromisePatch's own output, and the verifier is structural
-only — it never asks the engine what it would classify. All sixteen scenarios are now wired to
-an executable runner that performs their stipulated facts against the real system.
+The engine also runs standalone, outside the workspace. See
+[`packages/promise-graph/README.md`](packages/promise-graph/README.md) and its
+[fresh-clone proof](docs/g8-standalone-fresh-clone-proof.md).
 
-**The first scored run is 11/16**, taken at implementation SHA
-`e81b5aa3af101847fdceb0f0af6cb515909d40b2` against that manifest SHA, with every diff published
-and nothing repaired: [`docs/effect-set-first-scored-run.md`](docs/effect-set-first-scored-run.md).
-Five scenarios failed — S06, S07, S08, S12, S13 — every difference an effect count lower than the
-label, with no order misclassified anywhere in the sixteen and no extra, unauthorized or
-duplicate effect. That headline is immutable: a later repaired run is published beside it, never
-over it, and 16/16 is a separate release condition. Read
-[`docs/effect-set-manifest.md`](docs/effect-set-manifest.md) for the method, the partition
-algebra, the pass rule and the disclosure that these labels are developer-authored and finite.
+**The whole storyboard, locally.** Bring up the [local stack](#run-the-local-stack), then run the
+demo-contract runner. It executes the canonical storyboard as 49 assertions through the product's
+own transports, and reads its evidence in read-only transactions. The fixture and the worker
+restart stay the operator's actions
+([g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md)):
 
-## What integrating this would actually require
+```bash
+PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.env | cut -d= -f2-)" \
+  uv run python scripts/with_local_env.py -- \
+  uv run python scripts/demo_contract.py --api http://127.0.0.1:58000 --order-system http://127.0.0.1:58100
+```
 
-[`docs/prerequisites-integration-cost-and-limitations.md`](docs/prerequisites-integration-cost-and-limitations.md)
-is the honest version: which data has to be accurate and who maintains it, what an order system
-must satisfy to talk to this one, what the real deployment cost and found, what is simulated and
-what is not built at all — and what this repository does **not** establish. Every prerequisite
-there names the file, table or decision record that imposes it, and every figure is labelled
-measured, estimated or not measured.
+## Proof index
 
-## The deterministic engine
+| claim | record | what it proves |
+|---|---|---|
+| release proof, closed | [g8-closeout.md](docs/g8-closeout.md) | 22 of 22 G8 rows closed, the two SHAs reconciled, and the feature freeze |
+| exact release SHA passes CI | [`pr` run 36310794944](https://github.com/Asembris/PromisePatch/actions/runs/36310794944) | 13 of 13 jobs on `56c3023`, the whole-stack browser job included |
+| restart-safe on the deployment | [R1](docs/g8-rehearsal-r1.md) · [R2](docs/g8-rehearsal-r2.md) · [R3](docs/g8-rehearsal-r3.md) · [R4](docs/g8-rehearsal-r4.md) · [R5](docs/g8-rehearsal-r5.md) | five worker restarts at four points on `4529a802e34e`, each PASS, with the effects applied exactly once |
+| untouched means untouched | [g8-demo-funnel.md](docs/g8-demo-funnel.md) | the funnel 6 → 1/1/2 + 2, and 0/2 untouched orders affected, in all five rehearsals |
+| the storyboard is executable | [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md) | 49 assertions through the intent API and the signed link, with no direct consent insert |
+| the immutable headline | [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) | 11/16 against frozen v1, with every diff published |
+| the separate release condition | [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md) | 16/16 against the v2 label correction, and the fix SHA for each v1 failure |
+| adversarial faults | [g8-adversarial-proof-map.md](docs/g8-adversarial-proof-map.md) | all eleven named faults, from a lost MCP response and model self-confirmation to crashes on either side of external acceptance, each proved |
+| the voice number | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) | 9/10 in run 2, with void run 1 and every timing published |
+| MCP transport | [p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) | Streamable HTTP, `2025-11-25`, bearer and `Origin`/`Host` refusals, tested with the official SDK |
+| real customer loop | [deployed-customer-channel.md](docs/deployed-customer-channel.md) · [customer-approval-link.md](docs/customer-approval-link.md) | a Telegram delivery and a web `YES`, with revalidation, applied once |
+| the deployment | [p6.2-first-deployment.md](docs/p6.2-first-deployment.md) · [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) | the AWS stack, and the image that runs now |
+| engine from a clean clone | [g8-standalone-fresh-clone-proof.md](docs/g8-standalone-fresh-clone-proof.md) | 335 tests passed from a fresh public clone |
+| effect-set clone check | [g8-effect-set-fresh-clone-proof.md](docs/g8-effect-set-fresh-clone-proof.md) | `uv sync --frozen` and both manifests' checks exit `0` |
+| development evidence | [g8-development-evidence.md](docs/g8-development-evidence.md) | curated, redacted evaluation results, failures kept |
+| provenance | [g8-contribution-provenance.md](docs/g8-contribution-provenance.md) | every commit is dated inside the submission window |
+| claims against evidence | [claims-audit.md](docs/claims-audit.md) | an audit of this repository's own claims, overclaims included |
+| integration cost | [prerequisites-integration-cost-and-limitations.md](docs/prerequisites-integration-cost-and-limitations.md) | what adopting this would require, and what is not established |
 
-`promise_graph` is a separate, pure package on purpose. It owns reachability, temporal
-availability, allocation, impact classification, recovery-option validation, snapshot
-fingerprinting and the revalidation checklist. It performs no I/O, reads no environment, and
-never calls the wall clock — time is passed in explicitly — so every decision that could
-affect a customer is testable with zero cloud access.
+## Honest limitations
 
-## The semantic boundary
+- **One bakery, fixture data, a simulated order system.** It is not Square or a production point
+  of sale. The Telegram message and the web approval are the real parts.
+- **No refusal path has been exercised live.** `STALE`, `EXPIRED`, `UNAUTHORIZED` and `NOOP` are
+  proved by tests only.
+- **Telegram inbound is deliberately not built.** A second route for the word `YES` would be a
+  second consent parser. The signed link proves possession of the message, not identity.
+- **The effect sets are developer-authored**, and both evaluation holdouts remain sealed.
+- **The `SUR-1` comparative benchmark says nothing comparative about models.** Two of its arms
+  called the model zero times ([sur1-fifth-scored-run.md](docs/sur1-fifth-scored-run.md)).
+- **The voice result carries the caveats above**, and it is not a production latency SLA.
+- **Operations debt is recorded, not fixed.** `deploy.sh stack` cannot release against the drifted
+  stack template ([non-destructive-release.md](docs/non-destructive-release.md) §10.1). The demo
+  restore needs settings no single deployed container holds
+  ([demo-world-restore.md](docs/demo-world-restore.md)). CloudWatch keeps pre-redaction lines
+  until its 14-day retention expires them.
+- **Deployment smoke shows 9/12 from the operator's machine.** A local TLS-intercepting proxy
+  times out three refusal probes; on the host they answer `401`, `403` and `421`.
+- **G7's demo-narrative comprehension check was not performed**, by the project owner's decision.
 
-The model understands; the deterministic protocol authorizes. `promisepatch.semantic` is the
-narrow, pure boundary a model answers through: three bounded jobs, strict schemas, and a check
-that every identifier in an answer came from the candidates PromisePatch supplied. A model can
-propose a reading; it cannot write a row, record a consent decision, attest a physical fact or
-select a recovery — the import graph forbids it, not a convention.
+---
 
-The default provider is a deterministic fake, so the suites, the local stack and CI all run
-with **no AWS credentials of any kind**. Switching to Amazon Bedrock is an environment change
-plus whatever the AWS SDK already uses to authenticate on that machine; PromisePatch holds no
-AWS key in any environment.
+## Development
 
-One workflow uses it. When the deterministic interpreter cannot read a worker's report — "the
-deck oven packed up", "Valley only brought part of the raspberries today" — a model is asked
-which of the bakery's own things the sentence was about, and nothing else. It contributes a
-category and one identity; which delivery, what arrived and how much stay with deterministic
-code and the worker's answers. An identity is accepted only when the worker's sentence contains
-that resource's stored name or one of its aliases, so a model may parse a phrasing but may not
-supply vocabulary the bakery never authored. The canonical raspberry report is understood by
-the lexicon and costs **zero** model calls, which is asserted rather than assumed.
-
-The worker remains the physical attestor throughout: `PHYSICAL_FACT_RECORDED` names the person
-who spoke, and the model appears only as provenance beside it.
-
-Explanations are the same rule pointed the other way: the deterministic engine establishes the
-facts, and the model verbalises them. A settled outcome is projected into a bounded set of
-named facts -- the classification, the cited rule, the shortfall, the pre-authored variant, the
-constraint and who recorded it -- and a passage is accepted only if it stays inside its word
-limit, refers to nothing PromisePatch did not supply, and accounts for the causes the
-application marked required. The same facts render PromisePatch's own sentence, which is what
-gets shown when the provider is down, the answer will not parse, a reference is invented or the
-outcome moved while the model was writing. **Explanation output is never parsed back into
-workflow authority**, and no explanation call gates an external effect.
-
-[docs/semantic-boundary.md](docs/semantic-boundary.md) has the trust line, the fallback
-condition, the failure semantics, the prompt-injection posture and the opt-in live acceptance.
-
-How well that boundary reads a sentence is measured rather than asserted. `evals/` holds a
-hand-authored gold dataset, deterministic scorers, hard safety gates and the spend controls a
-live benchmark will run under; `python -m evals replay` scores the whole thing with **zero
-provider calls**, and no command there can reach Bedrock. [evals/README.md](evals/README.md)
-has the methodology, the thresholds and the cost policy.
-
-How well it *says* an outcome out loud is measured separately, because that answer is a matter of
-opinion where the other two are not. The explanation gate has its own thirty-five-case dataset
-checked against the production projection, structural gates computed by the application's own
-validator, and exactly **one** structured judge call per accepted passage — never one per quality
-dimension. `python -m evals explanation-plan` prints what a live run would spend and constructs no
-client to do it; `python -m evals explanation-replay` scores the whole thing offline.
-[docs/explanation-quality-gate.md](docs/explanation-quality-gate.md) has the protocol, the
-thresholds, the two separate cost accountings and the holdout rules.
-
-## Prerequisites
+### Prerequisites
 
 - Python 3.12 and [uv](https://docs.astral.sh/uv/)
 - Docker with Compose v2, for the local stack
 - Node.js 24, for the frontend
 
-## Run the local stack
+### Run the local stack
 
 The stack is a disposable PostgreSQL 16 in a Docker volume, the repository's own migrations,
 the Hollow Oak fixture, the API, the durable workflow worker, the MCP endpoint, the frontend
@@ -216,8 +372,8 @@ docker compose down --volumes       # stop and discard the database
 | postgres | `127.0.0.1:55432` | `postgres:5432` |
 
 The host ports are deliberately not 5173, 8000 and 5432: those are usually already taken on a
-machine that develops this project, and a stack that quietly attached to something else would
-be a confusing way to find out.
+machine that develops this project. If a port is reserved on your machine, override it with the
+`PROMISEPATCH_*_PUBLISHED_PORT` variables.
 
 A few properties are worth knowing before you use it:
 
@@ -231,47 +387,43 @@ A few properties are worth knowing before you use it:
   leases expire. Several workers can run at once without coordinating.
 - **`pp reset-demo-state` recreates the fixture workers, so it signs everyone out.** It is an
   operator command that replaces every domain row PromisePatch owns, and the sessions go with
-  them. A browser watching the live feed will see the resulting domain event, refetch, be told
-  its session is gone, and return to the sign-in screen. That is current, intended behaviour.
-- **`pp restore-demo-world` is the whole demo repair, and it is destructive.** The reset above is
-  one of its four steps: it reseeds, resets the External Order System's own order book, opens the
-  canonical case, and puts back a demo customer binding the reset would otherwise erase. It
-  requires `--confirm destroy-and-restore`, refuses anything that is not a canonical demo world
-  before it destroys anything, and never confirms a plan or sends a message. `--dry-run` reports
-  what it would find and writes nothing. See
+  them.
+- **`pp restore-demo-world` is the whole demo repair, and it is destructive.** It reseeds, resets
+  the External Order System's own order book, opens the canonical case, and puts back a demo
+  customer binding the reset would otherwise erase. It requires `--confirm destroy-and-restore`,
+  refuses anything that is not a canonical demo world before it destroys anything, and never
+  confirms a plan or sends a message. `--dry-run` writes nothing. See
   [docs/demo-world-restore.md](docs/demo-world-restore.md).
-- **The MCP endpoint is a separate process, and cannot reach the database.** It is the surface
-  a third-party MCP client is pointed at, and it reaches a case the way any other client would:
-  an authenticated HTTP call to the API's `/internal/intents`. An import-linter contract stops
-  the code in it from importing the domain or the database at all, so that boundary is checked
-  rather than intended. It speaks protocol revision **2025-11-25** over Streamable HTTP, refuses
-  an unauthenticated caller before the protocol layer, and rejects an unlisted `Origin`. Point a
-  client at it with the bearer token from `docker/env/mcp.env`;
-  [docs/p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) is the transport contract
-  and [docs/p5.2-mcp-clarification-and-confirmation.md](docs/p5.2-mcp-clarification-and-confirmation.md)
-  is the current tool contract, including why a confirmation has to quote back the identity of
-  the plan it is confirming.
-- **The order system is a different system, and is meant to look like one.** It runs in its
-  own process, over its own SQLite volume, on its own port, with its own UI. PromisePatch
-  mirrors it and pushes governed amendments at it; neither reads the other's storage. It is a
-  simulator — not Square, not a production point of sale — and
-  [docs/order-system.md](docs/order-system.md) says exactly what it does and does not prove.
+- **The MCP endpoint is a separate process, and cannot reach the database.** It reaches a case
+  the way any other client would: an authenticated HTTP call to the API's `/internal/intents`.
+  Point a client at it with the bearer token from `docker/env/mcp.env`.
+- **The customer channel defaults to a fake provider** everywhere except the deployment, so CI,
+  the tests and the local stack send nothing. Telegram is selected by
+  `PP_CUSTOMER_CHANNEL_PROVIDER=telegram`
+  ([customer-message-transport.md](docs/customer-message-transport.md)).
+- **The model defaults to a deterministic fake**, so the suites, the local stack and CI run with
+  no AWS credentials of any kind. `PP_LLM_PROVIDER=bedrock` switches to Amazon Bedrock using
+  whatever the AWS SDK already authenticates with.
 
 Behind an antivirus or corporate proxy that terminates TLS, put that root certificate in
 `docker/env/extra-ca.crt` before building; the file is created empty and is otherwise ignored.
 
-## Choosing a database for the repository tooling
+### Choosing a database for the repository tooling
 
 `.env` at the repository root points Alembic, the CLI and the integration suite at whichever
-database you configured — typically a hosted developer project. `docker/env/host.env` points
-them at the disposable local one instead, and `scripts/with_local_env.py` runs a single command
-with it, so switching to the local stack never means editing `.env`:
+database you configured. `docker/env/host.env` points them at the disposable local one instead,
+and `scripts/with_local_env.py` runs a single command with it:
 
 ```bash
 uv run python scripts/with_local_env.py -- uv run pytest apps/backend
 ```
 
-## Tests
+### Tests
+
+`pr` is the product gate: ruff, mypy in three groups, pytest with a coverage floor, the
+Hypothesis CI profile, import-linter, the MCP protocol suite, the semantic boundary and
+evaluation, the order system, the frontend, gitleaks, the backend against PostgreSQL and the
+whole-stack browser suite.
 
 The engine suite needs nothing at all:
 
@@ -279,21 +431,18 @@ The engine suite needs nothing at all:
 uv run pytest packages/promise-graph
 ```
 
-The backend suite needs a database. With the local stack running:
-
-```bash
-uv run python scripts/with_local_env.py -- uv run pytest apps/backend
-```
-
-Stop the worker first, though — it and the suite share the local database, and a running worker
-will claim the steps a workflow test just enqueued and finish them out from under it:
+The backend suite needs a database. With the local stack running, **stop the worker first**: it
+shares the local database and will claim the steps a workflow test just enqueued.
 
 ```bash
 docker compose stop worker
 ```
 
-The order-system integration runs both applications against each other, and the acceptance
-proof for the whole boundary is one file:
+```bash
+uv run python scripts/with_local_env.py -- uv run pytest apps/backend
+```
+
+The order-system boundary, end to end across both applications:
 
 ```bash
 uv run python scripts/with_local_env.py -- uv run pytest apps/backend/tests/test_order_system_boundary.py
@@ -310,89 +459,59 @@ uv run pytest apps/backend/tests/test_semantic_contracts.py \
 ```
 
 The MCP protocol suite needs no database, no credential and no model. It starts the real server
-on a loopback socket and drives it with the official SDK's client, so what it checks is the
-protocol -- initialization, negotiation, discovery, framing, the bearer challenge, the `Origin`
-and `Host` rejections, the JSON-RPC error codes and the absence of a session to resume:
+on a loopback socket and drives it with the official SDK's client:
 
 ```bash
 uv run pytest apps/backend/tests/test_mcp_protocol.py apps/backend/tests/test_status_view.py \
   apps/backend/tests/test_plan_identity.py
 ```
 
-What a tool call *causes* needs the database. That suite drives the whole chain end to end --
-SDK client, Streamable HTTP, MCP server, the service-token hop, the intent API, the domain and
-PostgreSQL -- and then asserts the rows:
+What a tool call *causes* needs the database. This suite drives SDK client, Streamable HTTP, MCP
+server, the service-token hop, the intent API, the domain and PostgreSQL, then asserts the rows:
 
 ```bash
 uv run python scripts/with_local_env.py -- uv run pytest apps/backend/tests/test_intent_api.py
 ```
 
-The semantic intake workflow needs the database but still no AWS account — every one of its
-scenarios runs against a scripted model:
-
-```bash
-uv run python scripts/with_local_env.py -- uv run pytest apps/backend/tests/test_semantic_intake.py
-```
-
-The tests that call Amazon Bedrock for real are marked `bedrock_live` and are deselected by
-default. They need credentials available to the AWS SDK and access to the configured model:
+Tests that call Amazon Bedrock for real are marked `bedrock_live` and deselected by default:
 
 ```bash
 PP_LLM_PROVIDER=bedrock uv run pytest -m bedrock_live
-AWS_PROFILE=promisepatch PP_LLM_PROVIDER=bedrock \
-  uv run python scripts/with_local_env.py -- uv run pytest -m "bedrock_live and integration"
 ```
 
-The order system's own suite needs nothing but Python:
+The order system's own suite:
 
 ```bash
 uv run pytest apps/order-simulator packages/order-contract
 ```
 
-The frozen effect-set manifest's identity and coherence are checked with nothing at all:
-
-```bash
-uv run pytest scripts/tests/test_effect_set_manifest.py
-```
-
-The effect-set harness executes scenarios from that manifest against the real system. From a
-fresh clone it verifies its own prerequisites with no database, no container and no credential —
-this is the command to run first, because it proves the clone is complete and the frozen
-identity intact before anything heavier is attempted:
-
-```bash
-uv run python scripts/run_effect_sets.py --check
-```
-
-With the local stack up and the worker stopped, it runs the scenarios. All sixteen are wired, so
-this form is a harness-development run that computes no score, and adding `--scored` reproduces
-the measurement:
+The effect-set harness runs the frozen scenarios against the real system. With the local stack
+up and the worker stopped, this is a development run that computes no score; `--scored`
+reproduces the measurement, and `--manifest` selects v2
+([effect-set-run-protocol.md](docs/effect-set-run-protocol.md) fixes what counts as scored):
 
 ```bash
 uv run python scripts/with_local_env.py -- uv run python scripts/run_effect_sets.py
 ```
 
-The judge and the runner's own suites need nothing at all:
-
 ```bash
-uv run pytest apps/backend/tests/test_effect_set_judge.py scripts/tests/test_run_effect_sets.py
+uv run pytest apps/backend/tests/test_effect_set_judge.py scripts/tests/test_run_effect_sets.py \
+  scripts/tests/test_effect_set_manifest.py
 ```
 
-[docs/effect-set-run-protocol.md](docs/effect-set-run-protocol.md) fixes, in advance, what counts
-as a scored run and what may never happen to its result;
-[docs/effect-set-harness.md](docs/effect-set-harness.md) describes the machinery and the
-disagreements building it surfaced;
-[docs/effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) publishes the first
-scored run, its per-scenario table and every diff.
+The frozen v1 manifest is `docs/effect-sets/scenarios.v1.json`, `promisepatch-effect-sets`
+v1.0.0, content hash `d41f5afcd01eda8e6fa4c28784f1fb0c238bbc27711019aac670914db62b2cdc`. Its
+labels are not derived from PromisePatch's output ([effect-set-manifest.md](docs/effect-set-manifest.md)).
 
-The frontend gates:
+The semantic and explanation evaluations run offline with zero provider calls:
+`python -m evals replay` and `python -m evals explanation-replay`
+([evals/README.md](evals/README.md), [explanation-quality-gate.md](docs/explanation-quality-gate.md)).
+
+The frontend gates, and the browser suite against the local stack (it reloads the fixture):
 
 ```bash
 cd apps/frontend && npm ci && npm run typecheck && npm run lint && npm test && npm run build
 ```
-
-The browser suite runs against the local stack, not against mocks. It reloads the fixture, so
-expect the stack's demo data to be replaced:
 
 ```bash
 cd apps/frontend && npx playwright install chromium && npm run e2e
@@ -402,7 +521,5 @@ cd apps/frontend && npx playwright install chromium && npm run e2e
 
 Apache-2.0. See [LICENSE](LICENSE).
 
----
-
-The full product is under active hackathon development; this repository grows one phase at a
-time.
+The feature freeze is in force from repository release SHA `56c3023`. Only submission, evidence
+and documentation corrections land after it.
