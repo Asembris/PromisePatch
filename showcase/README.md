@@ -10,6 +10,26 @@ The design is frozen. It was approved as a Claude Design handoff, kept locally u
 phases and its acceptance criteria are in
 [`docs/showcase-implementation-plan.md`](../docs/showcase-implementation-plan.md).
 
+## Status
+
+Plan phases P1 and P2 are in: the scaffold, tokens, fonts, brand assets, header and every
+section's static content. The page ships **no JavaScript yet**, so it reads the same with
+JavaScript on or off, and it contains no control that would do nothing.
+
+Where a section is interactive in the approved design, it shows its settled default as static
+markup, written by hand from the prototype's data tables: the six-promise matrix at stage 7
+*Settled* with order B selected, the revalidation gate at R3 10/10 PROCEED, the *Customer consent*
+trace (diagram from 1080px, stacked chain below), and the ten proof rows. Phase P3 replaces those
+hand-written blocks with build-time renders from `src/data/`. The hero stage shows the approved
+settled fallback, `assets/hero-fallback.svg`, until the three.js and SVG renderers land in P5.
+
+Not yet built: the stage stepper and *Play case*, order selection, the illustration scenario
+toggle, trace buttons, Copy buttons, section reveals, the hero and its step controls, the Pages
+workflow and the Playwright suite.
+
+One responsive fix beyond the prototype: below 400px a revalidation check's value drops under its
+description (still right-aligned), because the three-column row collides at 320px.
+
 ## Run it
 
 Node 24 (the version the repository's `pr` workflow pins).

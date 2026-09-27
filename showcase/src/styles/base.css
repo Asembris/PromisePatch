@@ -8,11 +8,8 @@
 @import '@fontsource/ibm-plex-mono/latin-500.css';
 @import '@fontsource/ibm-plex-mono/latin-600.css';
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+/* No global border-box: the approved prototype sizes every box as
+   content-box, and its flex bases and container width assume that. */
 
 html {
   background: var(--bg);
@@ -27,8 +24,6 @@ body {
   background: radial-gradient(120% 60% at 12% -8%, var(--bg-top) 0%, var(--bg) 55%) var(--bg) no-repeat;
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: var(--fs-body);
-  line-height: 1.6;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

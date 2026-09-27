@@ -31,33 +31,518 @@
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 
+
 <header class="site-header">
   <div class="container site-header__inner">
     <a class="site-header__home" href="#top" aria-label="PromisePatch, back to top">
       <img class="site-header__logo" src="brand/promisepatch-logo-on-dark.svg" alt="PromisePatch" width="131" height="28">
       <img class="site-header__icon" src="brand/promisepatch-icon-on-dark.svg" alt="PromisePatch" width="32" height="32">
     </a>
+    <nav class="site-nav" aria-label="Sections">
+      <a href="#story">Six promises</a>
+      <a href="#authority">Authority</a>
+      <a href="#revalidate">Revalidate</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#proof">Proof</a>
+    </nav>
+    <a class="btn btn--primary btn--header" href="https://184.194.40.87.sslip.io">Open live app <span aria-hidden="true">↗</span></a>
   </div>
 </header>
 
 <main id="main">
-  <section id="top" aria-labelledby="top-title">
-    <div class="container">
-      <h1 id="top-title">The model understands. The deterministic protocol authorizes.</h1>
+
+<!-- 01 HERO -->
+<section id="top" class="hero" aria-labelledby="top-title">
+  <div class="container">
+    <div class="hero__eyebrow">
+      <img src="brand/promisepatch-icon-on-dark.svg" alt="" width="28" height="28">
+      <span>Selective recovery · Deterministic authority</span>
     </div>
-  </section>
-  <section id="problem"></section>
-  <section id="story"></section>
-  <section id="authority"></section>
-  <section id="revalidate"></section>
-  <section id="evidence"></section>
-  <section id="architecture"></section>
-  <section id="deployment"></section>
-  <section id="proof"></section>
+    <div class="hero__intro">
+      <h1 id="top-title" class="hero__title">
+        <span class="hero__title-lead">The model understands.</span>
+        <span class="hero__title-main">The deterministic protocol <span class="accent-brand">authorizes.</span></span>
+      </h1>
+      <div class="hero__aside">
+        <p class="lede">One spoken report of a physical failure becomes a selective, consent-respecting recovery of the customer promises it actually reaches, and nothing else.</p>
+        <div class="btn-row">
+          <a class="btn btn--primary" href="https://184.194.40.87.sslip.io">Open the live app <span aria-hidden="true">↗</span></a>
+          <a class="btn btn--outline" href="#evidence">Explore the proof <span aria-hidden="true">↓</span></a>
+          <span class="btn btn--deferred" aria-disabled="true" title="Deferred: the demo video URL does not exist yet"><span aria-hidden="true">▶</span> Demo video · deferred</span>
+        </div>
+        <p class="hero__note">In the live app, press <em>Look around a real case</em>: read-only, no account.</p>
+      </div>
+    </div>
+
+    <figure class="hero__figure">
+      <div class="hero__stage" role="img" aria-label="Animated walkthrough: a raspberry delivery fails; six orders are checked; the four it reaches split into AUTO, ASK and BLOCKED lanes while the two unaffected orders never move. The pre-approved swap is applied; two orders go to the owner; the customer answers YES on a signed link; before that change runs it passes a revalidation gate of ten checks against a fresh snapshot; then it is applied.">
+        <div class="hero__grid" aria-hidden="true"></div>
+        <img class="hero__fallback" src="assets/hero-fallback.svg" alt="" width="1200" height="640">
+      </div>
+      <figcaption class="hero__caption">
+        <p class="hero__caption-text">6 promises → 1 auto-recovered · 1 customer-approved · 2 owner-escalated · 2 untouched.</p>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 02 PROBLEM -->
+<section id="problem" class="section" aria-labelledby="problem-title">
+  <div class="container problem">
+    <div class="problem__statement">
+      <p class="eyebrow">02 · The problem</p>
+      <p class="lede problem__lede">A made-to-order bakery accepts promises against supply it expects to receive. Then, one morning, the raspberries do not arrive.</p>
+      <h2 id="problem-title" class="h2">
+        <span class="problem__easy">Replanning the inventory is the easy part.</span>
+        <span class="problem__hard">Changing promises people already relied on is the hard part.</span>
+      </h2>
+      <p class="body-muted problem__body">A frontline worker has to answer four questions in the middle of a shift. A language model can help understand what they said, but it must never be the thing that decides.</p>
+    </div>
+    <ol class="lanes">
+      <li class="lanes__item"><span class="lane lane--auto"><span class="glyph glyph--auto" aria-hidden="true"></span>AUTO</span><span class="lanes__q">Which may change under a substitution the customer already agreed to?</span></li>
+      <li class="lanes__item"><span class="lane lane--ask"><span class="glyph glyph--ask" aria-hidden="true"></span>ASK</span><span class="lanes__q">Which need the customer to say yes?</span></li>
+      <li class="lanes__item"><span class="lane lane--blocked"><span class="glyph glyph--blocked" aria-hidden="true"></span>BLOCKED</span><span class="lanes__q">Which must go to the owner, because no permitted recovery exists?</span></li>
+      <li class="lanes__item"><span class="lane lane--unaffected"><span class="glyph glyph--unaffected" aria-hidden="true"></span>UNAFFECTED</span><span class="lanes__q">Which must not be touched at all?</span></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 03 SIX PROMISES -->
+<section id="story" class="section section--band" aria-labelledby="story-title">
+  <div class="container">
+    <div class="split heading-block">
+      <div>
+        <p class="eyebrow">03 · Six promises, four lanes</p>
+        <h2 id="story-title" class="h2">One missing delivery. Six accepted orders. Each gets exactly one answer.</h2>
+      </div>
+      <p class="body-muted">Step through the canonical case as it ran on the deployment. The worker clarifies <em class="quote">“just raspberries — the strawberries came.”</em> Select an order to see why it landed where it did and who was allowed to decide.</p>
+    </div>
+
+    <p class="stage-note"><span class="stage-note__stage">7 Settled</span> RESOLVED · the order system’s own store holds both amendments.</p>
+
+    <div class="story">
+      <div class="story__matrix">
+        <ul class="matrix" aria-label="Orders at this stage">
+          <li class="matrix__row">
+            <span class="matrix__id"><span class="visually-hidden">Order </span>A</span>
+            <span class="matrix__cells"><span class="cell cell--i is-past">accepted</span><span class="cell cell--r is-past">has raspberry</span><span class="cell cell--auto is-past">● AUTO</span><span class="cell cell--done is-past">✓ amended v1→v2</span><span class="cell cell--done is-past">✓ recovered</span><span class="cell cell--done is-past">✓ recovered</span><span class="cell cell--done">✓ RECOVERED</span></span>
+          </li>
+          <li class="matrix__row is-selected">
+            <span class="matrix__id"><span class="visually-hidden">Order </span>B</span>
+            <span class="matrix__cells"><span class="cell cell--i is-past">accepted</span><span class="cell cell--r is-past">has raspberry</span><span class="cell cell--ask is-past">◆ ASK</span><span class="cell cell--wait is-past">◆ 1 message sent</span><span class="cell cell--ask is-past">◆ YES</span><span class="cell cell--ask is-past">◆ 10/10 PROCEED</span><span class="cell cell--done">✓ RECOVERED</span></span>
+          </li>
+          <li class="matrix__row">
+            <span class="matrix__id"><span class="visually-hidden">Order </span>C</span>
+            <span class="matrix__cells"><span class="cell cell--i is-past">accepted</span><span class="cell cell--r is-past">has raspberry</span><span class="cell cell--blk is-past">■ BLOCKED</span><span class="cell cell--blk is-past">■ owner · held</span><span class="cell cell--blk is-past">■ owner · held</span><span class="cell cell--blk is-past">■ owner · held</span><span class="cell cell--blk">■ ESCALATED</span></span>
+          </li>
+          <li class="matrix__row">
+            <span class="matrix__id"><span class="visually-hidden">Order </span>D</span>
+            <span class="matrix__cells"><span class="cell cell--i is-past">accepted</span><span class="cell cell--r is-past">has raspberry</span><span class="cell cell--blk is-past">■ BLOCKED</span><span class="cell cell--blk is-past">■ owner · held</span><span class="cell cell--blk is-past">■ owner · held</span><span class="cell cell--blk is-past">■ owner · held</span><span class="cell cell--blk">■ ESCALATED</span></span>
+          </li>
+          <li class="matrix__row">
+            <span class="matrix__id"><span class="visually-hidden">Order </span>E</span>
+            <span class="matrix__cells"><span class="cell cell--i is-past">accepted</span><span class="cell cell--un is-past">no raspberry</span><span class="cell cell--un is-past">○ UNAFFECTED</span><span class="cell cell--un is-past">○ 0 effects</span><span class="cell cell--un is-past">○ 0 effects</span><span class="cell cell--un is-past">○ 0 effects</span><span class="cell cell--un">○ UNTOUCHED</span></span>
+          </li>
+          <li class="matrix__row">
+            <span class="matrix__id"><span class="visually-hidden">Order </span>F</span>
+            <span class="matrix__cells"><span class="cell cell--i is-past">accepted</span><span class="cell cell--un is-past">no raspberry</span><span class="cell cell--un is-past">○ UNAFFECTED</span><span class="cell cell--un is-past">○ 0 effects</span><span class="cell cell--un is-past">○ 0 effects</span><span class="cell cell--un is-past">○ 0 effects</span><span class="cell cell--un">○ UNTOUCHED</span></span>
+          </li>
+        </ul>
+        <div class="legend" aria-label="Legend">
+          <span>● AUTO</span><span>◆ ASK</span><span>■ BLOCKED</span><span>○ UNAFFECTED</span><span>✓ settled in the order system</span>
+        </div>
+      </div>
+
+      <aside class="detail" aria-labelledby="detail-title">
+        <div class="detail__head">
+          <h3 id="detail-title" class="detail__title">Order B</h3>
+          <span class="chip chip--lane lane--ask">◆ ASK</span>
+        </div>
+        <dl class="detail__list">
+          <div><dt>WHY</dt><dd>A substitution the customer must approve.</dd></div>
+          <div><dt>WHO DECIDES</dt><dd>The customer, with a literal YES on a signed web link.</dd></div>
+          <div><dt>SETTLED OUTCOME</dt><dd>One Telegram message; YES on the signed link; revalidated against a fresh snapshot; amended v1 → v2 under HUMAN_APPROVAL.</dd></div>
+          <div><dt>EFFECTS, PER REHEARSAL</dt><dd class="mono detail__fx">1 customer message · 1 order amendment</dd></div>
+        </dl>
+        <p class="detail__foot">Customers, recipes and the order system are labelled fixtures and a simulator. The Telegram message and the web approval are real. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/seeded-demo-case.md">Case definition</a></p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- 04 AUTHORITY -->
+<section id="authority" class="section section--plain-top" aria-labelledby="authority-title">
+  <div class="container">
+    <div class="authority__intro">
+      <p class="eyebrow">04 · Authority, not autonomy</p>
+      <h2 id="authority-title" class="h2">Reading a sentence and being allowed to act on it are different jobs.</h2>
+      <p class="body-muted">Every rule below is enforced in code and tests, not by convention. Import-linter contracts forbid the model boundary, the MCP server and the conversational client from reaching the domain or the database.</p>
+    </div>
+
+    <div class="split-panel">
+      <div class="split-panel__understanding">
+        <p class="label label--muted">UNDERSTANDING</p>
+        <div class="model-card">
+          <h3 class="model-card__title">The model</h3>
+          <p>May propose a reading of a sentence, checked against the bakery’s own vocabulary.</p>
+          <p class="label model-card__cannot">CANNOT</p>
+          <ul class="model-card__list">
+            <li>✕ write a row</li><li>✕ record consent</li><li>✕ attest a physical fact</li><li>✕ choose a recovery</li>
+          </ul>
+        </div>
+        <p class="split-panel__note">The canonical raspberry report costs <strong>zero</strong> model calls, and a test asserts it.</p>
+      </div>
+      <div class="split-panel__authority">
+        <p class="label label--brand">AUTHORITY</p>
+        <div class="authority-grid">
+          <div class="authority-card">
+            <h3>Deterministic engine</h3>
+            <p>Decides what a failure reaches, which lane each promise is in, and whether an approved change is still true. No I/O, no environment, no clock.</p>
+          </div>
+          <div class="authority-card">
+            <h3>Worker</h3>
+            <p>Attests the physical fact, and approves the plan that was read out, in a signed-in session. The approval is bound to that plan’s identity.</p>
+          </div>
+          <div class="authority-card">
+            <h3>Customer</h3>
+            <p>Authorizes an ASK change with a literal <code class="code-ask">YES</code>, an option code or <code class="code-ask">NO</code>. Free text is at most an apparent intent.</p>
+          </div>
+          <div class="authority-card">
+            <h3>Order system</h3>
+            <p>Stays the system of record. Changes arrive as governed amendments, only after revalidation.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="rules">
+      <li><strong>A service credential is not a person.</strong><span>An MCP confirm can only spend an approval a human wrote in a signed-in session.</span></li>
+      <li><strong>Two approvals, never interchangeable.</strong><span>A customer’s yes never spends a worker approval, and the reverse is also true.</span></li>
+      <li><strong>Nothing is invented at runtime.</strong><span>Recovery only selects pre-authored recipe versions.</span></li>
+      <li><strong>Uncertainty fails closed.</strong><span>Unknown or conflicting state goes to BLOCKED, never to UNAFFECTED.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 05 REVALIDATE -->
+<section id="revalidate" class="section section--deep" aria-labelledby="revalidate-title">
+  <div class="container">
+    <div class="split revalidate__head">
+      <div>
+        <p class="eyebrow">05 · The revalidation moment</p>
+        <h2 id="revalidate-title" class="revalidate__title">A yes is <span class="accent-ask">perishable.</span></h2>
+      </div>
+      <p class="revalidate__lede">Approval is not a permanent permission token. Before a customer’s YES is acted on, PromisePatch takes a fresh snapshot and runs ten checks. A change that is no longer true is refused as <code>STALE</code> and re-planned.</p>
+    </div>
+
+    <ol class="timeline" aria-label="Rehearsal R3 timeline, 24 September 2026, UTC">
+      <li><span class="timeline__time">20:27:10</span><span>One Telegram message delivered</span></li>
+      <li><span class="timeline__time">20:27:23</span><span>Worker stopped on purpose</span></li>
+      <li class="timeline--ask"><span class="timeline__time">20:28:31</span><span>Customer presses APPROVE. Stored; nothing acts on it.</span></li>
+      <li><span class="timeline__time">20:30:58</span><span>Worker starts again, 2 min 29 s later</span></li>
+      <li class="timeline--brand"><span class="timeline__time">20:31:01</span><span>Fresh snapshot. Ten checks.</span></li>
+      <li class="timeline--ink"><span class="timeline__time">20:31:03</span><span>EXT-B amended once. Case resolved.</span></li>
+    </ol>
+
+    <div class="gate">
+      <div class="gate__checks">
+        <div class="gate__bar">
+          <h3 class="gate__scenario">Deployed rehearsal R3</h3>
+          <span class="gate__header">AUDIT 503–512 · SNAPSHOT 20:31:01.207Z</span>
+        </div>
+        <ol class="checks" aria-label="Ten revalidation checks">
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Waiting.</strong> <span>The track and case are waiting.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">WAITING</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Order.</strong> <span>Order state and version unchanged.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">ACCEPTED @ v1</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Pinned version.</strong> <span>Pinned recipe version unchanged.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">rv-raspberry-rose-2</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Constraints.</strong> <span>Constraint snapshot unchanged.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">ee9962aa… = ee9962aa…</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Substitute.</strong> <span>The substitute is still available.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">3.200 ≥ 2.200</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Production task.</strong> <span>Not started; its start is ahead.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">SCHEDULED</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Deadline.</strong> <span>Approval deadline not passed, judged at processing time.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">20:31:01Z ≤ 01:26:54Z</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Sender.</strong> <span>The sender is the order’s approval channel.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">masked</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Parser.</strong> <span>The decision came from the literal parser.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">LITERAL</code></li>
+            <li class="check"><span class="check__mark" aria-hidden="true">✓</span><span class="check__text"><strong>Decision.</strong> <span>One unspent decision, bound to this plan.</span><span class="visually-hidden"> Passed.</span></span><code class="check__value">1 decision</code></li>
+        </ol>
+      </div>
+      <div class="gate__side">
+        <div class="outcome">
+          <p class="label">OUTCOME</p>
+          <p class="outcome__verdict">PROCEED</p>
+          <p class="outcome__sub">EXT-B amended once, v1 → v2, under HUMAN_APPROVAL. Case RESOLVED at 20:31:03Z.</p>
+        </div>
+        <p class="gate__note">Values as pp case-status printed them in rehearsal R3, on the frozen deployment 4529a802e34e.</p>
+        <a class="text-link" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-rehearsal-r3.md">Read the R3 record →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 06 EVIDENCE -->
+<section id="evidence" class="section section--plain-top" aria-labelledby="evidence-title">
+  <div class="container">
+    <div class="heading-block">
+      <p class="eyebrow">06 · Measured evidence</p>
+      <h2 id="evidence-title" class="evidence__title">6 promises → 1 auto-recovered · 1 customer-approved · 2 owner-escalated · 2 untouched</h2>
+    </div>
+
+    <div class="untouched">
+      <div class="untouched__claim">
+        <p class="untouched__numeral">0<span>/2</span></p>
+        <p class="untouched__text">untouched orders received an incident-caused effect, in <strong>each of five</strong> deployed restart rehearsals, while the four threatened orders were recovered or escalated.</p>
+        <p class="untouched__counts">Per rehearsal: 2 amendments · 1 customer message · 2 task holds · 3 outbox rows, all delivered on attempt 1.</p>
+        <p class="caveat"><strong>Caveat.</strong> One fixture measured five times. It shows the demo repeats, not a reliability rate. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-demo-funnel.md">Demo funnel</a></p>
+      </div>
+      <div class="untouched__table">
+        <table class="rehearsals">
+          <caption>5/5 REHEARSALS ON 4529a802e34e</caption>
+          <thead><tr><th scope="col">run</th><th scope="col">worker restarted</th><th scope="col">untouched</th><th scope="col" class="rehearsals__verdict">verdict</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-rehearsal-r1.md">R1</a></th><td>waiting for consent</td><td class="mono">0/2</td><td class="rehearsals__verdict">✓ PASS</td></tr>
+            <tr><th scope="row"><a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-rehearsal-r2.md">R2</a></th><td>across the plan confirmation</td><td class="mono">0/2</td><td class="rehearsals__verdict">✓ PASS</td></tr>
+            <tr><th scope="row"><a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-rehearsal-r3.md">R3</a></th><td>across the customer’s answer</td><td class="mono">0/2</td><td class="rehearsals__verdict">✓ PASS</td></tr>
+            <tr><th scope="row"><a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-rehearsal-r4.md">R4</a></th><td>after the case resolved</td><td class="mono">0/2</td><td class="rehearsals__verdict">✓ PASS</td></tr>
+            <tr><th scope="row"><a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-rehearsal-r5.md">R5</a></th><td>waiting for consent, again</td><td class="mono">0/2</td><td class="rehearsals__verdict">✓ PASS</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="evidence-cards">
+      <article class="card evidence-cards__pair" aria-labelledby="effect-sets-title">
+        <h3 id="effect-sets-title" class="label">EFFECT SETS · TWO DOCUMENTS, TWO RESULTS</h3>
+        <div class="pair">
+          <div class="pair__result">
+            <div class="pair__figure"><span class="numeral">11/16</span><span class="chip chip--headline">PERMANENT HEADLINE</span></div>
+            <p class="card__text">The first scored run of sixteen frozen scenarios against the v1 manifest, hand-labelled before the runner existed. Five failed. The result is never replaced.</p>
+            <a class="text-link" href="https://github.com/Asembris/PromisePatch/blob/main/docs/effect-set-first-scored-run.md">First scored run →</a>
+          </div>
+          <div class="pair__result pair__result--separate">
+            <div class="pair__figure"><span class="numeral">16/16</span><span class="chip chip--separate">SEPARATE RELEASE CONDITION</span></div>
+            <p class="card__text">Run once against v2, a separately versioned label correction in which one label moved: S12’s hold, because started kitchen work is never held. Product code identical to the deployed release candidate.</p>
+            <a class="text-link" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-effect-set-release-condition.md">v2 release condition →</a>
+          </div>
+        </div>
+        <p class="caveat"><strong>The original benchmark did not become 16/16.</strong> The other four v1 failures were implementation defects, fixed under published SHAs. Both manifests are developer-authored, finite and public, not an independent benchmark. The effect-set CI workflow stays red on purpose, because it judges v1.</p>
+      </article>
+
+      <article class="card evidence-cards__single" aria-labelledby="voice-title">
+        <h3 id="voice-title" class="label">VOICE</h3>
+        <p class="numeral">9/10</p>
+        <p class="card__text">voice turns in which a truthful spoken response began within four seconds of speech ending. The gate was 9, so it passed by one turn.</p>
+        <p class="caveat card__grow"><strong>Caveat.</strong> This is a second run. Run 1 (1/10) was voided after its intervals had been computed, which the protocol forbids; a strict reader may treat run 2 as a best-of-two. Local stack, browser speech APIs, no public-internet round trip. Not a latency SLA.</p>
+        <a class="text-link" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g7-ten-turn-voice-measurement.md">Voice measurement, both runs →</a>
+      </article>
+
+      <article class="card evidence-cards__single" aria-labelledby="ci-title">
+        <h3 id="ci-title" class="label">RELEASE CI</h3>
+        <p class="numeral">13/13</p>
+        <p class="card__text card__grow">jobs green on the exact release SHA <code class="code-ink">56c3023</code>, the whole-stack browser job among them.</p>
+        <a class="text-link" href="https://github.com/Asembris/PromisePatch/actions/runs/36310794944">pr run 36310794944 →</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- 07 ARCHITECTURE -->
+<section id="architecture" class="section section--band" aria-labelledby="architecture-title">
+  <div class="container">
+    <div class="split architecture__head">
+      <div>
+        <p class="eyebrow">07 · Architecture</p>
+        <h2 id="architecture-title" class="h2">The model proposes a reading. It does not own authority.</h2>
+      </div>
+      <div class="arch-legend">
+        <span><span class="arch-legend__swatch arch-legend__swatch--authority" aria-hidden="true"></span>authority lives here</span>
+        <span><span class="arch-legend__swatch arch-legend__swatch--understanding" aria-hidden="true"></span>understanding only</span>
+        <span><span class="arch-legend__swatch arch-legend__swatch--outside" aria-hidden="true"></span>outside the boundary</span>
+      </div>
+    </div>
+
+    <h3 class="trace-name label">Customer consent</h3>
+    <p class="trace-text">One outbound Telegram message. The customer answers YES or NO on a signed web link. That answer is revalidated by the engine against a fresh snapshot before the order system is amended.</p>
+
+    <div class="arch-diagram">
+      <svg viewBox="0 0 1200 570" width="1200" height="570" role="img" aria-label="Architecture: worker browser and MCP clients reach the Intent API; the durable workflow consults the deterministic promise_graph engine, sends words to a dashed semantic boundary that returns a candidate reading only, pushes governed amendments to the external order system, and sends one Telegram message whose signed-link answer returns for revalidation.">
+        <defs>
+          <marker id="aD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3A4666"></path></marker>
+          <marker id="aL" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8390F2"></path></marker>
+        </defs>
+        <g fill="none" stroke-linecap="round">
+          <path data-edge="e1" d="M200 102 C 340 102 340 190 480 190" stroke="#3A4666" stroke-width="1.25" marker-end="url(#aD)"></path>
+          <path data-edge="e2" d="M200 292 L 250 292" stroke="#3A4666" stroke-width="1.25" marker-end="url(#aD)"></path>
+          <path data-edge="e3" d="M430 292 C 456 292 456 222 480 222" stroke="#3A4666" stroke-width="1.25" marker-end="url(#aD)"></path>
+          <path data-edge="e4" d="M660 202 L 720 202" stroke="#3A4666" stroke-width="1.25" marker-end="url(#aD)"></path>
+          <path data-edge="e5a" d="M790 160 L 790 96" stroke="#3A4666" stroke-width="1.25" stroke-dasharray="5 5" marker-end="url(#aD)"></path>
+          <path data-edge="e5b" d="M850 96 L 850 160" stroke="#3A4666" stroke-width="1.25" stroke-dasharray="5 5" marker-end="url(#aD)"></path>
+          <path data-edge="e6" d="M760 246 C 760 330 710 382 662 382" stroke="#8390F2" stroke-width="2.25" marker-end="url(#aL)" marker-start="url(#aL)"></path>
+          <path data-edge="e7" d="M900 186 L 998 186" stroke="#8390F2" stroke-width="2.25" marker-end="url(#aL)"></path>
+          <path data-edge="e8" d="M1000 220 L 902 220" stroke="#3A4666" stroke-width="1.25" marker-end="url(#aD)"></path>
+          <path data-edge="e9" d="M880 246 C 880 330 930 372 998 372" stroke="#8390F2" stroke-width="2.25" marker-end="url(#aL)"></path>
+          <path data-edge="e10" d="M1090 414 L 1090 468" stroke="#8390F2" stroke-width="2.25" marker-end="url(#aL)"></path>
+          <path data-edge="e11" d="M1000 512 L 902 512" stroke="#8390F2" stroke-width="2.25" marker-end="url(#aL)"></path>
+          <path data-edge="e12" d="M810 470 L 810 248" stroke="#8390F2" stroke-width="2.25" marker-end="url(#aL)"></path>
+        </g>
+        <g class="arch-diagram__mono" font-size="11" fill="#AEB6C8">
+          <text x="258" y="94">session: the only place a plan approval is written</text>
+          <text x="206" y="318">bearer</text>
+          <text x="444" y="240" text-anchor="end">service token</text>
+          <text x="782" y="130" text-anchor="end">the words</text>
+          <text x="858" y="130">candidate reading, never authority</text>
+          <text x="704" y="318" text-anchor="end">reach · partition</text>
+          <text x="704" y="332" text-anchor="end">· revalidate</text>
+          <text x="950" y="178" text-anchor="middle">amendment</text>
+          <text x="950" y="238" text-anchor="middle">signed events</text>
+          <text x="946" y="330">1 message</text>
+          <text x="951" y="530" text-anchor="middle">YES / NO</text>
+          <text x="818" y="420">answer → revalidate</text>
+        </g>
+        <g class="arch-diagram__sans">
+          <rect x="20" y="60" width="180" height="84" rx="12" fill="#111A2B" stroke="#76819A"></rect>
+          <text x="38" y="94" fill="#F7F8FC" font-size="16" font-weight="600">Bakery worker</text>
+          <text class="arch-diagram__mono" x="38" y="118" fill="#AEB6C8" font-size="11.5">voice or text</text>
+          <rect x="20" y="250" width="180" height="84" rx="12" fill="#111A2B" stroke="#76819A"></rect>
+          <text x="38" y="284" fill="#F7F8FC" font-size="16" font-weight="600">Alexa+-style agent</text>
+          <text class="arch-diagram__mono" x="38" y="308" fill="#AEB6C8" font-size="12">any MCP client</text>
+          <rect x="250" y="250" width="180" height="84" rx="12" fill="#111A2B" stroke="#76819A"></rect>
+          <text x="268" y="280" fill="#F7F8FC" font-size="16" font-weight="600">MCP server</text>
+          <text class="arch-diagram__mono" x="268" y="302" fill="#AEB6C8" font-size="11.5">Streamable HTTP</text>
+          <text class="arch-diagram__mono" x="268" y="319" fill="#AEB6C8" font-size="11.5">2025-11-25 · no DB</text>
+          <rect x="480" y="160" width="180" height="84" rx="12" fill="#1B2644" stroke="#8390F2" stroke-width="2"></rect>
+          <text x="498" y="194" fill="#F7F8FC" font-size="16" font-weight="600">Intent API</text>
+          <text class="arch-diagram__mono" x="498" y="212" fill="#AEB6C8" font-size="11.5">actor + clock are</text>
+          <text class="arch-diagram__mono" x="498" y="229" fill="#AEB6C8" font-size="11.5">server-derived</text>
+          <rect x="720" y="12" width="180" height="84" rx="12" fill="#0B1221" stroke="#AEB6C8" stroke-width="1.5" stroke-dasharray="6 5"></rect>
+          <text x="738" y="42" fill="#F7F8FC" font-size="16" font-weight="600">Semantic boundary</text>
+          <text class="arch-diagram__mono" x="738" y="64" fill="#AEB6C8" font-size="11.5">Amazon Bedrock</text>
+          <text class="arch-diagram__mono" x="738" y="81" fill="#AEB6C8" font-size="11.5">proposes a reading</text>
+          <rect x="720" y="160" width="180" height="86" rx="12" fill="#1B2644" stroke="#8390F2" stroke-width="2"></rect>
+          <text x="738" y="190" fill="#F7F8FC" font-size="16" font-weight="600">Durable workflow</text>
+          <text class="arch-diagram__mono" x="738" y="212" fill="#AEB6C8" font-size="11.5">state machine + ledger</text>
+          <text class="arch-diagram__mono" x="738" y="229" fill="#AEB6C8" font-size="11.5">PostgreSQL</text>
+          <rect x="480" y="340" width="180" height="84" rx="12" fill="#1B2644" stroke="#8390F2" stroke-width="2"></rect>
+          <text x="498" y="370" fill="#F7F8FC" font-size="16" font-weight="600">promise_graph</text>
+          <text class="arch-diagram__mono" x="498" y="392" fill="#AEB6C8" font-size="11.5">deterministic engine</text>
+          <text class="arch-diagram__mono" x="498" y="409" fill="#AEB6C8" font-size="11.5">no I/O · no clock</text>
+          <rect x="1000" y="160" width="180" height="84" rx="12" fill="#111A2B" stroke="#76819A"></rect>
+          <text x="1018" y="194" fill="#F7F8FC" font-size="16" font-weight="600">Order system</text>
+          <text class="arch-diagram__mono" x="1018" y="218" fill="#AEB6C8" font-size="11.5">system of record</text>
+          <rect x="1000" y="330" width="180" height="84" rx="12" fill="#111A2B" stroke="#76819A"></rect>
+          <text x="1018" y="364" fill="#F7F8FC" font-size="16" font-weight="600">Telegram</text>
+          <text class="arch-diagram__mono" x="1018" y="388" fill="#AEB6C8" font-size="11.5">outbound only</text>
+          <rect x="1000" y="470" width="180" height="84" rx="42" fill="#111A2B" stroke="#76819A"></rect>
+          <text x="1090" y="518" fill="#F7F8FC" font-size="16" font-weight="600" text-anchor="middle">Customer</text>
+          <rect x="720" y="470" width="180" height="84" rx="12" fill="#111A2B" stroke="#76819A"></rect>
+          <text x="738" y="504" fill="#F7F8FC" font-size="16" font-weight="600">Signed web link</text>
+          <text class="arch-diagram__mono" x="738" y="528" fill="#AEB6C8" font-size="11.5">literal YES or NO</text>
+        </g>
+      </svg>
+    </div>
+
+    <ol class="chain" aria-label="Architecture, as a chain">
+          <li class="chain__item"><div class="chain__node chain__node--outside"><span class="chain__name">Worker / agent client</span><span class="chain__kind">OUTSIDE</span></div><div class="chain__edge">↓ MCP bearer token, or a signed-in session</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--outside"><span class="chain__name">MCP server</span><span class="chain__kind">OUTSIDE</span></div><div class="chain__edge">↓ Streamable HTTP · 2025-11-25 · no DB access</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--authority"><span class="chain__name">Intent API</span><span class="chain__kind">AUTHORITY</span></div><div class="chain__edge">↓ actor and clock are server-derived</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--understanding"><span class="chain__name">Semantic boundary</span><span class="chain__kind">UNDERSTANDING</span></div><div class="chain__edge">↓ proposes a reading, never authority</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--authority"><span class="chain__name">promise_graph engine</span><span class="chain__kind">AUTHORITY</span></div><div class="chain__edge">↓ reach · partition · revalidate</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--authority"><span class="chain__name">Durable workflow · PostgreSQL</span><span class="chain__kind">AUTHORITY</span></div><div class="chain__edge">↓ governed amendment, after revalidation</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--outside"><span class="chain__name">External order system</span><span class="chain__kind">OUTSIDE</span></div><div class="chain__edge">↓ system of record · signed events back</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--outside"><span class="chain__name">Telegram, outbound</span><span class="chain__kind">OUTSIDE</span></div><div class="chain__edge">↓ one message</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--outside"><span class="chain__name">Signed approval link</span><span class="chain__kind">OUTSIDE</span></div><div class="chain__edge">↓ literal YES or NO</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--authority"><span class="chain__name">Fresh revalidation</span><span class="chain__kind">AUTHORITY</span></div><div class="chain__edge">↓ ten checks against a fresh snapshot</div></li>
+          <li class="chain__item"><div class="chain__node chain__node--authority"><span class="chain__name">Governed effect</span><span class="chain__kind">AUTHORITY</span></div></li>
+    </ol>
+
+    <p class="architecture__mcp">PromisePatch exposes five intent tools (report, clarify, confirm, withdraw, status) over MCP protocol revision <code class="code-ink">2025-11-25</code>. <strong>This is not a native Alexa+ integration.</strong> The Alexa+-style experience is simulated by compatible MCP clients calling the real endpoint. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/p5.1-mcp-transport-spine.md">MCP transport proof</a></p>
+  </div>
+</section>
+
+<!-- 08 DEPLOYMENT -->
+<section id="deployment" class="section section--plain-top" aria-labelledby="deployment-title">
+  <div class="container deployment">
+    <div class="deployment__spec">
+      <p class="eyebrow">08 · Running on AWS</p>
+      <h2 id="deployment-title" class="h2 deployment__title">Not a mockup. A frozen deployment you can open.</h2>
+      <p class="body-muted deployment__lede">It serves the case workspace, the API, the event stream and the MCP endpoint. Telegram outbound is live: one message was delivered per rehearsal, and customers answer through the signed web link.</p>
+      <dl class="spec-list">
+        <div><dt>COMPUTE</dt><dd>One EC2 <code>t4g.small</code> in <code>us-east-1</code>, behind Caddy with a Let’s Encrypt certificate. IMDSv2 required.</dd></div>
+        <div><dt>DATABASE</dt><dd>Private, encrypted RDS PostgreSQL.</dd></div>
+        <div><dt>MODEL</dt><dd>Amazon Bedrock, Nova 2 Lite, called by the instance role. No AWS key is held anywhere.</dd></div>
+        <div><dt>FREEZE</dt><dd>Declared 2026-09-27. Any later change to a product path voids it.</dd></div>
+      </dl>
+    </div>
+    <div class="deployment__shas">
+      <div class="sha-card">
+        <p class="label">DEPLOYED PRODUCT / IMAGE SHA</p>
+        <code class="sha-card__value sha-card__value--short">4529a802e34e</code>
+        <span class="sha-card__note">Reported by <code>GET /healthz</code></span>
+      </div>
+      <div class="sha-card">
+        <p class="label">REPOSITORY RELEASE SHA</p>
+        <code class="sha-card__value sha-card__value--long">56c302366b3ddc0d824c1588a4a9ddbd193ed891</code>
+      </div>
+      <p class="deployment__relation">Two different commits whose deployable product paths are tree-identical. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-closeout.md">G8 closeout §3</a> · <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/deployed-customer-channel.md">Customer channel</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- 09 PROOF -->
+<section id="proof" class="section section--band section--no-bottom" aria-labelledby="proof-title">
+  <div class="container">
+    <div class="split heading-block">
+      <div>
+        <p class="eyebrow">09 · Proof</p>
+        <h2 id="proof-title" class="h2">Don’t trust the pitch. Inspect the proof.</h2>
+      </div>
+      <p class="body-muted">Every claim links to its committed record. Failed runs, voided runs and the repository’s own overclaims are published beside the passes. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/claims-audit.md">Claims audit</a></p>
+    </div>
+
+    <ul class="proofs">
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-closeout.md"><span class="proof-row__claim"><span class="proof-row__n">01</span><span>Release proof, closed</span></span><span class="proof-row__proves">22 of 22 G8 rows closed, the two SHAs reconciled, and the feature freeze.</span><span class="proof-row__file">g8-closeout.md <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/actions/runs/36310794944"><span class="proof-row__claim"><span class="proof-row__n">02</span><span>Exact release SHA passes CI</span></span><span class="proof-row__proves">13 of 13 jobs on 56c3023, the whole-stack browser job included.</span><span class="proof-row__file">actions/runs/36310794944 <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-rehearsal-r1.md"><span class="proof-row__claim"><span class="proof-row__n">03</span><span>Restart-safe on the deployment</span></span><span class="proof-row__proves">R1–R5: five worker restarts at four points on 4529a802e34e, each PASS, effects applied exactly once.</span><span class="proof-row__file">g8-rehearsal-r1.md … r5.md <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-demo-funnel.md"><span class="proof-row__claim"><span class="proof-row__n">04</span><span>Untouched means untouched</span></span><span class="proof-row__proves">The funnel 6 → 1/1/2 + 2, and 0/2 untouched orders affected, in all five rehearsals.</span><span class="proof-row__file">g8-demo-funnel.md <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-demo-contract-runner.md"><span class="proof-row__claim"><span class="proof-row__n">05</span><span>The storyboard is executable</span></span><span class="proof-row__proves">49 assertions through the intent API and the signed link, with no direct consent insert.</span><span class="proof-row__file">g8-demo-contract-runner.md <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/effect-set-first-scored-run.md"><span class="proof-row__claim"><span class="proof-row__n">06</span><span>The immutable headline</span></span><span class="proof-row__proves">11/16 against frozen v1, with every diff published.</span><span class="proof-row__file">effect-set-first-scored-run.md <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-effect-set-release-condition.md"><span class="proof-row__claim"><span class="proof-row__n">07</span><span>The separate release condition</span></span><span class="proof-row__proves">16/16 against the v2 label correction, and the fix SHA for each v1 failure.</span><span class="proof-row__file">g8-effect-set-release-condition.md <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g7-ten-turn-voice-measurement.md"><span class="proof-row__claim"><span class="proof-row__n">08</span><span>The voice number</span></span><span class="proof-row__proves">9/10 in run 2, with void run 1 and every timing published.</span><span class="proof-row__file">g7-ten-turn-voice-measurement.md <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/p5.1-mcp-transport-spine.md"><span class="proof-row__claim"><span class="proof-row__n">09</span><span>MCP transport</span></span><span class="proof-row__proves">Streamable HTTP, 2025-11-25, bearer and Origin/Host refusals, tested with the official SDK.</span><span class="proof-row__file">p5.1-mcp-transport-spine.md <span aria-hidden="true">↗</span></span></a></li>
+        <li><a class="proof-row" href="https://github.com/Asembris/PromisePatch/blob/main/docs/deployed-customer-channel.md"><span class="proof-row__claim"><span class="proof-row__n">10</span><span>Real customer loop</span></span><span class="proof-row__proves">A Telegram delivery and a web YES, with revalidation, applied once.</span><span class="proof-row__file">deployed-customer-channel.md <span aria-hidden="true">↗</span></span></a></li>
+    </ul>
+
+    <div class="limits">
+      <h3 class="limits__title">What the numbers do not say</h3>
+      <ul class="limits__list">
+        <li>One bakery, fixture data, a simulated order system. The Telegram message and the web approval are the real parts.</li>
+        <li>No refusal path has been exercised live. <code>STALE</code>, <code>EXPIRED</code>, <code>UNAUTHORIZED</code> and <code>NOOP</code> are proved by tests only.</li>
+        <li>Telegram inbound is deliberately not built. The signed link proves possession of the message, not identity.</li>
+        <li>The effect sets are developer-authored, and both evaluation holdouts remain sealed.</li>
+        <li>The voice result is not a production latency SLA.</li>
+        <li>Operations debt is recorded, not fixed. See <a href="https://github.com/Asembris/PromisePatch#honest-limitations">Honest limitations</a>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 10 FINAL CTA -->
+<section class="section final-cta" aria-labelledby="final-title">
+  <div class="container container--narrow final-cta__inner">
+    <img src="brand/promisepatch-icon-on-dark.svg" alt="" width="56" height="56" loading="lazy">
+    <h2 id="final-title" class="final-cta__title">When reality changes, permission must be checked <span class="accent-brand">again.</span></h2>
+    <div class="btn-row final-cta__row">
+      <a class="btn btn--primary btn--cta" href="https://184.194.40.87.sslip.io">Open live app <span aria-hidden="true">↗</span></a>
+      <a class="btn btn--outline btn--cta" href="#proof">Read the proof</a>
+      <a class="btn btn--outline btn--cta" href="https://github.com/Asembris/PromisePatch">GitHub <span aria-hidden="true">↗</span></a>
+      <span class="btn btn--deferred btn--cta" aria-disabled="true" title="Deferred: the demo video URL does not exist yet"><span aria-hidden="true">▶</span> Watch demo · deferred</span>
+    </div>
+  </div>
+</section>
 </main>
 
 <footer class="site-footer">
-  <div class="container site-footer__inner"></div>
+  <div class="container site-footer__inner">
+    <span>PromisePatch · Apache-2.0 · feature freeze from release SHA <code>56c3023</code></span>
+    <span class="site-footer__motto">The model understands · The protocol authorizes</span>
+  </div>
 </footer>
 </body>
 </html>
