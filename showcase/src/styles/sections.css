@@ -604,7 +604,9 @@ button.matrix__id:hover {
   transition: background .42s var(--ease-ui), border-color .42s, color .42s, opacity .42s;
 }
 
-.cell.is-past { opacity: .62; }
+/* The prototype's .62 left past cells at 3.9–4.3:1 (axe, WCAG AA 4.5:1) in
+   the settled default; .70 is the measured threshold, .72 keeps a margin. */
+.cell.is-past { opacity: .72; }
 
 .cell--i { background: transparent; border-color: var(--line); color: var(--muted); }
 .cell--r { background: transparent; border-color: var(--ink); color: var(--ink); }
