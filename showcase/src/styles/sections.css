@@ -993,7 +993,9 @@ button.matrix__id:hover {
 }
 
 .gate__mode {
-  height: 32px;
+  /* min-height, not height: under WCAG 1.4.12 spacing a label wraps and a
+     fixed height let it spill out of the button. Same 32px otherwise. */
+  min-height: 32px;
   padding: 0 12px;
   border-radius: 6px;
   border: 0;
