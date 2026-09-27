@@ -66,7 +66,14 @@ export async function scrollThrough(page) {
   const targets = await page.locator('[data-reveal], [data-gate]').all();
   for (const t of targets) {
     await t.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
-    await page.waitForTimeout(120);
+    // Wait for this block's own observer rather than a fixed pause: on a slow
+    // frame a fixed pause can move on before the intersection is sampled.
+    await t.evaluate((el) => new Promise((resolve) => {
+      const t0 = performance.now();
+      const tick = () => (!el.classList.contains('reveal-pending') || performance.now() - t0 > 3000 ? resolve() : requestAnimationFrame(tick));
+      tick();
+    }));
+    await page.waitForTimeout(60);
   }
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
 }
