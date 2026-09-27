@@ -203,6 +203,21 @@ test.describe('keyboard', () => {
   }
 });
 
+test.describe('text spacing (WCAG 1.4.12)', () => {
+  for (const width of [320, 390, 1440]) {
+    test(`${width}px: no control clips its text under the spacing overrides`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openPage(page);
+      await page.addStyleTag({ content: '* { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important; } p { margin-bottom: 2em !important; }' });
+      const clipped = await page.locator('button, a.btn').evaluateAll((els) => els
+        .filter((e) => e.checkVisibility())
+        .filter((e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)
+        .map((e) => `${e.className} "${e.textContent.trim().slice(0, 30)}" ${e.scrollWidth}x${e.scrollHeight} in ${e.clientWidth}x${e.clientHeight}`));
+      expect(clipped).toEqual([]);
+    });
+  }
+});
+
 test.describe('coarse pointer', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
