@@ -87,6 +87,10 @@ a:hover {
   color: var(--on-brand);
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -115,5 +119,21 @@ a:hover {
   *::after {
     animation-duration: .01ms !important;
     transition-duration: .01ms !important;
+  }
+}
+
+/* The ?motion=reduced QA switch applies the same clamp as the media query. */
+.motion-reduced *,
+.motion-reduced *::before,
+.motion-reduced *::after {
+  animation-duration: .01ms !important;
+  transition-duration: .01ms !important;
+  transition-delay: 0s !important;
+}
+
+@media print {
+  .reveal-pending {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
