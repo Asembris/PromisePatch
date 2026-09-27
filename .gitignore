@@ -70,6 +70,10 @@ blob-report/
 .playwright/
 playwright/.cache/
 
+# The Claude Design showcase handoff: local implementation scaffolding, never committed. The site
+# built from it takes its brand files from `brand/` and its facts from the repository.
+.handoff/
+
 # Claude Code's native isolated worktrees. Each is a throwaway checkout of this repository
 # created for one agent; it is never part of the repository's own history.
 .claude/worktrees/
