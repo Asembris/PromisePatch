@@ -51,6 +51,17 @@ test('axe on the illustration state and a non-default stage, trace and order', a
   expect(await axe(page)).toEqual([]);
 });
 
+test('axe on the gate while its checks are still pending', async ({ page }) => {
+  // The gate stays pending until 35% of it is on screen, so a reader scrolling
+  // down meets this state; Lighthouse found it, the settled-state runs did not.
+  await openPage(page);
+  await expect(page.locator('#revalidate .check.is-pending')).toHaveCount(10);
+  const results = await new AxeBuilder({ page }).include('#revalidate').analyze();
+  const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.impact} ${v.id}: ${v.nodes.length} nodes`);
+  expect(serious).toEqual([]);
+});
+
 test.describe('structure', () => {
   test('landmarks, one h1, one h2 per section, no skipped heading level', async ({ page }) => {
     await openPage(page);
