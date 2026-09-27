@@ -348,3 +348,11 @@ see [g8-demo-contract-runner.md](g8-demo-contract-runner.md). It changed no prod
 it*, is **not yet shown**: nothing was pushed. It passes to step 3. The SHA the freeze session
 dispatches `pr` on must contain the runner and its tests, and must be product-identical to
 `4529a802e34e`.
+
+**Later truth, 2026-09-27, the freeze session.** Step 3 is done, and G8 is **CLOSED**; see
+[g8-closeout.md](g8-closeout.md). No dispatch was needed: the push that carried the runner produced
+`pr` run `36310794944` on the exact release SHA `56c302366b3ddc0d824c1588a4a9ddbd193ed891`, 13 of
+13 jobs green, `whole-stack browser` among them. That closes row 13 and meets step 2's condition.
+Its deployable product paths are tree-identical to `4529a802e34e`, which is still what runs, so
+R1–R5 stand. The feature freeze is declared at `56c3023`, closing row 15. The provenance restates
+793 commits there. The matrix is now **22 CLOSED, 0 PARTIAL, 0 OPEN**.

@@ -81,7 +81,7 @@ orchestrator's separation from everything authoritative.
 
 Phase 4, the G5 deployment-entry subset and the first deployment are closed in their committed
 records. **G7 is closed with one criterion deliberately not performed** — the demo-narrative
-comprehension check, declined by the project owner. **G8 is the open gate.**
+comprehension check, declined by the project owner. **G8 is closed (2026-09-27); G9 is next.**
 
 **Phase 7 is CLOSED** (2026-09-24). The release candidate is frozen at deployed code SHA
 **`4529a802e34e`**, audited read-only at repo HEAD `da7ceca`, with `pr` green on that code and
@@ -126,10 +126,14 @@ and verifiers exited `0`, with no credential and no scored run. See
 assertions, through the intent API and the signed customer link. Evidence is read in a
 read-only transaction. Fixture, plan approval and worker restart stay the operator's. It changed
 no product path. See [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md).
-G8 now stands at **20 CLOSED, 2 PARTIAL, 0 OPEN**. The PARTIAL rows are 13 and 15, the freeze
-session's. That session's `pr` dispatch must be on a SHA that contains the runner.
-
-See [g8-evidence-packaging.md](docs/g8-evidence-packaging.md).
+**G8 is CLOSED** (2026-09-27), **22 CLOSED, 0 PARTIAL, 0 OPEN**. `pr` run `36310794944` passed
+13/13 jobs, `whole-stack browser` among them, on the exact release SHA. **Feature freeze is
+declared.** The frozen repository release SHA is **`56c302366b3d`** and the frozen deployed
+product/image SHA is **`4529a802e34e`**. They are two different SHAs whose deployable product
+paths are tree-identical. A later product-path change voids the freeze and needs a new release
+and five new rehearsals. The AWS state read back unchanged since the RC. Only submission, evidence
+and docs corrections are allowed. **G9, submission, is next.** See
+[g8-closeout.md](docs/g8-closeout.md) and [g8-evidence-packaging.md](docs/g8-evidence-packaging.md).
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
@@ -510,5 +514,6 @@ read the source document rather than a paraphrase of it.
 | G8 row 11 standalone engine proof (fresh clone, 335 passed, closed) | [g8-standalone-fresh-clone-proof.md](docs/g8-standalone-fresh-clone-proof.md) |
 | G8 row 20 effect-set clean-clone proof (sync + four checks exit 0, closed) | [g8-effect-set-fresh-clone-proof.md](docs/g8-effect-set-fresh-clone-proof.md) |
 | G8 row 1 demo-contract runner (built, 9 tests + one live local run pass, closed) | [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md) |
+| G8 closeout (rows 13, 15 closed; 22/0/0; freeze at `56c3023`, deployed `4529a802e34e`) | [g8-closeout.md](docs/g8-closeout.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |

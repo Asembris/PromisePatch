@@ -66,3 +66,10 @@ G8 row 12, *"contribution provenance within window"*, is **CLOSED** as a written
 repository, its root commit and every one of its 783 commits are dated inside the submission
 window, and the limits in §3 are stated beside that. Any later commit extends the history, and the
 freeze session should restate the commit count at the release SHA.
+
+**Later truth, 2026-09-27.** Restated at the frozen repository release SHA
+`56c302366b3ddc0d824c1588a4a9ddbd193ed891`: **793 commits**, no merges, one root (`1799971`), one
+identity, 14 `Co-Authored-By` trailers, and author and committer dates from
+`2026-09-02T22:25:53+02:00` to `2026-09-27T11:52:06+02:00`, all inside the window. The commands and
+the full table are in [g8-closeout.md](g8-closeout.md) §7. The text above stands as what was true
+at `b5cf0d3`.
