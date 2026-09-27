@@ -122,9 +122,12 @@ with nothing installed. See [g8-standalone-fresh-clone-proof.md](docs/g8-standal
 **Row 20 closed after it**: on the same clone, `uv sync --frozen` and both manifests' `--check`
 and verifiers exited `0`, with no credential and no scored run. See
 [g8-effect-set-fresh-clone-proof.md](docs/g8-effect-set-fresh-clone-proof.md).
-G8 now stands at **19 CLOSED, 3 PARTIAL, 0 OPEN**. The PARTIAL rows:
-- row 1: an executable demo-contract runner is required and was not built;
-- rows 13 and 15: the freeze session's.
+**Row 1 closed on 2026-09-27**: `scripts/demo_contract.py` executes the storyboard as 49
+assertions, through the intent API and the signed customer link. Evidence is read in a
+read-only transaction. Fixture, plan approval and worker restart stay the operator's. It changed
+no product path. See [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md).
+G8 now stands at **20 CLOSED, 2 PARTIAL, 0 OPEN**. The PARTIAL rows are 13 and 15, the freeze
+session's. That session's `pr` dispatch must be on a SHA that contains the runner.
 
 See [g8-evidence-packaging.md](docs/g8-evidence-packaging.md).
 
@@ -506,5 +509,6 @@ read the source document rather than a paraphrase of it.
 | G8 evidence packaging (rows 9, 12, 21 closed; 17/5/0; runner ruling; fresh-clone status) | [g8-evidence-packaging.md](docs/g8-evidence-packaging.md), [g8-development-evidence.md](docs/g8-development-evidence.md), [g8-demo-funnel.md](docs/g8-demo-funnel.md), [g8-contribution-provenance.md](docs/g8-contribution-provenance.md) |
 | G8 row 11 standalone engine proof (fresh clone, 335 passed, closed) | [g8-standalone-fresh-clone-proof.md](docs/g8-standalone-fresh-clone-proof.md) |
 | G8 row 20 effect-set clean-clone proof (sync + four checks exit 0, closed) | [g8-effect-set-fresh-clone-proof.md](docs/g8-effect-set-fresh-clone-proof.md) |
+| G8 row 1 demo-contract runner (built, 9 tests + one live local run pass, closed) | [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |

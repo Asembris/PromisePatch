@@ -108,6 +108,20 @@ refused. **Nothing was built.** The remaining condition is exactly one of these:
 - **(b)** the owner accepts that row 1 is unmet. `new_roadmap.md` §10 says *"A failed MUST cannot
   be renamed 'done'"*, so under (b) G8 cannot close.
 
+**Later truth, 2026-09-27.** The owner chose (a). The runner, `scripts/demo_contract.py`, was built
+under G8 with no product path changed, and row 1 is now CLOSED. See
+[g8-demo-contract-runner.md](g8-demo-contract-runner.md):
+
+- it executes the R1/`S16` storyboard as 49 assertions, through the intent API, the signed
+  customer link and the order system's own read;
+- its evidence connection is read-only in the database itself;
+- it refuses any world an operator did not restore;
+- it asks the operator to approve the plan and to restart the worker, and performs neither;
+- 9 focused tests pass, and 209 with the neighbouring suites;
+- one live local run exited `0`.
+
+The ruling above stands as what was true when it was written.
+
 ## 4. The G8 matrix, as of this page
 
 The rows and their literal requirements are the audit's. The 2026-09-24 column is the audit's
@@ -115,7 +129,7 @@ verdict, and the 2026-09-26 column is the status now, with the page that moved i
 
 | # | requirement (short) | 2026-09-24 audit | now | moved by |
 |---|---|---|---|---|
-| 1 | demo-contract runner | PARTIAL | **PARTIAL** | §3 above: a runner is required and was not built |
+| 1 | demo-contract runner | PARTIAL | **CLOSED** | [g8-demo-contract-runner.md](g8-demo-contract-runner.md), 2026-09-27: `scripts/demo_contract.py` built, 9 tests and one live local run pass. It was PARTIAL at this page's writing (§3) |
 | 2 | eleven adversarial faults | CLOSED | CLOSED | |
 | 3 | stale approved plan refuses | CLOSED | CLOSED | |
 | 4 | five deployed rehearsals | CLOSED on `4529a802e34e` | CLOSED on `4529a802e34e` | |
@@ -138,14 +152,15 @@ verdict, and the 2026-09-26 column is the status now, with the page that moved i
 | 21 | demo funnel with 0/U and effect counts | PARTIAL | **CLOSED** | [g8-demo-funnel.md](g8-demo-funnel.md), `1232a55` |
 | 22 | developer-authored disclosure | CLOSED | CLOSED | |
 
-**Counts: 22 rows. 19 CLOSED, 3 PARTIAL, 0 OPEN.**
+**Counts: 22 rows. 20 CLOSED, 2 PARTIAL, 0 OPEN.**
 
-- CLOSED: 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 17, 18, 19, 20, 21, 22.
-- PARTIAL: 1, 13, 15.
+- CLOSED: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 17, 18, 19, 20, 21, 22.
+- PARTIAL: 13, 15.
 - Moved to CLOSED by this session: **9, 12, 21**. Rows 18 and 19 were closed by the
   release-condition session and are listed here for the running total. Row 11 was closed later
   the same day by [g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md), and
   row 20 after it by [g8-effect-set-fresh-clone-proof.md](g8-effect-set-fresh-clone-proof.md).
+  Row 1 was closed on 2026-09-27 by [g8-demo-contract-runner.md](g8-demo-contract-runner.md).
 
 **Row 4 still holds only on `4529a802e34e`.** If closing any PARTIAL row produces a new image,
 the rehearsal count restarts on the new SHA.
@@ -323,6 +338,13 @@ Record each command's exit code and full output in a new page beside this one. T
    - restate the commit count in the provenance record at that SHA;
    - write the G8 closeout.
 
-G8 stays **OPEN** until rows 1, 13 and 15 are each met. Row 11 is met; see
+G8 stays **OPEN** until rows 13 and 15 are each met. Row 11 is met; see
 [g8-standalone-fresh-clone-proof.md](g8-standalone-fresh-clone-proof.md). Row 20 is met; see
 [g8-effect-set-fresh-clone-proof.md](g8-effect-set-fresh-clone-proof.md). Phase 8 does not close before G8.
+
+**Later truth, 2026-09-27.** Step 2 is done: the owner authorised the runner, and row 1 is met;
+see [g8-demo-contract-runner.md](g8-demo-contract-runner.md). It changed no product path, so
+`4529a802e34e` and R1–R5 stand. Step 2's first condition, *`pr` green on the SHA that contains
+it*, is **not yet shown**: nothing was pushed. It passes to step 3. The SHA the freeze session
+dispatches `pr` on must contain the runner and its tests, and must be product-identical to
+`4529a802e34e`.
