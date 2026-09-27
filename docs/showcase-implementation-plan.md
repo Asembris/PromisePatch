@@ -1,11 +1,13 @@
 # Showcase implementation plan
 
-Date: **2026-09-27**. Status: **P1–P5 implemented; P6–P9 open.** `showcase/` holds the
+Date: **2026-09-27**. Status: **P1–P5 implemented; P6 implemented with one target not met
+(Lighthouse mobile performance, see the S4 notes); P7's audit done and P7 not closed (five copy
+discrepancies await the owner); P8–P9 open.** `showcase/` holds the
 scaffold, tokens, self-hosted fonts, brand copy, every section's static content, the data modules
 with their build-time render (P3), the interactive six promises, revalidation gate,
-architecture traces, Copy buttons and section reveals (P4), and the hero: three.js `0.149.0`
-with the SVG renderer and the no-JS image behind it (P5). Nothing is deployed and no workflow
-exists.
+architecture traces, Copy buttons and section reveals (P4), the hero: three.js `0.149.0`
+with the SVG renderer and the no-JS image behind it (P5), and the Playwright suite behind
+`npm run check` (P6). Nothing is deployed and no workflow exists.
 
 **Recorded during P1/P2** (implementation notes; the design is unchanged):
 
@@ -114,6 +116,120 @@ exists.
   768 / 1280 / 1578 without overflow; keyboard (Tab, Enter, Space) on every hero control with the
   focus ring; S2 stepper, order detail, gate 10/10 and illustration toggle, traces and Copy
   unchanged; zero console errors.
+
+**Recorded during P6/P7, session S4** (adversarial QA; the design is unchanged):
+
+- **Dependencies, exact:** `@playwright/test` 1.63.0 and `@axe-core/playwright` 4.13.0 (axe-core
+  4.13). `typescript` was not added: nothing in S1–S3 uses `// @ts-check`, so the plan's
+  `typecheck` step would check nothing yet. Playwright's own Chromium download timed out through
+  the local TLS-intercepting proxy; the same Chrome for Testing 153 zips were fetched with curl
+  into the Playwright cache. CI will use `npx playwright install --with-deps chromium`.
+- **`npm run check`** = `build` → `verify` (assets, content, links, budgets) → `test`, one build.
+  The suite runs against `vite preview` of `dist/` under `/PromisePatch/` and refuses to run
+  without a build. **92 tests in 7 files**, Chromium only: `layout` 42, `a11y` 18, `interaction`
+  9, `hero` 8, `content` 8, `fallbacks` 6, `webgl-disabled` 1. Final run: exit 0, 92 passed.
+- **One set of content rules.** `tools/content-rules.mjs` holds the rules; `verify-content` runs
+  them over the built page and `content.spec.js` over the live DOM after about forty interaction
+  states (every stage, order, scenario, trace, hero time, Copy). A negative control mutates the
+  live DOM and the rules catch all three mutations. Every snapshot passes.
+- **Width matrix** 320 / 360 / 390 / 414 / 640 / 768 / 1000 / 1024 / 1079 / 1080 / 1280 / 1440 /
+  1578 / 1920: no overflow, nothing crossing the viewport outside a clipping ancestor, no text
+  under 11px outside the stage and diagram, no `[hidden]` element rendered, no clipped control,
+  stage height as specified and stable, every breakpoint form on its side. All pass; no layout
+  defect found.
+- **Fallbacks:** no JS (390, 1440), `?renderer=svg`, WebGL disabled by launch flags (no three.js
+  request), the three chunk held (image stays, controls hidden, SVG at the 4 s timeout, stage
+  never blank) and aborted. All pass. The WebGL path asserts the renderer the chunk's load time
+  calls for: on this machine a loopback stall once delayed the chunk 11 s, and the designed SVG
+  takeover correctly happened.
+- **Hero:** `seek()` states at 0.95 / 4.3 / 5.8 / 8.2 (tags, lanes, gate label, caption, pressed
+  step) at 1578 and 390; keyboard; both reduced-motion switches (settled on load, at most 3 rAF
+  in an idle second, no parallax, steps to phase ends); a live preference change; off-screen and
+  hidden-tab pausing. All pass. The hidden tab is simulated by overriding `visibilityState` and
+  dispatching `visibilitychange`, not by a real tab switch.
+- **Accessibility:** axe zero serious or critical at 390 and 1440 with JS on and off (JS off is
+  the entry script blocked, the same DOM as no JS since the page has no `<noscript>`), on the
+  illustration and on the pending gate, with no rule disabled and nothing excluded. Also one
+  `h1`, one `h2` per section, no skipped level, landmarks, skip link, a full Tab walk (ring on
+  every stop, no trap, deferred items not focusable), pressed state, table caption and scope,
+  colour-alone, 44px targets under a coarse pointer, WCAG 1.4.12 text spacing.
+- **Real defects found and fixed**, each reproduced by a test that failed before the fix:
+  1. Past matrix cells at the prototype's opacity .62 were 3.89–4.30:1 on 28 cells of the
+     settled default, which is also the no-JS state. Now .72 (.70 is the measured threshold).
+  2. Pending revalidation checks (the gate before it is 35% in view) were 2.74–4.34:1. Now
+     opacity .75 with the mark in `--muted`. Found by Lighthouse, missed by axe runs that judged
+     only the settled gate; `a11y.spec.js` now judges the pending gate too.
+  3. The scenario buttons had a fixed 32px `height`, so under the WCAG 1.4.12 spacing overrides
+     their wrapped labels spilled out. Now `min-height`, identical at normal spacing.
+
+  Test-side faults fixed on the way, not product defects: computed opacity read mid-transition,
+  smooth scroll racing the focus and scroll checks, a fixed-pause reveal walk, a reduced-motion
+  read before its frame, and paint entries whose presentation time trails the rendered frame by
+  up to ~55 ms (three.js is now asserted after the first rendered frame, recorded in-page).
+- **Network and budgets:** every request stays on the preview origin under `/PromisePatch/`, JS
+  on and off, with no 4xx. three chunk 106.59 KB gz, total 120.68 KB gz. CLS at most 0.0013
+  (390, 1578). Deviation from §5: the LCP element is the lede (390) or the settled hero image
+  (1578), not the H1; both land in the first contentful frame, and three.js is requested after
+  the first rendered frame.
+- **Lighthouse 13.5.0**, run locally (not a dependency) against `vite preview`, Chrome for
+  Testing 153 headless, default mobile (simulated slow 4G, 4× CPU) and `--preset=desktop`, on
+  this Windows development machine with a TLS-intercepting antivirus active:
+  - Accessibility **97** before fix 2, **100** after. Best Practices **100**. SEO **100**.
+  - Performance, mobile: **39–87** across seven runs (after the fixes: 69, 68 and 87 default,
+    68 `?motion=reduced`, 49 `?renderer=svg`). Desktop: **63** and **95**.
+  - **The ≥ 95 mobile performance target is not met.** The cause, from traces, is Total Blocking
+    Time. The long tasks are style recalculation and layout (the cold first layout of the long
+    page with seven self-hosted font files) and, with JS on, WebGL context creation and frame
+    commits on headless Chrome's software GL from the hero's continuous render loop (approved:
+    parallax and dust stay on). A blank page on the same machine scores 100 with TBT 0, and
+    identical code swings TBT from 183 ms to 2.7 s between runs, so the machine adds large
+    variance. No low-risk fix exists without removing approved behaviour or fonts, so none was
+    made.
+- **Manual pass:** the keyboard walk is scripted at 390 and 1440, and the focus ring was reviewed
+  in screenshots on the skip link, stepper, order, scenario, trace, hero step, Copy and CTA
+  (visible everywhere). Reduced motion is held by the tests. Zoom: 320 CSS px is 1280 at 400%
+  and reflows, except that under the 1.4.12 spacing overrides the R1–R5 table widens the page to
+  337px at 320 (a data table, the reflow exception; nothing is lost). **No screen reader was run**
+  (no NVDA or VoiceOver here), so the screen-reader row of §5 stays open.
+- **Reference comparison** (1578 and 390, viewport captures): hero final, six promises,
+  revalidation (R3 and the illustration), architecture with the consent trace, evidence and the
+  final CTA match `reference/` in structure, positions, labels and colours. The one visible
+  deviation is the slightly brighter past cells (fix 1). An element screenshot taller than the
+  viewport briefly resizes the stage to 0 wide during capture, so hero captures must be viewport
+  captures.
+- **P7 content audit**, sentence by sentence (rendered copy, then `CONTENT_SOURCES.md`, then the
+  cited record): about 115 claim-bearing items verified; no 11/16–16/16 progression; no Telegram
+  inbound, native Alexa+, live refusal or production-safety claim; deferred URLs absent from
+  `dist/`. **Five discrepancies, recorded and not changed**, because they change claim wording,
+  which is the owner's call:
+  1. "Worker starts again, 2 min 29 s later" (R3 timeline, `index.html`): 2 min 29.5 s is how long
+     the stored answer waited; press to worker start was about 2 min 27.5 s
+     (`docs/g8-rehearsal-r3.md` §4).
+  2. The deadline check value "20:31:01Z ≤ 01:26:54Z" (`src/data/checks.js`): the record reads
+     `≤ 2026-09-25T01:26:54Z`; without the date it reads as false (`g8-rehearsal-r3.md` §9).
+  3. "Customer presses APPROVE" (R3 timeline): R3 records the owner's APPROVE, pressed as the
+     canonical demo customer (`g8-rehearsal-r3.md` §4).
+  4. A plan approval "in a signed-in session" (`stages.js` stage 4, the `arch.js` edge label, the
+     `traces.js` report trace, the authority rule strip): the deployed rehearsals confirmed
+     through `OPERATOR_CONSOLE` (`pp confirm-plan`), and ADR-0018 defines two human channels.
+     The page follows `README.md` §How authority works, which says the same and is itself
+     contradicted by ADR-0018.
+  5. The hero caption "…and the world keeps moving while it waits" (`src/hero/constants.js`): the
+     deployed record says the world did not move between the message and the answer
+     (`docs/deployed-customer-channel.md` §11), so as a statement about the case it is
+     unsupported.
+
+  Four ledger citations were wrong and are corrected without changing any claim: the v1
+  "hand-labelled before the runner existed" caveat (README §Measured evidence and
+  `docs/effect-set-manifest.md`, not the run protocol), "best-of-two" (`docs/claims-audit.md`),
+  the per-rehearsal Telegram count (`docs/g8-demo-funnel.md`), and the freeze date (README §AWS
+  deployment, not §License). **P7 closes only once the five items are resolved.**
+- **Freeze:** all three §7 checks print nothing; the frozen manifest verifies
+  (`d41f5afc…2cdc`); `git diff --check` is clean; no product path, CI workflow or evidence file
+  changed.
+- **Local constraint:** concurrent browsers stall loopback requests for 20–60 s on this machine
+  (reproduced against a plain static server), so the suite runs one worker locally
+  (`PW_WORKERS` overrides) and two on CI.
 
 This plan turns the approved Claude Design handoff into a static GitHub Pages site served from
 this repository at **`https://asembris.github.io/PromisePatch/`**. The design is frozen; this
