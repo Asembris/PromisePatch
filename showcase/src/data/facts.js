@@ -27,7 +27,7 @@ export const FACTS = {
   },
   v1Headline: {
     value: '11/16',
-    source: ['docs/effect-set-first-scored-run.md', 'docs/g8-effect-set-release-condition.md §1'],
+    source: ['docs/effect-set-first-scored-run.md', 'docs/g8-effect-set-release-condition.md §1', 'README.md §Measured evidence', 'docs/effect-set-manifest.md'],
     caveat: ['PERMANENT HEADLINE', 'hand-labelled before the runner existed', 'Five failed', 'never replaced'],
   },
   v2Condition: {
@@ -59,7 +59,7 @@ export const FACTS = {
   },
   voice: {
     value: '9/10',
-    source: ['docs/g7-ten-turn-voice-measurement.md', 'README.md §Measured evidence'],
+    source: ['docs/g7-ten-turn-voice-measurement.md', 'README.md §Measured evidence', 'docs/claims-audit.md'],
     caveat: ['Run 1 (1/10) was voided', 'best-of-two', 'Local stack', 'Not a latency SLA'],
   },
   ci: {
