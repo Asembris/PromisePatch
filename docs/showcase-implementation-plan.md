@@ -1,7 +1,25 @@
 # Showcase implementation plan
 
-Date: **2026-09-27**. Status: **planned, not implemented.** Nothing described here exists yet
-except the `.gitignore` entry for the local handoff.
+Date: **2026-09-27**. Status: **P1 and P2 implemented; P3–P9 open.** `showcase/` holds the
+scaffold, tokens, self-hosted fonts, brand copy and every section's static content, with the
+interactive sections' settled defaults written by hand until P3 renders them from data. Nothing is
+deployed and no workflow exists.
+
+**Recorded during P1/P2** (implementation notes; the design is unchanged):
+
+- Versions: `vite` 8.3.1, `@fontsource/instrument-sans` 5.3.0, `@fontsource/ibm-plex-mono` 5.3.0,
+  all exact. No JavaScript ships yet, so `src/main.js` does not exist yet; it arrives with P4.
+- `apple-touch-icon.png` was rendered with a local headless Chrome/Edge
+  (`tools/render-touch-icon.mjs`), not Playwright, because Playwright is not a dependency until P6.
+- The prototype sizes every box as `content-box`, and its 1240px container and flex bases assume
+  that; the port keeps `content-box` rather than a global `border-box` reset.
+- Below 400px a revalidation check's value drops under its description: the prototype's
+  three-column row collides at 320px.
+- **Two conflicts for P7 to resolve, not silently.** §6.3 says 11/16 and 16/16 appear only inside
+  the effect-set card with no `→` in it, but the approved copy has "First scored run →" and
+  "v2 release condition →" link affordances inside that card, and proof rows 06 and 07 state
+  11/16 and 16/16 on their own. The copy was kept verbatim; the gate's wording needs to
+  distinguish a link arrow from a progression.
 
 This plan turns the approved Claude Design handoff into a static GitHub Pages site served from
 this repository at **`https://asembris.github.io/PromisePatch/`**. The design is frozen; this
