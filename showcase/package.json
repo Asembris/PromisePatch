@@ -15,7 +15,8 @@
     "verify:assets": "node tools/verify-assets.mjs",
     "verify:content": "node tools/verify-content.mjs",
     "verify:links": "node tools/verify-links.mjs",
-    "verify": "npm run verify:assets && npm run verify:content && npm run verify:links",
+    "check:budgets": "node tools/check-budgets.mjs",
+    "verify": "npm run verify:assets && npm run verify:content && npm run verify:links && npm run check:budgets",
     "render:touch-icon": "node tools/render-touch-icon.mjs"
   },
   "devDependencies": {
