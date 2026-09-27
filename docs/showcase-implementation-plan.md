@@ -1,10 +1,11 @@
 # Showcase implementation plan
 
-Date: **2026-09-27**. Status: **P1–P4 implemented; P5–P9 open.** `showcase/` holds the
+Date: **2026-09-27**. Status: **P1–P5 implemented; P6–P9 open.** `showcase/` holds the
 scaffold, tokens, self-hosted fonts, brand copy, every section's static content, the data modules
-with their build-time render (P3), and the interactive six promises, revalidation gate,
-architecture traces, Copy buttons and section reveals (P4). The hero is still the static
-fallback. Nothing is deployed and no workflow exists.
+with their build-time render (P3), the interactive six promises, revalidation gate,
+architecture traces, Copy buttons and section reveals (P4), and the hero: three.js `0.149.0`
+with the SVG renderer and the no-JS image behind it (P5). Nothing is deployed and no workflow
+exists.
 
 **Recorded during P1/P2** (implementation notes; the design is unchanged):
 
@@ -52,6 +53,67 @@ fallback. Nothing is deployed and no workflow exists.
   the QA switch, and screenshots compared with `reference/desktop/04, 06, 07, 08, 09, 09b` and
   `reference/mobile/03, 05, 07`. The stepper's buttons sit a few pixels wider than in
   `reference/desktop/04`; nothing else differs structurally.
+
+**Recorded during P5** (implementation notes; the design is unchanged):
+
+- **three.js `0.149.0`, exact**, the release the prototype ran, pinned directly rather than
+  pinning the current release and switching colour management off (§1.4 allowed either). r149
+  has no colour management by default, so no colour setting is needed. It is the only runtime
+  dependency, bundled from npm into its own chunk; nothing loads from a CDN. MIT notice in
+  `showcase/THIRD_PARTY_NOTICES.md`.
+- **Modules** as §3: `src/hero/constants.js` (`K PH END LD LM`, step labels, captions, the label
+  overlay), `scene.js` (`scene(t, L)` and `phaseOf`, verbatim), `three-renderer.js`
+  (`makeThree()` with named imports), `svg-renderer.js` (`makeSvg()`, unchanged), and
+  `controller.js` (layout, frame, place, step/Replay/Pause, lazy boot, fallback, pausing). Only
+  mechanical changes: `this.` and React state removed, `preserveDrawingBuffer` dropped, and
+  `dispose()` also removes the canvas.
+- **Lazy load and fallback.** The stage's `hero-fallback.svg` is a plain `<img>`, not a
+  `<noscript>` one: it is the no-JS state *and* the first paint with JS. After first paint
+  (`requestAnimationFrame` → `setTimeout 0`), once the stage is within a viewport, `boot()` probes
+  WebGL and imports `three-renderer.js`. `?renderer=svg` (or `pp-qa`), a failed probe, a rejected
+  import, a throwing `makeThree()` or 4 s without a start all start the SVG renderer instead;
+  the label reads `… · WEBGL` or `… · SVG FALLBACK`. The image is removed only after a renderer
+  has drawn its first frame, and the step controls (rendered `hidden`) appear only then, so the
+  stage is never blank and no control is dead. Measured: three is requested ~170–220 ms after
+  first paint; CLS 0.0012 at 1578 and 0 at 390.
+- **Pausing.** The render loop stops entirely off-screen (IntersectionObserver) and in a hidden
+  tab (`visibilitychange`) and restarts on return; the timeline does not advance while stopped.
+  The prototype's watchdog (draw if rAF stalls > 300 ms) is kept but only runs for a visible
+  stage.
+- **Reduced motion** (system or `?motion=reduced`): opens at `END` with the gate at 10/10; no
+  parallax, spin or dust drift; the loop draws only when something changed, so nothing runs
+  continuously. Step buttons jump to `PH[i+1] − 0.001` as the prototype does (06 to `END`).
+  *Pause* is hidden because it would do nothing. A system change while open jumps to the settled
+  end either way, never a half-played state.
+- **Controls.** *Pause* changes its label (❚❚ Pause / ▶ Play) and does not also carry
+  `aria-pressed`, as *Play case* in P4. Below 640px the step names are visually hidden, as the
+  prototype shows numbers only, but stay in each button's accessible name. Under
+  `pointer: coarse` the hero buttons are 44px tall, as `RESPONSIVE_SPEC.md` asks. The caption is
+  `aria-live="polite"`. `window.__ppHero.seek(t)` is kept (returns the phase, or −1 before a
+  renderer starts) with a `renderer` getter.
+- **Below 360px** (a responsive fix): the two-line stage label reached "NOT RECEIVED" and the
+  two UNTOUCHED tags ran together. The stage gains 48px (the width-fitted mobile scene only moves
+  down) and tag tracking is −.02em there; `LM` is unchanged and labels stay 11px.
+- **Budget** (`tools/check-budgets.mjs`, now part of `npm run verify`): three chunk
+  **106.59 KB gz** (Vite reports 107.76 at its gzip level) against 150; total JS **120.66 KB gz**
+  against 200. A negative control (an extra 120 KB gz chunk) fails it.
+- **Reference comparison**, scratch headless Edge over CDP, `seek(t)` at 0.95, 4.3, 5.8, 8.2:
+  desktop 1578 matches `reference/desktop/01–02` in structure, positions, labels, colours and
+  tags; mobile 390 matches `reference/mobile/01` and `01a`; `?renderer=svg` matches
+  `reference/webgl-fallback/` (5/10 at 5.8, final at 8.2); reduced motion on load matches
+  `reference/reduced-motion/01`; laptop 1280 matches `reference/laptop/01`. Deviations:
+  (1) `reference/reduced-motion/02` shows the final state, but the prototype's own `heroGo(4)`
+  under reduced motion lands on t = 4.899 (B "YES · HELD", gate 0/10), which is what ships; the
+  reference is a crop that does not match its code. (2) The mobile stage is 554px at 390, the
+  spec's 1.42 × width; the reference is ~584px because its capture rewrote `vw`. (3) At 768 the
+  desktop scene is width-fitted as specified and the gate label and A's tag sit 0.9px apart
+  (no glyph overlap); the prototype composes it the same way.
+- Also verified: WebGL disabled by browser flags → SVG with no three request; three request
+  held forever → image stays with controls hidden, SVG at ~4 s; three request failed → SVG at
+  once; JS disabled → image, settled caption, no controls, no overlay; widths 320 / 360 / 390 /
+  768 / 1280 / 1578 without overflow; keyboard (Tab, Enter, Space) on every hero control with the
+  focus ring; S2 stepper, order detail, gate 10/10 and illustration toggle, traces and Copy
+  unchanged; zero console errors.
 
 This plan turns the approved Claude Design handoff into a static GitHub Pages site served from
 this repository at **`https://asembris.github.io/PromisePatch/`**. The design is frozen; this
