@@ -16,24 +16,24 @@ nearby and that every cited path exists. Links are listed once, in
 |---|---|---|---|
 | Release SHA (AWS, CI card, footer) | `56c302366b3ddc0d824c1588a4a9ddbd193ed891` · `56c3023` | two different commits; deployable product paths tree-identical | `docs/g8-closeout.md` §2, §3, §5; README §AWS deployment |
 | Deployed product/image SHA | `4529a802e34e` | reported by `GET /healthz` | `docs/g8-closeout.md` §3; `docs/phase7-approval-log-privacy-repair.md` |
-| v1 effect-set headline | 11/16, PERMANENT HEADLINE | first scored run, frozen v1, hand-labelled, five failed, never replaced | `docs/effect-set-first-scored-run.md`; `docs/g8-effect-set-release-condition.md` §1 |
+| v1 effect-set headline | 11/16, PERMANENT HEADLINE | first scored run, frozen v1, hand-labelled, five failed, never replaced | `docs/effect-set-first-scored-run.md`; `docs/g8-effect-set-release-condition.md` §1; the "hand-labelled before the runner existed" caveat: README §Measured evidence and `docs/effect-set-manifest.md` ("Authored in P5, before the runner exists"), not the run protocol, whose own "before the runner existed" `docs/claims-audit.md` shows to be false |
 | v2 release condition | 16/16, SEPARATE RELEASE CONDITION | separately versioned label correction; one label moved (S12's hold); product-identical; the original benchmark did not become 16/16 | `docs/g8-effect-set-release-condition.md` §5–7; `docs/adr/0017-a-blocked-promise-does-not-hold-a-started-task.md` |
 | Effect-set scope | developer-authored, finite and public, not an independent benchmark; the effect-set CI stays red on purpose | — | README §Measured evidence |
 | Rehearsals | 5/5 on `4529a802e34e` | one fixture measured five times; not a reliability rate | `docs/g8-rehearsal-r1.md` … `r5.md`; `docs/g8-demo-funnel.md` §2, §3 |
 | Untouched orders | 0/2 in each of five | per rehearsal 2 amendments · 1 message · 2 task holds · 3 outbox rows, attempt 1 | `docs/g8-demo-funnel.md` (effect counts); README §Measured evidence |
 | Funnel | 6 promises → 1 auto-recovered · 1 customer-approved · 2 owner-escalated · 2 untouched | — | `docs/g8-demo-funnel.md` §1 |
-| Voice | 9/10 | run 2; run 1 (1/10) voided after computation; best-of-two; local stack; not a latency SLA | `docs/g7-ten-turn-voice-measurement.md`; README §Measured evidence |
+| Voice | 9/10 | run 2; run 1 (1/10) voided after computation; best-of-two; local stack; not a latency SLA | `docs/g7-ten-turn-voice-measurement.md`; README §Measured evidence; "best-of-two": `docs/claims-audit.md` (F2) |
 | Release CI | 13/13, `pr` run `36310794944` | whole-stack browser job included | `docs/g8-closeout.md` §2; README §Measured evidence |
 | MCP | revision `2025-11-25`, Streamable HTTP, five intent tools | not a native Alexa+ integration | `docs/p5.1-mcp-transport-spine.md`; README §Alexa+ and MCP |
 | Zero model calls | the canonical report costs zero model calls, and a test asserts it | — | README §How authority works; `docs/semantic-boundary.md` |
 | AWS stack | EC2 `t4g.small`, `us-east-1`, Caddy + Let's Encrypt, private encrypted RDS, Bedrock Nova 2 Lite via instance role, IMDSv2, no AWS key | — | README §AWS deployment; `docs/p6.2-first-deployment.md`; `docs/adr/0007-runtime-semantic-model-nova-2-lite.md` |
-| Feature freeze | declared 2026-09-27 | a later product-path change voids it | `docs/g8-closeout.md` §5; README §License |
+| Feature freeze | declared 2026-09-27 | a later product-path change voids it | `docs/g8-closeout.md` §5; README §AWS deployment |
 
 ## Product boundaries
 
 | On the page | Source |
 |---|---|
-| Telegram is outbound only; one message per rehearsal | `docs/deployed-customer-channel.md`; README §AWS deployment |
+| Telegram is outbound only; one message per rehearsal | `docs/deployed-customer-channel.md`; README §AWS deployment; the per-rehearsal count: `docs/g8-demo-funnel.md` §1–2 |
 | Customers answer through the signed web link; it proves possession, not identity | `docs/customer-approval-link.md`; `docs/adr/0021-a-customer-answers-on-the-web-and-their-address-stays-in-the-database.md` |
 | Telegram inbound is deliberately not built | `docs/customer-message-transport.md`; README §Honest limitations |
 | The Alexa+-style experience is simulated by MCP clients; not native | README §Alexa+ and MCP |
