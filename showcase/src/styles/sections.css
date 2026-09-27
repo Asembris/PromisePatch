@@ -1044,8 +1044,10 @@ button.matrix__id:hover {
   transition: opacity .25s ease-out;
 }
 
+/* The prototype's .55 and a --quiet mark left a pending check at 2.7–4.3:1
+   (Lighthouse; WCAG AA 4.5:1). A reader scrolling down meets this state. */
 .check.is-pending {
-  opacity: .55;
+  opacity: .75;
 }
 
 .check:last-child {
@@ -1070,7 +1072,7 @@ button.matrix__id:hover {
 
 .check.is-pending .check__mark {
   background: transparent;
-  color: var(--quiet);
+  color: var(--muted);
   border-color: var(--line-strong);
 }
 
