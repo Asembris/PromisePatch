@@ -127,6 +127,204 @@
   }
 }
 
+/* The renderer's canvas or SVG, and the HTML label overlay projected over
+   it. Ported from the prototype's inline styles; positions are written per
+   frame, so no transform transition. */
+.hero__gl,
+.hero__overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.hero__overlay {
+  pointer-events: none;
+  font-family: var(--font-mono);
+}
+
+.hl {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  transition: opacity .3s ease-out;
+  will-change: transform;
+}
+
+.hl__a {
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  transition: color .3s ease-out;
+}
+
+.hl__a--b {
+  transform: translate(-50%, -100%);
+  align-items: center;
+  gap: 2px;
+}
+
+.hl__a--l {
+  transform: translate(0, -50%);
+}
+
+.hl__a--node {
+  display: block;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.hl__a--tag {
+  display: block;
+  transform: translate(-50%, 0);
+  font-size: 11px;
+  letter-spacing: .06em;
+}
+
+.hl__kicker {
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: var(--muted);
+}
+
+.hl__name {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hl__name--quiet {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.hl__name--sm {
+  font-size: 13px;
+}
+
+.hl__lane {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .1em;
+}
+
+.hl__sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.hl__gate {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  color: var(--brand);
+}
+
+.hl__gate-n {
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.hl--owner { color: var(--owner); }
+.hl--auto { color: var(--auto); }
+.hl--ask { color: var(--ask); }
+.hl--muted { color: var(--muted); }
+
+.hero__label {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  line-height: 1.5;
+  color: var(--quiet);
+}
+
+.hero__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  flex: 1 1 360px;
+}
+
+.hero__step,
+.hero__action {
+  height: 32px;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.hero__step {
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.hero__step[aria-pressed="true"] {
+  border-color: var(--brand);
+  background: var(--tint-brand);
+  color: var(--ink);
+}
+
+.hero__action {
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.hero__step:hover,
+.hero__action:hover {
+  border-color: var(--brand);
+}
+
+@media (max-width: 639.98px) {
+  /* The prototype shows only the step number below 640px; the name stays
+     in the accessible name. */
+  .hero__step-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* Below 360px the two-line stage label reached the source label and the two
+   UNTOUCHED tags touched. The mobile scene is width-fitted, so a little more
+   stage height only moves it down; the layout table is unchanged. */
+@media (max-width: 359.98px) {
+  .hero__stage {
+    height: min(620px, calc(142vw + 48px));
+  }
+
+  .hl__a--tag {
+    letter-spacing: -.02em;
+  }
+}
+
+@media (pointer: coarse) {
+  .hero__step,
+  .hero__action {
+    height: 44px;
+    min-width: 44px;
+  }
+}
+
 /* ---------- 02 Problem ---------- */
 
 .problem {

@@ -4,6 +4,7 @@
 // keeps its settled content.
 
 import { createMotion } from './lib/motion.js';
+import { initHero } from './hero/controller.js';
 import { initStory } from './sections/story.js';
 import { initRevalidate } from './sections/revalidate.js';
 import { initArchitecture } from './sections/architecture.js';
@@ -13,6 +14,7 @@ import { initReveal } from './sections/reveal.js';
 const motion = createMotion();
 
 for (const [name, init] of [
+  ['hero', initHero],
   ['story', initStory],
   ['revalidate', initRevalidate],
   ['architecture', initArchitecture],

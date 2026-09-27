@@ -1,5 +1,6 @@
 // Reduced motion: the system preference, or the prototype's QA switch
 // (`?motion=reduced`, or `localStorage['pp-qa'] = '{"motion":"reduced"}'`).
+// The same switches carry the hero's `?renderer=svg`.
 // Read at start and again whenever the system preference changes.
 
 function qaSwitches() {
@@ -23,6 +24,8 @@ export function createMotion() {
   const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   const listeners = new Set();
   const motion = {
+    /** The QA switches, read once: `motion`, and the hero's `renderer`. */
+    qa,
     reduced: forced || Boolean(mq && mq.matches),
     /** @param {(reduced: boolean) => void} fn */
     onChange(fn) {

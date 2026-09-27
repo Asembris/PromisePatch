@@ -1,5 +1,5 @@
 // Every string the page can show only after an interaction (another stage,
-// another order, the illustration, another trace). The content gate checks
+// another order, the illustration, another trace) or once the hero plays. The content gate checks
 // these beside the no-JS page, so a runtime-only sentence is gated too.
 
 import { STAGES } from '../src/data/stages.js';
@@ -11,6 +11,7 @@ import { ARCH } from '../src/data/arch.js';
 import { PROOFS } from '../src/data/proofs.js';
 import { gateAnnouncement } from '../src/render/gate.js';
 import { stageAnnouncement } from '../src/render/matrix.js';
+import { HERO_STRINGS } from '../src/hero/constants.js';
 
 export function strings() {
   const out = [];
@@ -26,5 +27,6 @@ export function strings() {
   Object.values(TRACES).forEach((t) => out.push(t.label, t.text));
   ARCH.forEach((a) => out.push(...a.filter(Boolean)));
   PROOFS.forEach((p) => out.push(p[0], p[1]));
+  out.push(...HERO_STRINGS);
   return out;
 }

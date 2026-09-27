@@ -79,9 +79,20 @@
       <div class="hero__stage" role="img" aria-label="Animated walkthrough: a raspberry delivery fails; six orders are checked; the four it reaches split into AUTO, ASK and BLOCKED lanes while the two unaffected orders never move. The pre-approved swap is applied; two orders go to the owner; the customer answers YES on a signed link; before that change runs it passes a revalidation gate of ten checks against a fresh snapshot; then it is applied.">
         <div class="hero__grid" aria-hidden="true"></div>
         <img class="hero__fallback" src="assets/hero-fallback.svg" alt="" width="1200" height="640">
+        <div class="hero__label" data-hero-label hidden></div>
       </div>
       <figcaption class="hero__caption">
-        <p class="hero__caption-text">6 promises → 1 auto-recovered · 1 customer-approved · 2 owner-escalated · 2 untouched.</p>
+        <p class="hero__caption-text" data-hero-caption aria-live="polite">6 promises → 1 auto-recovered · 1 customer-approved · 2 owner-escalated · 2 untouched.</p>
+        <div class="hero__controls" data-hero-controls role="group" aria-label="Walkthrough steps" hidden>
+          <button type="button" class="hero__step" data-hero-step="0" aria-pressed="false">01<span class="hero__step-label"> Disruption</span></button>
+          <button type="button" class="hero__step" data-hero-step="1" aria-pressed="false">02<span class="hero__step-label"> Reach</span></button>
+          <button type="button" class="hero__step" data-hero-step="2" aria-pressed="false">03<span class="hero__step-label"> Partition</span></button>
+          <button type="button" class="hero__step" data-hero-step="3" aria-pressed="false">04<span class="hero__step-label"> Act</span></button>
+          <button type="button" class="hero__step" data-hero-step="4" aria-pressed="false">05<span class="hero__step-label"> Ask</span></button>
+          <button type="button" class="hero__step" data-hero-step="5" aria-pressed="false">06<span class="hero__step-label"> Revalidate</span></button>
+          <button type="button" class="hero__action" data-hero-replay><span aria-hidden="true">↺</span> Replay</button>
+          <button type="button" class="hero__action" data-hero-pause><span aria-hidden="true" data-glyph>❚❚</span> <span data-label>Pause</span></button>
+        </div>
       </figcaption>
     </figure>
   </div>
