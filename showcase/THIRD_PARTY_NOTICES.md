@@ -1,6 +1,7 @@
 # Third-party notices
 
-The PromisePatch showcase ships the font files below inside its static build (`dist/assets/`).
+The PromisePatch showcase ships the font files and the three.js code below inside its static
+build (`dist/assets/`).
 They are self-hosted: the page makes no request to Google Fonts or any CDN. This file is copied
 into `dist/` by the build.
 
@@ -24,6 +25,38 @@ No other third-party code ships in the built page. Vite is a build tool only.
 
 The font files are unmodified. "Instrument Sans" and "IBM Plex" are used here only as the names
 of the unmodified fonts.
+
+## three.js
+
+- Version shipped: 0.149.0 (r149), the release the approved hero prototype ran
+- Obtained from: npm `three@0.149.0`, bundled into the lazy hero chunk (`three-renderer-*.js`);
+  only the classes the hero uses are included
+- Upstream: https://github.com/mrdoob/three.js
+- Licence: MIT, reproduced below
+
+```text
+The MIT License
+
+Copyright © 2010-2023 three.js authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
 
 ## SIL Open Font License, Version 1.1
 
