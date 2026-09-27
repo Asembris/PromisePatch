@@ -1,9 +1,10 @@
 # Showcase implementation plan
 
-Date: **2026-09-27**. Status: **P1 and P2 implemented; P3–P9 open.** `showcase/` holds the
-scaffold, tokens, self-hosted fonts, brand copy and every section's static content, with the
-interactive sections' settled defaults written by hand until P3 renders them from data. Nothing is
-deployed and no workflow exists.
+Date: **2026-09-27**. Status: **P1–P4 implemented; P5–P9 open.** `showcase/` holds the
+scaffold, tokens, self-hosted fonts, brand copy, every section's static content, the data modules
+with their build-time render (P3), and the interactive six promises, revalidation gate,
+architecture traces, Copy buttons and section reveals (P4). The hero is still the static
+fallback. Nothing is deployed and no workflow exists.
 
 **Recorded during P1/P2** (implementation notes; the design is unchanged):
 
@@ -15,11 +16,42 @@ deployed and no workflow exists.
   that; the port keeps `content-box` rather than a global `border-box` reset.
 - Below 400px a revalidation check's value drops under its description: the prototype's
   three-column row collides at 320px.
-- **Two conflicts for P7 to resolve, not silently.** §6.3 says 11/16 and 16/16 appear only inside
-  the effect-set card with no `→` in it, but the approved copy has "First scored run →" and
-  "v2 release condition →" link affordances inside that card, and proof rows 06 and 07 state
-  11/16 and 16/16 on their own. The copy was kept verbatim; the gate's wording needs to
-  distinguish a link arrow from a progression.
+- ~~Two conflicts for P7 to resolve~~ **resolved in P3/P4 as a validator-spec correction, not a
+  copy change** (see §6.3). The approved copy is unchanged: "First scored run →" and
+  "v2 release condition →" stay, and proof rows 06 and 07 keep 11/16 and 16/16.
+
+**Recorded during P3/P4** (implementation notes; the design is unchanged):
+
+- **Data and render.** `STAGES ROWS DET CELL CHECKS TRACES ARCH PROOFS` are in `src/data/`
+  verbatim, with the R1–R5 table (`rehearsals.js`), `facts.js` (each fact with its `source` and
+  caveats) and `links.js`. The diagram's nodes, edges and labels moved into `arch.js` so the SVG
+  is rendered too. Renderers expose view functions (`cellView`, `checkView`, `outcomeView`,
+  `edgeView`); the build uses them to emit strings and the runtime uses them to update the
+  existing elements in place, so focus survives a click and cell colours can transition. The
+  plugin also replaces `{{fact.<key>}}` tokens. Build output was diffed against the S1 page:
+  the no-JS visible text is identical.
+- **No-JS stand-ins.** Where the prototype names the current state only on a control (the pressed
+  stage, the pressed scenario, the pressed trace), the no-JS page shows a small label instead
+  ("7 Settled" chip, "Deployed rehearsal R3" heading, "Customer consent" heading), as S1 did.
+  Once a section is enhanced the chip is hidden and the two headings become visually hidden, so
+  assistive technology keeps a heading. Order ids are plain text without JS and buttons with it.
+- **Accessibility additions**, none visible: a polite status region announces each stage change
+  and the gate's result once all ten checks finish (not every tick); order buttons carry
+  "Order X, show details"; Copy buttons carry "Copy the deployed product SHA" / "Copy the
+  repository release SHA" and announce the copy; under `pointer: coarse` the stepper, scenario,
+  trace and Copy buttons are at least 44px tall. *Play case* changes its label and does not use
+  `aria-pressed`, so a changing name and a pressed state are not combined.
+- **Below 640px** the matrix shows only the current stage's cell (`.is-current`), whichever stage
+  it is, by CSS; nothing is measured in script.
+- **Reveals** are armed only by script, only for `[data-reveal]` blocks below the fold at load, and
+  never under reduced motion; print shows everything. Reveal markers follow the prototype's.
+- **`?motion=reduced`** adds a `motion-reduced` class that applies the same CSS clamp as the media
+  query, so the QA switch removes transitions as well as script timing.
+- Verified with a scratch CDP script against headless Edge (uncommitted, no new dependency): no
+  JS, widths 320/390/768/1280/1578, every control by click and by Enter/Space, reduced motion and
+  the QA switch, and screenshots compared with `reference/desktop/04, 06, 07, 08, 09, 09b` and
+  `reference/mobile/03, 05, 07`. The stepper's buttons sit a few pixels wider than in
+  `reference/desktop/04`; nothing else differs structurally.
 
 This plan turns the approved Claude Design handoff into a static GitHub Pages site served from
 this repository at **`https://asembris.github.io/PromisePatch/`**. The design is frozen; this
@@ -342,11 +374,17 @@ handoff staying uncommitted.
      present near it (rehearsals: "not a reliability rate"; voice: run 1 voided, best-of-two,
      local stack, not a latency SLA; SHAs: different commits, tree-identical product paths;
      effect sets: developer-authored, finite, public, not an independent benchmark);
-   - **11/16 and 16/16:** both appear only inside the effect-set pair card, each with its badge
-     (`PERMANENT HEADLINE`, `SEPARATE RELEASE CONDITION`); no `→`, `->`, arrow glyph, progress
-     element, "improved", "now", "went up to", "before/after" or "from … to" occurs within that
-     card or between the two numbers anywhere in the document; the phrase "benchmark scored
-     16/16" occurs nowhere;
+   - **11/16 and 16/16** *(corrected in P3/P4; the approved copy did not change)*: each may
+     appear wherever it is labelled as its own result — the effect-set pair card with its badges
+     (`PERMANENT HEADLINE`, `SEPARATE RELEASE CONDITION`), proof rows 06 and 07, and the caveat
+     "The original benchmark did not become 16/16." Every occurrence must have its own label
+     nearby (headline or v1; separate release condition or v2). The gate bans **progression
+     semantics**, not arrow glyphs: an arrow or "to" joining the two scores (`11/16 → 16/16`,
+     `11/16 -> 16/16`, `from 11/16 to 16/16`), "improved" beside a score, "now 16/16", "went up
+     to 16/16", "became 16/16", before/after framing of the pair, and "benchmark scored 16/16"
+     all fail. Link affordances such as "First scored run →" and "v2 release condition →" are
+     navigation and pass. The original wording ("appear only inside the pair card", "no `→`
+     within that card") contradicted the approved copy and is superseded;
    - **boundaries:** "Telegram" is never followed by inbound-consent language; the signed web
      link is named as the consent entry; "not a native Alexa+ integration" is present in the
      architecture section; "simulat" labels the order system and the Alexa+-style client; the
