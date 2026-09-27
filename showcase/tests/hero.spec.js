@@ -162,6 +162,8 @@ for (const [name, setup] of [
         expect(await tagText(page, 'B')).toBe(bTag);
       }
       await page.locator('[data-hero-step="4"]').click();
+      // The jump is drawn on the next frame; wait for it before reading the label.
+      await expect(page.locator('[data-hero-caption]')).toHaveText(CAPTIONS[4]);
       expect((await heroLabel(page, 'gate')).text).toBe('0/10 checks');
       expect(errors).toEqual([]);
     });
