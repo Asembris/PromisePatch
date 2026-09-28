@@ -1,7 +1,7 @@
-"""Every workflow skips documentation, and skips nothing else.
+"""Every gating workflow skips documentation, and skips nothing else.
 
-This repository has two workflows, and both carry the same `paths-ignore` filter so that a change
-touching only Markdown does not spend a runner on jobs that would test the same code twice.
+This repository has two gating workflows, and both carry the same `paths-ignore` filter so that a
+change touching only Markdown does not spend a runner on jobs that would test the same code twice.
 `.github/workflows/pr.yml` is the product gate; `.github/workflows/effect-sets.yml` is the frozen
 sixteen-scenario benchmark, which lives in a file of its own because a badge is per workflow
 rather than per job and that one is expected to be red. A path filter is a piece of logic that
@@ -10,8 +10,8 @@ in the one direction that matters: if it ever excludes real code, nothing goes r
 says nothing, and a pull request merges having been tested by no one. So it is tested here rather
 than trusted.
 
-Every assertion below runs against *both* files, and a fifth one pins the set of files itself:
-adding a third workflow whose filter nobody checked fails here rather than shipping a gate that
+Every gating assertion below runs against *both* files, and a fifth one pins the set of files
+itself: adding a workflow whose filter nobody checked fails here rather than shipping a gate that
 skips real code. The two workflows are not allowed to drift apart -- a benchmark that ran on a
 changeset the product gate skipped, or the reverse, would be measuring and gating different
 repositories.
@@ -39,6 +39,13 @@ manual trigger. Because a documentation-only commit matches the filter, it produ
 all -- not a red one to re-run, not a green one to read -- and `workflow_dispatch` is the only
 way to produce a run on a release SHA that touches no code. It is pinned on both files so that
 tidying either `on:` block cannot silently remove it.
+
+A third workflow, `.github/workflows/showcase-pages.yml`, is not a gate and has the opposite
+contract, so it is pinned separately rather than bent into this one. It publishes the static
+showcase, so it runs on an **allowlist** (`paths`) of what the showcase build reads, only on a
+push to `main`, never on a pull request, and keeps the same manual trigger. The gating
+assertions never see it: treating it as a `paths-ignore` workflow would either fail for the wrong
+reason or, loosened to pass, stop checking the two workflows that matter.
 """
 
 from __future__ import annotations
@@ -53,7 +60,16 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 
 WORKFLOWS = (WORKFLOW_DIR / "pr.yml", WORKFLOW_DIR / "effect-sets.yml")
-"""Every workflow in this repository. The product gate, and the benchmark that is expected red."""
+"""The gating workflows. The product gate, and the benchmark that is expected red."""
+
+PAGES_WORKFLOW = WORKFLOW_DIR / "showcase-pages.yml"
+"""The showcase publisher: a deployment on an allowlist, not a gate on an ignore list."""
+
+ALL_WORKFLOWS = (*WORKFLOWS, PAGES_WORKFLOW)
+"""Every workflow in this repository, each under exactly one of the two contracts below."""
+
+PAGES_PATHS = ("showcase/**", "brand/**", ".github/workflows/showcase-pages.yml")
+"""What the showcase build reads, and the workflow itself. Nothing else deploys."""
 
 EXPECTED_PATTERNS = ("**.md",)
 """The frozen filter. Widening it means skipping something that is not documentation."""
@@ -85,6 +101,30 @@ def _triggers(block: list[str]) -> list[str]:
             continue
         names.append(stripped.split(":", 1)[0])
     return names
+
+
+def _trigger(block: list[str], name: str) -> list[str]:
+    """The lines nested under one trigger of the ``on:`` mapping."""
+    start = next(i for i, line in enumerate(block) if line.rstrip() == f"  {name}:")
+    nested: list[str] = []
+    for line in block[start + 1 :]:
+        if line.strip() and len(line) - len(line.lstrip()) <= 2:
+            break
+        nested.append(line)
+    return nested
+
+
+def _inline_list(block: list[str], key: str) -> tuple[str, ...]:
+    """A ``key: [a, b]`` flow list in ``block``, as a tuple of its unquoted items."""
+    for line in block:
+        stripped = line.strip()
+        if stripped.startswith(f"{key}:"):
+            value = stripped.split(":", 1)[1].strip()
+            assert value.startswith("[") and value.endswith("]"), f"unmodelled {key}: {value!r}"
+            return tuple(
+                item.strip().strip("'\"") for item in value[1:-1].split(",") if item.strip()
+            )
+    raise AssertionError(f"no {key}: in the block")
 
 
 def _path_filters(block: list[str], key: str) -> list[tuple[str, ...]]:
@@ -138,6 +178,12 @@ def ci_runs(changed: tuple[str, ...], patterns: tuple[str, ...] = EXPECTED_PATTE
     return not all(any(rule.match(path) for rule in ignored) for path in changed)
 
 
+def pages_deploys(changed: tuple[str, ...], patterns: tuple[str, ...] = PAGES_PATHS) -> bool:
+    """GitHub runs an allowlisted push when *any* changed file matches an included pattern."""
+    included = [_regex(pattern) for pattern in patterns]
+    return any(any(rule.match(path) for rule in included) for path in changed)
+
+
 def tracked_files() -> tuple[str, ...]:
     listing = subprocess.run(
         ["git", "ls-files", "-z"],
@@ -156,9 +202,10 @@ def workflow(request: pytest.FixtureRequest) -> str:
 
 
 def test_every_workflow_file_is_covered_by_these_assertions() -> None:
-    """A third workflow whose filter nobody checked is a gate that can skip real code."""
+    """A workflow whose filter nobody checked is a gate that can skip real code."""
     present = sorted(path.name for path in WORKFLOW_DIR.glob("*.y*ml"))
-    assert present == sorted(path.name for path in WORKFLOWS)
+    assert present == sorted(path.name for path in ALL_WORKFLOWS)
+    assert PAGES_WORKFLOW not in WORKFLOWS, "the Pages workflow is not a paths-ignore gate"
 
 
 def test_both_triggers_ignore_the_same_documentation_list(workflow: str) -> None:
@@ -227,3 +274,44 @@ def test_every_tracked_markdown_file_is_treated_as_documentation() -> None:
     markdown = [path for path in tracked_files() if path.endswith(".md")]
     assert markdown, "the repository tracks Markdown; this test would otherwise assert nothing"
     assert [path for path in markdown if ci_runs((path,))] == []
+
+
+# The showcase Pages workflow: its own contract, asserted on its own file.
+
+
+@pytest.fixture
+def pages_on() -> list[str]:
+    return _on_block(PAGES_WORKFLOW.read_text(encoding="utf-8"))
+
+
+def test_pages_triggers_are_manual_and_push_only(pages_on: list[str]) -> None:
+    """No `pull_request`: a pull request never deploys. The manual rerun stays."""
+    assert sorted(_triggers(pages_on)) == ["push", "workflow_dispatch"]
+
+
+def test_pages_deploys_only_from_pushes_to_main(pages_on: list[str]) -> None:
+    assert _inline_list(_trigger(pages_on, "push"), "branches") == ("main",)
+
+
+def test_pages_uses_the_showcase_allowlist_and_no_ignore_list(pages_on: list[str]) -> None:
+    push = _trigger(pages_on, "push")
+    assert _path_filters(push, "paths") == [PAGES_PATHS]
+    assert _path_filters(pages_on, "paths-ignore") == []
+
+
+def test_pages_deploys_on_what_the_showcase_build_reads() -> None:
+    assert pages_deploys(("showcase/index.html",))
+    assert pages_deploys(("showcase/src/data/facts.js",))
+    assert pages_deploys(("showcase/package-lock.json",))
+    assert pages_deploys(("brand/promisepatch-icon-on-dark.svg",))
+    assert pages_deploys((".github/workflows/showcase-pages.yml",))
+    assert pages_deploys(("README.md", "showcase/README.md"))
+
+
+def test_pages_does_not_deploy_on_product_or_other_workflow_changes() -> None:
+    assert not pages_deploys(("apps/backend/src/promisepatch/domain/recovery.py",))
+    assert not pages_deploys(("apps/frontend/src/api/client.ts",))
+    assert not pages_deploys(("docs/showcase-implementation-plan.md", "README.md"))
+    assert not pages_deploys((".github/workflows/pr.yml",))
+    assert not pages_deploys((".github/workflows/effect-sets.yml",))
+    assert not pages_deploys(("docs/effect-sets/scenarios.v1.json",))
