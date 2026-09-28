@@ -1,9 +1,9 @@
 # Showcase implementation plan
 
 Date: **2026-09-27**. Status: **P1–P5 implemented; P6 implemented with one target not met
-(Lighthouse mobile performance, see the S4 notes); P7's audit done; its five copy
-discrepancies are corrected by the claim-hardening pass, awaiting review (see the later truth
-under the P7 audit); P8–P9 open.** `showcase/` holds the
+(Lighthouse mobile performance, see the S4 notes); P7 CLOSED after the claim-hardening pass,
+which corrected its five copy discrepancies (see the later truth under the P7 audit); P8–P9
+open.** `showcase/` holds the
 scaffold, tokens, self-hosted fonts, brand copy, every section's static content, the data modules
 with their build-time render (P3), the interactive six promises, revalidation gate,
 architecture traces, Copy buttons and section reveals (P4), the hero: three.js `0.149.0`
@@ -254,9 +254,9 @@ with the SVG renderer and the no-JS image behind it (P5), and the Playwright sui
   go to the owner); and "effects applied exactly once" is replaced by the rehearsals' recorded
   result, beside a new limitation that Telegram's Bot API has no idempotency key. The hero lede
   and the root README's subhead now state the customer-level value first. The corrected
-  sentences depart from the prototype's copy, which §10 item 2 otherwise requires verbatim; the
-  record wins. `tools/content-rules.mjs` now enforces each correction as a semantic rule, over
-  the page, every runtime string and the root README (§6.3).
+  sentences depart from the prototype's copy as documented factual corrections, which §10 item 2
+  now allows: repository evidence wins. `tools/content-rules.mjs` now enforces each correction as a semantic rule, over
+  the page, every runtime string and the root README (§6.3). **P7 is CLOSED** with this pass.
 - **Freeze:** all three §7 checks print nothing; the frozen manifest verifies
   (`d41f5afc…2cdc`); `git diff --check` is clean; no product path, CI workflow or evidence file
   changed.
@@ -711,7 +711,9 @@ The Pages site is done when **all** of the following are true, and not before:
 1. `https://asembris.github.io/PromisePatch/` serves the showcase from a `showcase-pages`
    workflow run on `main`, and that run's `build` job passed `npm run check`.
 2. Every section in `HANDOFF.md`'s page map is present in order, with the prototype's copy
-   verbatim, and nothing else: no new section, visual concept or claim.
+   preserved except documented factual corrections, where repository evidence wins (each listed
+   under the P7 audit and cited in `showcase/CONTENT_SOURCES.md`), and nothing else: no new
+   section, visual concept or claim.
 3. The hero matches the reference frames at t = 0.95, 4.3, 5.8 and 8.2 on desktop and mobile;
    the SVG fallback and reduced-motion states match their references; with JS off, the stage
    shows `hero-fallback.svg` and the page reads in full.

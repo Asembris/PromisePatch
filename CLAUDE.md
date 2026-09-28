@@ -23,8 +23,10 @@ These are load-bearing. Never weaken one to make something work; amend the ADR f
   schema authorizes exactly as much as one that never arrives: nothing.
 - **Worker plan approval and customer consent are wholly distinct**, with distinct parsers,
   distinct records and distinct vocabulary. Never merge them.
-- **Customer consent** is only a literal `YES` / option code / `NO`. Free text is at most a
-  non-authoritative apparent intent that can trigger one confirmation prompt.
+- **Customer consent** is only a literal `YES` or `NO` (trimmed, case-insensitive; see
+  `domain/consent.py`). The option code that older protocol text also names is deliberately not
+  implemented. Free text is at most a non-authoritative apparent intent that can trigger one
+  confirmation prompt.
 - **Service authentication is not human consent.** Holding the MCP bearer token or the internal
   service secret proves a *process*, never a person. No request field on any transport can name
   an actor, a clock, a reason or a physical claim; the actor is server-derived.
