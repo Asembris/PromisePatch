@@ -3,14 +3,18 @@
 Date: **2026-09-27**. Status: **P1–P5 implemented; P6 implemented with one target not met
 (Lighthouse mobile performance, see the S4 notes); P7 CLOSED after the claim-hardening pass,
 which corrected its five copy discrepancies (see the later truth under the P7 audit); P8
-COMPLETE; P9 CLOSED (2026-09-28, §12), with the accepted limitations listed there.** `showcase/` holds the
+COMPLETE; P9 QA COMPLETE and ready for final closure (§12), which occurs only after
+`showcase/closeout` reaches `main`, the new Pages deployment succeeds, and the owner confirms
+the updated public site.** `showcase/` holds the
 scaffold, tokens, self-hosted fonts, brand copy, every section's static content, the data modules
 with their build-time render (P3), the interactive six promises, revalidation gate,
 architecture traces, Copy buttons and section reveals (P4), the hero: three.js `0.149.0`
 with the SVG renderer and the no-JS image behind it (P5), and the Playwright suite behind
-`npm run check` (P6). **Deployed:** <https://asembris.github.io/PromisePatch/> serves the build of
-`main` at `30acdd50310b04cf86dd813570028bfcc40493a8`, published by `showcase-pages` run
-`36448600018`; see the later truth under §2 and §12.
+`npm run check` (P6). **Deployed:** <https://asembris.github.io/PromisePatch/>. `30acdd5` was the
+initial successful Pages deployment: the build of `main` at
+`30acdd50310b04cf86dd813570028bfcc40493a8`, published by `showcase-pages` run `36448600018`. Each
+later push to `main` that matches the workflow's filter redeploys from that newer commit; see the
+later truth under §2 and §12.
 
 **Recorded during P1/P2** (implementation notes; the design is unchanged):
 
@@ -486,7 +490,7 @@ been observed serving the site.
   `30acdd50310b04cf86dd813570028bfcc40493a8`, reported success, and set the environment URL
   `https://asembris.github.io/PromisePatch/`. Run conclusion: **`success`**.
 
-So the bytes Pages serves are the `dist/` that attempt 1's gate built and tested; nothing was
+So the bytes that initial deployment served were the `dist/` that attempt 1's gate built and tested; nothing was
 rebuilt for the deploy. The owner opened the public URL and confirmed it loads.
 
 ## 3. File map
@@ -781,11 +785,11 @@ The Pages site is done when **all** of the following are true, and not before:
 11. This document's status line is updated to say what shipped, which three.js version, and every
     deviation from the references with its reason.
 
-**Resolution (2026-09-28, P9 closeout).** Each criterion against the evidence, not the intent:
+**Resolution (2026-09-28, P9 closeout QA).** Each criterion against the evidence, not the intent:
 
 | # | status | evidence and limitation |
 |---|---|---|
-| 1 | **met** | run `36448600018` on `main` `30acdd5`: its `build` job passed `npm run check`, 94 tests; `deploy` succeeded on attempt 2. The owner confirmed the public URL loads; this session could not reach it (§12). |
+| 1 | **met** | the initial successful Pages deployment, run `36448600018` on `main` `30acdd5`: its `build` job passed `npm run check`, 94 tests; `deploy` succeeded on attempt 2. The owner confirmed the public URL loads; this session could not reach it (§12). |
 | 2 | **met, with documented corrections** | every section present in order; the corrected sentences are listed under the P7 audit and in `CONTENT_SOURCES.md`. |
 | 3 | **met as recorded, not re-captured** | the hero, SVG and reduced-motion reference comparisons of S3 and S4 (P1/P2 and P6/P7 notes); `.handoff/reference/` is not in the closeout container, so no new capture was compared. The no-JS image and full reading are held by `fallbacks.spec.js`. |
 | 4 | **met** | `verify-content` passes; the refusal line is now narrower than this criterion's wording: `STALE` reproduced locally on the frozen code, not on the deployment, and the other three by tests only, and still no refusal path exercised live. |
@@ -809,12 +813,15 @@ workflow, evidence document or benchmark file was touched. The only changes are 
 *(§11 records the planning session only. Everything it lists was later built, merged and
 deployed; §12 is the closeout.)*
 
-## 12. P8 and P9 closeout, 2026-09-28
+## 12. P8 complete and P9 closeout QA, 2026-09-28
 
 **P8 is complete.** The workflow is on `main`, its release gate passed and Pages deployed from it
 (later truth under §2).
 
-**P9 is closed** by this closeout QA, branch `showcase/closeout` from `main` at `30acdd5`.
+**P9 QA is complete and ready for final closure.** The QA below ran on branch `showcase/closeout`
+from `main` at `30acdd5`, the initial successful Pages deployment. Final closure occurs only after
+this branch reaches `main`, the new Pages deployment succeeds, and the owner confirms the updated
+public site.
 
 **The public URL was not inspected from this session.** Its egress proxy refused the tunnel to
 `asembris.github.io:443` (`403`, a policy denial, not retried). No public observation is claimed
