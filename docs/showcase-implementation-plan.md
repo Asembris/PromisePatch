@@ -2,14 +2,15 @@
 
 Date: **2026-09-27**. Status: **P1–P5 implemented; P6 implemented with one target not met
 (Lighthouse mobile performance, see the S4 notes); P7 CLOSED after the claim-hardening pass,
-which corrected its five copy discrepancies (see the later truth under the P7 audit); P8–P9
-open.** `showcase/` holds the
+which corrected its five copy discrepancies (see the later truth under the P7 audit); P8
+COMPLETE; P9 CLOSED (2026-09-28, §12), with the accepted limitations listed there.** `showcase/` holds the
 scaffold, tokens, self-hosted fonts, brand copy, every section's static content, the data modules
 with their build-time render (P3), the interactive six promises, revalidation gate,
 architecture traces, Copy buttons and section reveals (P4), the hero: three.js `0.149.0`
 with the SVG renderer and the no-JS image behind it (P5), and the Playwright suite behind
-`npm run check` (P6). Nothing is deployed. The P8 workflow now exists on the `showcase/pages`
-branch, unmerged and never run; see the later truth under §2.
+`npm run check` (P6). **Deployed:** <https://asembris.github.io/PromisePatch/> serves the build of
+`main` at `30acdd50310b04cf86dd813570028bfcc40493a8`, published by `showcase-pages` run
+`36448600018`; see the later truth under §2 and §12.
 
 **Recorded during P1/P2** (implementation notes; the design is unchanged):
 
@@ -470,6 +471,24 @@ themselves cannot run outside GitHub Actions and were not run. The workflow runs
 to `main`, and deploys only after the owner sets the Pages source above. The public URL has not
 been observed serving the site.
 
+**Later truth (2026-09-28, P8 run and deployed).** The workflow reached `main` and ran once, as
+`showcase-pages` run **`36448600018`** (run number 1, event `push`, `head_sha`
+`30acdd50310b04cf86dd813570028bfcc40493a8`), read through the GitHub API:
+
+- **Attempt 1:** `showcase release gate` **passed**: `npm ci`, Chromium install and
+  `npm run check` (**94 passed**), then `upload-pages-artifact` uploaded artifact `10982870481`,
+  811 484 bytes, sha256 `88f710a0da75b5088f4ffdb5bcd51234d92ff552174bc1b67daa1cafc07a20b2`.
+  `deploy to GitHub Pages` **failed** at 16:10:15Z: `Failed to create deployment (status: 404)
+  ... Ensure GitHub Pages has been enabled`. That is the missing Pages source setting this
+  section and the workflow's header both named, not a workflow defect.
+- **Attempt 2** (16:53Z, after the owner set the source): only `deploy` re-ran, against the same
+  gated artifact `10982870481`. It created the Pages deployment for build version
+  `30acdd50310b04cf86dd813570028bfcc40493a8`, reported success, and set the environment URL
+  `https://asembris.github.io/PromisePatch/`. Run conclusion: **`success`**.
+
+So the bytes Pages serves are the `dist/` that attempt 1's gate built and tested; nothing was
+rebuilt for the deploy. The owner opened the public URL and confirmed it loads.
+
 ## 3. File map
 
 ```
@@ -673,6 +692,13 @@ The frozen manifest still verifies:
 uv run python scripts/verify_effect_set_manifest.py
 ```
 
+**Later truth (2026-09-28).** Since `30acdd5` (on `main`, the path-filter test for the Pages
+workflow, requested by the owner), checks 2 and 3 above each print exactly one path,
+`scripts/tests/test_ci_path_filter.py`: a CI test, not a product path, not evidence and not a
+benchmark. The first check, the release freeze, still prints nothing, and `pr.yml` and
+`effect-sets.yml` are still byte-identical to `5cc275f`. The commands above are left as written;
+a showcase branch after `30acdd5` is judged by whether *it* adds a path to their output.
+
 And before any commit, the staging discipline from `CLAUDE.md`: explicit paths only, then
 `git diff --cached --name-only` and `git diff --cached --stat`, confirming nothing outside the
 phase's files is staged. The historical untracked artefacts stay untracked.
@@ -755,9 +781,81 @@ The Pages site is done when **all** of the following are true, and not before:
 11. This document's status line is updated to say what shipped, which three.js version, and every
     deviation from the references with its reason.
 
+**Resolution (2026-09-28, P9 closeout).** Each criterion against the evidence, not the intent:
+
+| # | status | evidence and limitation |
+|---|---|---|
+| 1 | **met** | run `36448600018` on `main` `30acdd5`: its `build` job passed `npm run check`, 94 tests; `deploy` succeeded on attempt 2. The owner confirmed the public URL loads; this session could not reach it (§12). |
+| 2 | **met, with documented corrections** | every section present in order; the corrected sentences are listed under the P7 audit and in `CONTENT_SOURCES.md`. |
+| 3 | **met as recorded, not re-captured** | the hero, SVG and reduced-motion reference comparisons of S3 and S4 (P1/P2 and P6/P7 notes); `.handoff/reference/` is not in the closeout container, so no new capture was compared. The no-JS image and full reading are held by `fallbacks.spec.js`. |
+| 4 | **met** | `verify-content` passes; the refusal line is now narrower than this criterion's wording: `STALE` reproduced locally on the frozen code, not on the deployment, and the other three by tests only, and still no refusal path exercised live. |
+| 5 | **met** | `verify-content` and `verify-links`. |
+| 6 | **qualified** | internal anchors and every `blob/main/` target verified offline by `verify-links`. The by-hand check of the live app, CI run and repository links on deployment day was **not** performed in this session, whose network refuses both the Pages host and the live app. |
+| 7 | **qualified** | overflow 320–1920, axe, keyboard walk, JS and three.js budgets, three.js after first paint and CLS all pass in the suite. **Lighthouse mobile performance ≥ 95 is not met** (39–87 across the recorded runs; Total Blocking Time, §S4 notes). Lighthouse accessibility was 100. |
+| 8 | **met on the build, not observed on the public origin** | `content.spec.js` asserts every request stays under the Pages base, JS on and off, with no CDN, font host or live-app call; the closeout's local preview pass agreed (§12). |
+| 9 | **met, with the §7 later truth** | release freeze empty; `pr.yml`, `effect-sets.yml` byte-identical to `5cc275f`; manifest `d41f5afc…2cdc` verifies; checks 2 and 3 print only `scripts/tests/test_ci_path_filter.py` from `30acdd5`. |
+| 10 | **met** | `git ls-files .handoff` is empty. |
+| 11 | **met** | the status line above, this table and §12. |
+
+Also still open and accepted: **no screen reader was run** in any session (§5's screen-reader row).
+
 ## 11. Not done in this session
 
 No HTML, CSS or JavaScript was written. Three.js was not added. No workflow was created. No asset
 was copied. GitHub Pages was not enabled. Nothing was deployed or pushed. No product path, CI
 workflow, evidence document or benchmark file was touched. The only changes are `.gitignore`
 (ignore `.handoff/`) and this plan.
+
+*(§11 records the planning session only. Everything it lists was later built, merged and
+deployed; §12 is the closeout.)*
+
+## 12. P8 and P9 closeout, 2026-09-28
+
+**P8 is complete.** The workflow is on `main`, its release gate passed and Pages deployed from it
+(later truth under §2).
+
+**P9 is closed** by this closeout QA, branch `showcase/closeout` from `main` at `30acdd5`.
+
+**The public URL was not inspected from this session.** Its egress proxy refused the tunnel to
+`asembris.github.io:443` (`403`, a policy denial, not retried). No public observation is claimed
+here. The public side rests on run `36448600018` and on the owner's confirmation that the site
+loads.
+
+**QA performed**, against the same production build (`vite preview` under `/PromisePatch/`):
+
+- `npm run check` from a clean `npm ci`: the four offline gates and **94 of 94** Playwright tests.
+  Those cover the hero and its SVG, reduced-motion and no-JS fallbacks, the stepper, orders A–F,
+  the R3 gate and the labelled illustration, the architecture traces, Copy, anchors and links,
+  axe, and the Pages-base network rule.
+- A scratch pass at 390 and 1440 px, default, `?renderer=svg` and `?motion=reduced`, with nothing
+  committed:
+  - the renderer was `webgl`, `svg` and `webgl` respectively;
+  - stage 4 and orders A–F were clicked;
+  - the gate header read `AUDIT 503–512 · SNAPSHOT 20:31:01.207Z` for R3 and
+    `ILLUSTRATION · NOT A RECORDED RUN` for the illustration;
+  - the final CTA was present;
+  - there were **zero console errors, zero requests off the `/PromisePatch/` base and zero 4xx**
+    in all six.
+- Screenshots of the SVG and reduced-motion states were read by eye and are coherent.
+
+**One discrepancy found and corrected.** The copy still said all four refusal paths were
+"proved by tests only". Evidence changed after it was written:
+[evidence-hardening-stale-refusal-2026-09-28.md](evidence-hardening-stale-refusal-2026-09-28.md)
+reproduced `STALE` locally on the frozen code. The limitations line, the illustration's note and
+the README now say:
+
+- `STALE` was reproduced locally, not on the deployment;
+- `EXPIRED`, `UNAUTHORIZED` and `NOOP` are proved by tests only;
+- no refusal path has been exercised live.
+
+The illustration keeps its label; it is still not that reproduction. `content-rules.mjs` now fails
+on `STALE` listed as tests-only, and on the local reproduction presented as live. The fix lands
+on the public site only when this branch reaches `main` and the workflow runs again.
+
+**Accepted limitations, none a release blocker:**
+
+- Lighthouse mobile performance below 95;
+- no screen reader run;
+- no by-hand check of the external links on deployment day;
+- no new reference capture;
+- no public-origin observation from this container.
