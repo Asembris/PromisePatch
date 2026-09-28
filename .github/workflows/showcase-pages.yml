@@ -1,0 +1,81 @@
+name: showcase-pages
+
+# Publishes the static showcase in `showcase/` to https://asembris.github.io/PromisePatch/ with
+# GitHub's own Pages actions. It deploys `showcase/dist` and nothing else: no product application,
+# no AWS, no secret. See docs/showcase-implementation-plan.md section 2.
+#
+# Push-only on `main`, and only when something the build reads changes. `brand/**` is here because
+# the build copies the brand SVGs from it byte-for-byte. There is no `pull_request` trigger: a
+# pull request never deploys. `workflow_dispatch` is the explicit manual rerun.
+#
+# Repository Settings -> Pages -> Build and deployment -> Source must be "GitHub Actions". Until the
+# owner sets it, `build` still runs the release gate and `deploy` fails; nothing here changes it.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'showcase/**'
+      - 'brand/**'
+      - '.github/workflows/showcase-pages.yml'
+
+# The build job reads the repository and nothing else; it runs third-party npm code, so it never
+# holds a Pages or OIDC permission. Only `deploy` does. `actions/configure-pages` is deliberately
+# absent: it would need Pages access here to report a base path Vite already fixes at
+# `/PromisePatch/`.
+permissions:
+  contents: read
+
+# Distinct from `pr-` and `effect-sets-`, so it never cancels or is cancelled by either. One Pages
+# deployment at a time; a run that is already deploying is left to finish, as GitHub's own Pages
+# starter workflows do, and a newer one queues behind it.
+concurrency:
+  group: showcase-pages
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  build:
+    name: showcase release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: showcase
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: showcase/package-lock.json
+      # `npm ci`, never `npm install`: the committed lockfile exactly, or a failure.
+      - run: npm ci
+      # The suite is Chromium only; no other browser is installed.
+      - run: npx playwright install --with-deps chromium
+      # The release gate: the production build under `/PromisePatch/`, the four offline gates over
+      # `dist/`, then the Playwright suite against `vite preview` of that build. There is no second
+      # build: the `dist/` uploaded below is the one this step built and tested.
+      - run: npm run check
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: showcase/dist
+
+  deploy:
+    name: deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
