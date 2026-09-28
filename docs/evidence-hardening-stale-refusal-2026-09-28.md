@@ -198,8 +198,11 @@ async def test_capture_s06_stale_refusal(chain, wired, physical: Intake) -> None
         "case_state": (await physical.case(case_id)).state,
         "tracks": {t.promise_id: t.state for t in await physical.tracks(case_id)},
         "requests_for_track": [
-            {"state": r.state, "captured_order_version": r.captured_order_version,
-             "decided": r.decided}
+            {
+                "state": r.state,
+                "captured_order_version": r.captured_order_version,
+                "decided": r.decided,
+            }
             for r in requests
         ],
         "decisions_total": len(await physical.decisions()),
