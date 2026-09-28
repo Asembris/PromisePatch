@@ -1,8 +1,9 @@
 # Showcase implementation plan
 
 Date: **2026-09-27**. Status: **P1–P5 implemented; P6 implemented with one target not met
-(Lighthouse mobile performance, see the S4 notes); P7's audit done and P7 not closed (five copy
-discrepancies await the owner); P8–P9 open.** `showcase/` holds the
+(Lighthouse mobile performance, see the S4 notes); P7's audit done; its five copy
+discrepancies are corrected by the claim-hardening pass, awaiting review (see the later truth
+under the P7 audit); P8–P9 open.** `showcase/` holds the
 scaffold, tokens, self-hosted fonts, brand copy, every section's static content, the data modules
 with their build-time render (P3), the interactive six promises, revalidation gate,
 architecture traces, Copy buttons and section reveals (P4), the hero: three.js `0.149.0`
@@ -224,6 +225,38 @@ with the SVG renderer and the no-JS image behind it (P5), and the Playwright sui
   `docs/effect-set-manifest.md`, not the run protocol), "best-of-two" (`docs/claims-audit.md`),
   the per-rehearsal Telegram count (`docs/g8-demo-funnel.md`), and the freeze date (README §AWS
   deployment, not §License). **P7 closes only once the five items are resolved.**
+
+  **Later truth (2026-09-28, claim hardening, branch `showcase/claim-hardening`).** The five
+  items above are recorded as they were found; the owner asked for them corrected, and the copy
+  now moves toward the record. Each was re-verified against the repository first:
+  1. The R3 row at `20:30:58` now reads "Worker starts again, 3 min 35 s after it stopped": the
+     stopped window, `FinishedAt` `20:27:23.607` → `StartedAt` `20:30:58.991`. The 2 min 29 s
+     interval was right for what it measures, so it moved rather than went: the `20:31:01` row
+     says "Stored answer taken up, 2 min 29 s after the press" (`20:28:31.492` →
+     `20:31:00.972`, R3 §4).
+  2. The deadline value reads `24 Sep 20:31:01Z ≤ 25 Sep 01:26:54Z`.
+  3. The timeline reads "The owner, as the demo customer, presses APPROVE"; stage 5 adds that in
+     the rehearsals the owner acted as the demo customer. The Telegram delivery and the web
+     approval stay described as real.
+  4. Plan approval is described as a signed-in browser session **or the operator console**
+     (`ApprovalChannel`), everywhere it appeared, the root README included; stage 4 says the
+     deployed rehearsals used the console.
+  5. The hero caption reads "Conditions can change while an answer waits."
+
+  The same pass corrected four further claims the audit had not listed, each against code:
+  customer consent no longer mentions an option code (`domain/consent.py` reads a normalized
+  `YES` or `NO` only, and says it deliberately implements no option code); MCP intake is named a
+  trusted reporting channel whose reports are attested as the configured surface worker
+  (`api/routers/intents.py`), and the model card no longer says the model cannot attest a
+  physical fact; revalidation is scoped to the commit it guards, with only the production start
+  judged again at an amendment's first dispatch (ADR-0024, ADR-0026), and `STALE` is no longer
+  a universal re-plan (an expired answer, and staleness found at apply time or first dispatch,
+  go to the owner); and "effects applied exactly once" is replaced by the rehearsals' recorded
+  result, beside a new limitation that Telegram's Bot API has no idempotency key. The hero lede
+  and the root README's subhead now state the customer-level value first. The corrected
+  sentences depart from the prototype's copy, which §10 item 2 otherwise requires verbatim; the
+  record wins. `tools/content-rules.mjs` now enforces each correction as a semantic rule, over
+  the page, every runtime string and the root README (§6.3).
 - **Freeze:** all three §7 checks print nothing; the frozen manifest verifies
   (`d41f5afc…2cdc`); `git diff --check` is clean; no product path, CI workflow or evidence file
   changed.
@@ -573,7 +606,19 @@ handoff staying uncommitted.
      integration (except inside the literal negation "not a native Alexa+ integration"),
      "benchmark improved";
    - **deferred:** "Demo video" and "Watch demo" elements have `aria-disabled="true"` and no
-     `href`; no Devpost link exists.
+     `href`; no Devpost link exists;
+   - **claim scope** *(added by the claim-hardening pass)*, sentence by sentence over the page,
+     every runtime string and the root README: no option-code consent; no plan approval tied to
+     a signed-in session alone (the operator console is the other channel); no unqualified
+     "exactly once" and no ruled-out duplicate message; no MCP or AI caller described as holding
+     no authority or as unable to attest; no atomic revalidation and no revalidation placed at
+     external execution; no APPROVE press attributed to a customer; no world that moved while it
+     waited; no universal `STALE` re-plan, and no general `STALE`-and-re-planned sentence without
+     the owner path; no refusal presented as recorded; a time comparison that crosses midnight
+     carries both dates; and every "N min S s" in the R3 timeline reaches back from its own
+     row's time to another row's. The page must also state the operator console, MCP intake as a
+     trusted reporting channel, Telegram's missing idempotency key, the owner as the demo
+     customer, and the first dispatch as where revalidation stops.
 4. **`verify-links.mjs`**: every `href` is internal (`#id` that exists), or in `links.js`; every
    `https://github.com/Asembris/PromisePatch/blob/main/<path>` target exists in the working tree;
    no `href` is empty, `#`, or `TBD`.

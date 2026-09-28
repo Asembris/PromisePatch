@@ -15,9 +15,9 @@ phases and its acceptance criteria are in
 Plan phases P1–P5 are in: the scaffold, tokens, fonts, brand assets, every section's static
 content, the data modules and build-time render (P3), the interactive sections (P4), and the
 hero (P5). P6 (the Playwright suite, accessibility and budgets) is in, with one target not met:
-Lighthouse mobile performance (see the plan's S4 notes). P7's content audit is done and is **not**
-closed: five copy discrepancies against the repository record are listed in the plan, awaiting
-the owner.
+Lighthouse mobile performance (see the plan's S4 notes). P7's content audit is done, and its five
+copy discrepancies against the repository record are corrected by the claim-hardening pass, with
+the content rules extended to hold them; see the later truth under the plan's P7 audit.
 
 **One model, two renders.** The prototype's tables live in `src/data/`. Pure renderers in
 `src/render/` turn a table plus a state into HTML. At build time the plugin replaces each
@@ -109,8 +109,9 @@ The suite (`tests/`, Chromium only, `@playwright/test` and `@axe-core/playwright
   skip link; a full Tab walk; pressed state; the R1–R5 table; colour-alone; text spacing; 44px
   targets under a coarse pointer.
 - `content.spec.js`: the content rules of `tools/content-rules.mjs` (shared with `verify:content`)
-  over the live DOM after about forty interaction states, with a negative control; no token on
-  the page; every request on the Pages origin; CLS and the first contentful frame.
+  over the live DOM after about forty interaction states, with two negative controls (one per
+  rule family) and a pure claim-scope test that feeds each corrected overclaim, reworded, through
+  the rules and the corrected copy back through them; no token on the page; every request on the Pages origin; CLS and the first contentful frame.
 
 Chromium comes from `npx playwright install chromium`. Locally the suite runs one worker: on the
 development machine concurrent browsers stall loopback requests (reproduced against a plain static
@@ -134,8 +135,13 @@ CSS `url()`).
   before/after, "benchmark scored 16/16"), if a score appears without its own label, if Telegram
   is implied as a consent channel, if a refusal is claimed live, if the illustration loses its
   label, on any forbidden phrase outside an explicit negation, or if a deferred item gains an
-  `href`. A link arrow such as "First scored run →" is not a progression. It checks the no-JS page
-  and every string the page can show after an interaction.
+  `href`. A link arrow such as "First scored run →" is not a progression. It also fails on a
+  claim wider than the implementation: option-code consent, a plan approval tied to a signed-in
+  session alone, unqualified "exactly once", an MCP or AI caller with "no authority", atomic or
+  execution-time revalidation, a customer pressing APPROVE in R3, a universal `STALE` re-plan, a
+  refusal presented as recorded, a midnight-crossing time without dates, or an R3 timeline
+  interval that does not reach back to another row. It checks the no-JS page, every string the
+  page can show after an interaction, and (claim scope only) the root `README.md`.
 - `verify:links` fails on an empty, `#` or TBD href, an anchor with no target, an external URL
   not listed in `src/data/links.js`, a `blob/main/` target missing from the working tree, or a
   deferred item rendered as a link. It never fetches anything.
