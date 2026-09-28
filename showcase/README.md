@@ -18,8 +18,9 @@ hero (P5). P6 (the Playwright suite, accessibility and budgets) is in, with one 
 Lighthouse mobile performance (see the plan's S4 notes). P7's content audit is done, and its five
 copy discrepancies against the repository record are corrected by the claim-hardening pass, with
 the content rules extended to hold them; see the later truth under the plan's P7 audit. P8 is
-complete and the showcase is live at <https://asembris.github.io/PromisePatch/>. P9 is closed;
-the plan's §10 resolution and §12 list what is met, what is qualified and the accepted
+complete and the showcase is live at <https://asembris.github.io/PromisePatch/>. P9 QA is complete and
+ready for final closure, which occurs only after this branch reaches `main`, the new Pages
+deployment succeeds and the owner confirms the updated public site; the plan's §10 resolution and §12 list what is met, what is qualified and the accepted
 limitations.
 
 **One model, two renders.** The prototype's tables live in `src/data/`. Pure renderers in
@@ -57,8 +58,8 @@ The Pages workflow (P8) is `.github/workflows/showcase-pages.yml`: on a push to 
 touches `showcase/**`, `brand/**` or the workflow itself, or on a manual `workflow_dispatch`, it
 runs `npm ci`, installs Chromium and runs `npm run check`, then uploads that same `dist/` with
 `actions/upload-pages-artifact` and publishes it with `actions/deploy-pages`. **It is deployed:**
-<https://asembris.github.io/PromisePatch/> serves the build of `main` at `30acdd5`, from run
-`36448600018`. On attempt 1 its gate passed and its deploy failed with a 404, because Pages was not
+<https://asembris.github.io/PromisePatch/>. `30acdd5` was the initial successful Pages deployment,
+from run `36448600018`. On attempt 1 its gate passed and its deploy failed with a 404, because Pages was not
 yet enabled. Attempt 2 deployed the same gated artifact once the owner set *Settings → Pages →
 Source: GitHub Actions*. Every later push that matches the filter redeploys.
 
