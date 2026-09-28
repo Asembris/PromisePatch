@@ -4,7 +4,7 @@
 // performance facts the plan asks for (CLS, three.js after first paint).
 
 import { test, expect } from '@playwright/test';
-import { checkContent } from '../tools/content-rules.mjs';
+import { checkClaims, checkContent } from '../tools/content-rules.mjs';
 import { ORDER_IDS } from '../src/data/rows.js';
 import { TRACES } from '../src/data/traces.js';
 import { openPage, seek, scrollThrough, trackErrors, waitGateSettled, recordFirstFrame, paintTiming, expectThreeAfterFirstPaint } from './helpers.js';
@@ -89,6 +89,88 @@ test('negative control: the live rules catch a mutated DOM', async ({ page }) =>
   expect(failures.join('\n')).toMatch(/went up to 16\/16/);
   expect(failures.join('\n')).toMatch(/illustrated STALE outcome is shown without its label/);
   expect(failures.join('\n')).toMatch(/Demo video · deferred" must be aria-disabled with no href/);
+});
+
+// Each corrected claim, reworded several ways: the rules are semantic shapes,
+// so an overclaim cannot come back in new words. The corrected wording passes.
+const OVERCLAIMS = [
+  ['Customers answer with a literal YES, an option code or NO.', /option code/],
+  ['An option-code reply also approves the change.', /option code/],
+  ['A worker approves the plan in a signed-in session.', /only from a signed-in session/],
+  ['Plan approvals are written solely in the signed-in session.', /only from a signed-in session/],
+  ['An MCP confirm can only spend an approval a human wrote in a signed-in session.', /only from a signed-in session/],
+  ['session: the only place a plan approval is written', /only from a signed-in session/],
+  ['Every effect is applied exactly once.', /exactly once/],
+  ['Messages are delivered exactly-once end to end.', /exactly once/],
+  ['Telegram never sends duplicate messages.', /duplicate messages ruled out/],
+  ['PromisePatch guarantees each message is delivered once.', /duplicate messages ruled out/],
+  ['MCP callers have no authority over physical facts.', /no authority at all/],
+  ['There is no authority for an AI agent anywhere.', /no authority at all/],
+  ['The AI cannot attest a physical fact.', /categorically unable to attest/],
+  ['An MCP agent can never attest anything.', /categorically unable to attest/],
+  ['CANNOT ✕ write a row ✕ attest a physical fact', /categorically unable to attest/],
+  ['Revalidation is atomic with the order system’s acceptance.', /described as atomic/],
+  ['The ten checks run atomically before the amendment is sent.', /described as atomic/],
+  ['Ten checks run against a fresh snapshot immediately before the order is amended.', /at external execution/],
+  ['Before acting, the YES is checked again: ten checks against a fresh snapshot.', /at external execution/],
+  ['It is revalidated on every dispatch.', /at external execution/],
+  ['That answer is revalidated before the order system is amended.', /at external execution/],
+  ['Customer presses APPROVE. Stored; nothing acts on it.', /attributed to a customer/],
+  ['Tomas pressed APPROVE on the phone.', /attributed to a customer/],
+  ['They answer YES, and the world keeps moving while it waits.', /world that moved/],
+  ['The world changed while the answer waited.', /world that moved/],
+  ['Every STALE decision is re-planned.', /universal re-plan|every stale finding/],
+  ['A STALE change is always re-planned.', /every stale finding/],
+  ['Rehearsal R3 was refused as STALE.', /recorded in a rehearsal/],
+  ['The recorded run refused the change.', /recorded in a rehearsal/],
+  ['Approval deadline check: 20:31:01Z ≤ 01:26:54Z', /crosses midnight/],
+];
+const CORRECTED = [
+  'Authorizes an ASK change with a literal YES or NO, trimmed and case-insensitive. Any other reply decides nothing.',
+  'The parser implements no option code.',
+  'Attests the physical fact, and approves the plan that was read out, in a signed-in browser session or on the operator console.',
+  'MCP intake is a trusted reporting channel: its reports are recorded under the server’s configured worker. An MCP confirm can only spend an approval a person already wrote.',
+  'session: one of two plan-approval channels',
+  'R1–R5: five worker restarts at four points, each PASS, every effect recorded once and delivered on attempt 1.',
+  'Telegram’s Bot API has no idempotency key, so a retry after an uncertain send can deliver a duplicate message.',
+  'When a customer’s YES arrives, PromisePatch takes a fresh snapshot and runs ten checks before the change may be committed.',
+  'A change that is no longer true is refused as STALE, nothing is sent, and that track is re-planned; an expired answer goes to the owner and an unauthorized one is refused.',
+  'After it, only the production start is judged again, at the amendment’s first dispatch.',
+  'The owner, as the demo customer, presses APPROVE. Stored; nothing acts on it.',
+  'One customer is asked and answers YES on a signed link. Conditions can change while an answer waits.',
+  'No refusal path has been exercised live.',
+  'Approval deadline not passed, judged at processing time. 24 Sep 20:31:01Z ≤ 25 Sep 01:26:54Z',
+];
+
+test('claim scope: every corrected overclaim is caught in other words, and the corrected copy passes', () => {
+  for (const [sentence, why] of OVERCLAIMS) {
+    const failures = checkClaims(sentence);
+    expect(failures.join('\n'), sentence).toMatch(why);
+  }
+  for (const sentence of CORRECTED) expect(checkClaims(sentence), sentence).toEqual([]);
+});
+
+test('negative control: the live claim rules catch the old R3, deadline, consent and approval copy', async ({ page }) => {
+  await openPage(page);
+  await scrollThrough(page);
+  await waitGateSettled(page);
+  expect(checkContent({ html: await liveHtml(page), state: 'default' })).toEqual([]);
+  await page.evaluate(() => {
+    const rows = document.querySelectorAll('#revalidate .timeline li span:last-child');
+    rows[2].textContent = 'Customer presses APPROVE. Stored; nothing acts on it.';
+    rows[3].textContent = 'Worker starts again, 2 min 29 s later';
+    document.querySelectorAll('#revalidate .check__value')[6].textContent = '20:31:01Z ≤ 01:26:54Z';
+    const cards = [...document.querySelectorAll('.authority-card p')];
+    cards[1].textContent = 'Attests the physical fact, and approves the plan that was read out, in a signed-in session.';
+    cards[2].textContent = 'Authorizes an ASK change with a literal YES, an option code or NO.';
+  });
+  const failures = checkContent({ html: await liveHtml(page), state: 'live' }).join('\n');
+  expect(failures).toMatch(/attributed to a customer/);
+  expect(failures).toMatch(/owner, as the demo customer/);
+  expect(failures).toMatch(/timeline row 20:30:58: "2 min 29 s" does not reach back/);
+  expect(failures).toMatch(/crosses midnight without both dates/);
+  expect(failures).toMatch(/only from a signed-in session/);
+  expect(failures).toMatch(/option code/);
 });
 
 test('the deferred placeholders are not links and not focusable', async ({ page }) => {

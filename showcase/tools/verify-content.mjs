@@ -11,6 +11,9 @@
 //  - product boundaries: Telegram is outbound only, the signed web link is the
 //    consent entry, the order system is labelled simulated, Alexa+ is not
 //    native, no refusal is claimed live, the illustration is labelled;
+//  - claim scope (consent, plan-approval channels, MCP intake, revalidation
+//    scope, delivery wording, R3 attribution, the illustration), over the page,
+//    the runtime strings and the root README;
 //  - forbidden phrases, case-insensitive, unless inside an explicit negation;
 //  - deferred items carry aria-disabled and no href; Devpost is absent.
 //
@@ -23,7 +26,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FACTS, BOUNDARIES } from '../src/data/facts.js';
-import { checkContent } from './content-rules.mjs';
+import { checkClaims, checkContent } from './content-rules.mjs';
 import * as data from './runtime-strings.mjs';
 
 export { textOf } from './content-rules.mjs';
@@ -51,9 +54,17 @@ for (const [key, entry] of Object.entries({ ...FACTS, ...BOUNDARIES })) {
   }
 }
 
+// The root README is the other judge-facing surface: the same claim-scope
+// rules hold there. Markdown emphasis, code ticks and <br/> are presentation.
+const readme = readFileSync(resolve(repo, 'README.md'), 'utf8')
+  .replace(/<br\s*\/?>/gi, ' ')
+  .replace(/[*`_]/g, '')
+  .replace(/\s+/g, ' ');
+for (const f of checkClaims(readme)) failures.push(`README.md: ${f}`);
+
 if (failures.length) {
   console.error(`verify-content: ${failures.length} failure(s)`);
   for (const f of failures) console.error(`  ${f}`);
   process.exit(1);
 }
-console.log(`verify-content: ${Object.keys(FACTS).length} facts with caveats and sources, ${Object.keys(BOUNDARIES).length} boundaries, progression and forbidden-phrase rules pass over the page and ${data.strings().length} runtime strings`);
+console.log(`verify-content: ${Object.keys(FACTS).length} facts with caveats and sources, ${Object.keys(BOUNDARIES).length} boundaries, progression, claim-scope and forbidden-phrase rules pass over the page and ${data.strings().length} runtime strings; claim-scope rules pass over README.md`);
