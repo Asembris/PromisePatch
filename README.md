@@ -319,8 +319,10 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 
 - **One bakery, fixture data, a simulated order system.** It is not Square or a production point
   of sale. The Telegram message and the web approval are the real parts.
-- **No refusal path has been exercised live.** `STALE`, `EXPIRED`, `UNAUTHORIZED` and `NOOP` are
-  proved by tests only.
+- **No refusal path has been exercised live.** `STALE` was reproduced locally through the frozen
+  implementation, not on the deployment
+  ([evidence-hardening-stale-refusal-2026-09-28.md](docs/evidence-hardening-stale-refusal-2026-09-28.md));
+  `EXPIRED`, `UNAUTHORIZED` and `NOOP` are proved by tests only.
 - **Telegram inbound is deliberately not built.** A second route for the word `YES` would be a
   second consent parser. The signed link proves possession of the message, not identity.
 - **Telegram's Bot API has no idempotency key.** A retry after an uncertain send can deliver a

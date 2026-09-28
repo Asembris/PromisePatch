@@ -357,7 +357,7 @@
       <h3 class="limits__title">What the numbers do not say</h3>
       <ul class="limits__list">
         <li>One bakery, fixture data, a simulated order system. The Telegram message and the web approval are the real parts.</li>
-        <li>No refusal path has been exercised live. <code>STALE</code>, <code>EXPIRED</code>, <code>UNAUTHORIZED</code> and <code>NOOP</code> are proved by tests only.</li>
+        <li>No refusal path has been exercised live. <code>STALE</code> was reproduced locally through the frozen implementation, not on the deployment; <code>EXPIRED</code>, <code>UNAUTHORIZED</code> and <code>NOOP</code> are proved by tests only.</li>
         <li>Telegram inbound is deliberately not built. The signed link proves possession of the message, not identity.</li>
         <li>Telegram’s Bot API has no idempotency key, so a retry after an uncertain send can deliver a duplicate message. Order amendments carry a stable idempotency key, so a duplicate is a second message, never a second amendment.</li>
         <li>MCP intake is a trusted reporting channel. A report over MCP is attested as the server’s configured worker, not by a person the server authenticated.</li>
