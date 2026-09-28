@@ -29,6 +29,45 @@ async function expectStage(page, i, { announced = true } = {}) {
   }
 }
 
+// Play case advances on a 1150 ms timer, so a stage read in many round trips
+// can straddle a tick: the first rows read at one stage and the last at the
+// next. Record every state the page renders instead, each taken in one piece:
+// a MutationObserver callback runs only after the task that changed the DOM
+// (setStage, which rewrites every cell at once) has finished.
+async function recordStages(page) {
+  await page.evaluate(() => {
+    const section = document.getElementById('story');
+    const snap = () => ({
+      stage: Number(section.querySelector('[data-stage][aria-pressed="true"]')?.dataset.stage),
+      pressed: section.querySelectorAll('[data-stage][aria-pressed="true"]').length,
+      note: section.querySelector('[data-stage-note]').textContent,
+      status: section.querySelector('[data-story-status]').textContent,
+      cells: Object.fromEntries([...section.querySelectorAll('[data-row]')].map((row) =>
+        [row.dataset.row, [...row.querySelectorAll('.cell')].map((c) => c.textContent)])),
+    });
+    // Log each change of stage from the one on screen now; other mutations
+    // in the section (a reveal, a selected order) are not stages.
+    const log = [];
+    let last = snap().stage;
+    window.__stageLog = log;
+    new MutationObserver(() => {
+      const s = snap();
+      if (s.stage !== last) log.push(s);
+      last = s.stage;
+    }).observe(section, { subtree: true, attributes: true, childList: true, characterData: true });
+  });
+}
+
+function expectSnapshot(s, i) {
+  expect(s.stage).toBe(i);
+  expect(s.pressed).toBe(1);
+  expect(s.note).toBe(STAGES[i].note);
+  expect(s.status).toBe(`Stage ${i + 1} of 7, ${STAGES[i].name}. ${STAGES[i].note}`);
+  for (const id of ORDER_IDS) {
+    expect(s.cells[id], `order ${id} at stage ${i}`).toEqual(ROWS[id].map(([, text], c) => (c > i ? FUTURE_TEXT : text)));
+  }
+}
+
 test.describe('six promises', () => {
   test('stepper forward and back, by click and by keyboard', async ({ page }) => {
     const errors = trackErrors(page);
@@ -54,10 +93,14 @@ test.describe('six promises', () => {
     const play = page.locator('#story [data-play]');
     await expect(play).toHaveText('▶ Play case');
     await expect(play).not.toHaveAttribute('aria-pressed');
+    await recordStages(page);
     await play.click();
     await expect(play).toHaveText('❚❚ Pause');
-    await expectStage(page, 0);
-    await expectStage(page, 1);
+    // Starts at stage 0 and steps to 1, each stage whole when it rendered.
+    await page.waitForFunction(() => window.__stageLog.some((s) => s.stage === 1));
+    const first = await page.evaluate(() => window.__stageLog.slice(0, 2));
+    expectSnapshot(first[0], 0);
+    expectSnapshot(first[1], 1);
     await play.click(); // pause
     await expect(play).toHaveText('▶ Play case');
     const held = await page.locator('#story [data-stage][aria-pressed="true"]').getAttribute('data-stage');
@@ -67,6 +110,16 @@ test.describe('six promises', () => {
     await expect(stage(page, 6)).toHaveAttribute('aria-pressed', 'true', { timeout: 12_000 });
     await expect(play).toHaveText('▶ Play case');
     await expectStage(page, 6);
+    // Every stage the run rendered, before and after the pause, was whole,
+    // and each run stepped one stage at a time: 0, 1, … up to where it was
+    // paused, then 0 again (Play restarts) through 6.
+    const log = await page.evaluate(() => window.__stageLog);
+    log.forEach((s) => expectSnapshot(s, s.stage));
+    const stages = log.map((s) => s.stage);
+    const restart = stages.lastIndexOf(0);
+    expect(restart).toBeGreaterThan(0);
+    expect(stages.slice(0, restart)).toEqual([...Array(restart).keys()]);
+    expect(stages.slice(restart)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
   test('orders A–F select and fill the detail panel', async ({ page }) => {

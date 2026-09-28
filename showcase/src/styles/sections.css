@@ -1802,9 +1802,12 @@ button.matrix__id:hover {
 
 /* ---------- Section reveal ----------
    Armed only by the enhancement script, only for blocks below the fold at
-   load, and never under reduced motion. Without JS nothing is hidden. */
+   load, and never under reduced motion. Without JS nothing is hidden.
+   Only the reveal is animated: arming hides a block at once. A transition on
+   the pending state too made every armed block fade out over 700 ms on load,
+   and a block caught part-way is legible to nobody yet judged by axe. */
 
-.reveal-armed {
+.reveal-armed:not(.reveal-pending) {
   transition: opacity .7s var(--ease-ui), transform .7s var(--ease-ui);
 }
 
