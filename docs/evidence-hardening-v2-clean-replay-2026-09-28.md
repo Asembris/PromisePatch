@@ -476,7 +476,8 @@ as development evidence, and it is not a score.
 
 It establishes three things:
 
-- **The dirty flag on the v2 capture was not hiding a tracked change that mattered.** The same
+- **The clean committed source reproduces the same per-scenario behavior, so the historical
+  dirty flag no longer creates an outcome-reproducibility concern.** The same
   implementation SHA was run from a tree with nothing modified and nothing untracked. It recorded
   the same per-scenario outcome as the scored v2 capture, scenario by scenario, with no diff. That
   is the strongest clean-source reproduction the protocol allows.
