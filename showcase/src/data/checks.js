@@ -40,7 +40,7 @@ export const GATE_MODES = {
     header: 'ILLUSTRATION · NOT A RECORDED RUN',
     verdict: 'STALE',
     sub: 'Refused as STALE and re-planned. Nothing is written to the order system.',
-    note: 'This scenario is illustrative. Refusal paths (STALE, EXPIRED, UNAUTHORIZED, NOOP) are proved by tests only; none was exercised live.',
+    note: 'This scenario is illustrative, not a recorded run. STALE was reproduced locally on the frozen code, and EXPIRED, UNAUTHORIZED and NOOP are proved by tests only; none was exercised live.',
     failIndex: 4,
     failValue: 'no longer available',
   },
