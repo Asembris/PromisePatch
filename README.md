@@ -9,13 +9,14 @@
 
 <p align="center">
   <b>The model understands. The deterministic protocol authorizes.</b><br>
-  One spoken report of a physical failure becomes a selective, consent-respecting recovery of the
-  customer promises it actually reaches, and nothing else.
+  When a missed delivery breaks promises already made, PromisePatch changes only what it is allowed
+  to change: a swap the customer already agreed to, or one they approve now. The rest goes to the
+  owner, and every order the failure does not reach is left untouched.
 </p>
 
 <p align="center">
   <img src="docs/assets/promisepatch-hero.svg" width="100%"
-       alt="Animated walkthrough: a raspberry delivery fails; six orders are checked and split into AUTO, ASK, BLOCKED and UNAFFECTED lanes; the pre-approved swap is applied; the customer answers YES on a signed link; the approved change is revalidated against a fresh snapshot before it runs; the two unaffected orders receive zero effects.">
+       alt="Animated walkthrough: a raspberry delivery fails; six orders are checked and split into AUTO, ASK, BLOCKED and UNAFFECTED lanes; the pre-approved swap is applied; the customer answers YES on a signed link; the approved change is revalidated against a fresh snapshot before it is committed; the two unaffected orders receive zero effects.">
 </p>
 
 <p align="center">
@@ -66,14 +67,14 @@ said, but it must never be the thing that decides.
 
 | | step | who decides |
 |---|---|---|
-| 1 | A worker reports the failure by voice or text: *"today's raspberry delivery didn't arrive."* | the worker attests the physical fact |
+| 1 | A worker reports the failure by voice or text: *"today's raspberry delivery didn't arrive."* | the worker attests the physical fact; over MCP, the server's configured worker does |
 | 2 | PromisePatch understands the report and asks one clarifying question if needed. | deterministic lexicon first; a model only for phrasing it cannot read |
 | 3 | It finds every accepted customer promise the failure reaches. | the deterministic engine |
 | 4 | It puts each promise in exactly one authority lane: **AUTO**, **ASK**, **BLOCKED** or **UNAFFECTED**. | recorded constraints and pre-authored recipe versions |
-| 5 | A worker confirms the plan that was read out, bound to that plan's identity. | a human, in a signed-in session |
+| 5 | A worker confirms the plan that was read out, bound to that plan's identity. | a human, in a signed-in browser session or on the operator console |
 | 6 | Pre-authorized changes run; the owner gets the blocked ones, with scheduled work held. | the protocol |
 | 7 | A customer who must agree gets one message and answers on a signed web link. | the customer, with a literal `YES` or `NO` |
-| 8 | Before that yes is acted on, ten checks run against a **fresh** snapshot. | the protocol |
+| 8 | Before the change may be committed, ten checks run against a **fresh** snapshot. | the protocol |
 | 9 | The change is written to the external order system as a governed amendment. | the order system stays the system of record |
 
 Promises the failure does not reach get no message, no write, no reservation change, no task hold
@@ -132,23 +133,33 @@ jobs on the exact release SHA, the whole-stack browser job among them.
 code and tests, not by convention. Import-linter contracts forbid the model boundary, the MCP
 server and the conversational client from reaching the domain or the database.
 
-- **Model output is never authority.** A model may propose a reading of a sentence, checked
-  against the bakery's own vocabulary. It cannot write a row, record consent, attest a physical
-  fact or choose a recovery. The canonical raspberry report costs **zero** model calls, and a test
-  asserts it.
+- **Model output is never authority.** The semantic model proposes interpretations only: a
+  reading of a sentence that must ground in the bakery's own vocabulary. It cannot write a row,
+  record consent, approve a plan or choose a recovery, and a fact it helps read is recorded as the
+  reporting worker's, never the model's. The canonical raspberry report costs **zero** model
+  calls, and a test asserts it.
 - **Worker plan approval and customer consent are different things**, with different parsers,
   records and words. A customer's yes never spends a worker approval, and the reverse is also
   true.
-- **Customer consent is a literal `YES`, an option code or `NO`.** Free text is at most an
-  apparent intent that can trigger one confirmation prompt.
-- **A service credential is not a person.** Holding the MCP bearer token proves a process. The
-  actor and the clock are always server-derived, and an MCP `confirm` can only spend an approval a
-  human wrote in a signed-in session
-  ([ADR-0018](docs/adr/0018-a-plan-confirmation-spends-a-human-approval.md)).
+- **Customer consent is a literal `YES` or `NO`**, trimmed and case-insensitive. Any other reply
+  decides nothing: it is stored verbatim and earns one confirmation prompt.
+- **A service credential is not a person.** Holding the MCP bearer token proves a process. MCP
+  intake is therefore a trusted reporting channel: a report it carries is attested under the
+  intent API's configured surface worker (`PP_SURFACE_WORKER_ID`), not by a person the server
+  authenticated. The actor and the clock are always server-derived, and an MCP `confirm` can only
+  spend an approval a human already wrote, in a signed-in browser session or on the operator
+  console ([ADR-0018](docs/adr/0018-a-plan-confirmation-spends-a-human-approval.md)).
 - **A confirmation binds to the plan that was read out.** Stale, wrong-case, replayed and repeated
   confirmations fail closed.
-- **A yes is perishable.** An approved change runs only after ten checks pass against a fresh
-  snapshot. A change that is no longer true is refused as `STALE` and re-planned.
+- **A yes is perishable.** When a customer's answer arrives, ten checks run against a fresh
+  snapshot before the change may be committed. A change that is no longer true is refused as
+  `STALE`, nothing is sent, and that track is re-planned; an expired answer is escalated to the
+  owner and an unauthorized one is refused. The ten checks guard the commit: the commit re-judges
+  the plan's fingerprint and production start
+  ([ADR-0024](docs/adr/0024-freshness-is-judged-where-the-effect-is-committed.md)), and after it
+  only the production start is judged again, at the amendment's first dispatch
+  ([ADR-0026](docs/adr/0026-a-first-dispatch-that-provably-sends-nothing-is-judged-again.md)).
+  A stale finding at either point escalates to the owner rather than re-planning.
 - **Recovery only selects pre-authored recipe versions.** Nothing invents a substitute at runtime.
 - **Unknown or conflicting state fails closed to `BLOCKED`**, never to `UNAFFECTED`.
 - **Started work is never reported as stopped.** Scheduled work on a blocked promise is held;
@@ -177,7 +188,7 @@ flowchart LR
     customer(("Customer"))
 
     agent -->|bearer token| mcp -->|service token| api
-    worker -->|"session: the only place<br/>a plan approval is written"| api
+    worker -->|"session: one of two<br/>plan-approval channels"| api
     api --> wf
     wf -. "the words" .-> model
     model -. "a candidate reading,<br/>never authority" .-> wf
@@ -286,7 +297,7 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 |---|---|---|
 | release proof, closed | [g8-closeout.md](docs/g8-closeout.md) | 22 of 22 G8 rows closed, the two SHAs reconciled, and the feature freeze |
 | exact release SHA passes CI | [`pr` run 36310794944](https://github.com/Asembris/PromisePatch/actions/runs/36310794944) | 13 of 13 jobs on `56c3023`, the whole-stack browser job included |
-| restart-safe on the deployment | [R1](docs/g8-rehearsal-r1.md) · [R2](docs/g8-rehearsal-r2.md) · [R3](docs/g8-rehearsal-r3.md) · [R4](docs/g8-rehearsal-r4.md) · [R5](docs/g8-rehearsal-r5.md) | five worker restarts at four points on `4529a802e34e`, each PASS, with the effects applied exactly once |
+| restart-safe on the deployment | [R1](docs/g8-rehearsal-r1.md) · [R2](docs/g8-rehearsal-r2.md) · [R3](docs/g8-rehearsal-r3.md) · [R4](docs/g8-rehearsal-r4.md) · [R5](docs/g8-rehearsal-r5.md) | five worker restarts at four points on `4529a802e34e`, each PASS, every effect recorded once and delivered on attempt 1 |
 | untouched means untouched | [g8-demo-funnel.md](docs/g8-demo-funnel.md) | the funnel 6 → 1/1/2 + 2, and 0/2 untouched orders affected, in all five rehearsals |
 | the storyboard is executable | [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md) | 49 assertions through the intent API and the signed link, with no direct consent insert |
 | the immutable headline | [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) | 11/16 against frozen v1, with every diff published |
@@ -294,7 +305,7 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 | adversarial faults | [g8-adversarial-proof-map.md](docs/g8-adversarial-proof-map.md) | all eleven named faults, from a lost MCP response and model self-confirmation to crashes on either side of external acceptance, each proved |
 | the voice number | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) | 9/10 in run 2, with void run 1 and every timing published |
 | MCP transport | [p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) | Streamable HTTP, `2025-11-25`, bearer and `Origin`/`Host` refusals, tested with the official SDK |
-| real customer loop | [deployed-customer-channel.md](docs/deployed-customer-channel.md) · [customer-approval-link.md](docs/customer-approval-link.md) | a Telegram delivery and a web `YES`, with revalidation, applied once |
+| real customer loop | [deployed-customer-channel.md](docs/deployed-customer-channel.md) · [customer-approval-link.md](docs/customer-approval-link.md) | one Telegram delivery and a web `YES`, revalidated, then `EXT-B` amended once |
 | the deployment | [p6.2-first-deployment.md](docs/p6.2-first-deployment.md) · [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) | the AWS stack, and the image that runs now |
 | engine from a clean clone | [g8-standalone-fresh-clone-proof.md](docs/g8-standalone-fresh-clone-proof.md) | 335 tests passed from a fresh public clone |
 | effect-set clone check | [g8-effect-set-fresh-clone-proof.md](docs/g8-effect-set-fresh-clone-proof.md) | `uv sync --frozen` and both manifests' checks exit `0` |
@@ -311,6 +322,12 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
   proved by tests only.
 - **Telegram inbound is deliberately not built.** A second route for the word `YES` would be a
   second consent parser. The signed link proves possession of the message, not identity.
+- **Telegram's Bot API has no idempotency key.** A retry after an uncertain send can deliver a
+  duplicate message. Order amendments carry a stable idempotency key, so a duplicate is a second
+  message, never a second amendment ([customer-message-transport.md](docs/customer-message-transport.md)).
+- **MCP intake is a trusted reporting channel.** A report over MCP is attested as the server's
+  configured worker, not by a person the server authenticated
+  ([p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md)).
 - **The effect sets are developer-authored**, and both evaluation holdouts remain sealed.
 - **The `SUR-1` comparative benchmark says nothing comparative about models.** Two of its arms
   called the model zero times ([sur1-fifth-scored-run.md](docs/sur1-fifth-scored-run.md)).

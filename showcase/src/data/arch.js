@@ -1,6 +1,8 @@
 // The architecture, verbatim from the approved prototype: ARCH (the stacked
 // chain shown below 1080px) and the 1200 × 570 diagram's edges, edge labels
 // and nodes (shown from 1080px). No node or flow is added here.
+// Claim-hardening corrections (CONTENT_SOURCES.md) depart from the prototype
+// only where the repository record required it.
 
 export const ARCH = [
   ['Worker / agent client', 'OUTSIDE', 'MCP bearer token, or a signed-in session'],
@@ -37,7 +39,7 @@ export const EDGES = [
 
 /** [x, y, text, anchor] — mono 11px #AEB6C8 */
 export const EDGE_LABELS = [
-  [258, 94, 'session: the only place a plan approval is written'],
+  [258, 94, 'session: one of two plan-approval channels'],
   [206, 318, 'bearer'],
   [444, 240, 'service token', 'end'],
   [782, 130, 'the words', 'end'],

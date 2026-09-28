@@ -65,7 +65,7 @@
         <span class="hero__title-main">The deterministic protocol <span class="accent-brand">authorizes.</span></span>
       </h1>
       <div class="hero__aside">
-        <p class="lede">One spoken report of a physical failure becomes a selective, consent-respecting recovery of the customer promises it actually reaches, and nothing else.</p>
+        <p class="lede">When a missed delivery breaks promises already made, PromisePatch changes only what it is allowed to change: a swap the customer already agreed to, or one they approve now. The rest goes to the owner, and every order the failure does not reach is left untouched.</p>
         <div class="btn-row">
           <a class="btn btn--primary" href="https://184.194.40.87.sslip.io">Open the live app <span aria-hidden="true">↗</span></a>
           <a class="btn btn--outline" href="#evidence">Explore the proof <span aria-hidden="true">↓</span></a>
@@ -76,7 +76,7 @@
     </div>
 
     <figure class="hero__figure">
-      <div class="hero__stage" role="img" aria-label="Animated walkthrough: a raspberry delivery fails; six orders are checked; the four it reaches split into AUTO, ASK and BLOCKED lanes while the two unaffected orders never move. The pre-approved swap is applied; two orders go to the owner; the customer answers YES on a signed link; before that change runs it passes a revalidation gate of ten checks against a fresh snapshot; then it is applied.">
+      <div class="hero__stage" role="img" aria-label="Animated walkthrough: a raspberry delivery fails; six orders are checked; the four it reaches split into AUTO, ASK and BLOCKED lanes while the two unaffected orders never move. The pre-approved swap is applied; two orders go to the owner; the customer answers YES on a signed link; before that change is committed it passes a revalidation gate of ten checks against a fresh snapshot; then it is applied.">
         <div class="hero__grid" aria-hidden="true"></div>
         <img class="hero__fallback" src="assets/hero-fallback.svg" alt="" width="1200" height="640">
         <div class="hero__label" data-hero-label hidden></div>
@@ -164,10 +164,10 @@
         <p class="label label--muted">UNDERSTANDING</p>
         <div class="model-card">
           <h3 class="model-card__title">The model</h3>
-          <p>May propose a reading of a sentence, checked against the bakery’s own vocabulary.</p>
+          <p>Proposes interpretations only: a reading of a sentence that must ground in the bakery’s own vocabulary. A fact it helps read is recorded as the reporting worker’s, never the model’s.</p>
           <p class="label model-card__cannot">CANNOT</p>
           <ul class="model-card__list">
-            <li>✕ write a row</li><li>✕ record consent</li><li>✕ attest a physical fact</li><li>✕ choose a recovery</li>
+            <li>✕ write a row</li><li>✕ record consent</li><li>✕ approve a plan</li><li>✕ choose a recovery</li>
           </ul>
         </div>
         <p class="split-panel__note">The canonical raspberry report costs <strong>zero</strong> model calls, and a test asserts it.</p>
@@ -181,11 +181,11 @@
           </div>
           <div class="authority-card">
             <h3>Worker</h3>
-            <p>Attests the physical fact, and approves the plan that was read out, in a signed-in session. The approval is bound to that plan’s identity.</p>
+            <p>Attests the physical fact, and approves the plan that was read out, in a signed-in browser session or on the operator console. The approval is bound to that plan’s identity.</p>
           </div>
           <div class="authority-card">
             <h3>Customer</h3>
-            <p>Authorizes an ASK change with a literal <code class="code-ask">YES</code>, an option code or <code class="code-ask">NO</code>. Free text is at most an apparent intent.</p>
+            <p>Authorizes an ASK change with a literal <code class="code-ask">YES</code> or <code class="code-ask">NO</code>, trimmed and case-insensitive. Any other reply decides nothing.</p>
           </div>
           <div class="authority-card">
             <h3>Order system</h3>
@@ -196,7 +196,7 @@
     </div>
 
     <ul data-reveal class="rules">
-      <li><strong>A service credential is not a person.</strong><span>An MCP confirm can only spend an approval a human wrote in a signed-in session.</span></li>
+      <li><strong>A service credential is not a person.</strong><span>MCP intake is a trusted reporting channel: its reports are recorded under the server’s configured worker. An MCP confirm can only spend an approval a person already wrote.</span></li>
       <li><strong>Two approvals, never interchangeable.</strong><span>A customer’s yes never spends a worker approval, and the reverse is also true.</span></li>
       <li><strong>Nothing is invented at runtime.</strong><span>Recovery only selects pre-authored recipe versions.</span></li>
       <li><strong>Uncertainty fails closed.</strong><span>Unknown or conflicting state goes to BLOCKED, never to UNAFFECTED.</span></li>
@@ -212,15 +212,15 @@
         <p class="eyebrow">05 · The revalidation moment</p>
         <h2 id="revalidate-title" class="revalidate__title">A yes is <span class="accent-ask">perishable.</span></h2>
       </div>
-      <p class="revalidate__lede">Approval is not a permanent permission token. Before a customer’s YES is acted on, PromisePatch takes a fresh snapshot and runs ten checks. A change that is no longer true is refused as <code>STALE</code> and re-planned.</p>
+      <p class="revalidate__lede">Approval is not a permanent permission token. When a customer’s YES arrives, PromisePatch takes a fresh snapshot and runs ten checks before the change may be committed. A change that is no longer true is refused as <code>STALE</code>, nothing is sent, and that track is re-planned; an expired answer goes to the owner and an unauthorized one is refused. The ten checks guard the commit. After it, only the production start is judged again, at the amendment’s first dispatch.</p>
     </div>
 
     <ol data-reveal class="timeline" aria-label="Rehearsal R3 timeline, 24 September 2026, UTC">
       <li><span class="timeline__time">20:27:10</span><span>One Telegram message delivered</span></li>
       <li><span class="timeline__time">20:27:23</span><span>Worker stopped on purpose</span></li>
-      <li class="timeline--ask"><span class="timeline__time">20:28:31</span><span>Customer presses APPROVE. Stored; nothing acts on it.</span></li>
-      <li><span class="timeline__time">20:30:58</span><span>Worker starts again, 2 min 29 s later</span></li>
-      <li class="timeline--brand"><span class="timeline__time">20:31:01</span><span>Fresh snapshot. Ten checks.</span></li>
+      <li class="timeline--ask"><span class="timeline__time">20:28:31</span><span>The owner, as the demo customer, presses APPROVE. Stored; nothing acts on it.</span></li>
+      <li><span class="timeline__time">20:30:58</span><span>Worker starts again, 3 min 35 s after it stopped</span></li>
+      <li class="timeline--brand"><span class="timeline__time">20:31:01</span><span>Stored answer taken up, 2 min 29 s after the press. Fresh snapshot. Ten checks.</span></li>
       <li class="timeline--ink"><span class="timeline__time">20:31:03</span><span>EXT-B amended once. Case resolved.</span></li>
     </ol>
 
@@ -359,6 +359,8 @@
         <li>One bakery, fixture data, a simulated order system. The Telegram message and the web approval are the real parts.</li>
         <li>No refusal path has been exercised live. <code>STALE</code>, <code>EXPIRED</code>, <code>UNAUTHORIZED</code> and <code>NOOP</code> are proved by tests only.</li>
         <li>Telegram inbound is deliberately not built. The signed link proves possession of the message, not identity.</li>
+        <li>Telegram’s Bot API has no idempotency key, so a retry after an uncertain send can deliver a duplicate message. Order amendments carry a stable idempotency key, so a duplicate is a second message, never a second amendment.</li>
+        <li>MCP intake is a trusted reporting channel. A report over MCP is attested as the server’s configured worker, not by a person the server authenticated.</li>
         <li>The effect sets are developer-authored, and both evaluation holdouts remain sealed.</li>
         <li>The voice result is not a production latency SLA.</li>
         <li>Operations debt is recorded, not fixed. See <a href="https://github.com/Asembris/PromisePatch#honest-limitations">Honest limitations</a>.</li>
