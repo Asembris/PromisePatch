@@ -124,6 +124,10 @@ const OVERCLAIMS = [
   ['Rehearsal R3 was refused as STALE.', /recorded in a rehearsal/],
   ['The recorded run refused the change.', /recorded in a rehearsal/],
   ['Approval deadline check: 20:31:01Z ≤ 01:26:54Z', /crosses midnight/],
+  ['STALE, EXPIRED, UNAUTHORIZED and NOOP are proved by tests only.', /STALE listed as proved by tests only/],
+  ['Refusal paths (STALE, EXPIRED, UNAUTHORIZED, NOOP) are proved by tests only.', /STALE listed as proved by tests only/],
+  ['STALE was reproduced live on the deployment.', /presented as live or on the deployment/],
+  ['A STALE refusal was reproduced in production.', /presented as live or on the deployment/],
 ];
 const CORRECTED = [
   'Authorizes an ASK change with a literal YES or NO, trimmed and case-insensitive. Any other reply decides nothing.',
@@ -139,6 +143,8 @@ const CORRECTED = [
   'The owner, as the demo customer, presses APPROVE. Stored; nothing acts on it.',
   'One customer is asked and answers YES on a signed link. Conditions can change while an answer waits.',
   'No refusal path has been exercised live.',
+  'STALE was reproduced locally through the frozen implementation, not on the deployment; EXPIRED, UNAUTHORIZED and NOOP are proved by tests only.',
+  'This scenario is illustrative, not a recorded run. STALE was reproduced locally on the frozen code, and EXPIRED, UNAUTHORIZED and NOOP are proved by tests only; none was exercised live.',
   'Approval deadline not passed, judged at processing time. 24 Sep 20:31:01Z ≤ 25 Sep 01:26:54Z',
 ];
 
