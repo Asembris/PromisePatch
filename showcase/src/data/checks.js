@@ -1,6 +1,9 @@
 // CHECKS and the gate's two scenarios, verbatim from the approved prototype.
 // Values are as `pp case-status` printed them in rehearsal R3
-// (docs/g8-rehearsal-r3.md §9).
+// (docs/g8-rehearsal-r3.md §9); the deadline carries both dates, as the
+// record does, because it crosses midnight.
+// Claim-hardening corrections (CONTENT_SOURCES.md) depart from the prototype
+// only where the repository record required it.
 
 export const CHECKS = [
   ['Waiting', 'The track and case are waiting.', 'WAITING'],
@@ -9,7 +12,7 @@ export const CHECKS = [
   ['Constraints', 'Constraint snapshot unchanged.', 'ee9962aa… = ee9962aa…'],
   ['Substitute', 'The substitute is still available.', '3.200 ≥ 2.200'],
   ['Production task', 'Not started; its start is ahead.', 'SCHEDULED'],
-  ['Deadline', 'Approval deadline not passed, judged at processing time.', '20:31:01Z ≤ 01:26:54Z'],
+  ['Deadline', 'Approval deadline not passed, judged at processing time.', '24 Sep 20:31:01Z ≤ 25 Sep 01:26:54Z'],
   ['Sender', 'The sender is the order’s approval channel.', 'masked'],
   ['Parser', 'The decision came from the literal parser.', 'LITERAL'],
   ['Decision', 'One unspent decision, bound to this plan.', '1 decision'],

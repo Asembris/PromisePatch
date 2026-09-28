@@ -1,7 +1,8 @@
 // The hero's constants, verbatim from the approved prototype's logic class:
 // colours (K), phase starts (PH), the end of the timeline (END), the desktop
 // (LD) and mobile (LM) layout tables in world units, the step labels, the
-// captions, and the HTML label overlay. Nothing here is re-authored.
+// captions, and the HTML label overlay. Nothing here is re-authored except
+// two captions, corrected toward the repository record (CONTENT_SOURCES.md).
 
 export const K = { bg: '#162038', ring: '#76819A', ink: '#F7F8FC', brand: '#8390F2', auto: '#42BCD3', ask: '#F2C374', owner: '#F18A76', done: '#F7F8FC', dark: '#0B1221', edge: '#26324D', muted: '#AEB6C8' };
 export const PH = [0, 0.35, 1.25, 2.3, 3.25, 4.9, 6.9];
@@ -22,8 +23,8 @@ export const CAPTIONS = [
   'The deterministic engine finds the four promises that failure reaches. Two orders without raspberries are never reached.',
   'Each reached promise lands in exactly one authority lane.',
   'The pre-authorized swap runs. Two orders go to the owner, with scheduled work held.',
-  'One customer is asked. They answer YES on a signed link, and the world keeps moving while it waits.',
-  'Before acting, the YES is checked again: ten checks against a fresh snapshot. Authority is still valid, so it executes.',
+  'One customer is asked and answers YES on a signed link. Conditions can change while an answer waits.',
+  'Before the change is committed, the YES is checked again: ten checks against a fresh snapshot. Authority is still valid, so it proceeds.',
   '6 promises → 1 auto-recovered · 1 customer-approved · 2 owner-escalated · 2 untouched.',
 ];
 
