@@ -50,7 +50,13 @@ each phase's end, and nothing animates. QA switches: `?renderer=svg`, `?motion=r
 same keys as JSON in `localStorage['pp-qa']`. `window.__ppHero.seek(t)` draws time `t` for
 reference captures.
 
-Not yet built: the Pages workflow (P8).
+The Pages workflow (P8) is `.github/workflows/showcase-pages.yml`: on a push to `main` that
+touches `showcase/**`, `brand/**` or the workflow itself, or on a manual `workflow_dispatch`, it
+runs `npm ci`, installs Chromium and runs `npm run check`, then uploads that same `dist/` with
+`actions/upload-pages-artifact` and publishes it with `actions/deploy-pages`. It has not run yet:
+it reaches `main` only when the branch that adds it is merged, and the deploy job needs the
+owner's *Settings → Pages → Build and deployment → Source: GitHub Actions*. The public URL has not
+been observed serving the site.
 
 Responsive and accessibility fixes beyond the prototype: below 400px a revalidation check's value
 drops under its description; below 360px the hero stage is 48px taller and its tags track

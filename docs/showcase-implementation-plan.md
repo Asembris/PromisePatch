@@ -8,7 +8,8 @@ scaffold, tokens, self-hosted fonts, brand copy, every section's static content,
 with their build-time render (P3), the interactive six promises, revalidation gate,
 architecture traces, Copy buttons and section reveals (P4), the hero: three.js `0.149.0`
 with the SVG renderer and the no-JS image behind it (P5), and the Playwright suite behind
-`npm run check` (P6). Nothing is deployed and no workflow exists.
+`npm run check` (P6). Nothing is deployed. The P8 workflow now exists on the `showcase/pages`
+branch, unmerged and never run; see the later truth under §2.
 
 **Recorded during P1/P2** (implementation notes; the design is unchanged):
 
@@ -455,6 +456,19 @@ still run and still mean something. The `github-pages` environment is created by
 deployment and by default allows only `main`.
 
 **What this session does not do:** enable Pages, create the workflow, push, or deploy.
+
+**Later truth (2026-09-28, P8 workflow written, not yet run).** `.github/workflows/showcase-pages.yml`
+follows the table above with two deliberate differences. **There is no second `npm run build`**:
+`npm run check` already builds, and the `dist/` it uploads is the one its gates and the Playwright
+suite passed against, so a rebuild would publish bytes nothing tested. **`actions/configure-pages`
+is omitted**: it calls the Pages API, which would put a Pages permission on the job that runs
+third-party npm code, to report a base path `vite.config.js` already fixes at `/PromisePatch/`.
+The `build` job holds `contents: read` only; `deploy` holds `pages: write` and `id-token: write`.
+Actions are the current official majors, each pinned to a full commit SHA. Locally the workflow
+passed `actionlint`, and `npm ci` and `npm run check` passed under Node 24. The Pages actions
+themselves cannot run outside GitHub Actions and were not run. The workflow runs only once merged
+to `main`, and deploys only after the owner sets the Pages source above. The public URL has not
+been observed serving the site.
 
 ## 3. File map
 
