@@ -152,14 +152,15 @@ server and the conversational client from reaching the domain or the database.
 - **A confirmation binds to the plan that was read out.** Stale, wrong-case, replayed and repeated
   confirmations fail closed.
 - **A yes is perishable.** When a customer's answer arrives, ten checks run against a fresh
-  snapshot before the change may be committed. A change that is no longer true is refused as
-  `STALE`, nothing is sent, and that track is re-planned; an expired answer is escalated to the
-  owner and an unauthorized one is refused. The ten checks guard the commit: the commit re-judges
-  the plan's fingerprint and production start
-  ([ADR-0024](docs/adr/0024-freshness-is-judged-where-the-effect-is-committed.md)), and after it
-  only the production start is judged again, at the amendment's first dispatch
-  ([ADR-0026](docs/adr/0026-a-first-dispatch-that-provably-sends-nothing-is-judged-again.md)).
-  A stale finding at either point escalates to the owner rather than re-planning.
+  snapshot before the change may be committed. If that initial ten-check revalidation finds the
+  change no longer true, it is refused as `STALE`, nothing is sent, and that track is re-planned;
+  an expired answer is escalated to the owner and an unauthorized one is refused. Staleness
+  found later is handled differently: the commit re-judges the plan's fingerprint and production
+  start ([ADR-0024](docs/adr/0024-freshness-is-judged-where-the-effect-is-committed.md)), and the
+  amendment's first dispatch re-judges only the production start
+  ([ADR-0026](docs/adr/0026-a-first-dispatch-that-provably-sends-nothing-is-judged-again.md));
+  a stale finding at the commit or the first dispatch sends nothing and escalates the track to
+  the owner, with no re-plan.
 - **Recovery only selects pre-authored recipe versions.** Nothing invents a substitute at runtime.
 - **Unknown or conflicting state fails closed to `BLOCKED`**, never to `UNAFFECTED`.
 - **Started work is never reported as stopped.** Scheduled work on a blocked promise is held;
