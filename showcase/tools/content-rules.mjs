@@ -130,6 +130,13 @@ const SCOPED = [
   [(s) => /\b(?:every|any|all|always)\b[^.]{0,60}\bSTALE\b[^.]{0,60}\bre-?plan/i.test(s)
     || /\bSTALE\b[^.]{0,40}\balways\b[^.]{0,30}\bre-?plan/i.test(s),
     'every stale finding claimed to re-plan (some escalate to the owner instead)'],
+  // STALE was reproduced locally on the frozen code (docs/evidence-hardening-stale-refusal-2026-09-28.md):
+  // it is no longer tests-only, and the local reproduction is never a live one.
+  [(s) => /\bSTALE\b[^.;]{0,80}\bproved (?:only )?by (?:their )?tests\b/i.test(s) && !/\breproduced locally\b/i.test(s),
+    'STALE listed as proved by tests only (it was reproduced locally on the frozen code)'],
+  [(s) => /\bSTALE\b[^.;]{0,60}\breproduced\b/i.test(s) && /\blive\b|\bdeploy\w*|\bproduction\b/i.test(s)
+    && !/\b(?:not|no|none|never)\b/i.test(s),
+    'the local STALE reproduction presented as live or on the deployment'],
   // The illustration is never a recorded or rehearsed refusal.
   [(s) => /\b(?:STALE|refus\w*)\b/i.test(s) && /\bR[1-5]\b|\brehears\w*|\brecorded\b/i.test(s)
     && !/\b(?:no|none|not|never)\b|illustrat/i.test(s),
@@ -273,8 +280,9 @@ export function checkContent({ html, extra = [], state = 'default' }) {
   if (GATE_MODES.hypo.header !== ILLUSTRATION || !hypo.includes(ILLUSTRATION)) {
     fail(`the illustrative gate must be headed "${ILLUSTRATION}"`);
   }
-  if (!/proved by tests only/.test(GATE_MODES.hypo.note) || !/none was exercised live/.test(GATE_MODES.hypo.note)) {
-    fail('the illustrative gate must carry the tests-only, not-live note');
+  if (!/proved by tests only/.test(GATE_MODES.hypo.note) || !/none was exercised live/.test(GATE_MODES.hypo.note)
+    || !/STALE was reproduced locally/.test(GATE_MODES.hypo.note)) {
+    fail('the illustrative gate must carry the local-STALE, tests-only, not-live note');
   }
   // Wherever the illustrated refusal shows, its label and note show with it.
   if (/Refused as STALE and re-planned|\bno longer available\b/.test(page)
@@ -300,6 +308,7 @@ export function checkContent({ html, extra = [], state = 'default' }) {
     [/\bno idempotency key\b/, 'that Telegram exposes no idempotency key'],
     [/\bowner, as the demo customer, presses APPROVE\b/, 'the owner, as the demo customer, pressing APPROVE in R3'],
     [/\bfirst dispatch\b/, 'where revalidation stops: only the production start is judged again at the first dispatch'],
+    [/\bSTALE was reproduced locally\b[^.;]*\bnot on the deployment\b/, 'that STALE was reproduced locally, not on the deployment'],
   ]) if (!re.test(page)) fail(`the page must state ${what}`);
 
   // ---------- forbidden phrases ----------
