@@ -1,0 +1,41 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-rr8nirtavvt4beq25s9fgtbyg4
+R2_DELIVERED_CHECK=2026-09-30T20:36:06Z
+case=[{"id": "7db26377-c80a-57cc-9366-3d1ff26715c8", "state": "WAITING"}]
+tracks=[{"promise_id": "pr-a", "state": "RECOVERED", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "WAITING_FOR_CUSTOMER", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-d", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-e", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}, {"promise_id": "pr-f", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}]
+approvals=[{"approved_by": "maya", "channel": "BROWSER_SESSION", "approved_at": "2026-09-30 20:32:40.799188+00:00"}]
+outbox=[{"kind": "MESSAGE_SEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:approval:f28f2e0e-e1a6-57a5-bca6-2c49714bc332"}, {"kind": "ORDER_AMEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:amend:e8ac6736-f4cb-5aba-a9b4-994a89e07bcd:addf3800-1517-52f1-980d-6bcd8f40b6ef:1"}]
+requests=[{"state": "SENT"}]
+orders=[{"external_id": "EXT-A", "external_version": 2, "state": "AMENDED"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED"}]
+tasks=[{"id": "task-ol-a", "state": "SCHEDULED", "held_by_case_id": null}, {"id": "task-ol-b", "state": "SCHEDULED", "held_by_case_id": null}, {"id": "task-ol-c", "state": "HELD", "held_by_case_id": "7db26377-c80a-57cc-9366-3d1ff26715c8"}, {"id": "task-ol-d", "state": "HELD", "held_by_case_id": "7db26377-c80a-57cc-9366-3d1ff26715c8"}, {"id": "task-ol-e", "state": "STARTED", "held_by_case_id": null}, {"id": "task-ol-f", "state": "SCHEDULED", "held_by_case_id": null}]
+audit=[{"seq": 676, "type": "CASE_OPENED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-09-30 20:30:48.833468+00:00"}, {"seq": 677, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:48.898996+00:00"}, {"seq": 678, "type": "CLARIFICATION_REQUESTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.064014+00:00"}, {"seq": 679, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.064014+00:00"}, {"seq": 680, "type": "CLARIFICATION_ANSWERED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.157844+00:00"}, {"seq": 681, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.222387+00:00"}, {"seq": 682, "type": "PHYSICAL_FACT_RECORDED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.298119+00:00"}, {"seq": 683, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.298119+00:00"}, {"seq": 684, "type": "IMPACT_ANALYZED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.450285+00:00"}, {"seq": 685, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.450285+00:00"}, {"seq": 686, "type": "RECOVERY_PLANNED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.714530+00:00"}, {"seq": 687, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.714530+00:00"}, {"seq": 689, "type": "PLAN_APPROVED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-09-30 20:32:40.799188+00:00"}, {"seq": 690, "type": "PLAN_CONFIRMED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-09-30 20:32:40.832095+00:00"}, {"seq": 691, "type": "APPROVAL_REQUESTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:1:aeb45be3", "authority": "CONSTRAINT", "occurred_at": "2026-09-30 20:35:28.037977+00:00"}, {"seq": 692, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:1:aeb45be3", "authority": "NONE", "occurred_at": "2026-09-30 20:35:28.037977+00:00"}, {"seq": 693, "type": "RECOVERY_APPLIED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:1:aeb45be3", "authority": "CONSTRAINT", "occurred_at": "2026-09-30 20:35:28.730953+00:00"}, {"seq": 694, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:1:aeb45be3", "authority": "NONE", "occurred_at": "2026-09-30 20:35:28.730953+00:00"}, {"seq": 695, "type": "APPROVAL_SENT", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:1:aeb45be3", "authority": "NONE", "occurred_at": "2026-09-30 20:35:28.919202+00:00"}, {"seq": 696, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:1:aeb45be3", "authority": "NONE", "occurred_at": "2026-09-30 20:35:28.919202+00:00"}, {"seq": 698, "type": "RECOVERY_COMPLETED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:1:aeb45be3", "authority": "CONSTRAINT", "occurred_at": "2026-09-30 20:35:35.447787+00:00"}, {"seq": 699, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:1:aeb45be3", "authority": "NONE", "occurred_at": "2026-09-30 20:35:35.447787+00:00"}]
+db_now=2026-09-30T20:36:08.053034+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=55ccdc1610775ca4 n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=24675cf7008ed19a n=4
+unrelated.promises=cac292744dcdb3fe n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=0ef3f9bc7f6a26ab n=4
+unrelated.tracks=12ad596098c7f697 n=4
+unrelated_digest=5f002ba238a7602e9ee24917de2a0ad0fc7af5f5488c29c3032f9e0425b9f3a5
+ef_digest=ef8295da758bd53f7678b9e025e9d70fa9740b0cdc75d1027fd841849027c2ff
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[["pr-e","UNAFFECTED","UNAFFECTED"],["pr-f","UNAFFECTED","UNAFFECTED"]] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+privacy.caddy={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.api={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.worker={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+message_counts={"sendMessage": 1, "worker.telegram.sent": 1, "getUpdates": 0}
+lifecycle={"worker": "41e8c7674d8c:1:f26769c4", "event": "worker.stop", "timestamp": "2026-09-30T20:30:51.470659Z"}
+lifecycle={"action": "PRESENT", "case_id": "7db26377-c80a-57cc-9366-3d1ff26715c8", "state": null, "rolled": false, "event": "worker.demo_case", "timestamp": "2026-09-30T20:35:27.998427Z"}
+lifecycle={"worker": "41e8c7674d8c:1:aeb45be3", "event": "worker.start", "timestamp": "2026-09-30T20:35:27.998560Z"}
+privacy.mcp={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.order-simulator={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+PRIVACY_SCAN_PASS
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-rr8nirtavvt4beq25s9fgtbyg4.
+

@@ -1,0 +1,75 @@
+{
+  "sha": "283f63f2845f8c5e93b2a791eebc15bc4de3f4d7",
+  "workflow": "pr",
+  "run_id": 36759222324,
+  "status": "completed",
+  "conclusion": "success",
+  "url": "https://github.com/Asembris/PromisePatch/actions/runs/36759222324",
+  "jobs": [
+    {
+      "name": "mypy",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "hypothesis (ci profile)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "ruff",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "frontend",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "gitleaks",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "semantic evaluation",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "order contract + order system",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "whole-stack browser",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "import-linter",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "mcp protocol",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "pytest + coverage",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "backend + postgres",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "semantic boundary",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}

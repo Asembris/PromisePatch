@@ -1,0 +1,18 @@
+R1 attempt 1: VOID, not counted and not a passing rehearsal.
+Release: 283f63f2845f8c5e93b2a791eebc15bc4de3f4d7 / image 283f63f2845f.
+Case: 46ee1ee8-259a-5e47-b4fe-fbba82604915.
+Restore anchor: 2026-09-30T20:01:46.428359Z.
+Fixture digest: a65bc8722f243f7997107fbcf0f3df40141a1c27f03aa299abff4e2295f35417.
+Frozen reader hash: c9731c8f8dedfe15fbc6af0c2db6a8d5d19ca090d7863f3d2e945b18220b0dd4.
+PLANNED unrelated_digest: 05b0adf12ae882d5359c2eef662261366f8d77e0752a756b0feb914078f36a30.
+PLANNED ef_digest: 3baa346737c526f90e9d858af3dd25bd38e03175ce9a66ac60a117e73175d141.
+All four untouched attribution counts zero.
+Reason: ten-minute plan window expired while awaiting genuine human workspace approval.
+At 20:12:57Z: RESOLVED, pr-a..pr-d ESCALATED, pr-e/pr-f UNAFFECTED,
+plan_approvals 0, outbox 0. No restart point reached; no message or amendment.
+Classification authority: docs/g8-rehearsal-preparation.md section 3.1:
+"A rehearsal that cannot reach its restart point for an operational reason, such as the plan
+window closing before confirmation, is VOID: recorded, not counted, never deleted."
+Operator query errors (missing timer state/audit kind columns) were read-only and wrote nothing.
+Session tool transcript retains original restore and frozen reader output; this temporary
+record will be preserved additively with new release evidence after validations.

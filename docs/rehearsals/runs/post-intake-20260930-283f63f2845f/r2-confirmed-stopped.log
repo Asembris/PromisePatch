@@ -1,0 +1,48 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-cuc3xhi94ytx8qpk7n5x5rrojq
+R2_STOPPED_CONFIRM_CHECK=2026-09-30T20:33:21Z
+case=[{"id": "7db26377-c80a-57cc-9366-3d1ff26715c8", "state": "EXECUTING"}]
+tracks=[{"promise_id": "pr-a", "state": "PENDING", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "PENDING", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-d", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-e", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}, {"promise_id": "pr-f", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}]
+approvals=[{"approved_by": "maya", "channel": "BROWSER_SESSION", "approved_at": "2026-09-30 20:32:40.799188+00:00"}]
+outbox=[]
+requests=[]
+orders=[{"external_id": "EXT-A", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED"}]
+tasks=[{"id": "task-ol-a", "state": "SCHEDULED", "held_by_case_id": null}, {"id": "task-ol-b", "state": "SCHEDULED", "held_by_case_id": null}, {"id": "task-ol-c", "state": "HELD", "held_by_case_id": "7db26377-c80a-57cc-9366-3d1ff26715c8"}, {"id": "task-ol-d", "state": "HELD", "held_by_case_id": "7db26377-c80a-57cc-9366-3d1ff26715c8"}, {"id": "task-ol-e", "state": "STARTED", "held_by_case_id": null}, {"id": "task-ol-f", "state": "SCHEDULED", "held_by_case_id": null}]
+audit=[{"seq": 676, "type": "CASE_OPENED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-09-30 20:30:48.833468+00:00"}, {"seq": 677, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:48.898996+00:00"}, {"seq": 678, "type": "CLARIFICATION_REQUESTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.064014+00:00"}, {"seq": 679, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.064014+00:00"}, {"seq": 680, "type": "CLARIFICATION_ANSWERED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.157844+00:00"}, {"seq": 681, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.222387+00:00"}, {"seq": 682, "type": "PHYSICAL_FACT_RECORDED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.298119+00:00"}, {"seq": 683, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.298119+00:00"}, {"seq": 684, "type": "IMPACT_ANALYZED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.450285+00:00"}, {"seq": 685, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.450285+00:00"}, {"seq": 686, "type": "RECOVERY_PLANNED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.714530+00:00"}, {"seq": 687, "type": "WORKFLOW_STEP_EXECUTED", "actor_kind": "SYSTEM", "actor_id": "41e8c7674d8c:87:5361497f", "authority": "NONE", "occurred_at": "2026-09-30 20:30:49.714530+00:00"}, {"seq": 689, "type": "PLAN_APPROVED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-09-30 20:32:40.799188+00:00"}, {"seq": 690, "type": "PLAN_CONFIRMED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-09-30 20:32:40.832095+00:00"}]
+db_now=2026-09-30T20:33:23.501147+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=55ccdc1610775ca4 n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=24675cf7008ed19a n=4
+unrelated.promises=cac292744dcdb3fe n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=0ef3f9bc7f6a26ab n=4
+unrelated.tracks=12ad596098c7f697 n=4
+unrelated_digest=5f002ba238a7602e9ee24917de2a0ad0fc7af5f5488c29c3032f9e0425b9f3a5
+ef_digest=ef8295da758bd53f7678b9e025e9d70fa9740b0cdc75d1027fd841849027c2ff
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[["pr-e","UNAFFECTED","UNAFFECTED"],["pr-f","UNAFFECTED","UNAFFECTED"]] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+fixture_state=1:036f0e1c29e4ddc2fa1a03f07df79d037ddfbd9570c8b0f3f2ecc616bc486a57
+cases=1:68a1184d34689912ae14c85e4de78225d1eba967b01c71e1fb492a1feb3d79ec
+tracks=6:299f7b4f0cbd4cdb08563761811b043f20fbff25af4dda4b3219fc9a7f5b6ada
+timers=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+case_steps=9:7ff9dface316627e1b80ec88f753f121805fc41cdf97d1a24c1d48ccfcd967d1
+customers=6:0d46bdac015b6342a921f4f30bc5a1df987bdc611d05cbf49d691fc2832c879f
+orders=6:340b794d048f1bdbeda31f6b9017df60ee172ba87ff7adabc37bc00724c5eb4c
+order_lines=6:f0685bc1def3777bf285cd0d2c484ee3047c507d39d72b9b88c35380a98bd966
+production_tasks=6:f1c0e8d38ba3234ea8d80bf96d29bb49ca3598fb757a00b8a9d4a2633139ade3
+outbox_messages=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+approval_requests=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+approval_decisions=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+inbound_replies=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+plan_approvals=1:42b8aecb7e4116a933cf765920dea94e3195acf4dd948175eef3fd9adde382f9
+audit_events_max=690
+domain_events_max=1694
+WORKER_STATUS=exited finished=2026-09-30T20:30:51.789348331Z
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-cuc3xhi94ytx8qpk7n5x5rrojq.
+

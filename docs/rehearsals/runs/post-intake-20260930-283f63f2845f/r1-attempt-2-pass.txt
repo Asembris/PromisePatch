@@ -1,0 +1,30 @@
+Post-intake R1 attempt 2: PASS.
+Release/image: 283f63f2845f8c5e93b2a791eebc15bc4de3f4d7 / 283f63f2845f.
+Case: 1c10eb3b-27fd-57a7-9462-c98a323f6de8.
+Restore anchor: 2026-09-30T20:15:25.238842Z; digest 60e69ef8d3d419ad6b3c84463fa9f6af104d810c066a330da35c6535e8eab98a.
+Human browser confirmation: Maya, 20:16:35.308725Z, BROWSER_SESSION,
+PLAN_APPROVED 644 and PLAN_CONFIRMED 645 HUMAN_APPROVAL.
+This uses the genuine authenticated human browser channel approved by ADR-0018 and
+docs/g8-demo-contract-runner.md, preserving original rehearsal human authority semantics.
+Restart: stop 20:19:15.462350Z, start 20:19:18.426022Z;
+worker ...e194560b -> ...f26769c4; demo_case PRESENT, rolled=false.
+Complete table digests and ledger maxima identical before, immediately after, and >90s after.
+Customer phone APPROVE 20:22:10.747988Z, LITERAL; sender match count 1.
+Customer confirmed exactly one new Telegram message in this chat.
+Ten checks 657..666 all passed at 20:22:10.869537Z after decision; new worker only.
+Recovered pr-a/pr-b; escalated pr-c/pr-d with their tasks HELD; pr-e/pr-f UNAFFECTED.
+Case RESOLVED; request ANSWERED; one plan approval, one request, one decision, one reply.
+Outbox three distinct keys: two ORDER_AMEND, one MESSAGE_SEND; DELIVERED attempts1.
+Worker sendMessage 1, worker.telegram.sent 1, getUpdates 0 for this run.
+EXT-A/B v2 on almond-4/rose-3, mirror matches external store; C..F remain v1.
+CONFIRMED -> SETTLED unrelated_digest 74fde94a240c07fffb1544318889fa92e3cd4f57ce53e9918166f55bb3a60c8e unchanged.
+PLANNED -> SETTLED ef_digest 8f43d98c8b670a1f44fd420a3e55056239d63d4c4118296631e70fbe9ec110f8 unchanged.
+All four untouched attribution counts zero.
+FINALIZE_RECOVERY attempt2 waits for mirror echo, as historical R1 documented; external effects not retried.
+Container token/link scans zero. CloudWatch destination fingerprint matches zero.
+Broad numeric scan matched metadata timestamps/durations/headers, not the private destination.
+Stack UPDATE_COMPLETE ImageTag/DeclaredImageTag new; host, AMI, launch and RDS identity unchanged.
+No provider-level exactly-once Telegram guarantee claimed.
+Operator read query errors preserved in logs; all read-only, no product changes.
+Automatic review rejected an equality projection as possible private identity disclosure;
+replaced with aggregate count, no disclosure or permission bypass.

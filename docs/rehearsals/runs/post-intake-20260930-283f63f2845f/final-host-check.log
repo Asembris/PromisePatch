@@ -1,0 +1,35 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-b3ypkxaglsct96ao7ygep9pnza
+host_boot_id=017b05ec-fa6d-420f-a730-c282d4441f1e
+09105b1001184df4b26a2fc8a06581c62c38f20c6a72389d911a5e5258eefe9c  converge.sh
+volumes=promisepatch_caddy-config
+promisepatch_caddy-data
+promisepatch_order-simulator-data
+/promisepatch-api-1 image=265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:283f63f2845f started=2026-09-30T19:41:59.969671974Z status=running exit=0
+/promisepatch-worker-1 image=265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:283f63f2845f started=2026-09-30T20:55:27.724724266Z status=running exit=0
+/promisepatch-mcp-1 image=265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:283f63f2845f started=2026-09-30T19:42:06.478332615Z status=running exit=0
+/promisepatch-order-simulator-1 image=265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/order-simulator:283f63f2845f started=2026-09-30T19:41:56.890669906Z status=running exit=0
+/promisepatch-migrate-1 image=265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:283f63f2845f started=2026-09-30T20:45:23.92826997Z status=exited exit=0
+fixture={"fixture_name": "hollow-oak", "anchor_at": "2026-09-30 20:54:00.016517+00:00", "loaded_at": "2026-09-30 20:54:00.016517+00:00", "fixture_digest": "033f5032c0e6a2a1f05625b6e3c64ddb7d82bc662f97c64a91b916b035db6d68"}
+cases_count=1
+outbox_messages_count=3
+approval_requests_count=1
+approval_decisions_count=1
+plan_approvals_count=1
+inbound_replies_count=1
+unsettled=0
+audit_max=854
+events_max=2050
+channel_provider=telegram
+bound_customers=1
+host_mcp_requires_bearer=401
+host_origin_refused=403
+host_host_refused=421
+order_health={"status": "ok", "service": "order-simulator"}
+order_ready={"status": "ok", "service": "order-simulator", "database": "/data/order-simulator.sqlite3", "seeded": true}
+migration_0010_logged=True
+migration_error_lines=0
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-b3ypkxaglsct96ao7ygep9pnza.
+

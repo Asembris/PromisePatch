@@ -1,0 +1,16 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-b7f2js963od2y46az2luxxp6si
+privacy.caddy={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.api={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.worker={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+message_counts={"sendMessage": 1, "worker.telegram.sent": 1, "getUpdates": 0}
+lifecycle={"worker": "41e8c7674d8c:1:e194560b", "event": "worker.stop", "timestamp": "2026-09-30T20:19:15.462350Z"}
+lifecycle={"case_id": "1c10eb3b-27fd-57a7-9462-c98a323f6de8", "state": null, "rolled": false, "event": "worker.demo_case", "timestamp": "2026-09-30T20:19:18.425892Z"}
+lifecycle={"worker": "41e8c7674d8c:1:f26769c4", "event": "worker.start", "timestamp": "2026-09-30T20:19:18.426022Z"}
+privacy.mcp={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.order-simulator={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+PRIVACY_SCAN_PASS
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-b7f2js963od2y46az2luxxp6si.
+

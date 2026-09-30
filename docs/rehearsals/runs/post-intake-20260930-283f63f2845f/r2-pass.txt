@@ -1,0 +1,23 @@
+Post-intake R2: PASS.
+Release/image 283f63f2845f8c5e93b2a791eebc15bc4de3f4d7 / 283f63f2845f.
+Case 7db26377-c80a-57cc-9366-3d1ff26715c8.
+Guarded restore 20:30:47.437928Z; digest 261431946aa2a71b5288078a3a4c648e738c2282a762f0ad09047ad3d5e2710b.
+Worker stop 20:30:51.470659Z, container exited 20:30:51.789348331Z.
+Genuine Maya browser confirmation 20:32:40.799188Z; PLAN_APPROVED689/CONFIRMED690 HUMAN_APPROVAL.
+While down EXECUTING, approvals1, effects0, requests0, orders allv1;
+two queued PENDING steps attempts0/no lease. Two complete snapshots at20:33:24 and20:35:21 identical.
+Start issued20:35:23Z, worker StartedAt20:35:26.096665029Z;
+new worker41e8c7674d8c:1:aeb45be3, PRESENT rolledfalse.
+Compose start also reran existing migrate dependency; no seed service or infrastructure replacement.
+New worker dispatched one message and one auto amendment atattempt1; caseWAITING.
+Customer APPROVE20:36:20.215683Z, LITERAL, identity_match_count1, one reply, inboxPROCESSED.
+User confirmed exactly one new Telegram message.
+Checks702..711 ten passed at20:36:20.324045Z afterdecision, new worker only.
+FinalRESOLVED, A/BRECOVERED, C/DESCALATED tasksHELD, E/FUNAFFECTED taskE STARTED.
+Three external effects deliveredatattempt1 withdistinctkeys; approvals1/request1/decision1/reply1/case1.
+External store A/Bv2 onalmond4/rose3 matchesmirror, C..Fv1.
+Unrelated digest5f002ba238a7602e9ee24917de2a0ad0fc7af5f5488c29c3032f9e0425b9f3a5 unchanged CONFIRMED->SETTLED.
+EF digestef8295da758bd53f7678b9e025e9d70fa9740b0cdc75d1027fd841849027c2ff unchanged PLANNED->SETTLED; attributionall0.
+FINALIZE_RECOVERY A/B bothattempt3 whilewaitingmirror; noexternal retries, documentedretry-ahead-of-echo behavior.
+Container privacychecks0; CloudWatch216events destinationmatches0/token0/unredactedqueries0/paths0.
+Human browserchannel preservesADR0018 semantics; no synthetic consent. No Telegram exactly-once guarantee.

@@ -1,0 +1,41 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-tvx3ikcug6qtofjb47eqeoh63y
+R3_OFFLINE_A=2026-09-30T20:42:59Z
+inbox=[{"source": "customer-reply", "state": "RECEIVED", "received_at": "2026-09-30 20:42:08.436299+00:00", "processed_at": null}]
+R3_OFFLINE_GATE_PASS
+fixture_state=1:7a4c5fa10ea1753a86c61aa1a79fc638c9ce237f54e628f85bdc0eedc7152c52
+cases=1:02049a5800a026a34079fe85dbe6845615ff24155f57dc91a9971b144909872f
+tracks=6:8622e06512f9cc9a4b78c591ba747fc363d7eba6632221bab354815ecf2f7bef
+timers=1:51072cee821187dc55b05f5a0d2a4d4246332b8d7fc7efee0bcaf91f7c9c206f
+case_steps=11:1989e96d9119a6798e1f2cfea55bcd783359028fe7e7af8c52a4736eaf1f5aae
+customers=6:0d46bdac015b6342a921f4f30bc5a1df987bdc611d05cbf49d691fc2832c879f
+orders=6:f71172e65522c6ea065dc864a4af8222cc2acd1387e7a5498e040e210dd36c9e
+order_lines=6:643621c014570215aa8dd1f74f260faddbcf8b9ec24f2be6e25c1712adbe5e5b
+production_tasks=6:af6c68cf0ca64f329bbb7aebacb33ce651622f637811ce5f35c7fec86eacb074
+outbox_messages=2:2227a64b7767f9c003da4a990c912b4dbdde47e991d6e9b35ab2910f108eca72
+approval_requests=1:012d6223d1ecda479ed4d7b425a316441e74b97fdf9316f3166711f90d81455a
+approval_decisions=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+inbound_replies=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+plan_approvals=1:46c5c2ede15ced3e29c3a5900c42ee5c7b28b276e1b4cbbf53420c2693004e4d
+audit_events_max=744
+domain_events_max=1818
+db_now=2026-09-30T20:43:01.804415+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=f729bb7529523d70 n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=4773bbd57b2f15e4 n=4
+unrelated.promises=ae022ca6b7f99f2f n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=572d870867edac40 n=4
+unrelated.tracks=80806fe917f0cd57 n=4
+unrelated_digest=4c82c8be5709472e172a354797cccbe11655383a51ed3ace41355a7c9649d9c7
+ef_digest=746996c05a50e0af48f777bead73c5402c3a6e8d33dca71a2a25fa984ca6d97b
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[["pr-e","UNAFFECTED","UNAFFECTED"],["pr-f","UNAFFECTED","UNAFFECTED"]] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-tvx3ikcug6qtofjb47eqeoh63y.
+

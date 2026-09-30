@@ -1,0 +1,38 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-oc759snxool3sljylgnzicle34
+CONFIRM_CHECK=2026-09-30T20:17:20Z
+case=[{"id": "1c10eb3b-27fd-57a7-9462-c98a323f6de8", "state": "WAITING"}]
+tracks=[{"promise_id": "pr-a", "state": "RECOVERED", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "WAITING_FOR_CUSTOMER", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-d", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-e", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}, {"promise_id": "pr-f", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}]
+Traceback (most recent call last):
+  File "<stdin>", line 9, in <module>
+  File "/usr/local/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "<stdin>", line 7, in main
+  File "/app/.venv/lib/python3.12/site-packages/asyncpg/connection.py", line 690, in fetch
+    return await self._execute(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.12/site-packages/asyncpg/connection.py", line 1864, in _execute
+    result, _ = await self.__execute(
+                ^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.12/site-packages/asyncpg/connection.py", line 1961, in __execute
+    result, stmt = await self._do_execute(
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.12/site-packages/asyncpg/connection.py", line 2004, in _do_execute
+    stmt = await self._get_statement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.12/site-packages/asyncpg/connection.py", line 432, in _get_statement
+    statement = await self._protocol.prepare(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg/protocol/protocol.pyx", line 165, in prepare
+asyncpg.exceptions.UndefinedColumnError: column "worker_id" does not exist
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-oc759snxool3sljylgnzicle34.
+

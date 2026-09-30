@@ -1,0 +1,262 @@
+[
+  {
+    "file": "demo-contract-build.log",
+    "bytes": 12181,
+    "sha256": "b474c0a0e21bcd29cd09bc8e1fd3a3be7dfdc59f593abfb611a2f07feccc6200"
+  },
+  {
+    "file": "demo-contract-dry-run.log",
+    "bytes": 249,
+    "sha256": "f8c866542d771268e20d97d99ed865c8b294e7ff2d4b7488c32f875201e615ef"
+  },
+  {
+    "file": "demo-contract-restore.log",
+    "bytes": 2607,
+    "sha256": "c5e2ec5368626953c7856dd2da3267b850a4512c7c8dc11fcc38356987b0244e"
+  },
+  {
+    "file": "demo-contract-run.log",
+    "bytes": 3964,
+    "sha256": "ad083cdf71f49a8a81849468f35a4aa109f33ad80717a787c0ad16a880f533c1"
+  },
+  {
+    "file": "final-exact-sha-ci.json",
+    "bytes": 1683,
+    "sha256": "849f1c81eab1a867b20f64ecf6d8726aafc7eafe3ebb107dbbe1b418c254a91e"
+  },
+  {
+    "file": "final-host-check.log",
+    "bytes": 2045,
+    "sha256": "cda797855f7b6c40012d61eb49da3edc3d63e5c755f03705b45888677f6b1e71"
+  },
+  {
+    "file": "final-live-reconciliation.json",
+    "bytes": 7365,
+    "sha256": "a94c41f0dc87fe8b6c4a18af91fc82e1f30f15bf55c7f54e140b7814d8f10fc1"
+  },
+  {
+    "file": "r1-attempt-1-void.txt",
+    "bytes": 1362,
+    "sha256": "2536ab14aae40105e3ec92ac783cb9b21a9c8bd067f98b2d201ad1064469e552"
+  },
+  {
+    "file": "r1-attempt-2-cloudwatch-destination-check.json",
+    "bytes": 204,
+    "sha256": "c9cfce38ed8ded26707777482edb8d36ce64835028ffc134b02d0e1b3a9fd1e5"
+  },
+  {
+    "file": "r1-attempt-2-cloudwatch-privacy.json",
+    "bytes": 122,
+    "sha256": "31636263075bba379bb9578a3a056412009d7c4827766d2c059cb72826b37b24"
+  },
+  {
+    "file": "r1-attempt-2-confirm-check.log",
+    "bytes": 2529,
+    "sha256": "e4196bae44091c3aae51fb79221b639be83f31d2e033cb48f46e685f3df986f1"
+  },
+  {
+    "file": "r1-attempt-2-confirmed.log",
+    "bytes": 7298,
+    "sha256": "396928604bcdb10ea39a00ef98776075b0e1f81544e983592d586fd5b21fdd03"
+  },
+  {
+    "file": "r1-attempt-2-control-plane.json",
+    "bytes": 283,
+    "sha256": "5c3ad3892f601b33e634ecbee264e95cc91b9ab021457896beeceadc2d3d561d"
+  },
+  {
+    "file": "r1-attempt-2-external-readback.log",
+    "bytes": 3690,
+    "sha256": "b1f9f8fbac1eee7bc75e0b52faeba5c081e069a8ee0cc0f08efd01ea0743caa0"
+  },
+  {
+    "file": "r1-attempt-2-final-checks.log",
+    "bytes": 3570,
+    "sha256": "137424ec97684feb8387802115aece3e46569e81afdb7ca57d2fd1dfc976bbb9"
+  },
+  {
+    "file": "r1-attempt-2-pass.txt",
+    "bytes": 2360,
+    "sha256": "9d44aeac6b415b979c688504c72ec6fa482103da16e4c6fe58e0f03120488c30"
+  },
+  {
+    "file": "r1-attempt-2-restart-logs.log",
+    "bytes": 1176,
+    "sha256": "33f689e37dbda7ca169915d06e1cfaf5a184d91408384521eeb268a8667cf3d0"
+  },
+  {
+    "file": "r1-attempt-2-restart.log",
+    "bytes": 2857,
+    "sha256": "dea5cb194d585b64ac7cdea1c4eded1f826343b896a225df52de0e07430f966e"
+  },
+  {
+    "file": "r1-attempt-2-restore.log",
+    "bytes": 5118,
+    "sha256": "4bcdcb6feb33f39182f7683a5a1697215c11fa9b2355be6a3791bc1da0ccd111"
+  },
+  {
+    "file": "r1-attempt-2-settled-privacy.log",
+    "bytes": 1197,
+    "sha256": "76c4dcb2b3a21674b58da0f8daa6142f4962c1b0b6b8052dbc31d08af1f41a67"
+  },
+  {
+    "file": "r1-attempt-2-settled.log",
+    "bytes": 14879,
+    "sha256": "e24da1bec3ad5ce6db81b4fe3952d24a2eb802ea50da9aca4c69413fcb786d59"
+  },
+  {
+    "file": "r1-attempt-2-stability.log",
+    "bytes": 2497,
+    "sha256": "7eafb108635f8b8079d19f6c0dc4c0a4232aee23ae6036b04bc023f52cdee366"
+  },
+  {
+    "file": "r1-attempt-2-stable-logs.log",
+    "bytes": 1197,
+    "sha256": "26ddf18451fc6afad18c74ee56e1f27178080d9fc7535bc451fb3fe88baf692b"
+  },
+  {
+    "file": "r1-void-expiry.log",
+    "bytes": 2605,
+    "sha256": "a478a123cfd9cdf67061514375268a981acde9debd06304f11e89bc6d9a81484"
+  },
+  {
+    "file": "r2-cloudwatch-privacy.json",
+    "bytes": 141,
+    "sha256": "53061d08f53b946d02cf6be33e0d6063c8abb72fce8c38bef908aa64e5c2fa77"
+  },
+  {
+    "file": "r2-confirmed-stopped.log",
+    "bytes": 6746,
+    "sha256": "1a24f073e7606fc5d1b249735b8e757daf6ac2d77073ef731a8f21e268164870"
+  },
+  {
+    "file": "r2-delivered.log",
+    "bytes": 8303,
+    "sha256": "32552091843e61889267019018de6c8ece29922daa3c03ca3c7078ace78e5ff0"
+  },
+  {
+    "file": "r2-hold-start.log",
+    "bytes": 1837,
+    "sha256": "0c39551beb9c966191fd904e7d9f220eb359b9420da4c864a54b84a17fdf1bf9"
+  },
+  {
+    "file": "r2-pass.txt",
+    "bytes": 1896,
+    "sha256": "fa079c9afcfd01eab26585d74bd3bda9f1c2613704c5f371124690aaf9417ffd"
+  },
+  {
+    "file": "r2-restore-stop.log",
+    "bytes": 6748,
+    "sha256": "922d6fab8e6bbc7b4c16ee9e097f657c884dc8942517afea553758690695d187"
+  },
+  {
+    "file": "r2-settled.log",
+    "bytes": 19384,
+    "sha256": "4de34e91d523513613b971f0676c1386409af4d98c065fb0aa4e093af2d9e987"
+  },
+  {
+    "file": "r3-cloudwatch-privacy.json",
+    "bytes": 141,
+    "sha256": "88bed6bad5210f849700c5042bd554aac264a7b94c5906946f92ba085a9fd4e0"
+  },
+  {
+    "file": "r3-confirm-stop.log",
+    "bytes": 8757,
+    "sha256": "2bc361eeb432e2d4fecb98df60c67a0d1eae5ecafa5d760414d47371090fcadd"
+  },
+  {
+    "file": "r3-offline-a.log",
+    "bytes": 2613,
+    "sha256": "92c820772435d530df3efc84f55b756eb06e6fbe7274193528191ca86d1b15fe"
+  },
+  {
+    "file": "r3-offline-b-start.log",
+    "bytes": 3061,
+    "sha256": "4c146c28c64f579633b69dd1192ca766cdfad06a5fc3180aa527a6075b9b1944"
+  },
+  {
+    "file": "r3-pass.txt",
+    "bytes": 1645,
+    "sha256": "be8d9d6b137a54703b51f2158dd3f00d3d772cb55a45906e0d47403033dafc1f"
+  },
+  {
+    "file": "r3-restore.log",
+    "bytes": 5346,
+    "sha256": "e157540eeb65dae92b2e5413b1357d23909891f355383d56ecc59adf2335e247"
+  },
+  {
+    "file": "r3-settled.log",
+    "bytes": 19384,
+    "sha256": "e0e31fa219ed3a1b20da38fa755256f89f71ec85629d7e044b5d21be643e0199"
+  },
+  {
+    "file": "r4-cloudwatch-privacy.json",
+    "bytes": 141,
+    "sha256": "a5d22ceacadbb81871433f9ca849b2979e7700bae989baa4c35e7b23cb9ffe6e"
+  },
+  {
+    "file": "r4-confirmed.log",
+    "bytes": 7879,
+    "sha256": "a83beddb38b5ab9c02a575308e33f1ecee60b528950bca51c162245bb3d5308f"
+  },
+  {
+    "file": "r4-pass.txt",
+    "bytes": 1412,
+    "sha256": "d9a947c4a09c40d811067ce11481237c6d9393284535207fe80edb41232fbba0"
+  },
+  {
+    "file": "r4-restart.log",
+    "bytes": 2897,
+    "sha256": "a3de1152a8929301a53da5fdbccba3819235f7374efbc884ba7f50d94c0665af"
+  },
+  {
+    "file": "r4-restore.log",
+    "bytes": 5346,
+    "sha256": "21652981f8560800074991295d952a5eae7c7f6c658cb66eadd3ae421e429059"
+  },
+  {
+    "file": "r4-settled.log",
+    "bytes": 18960,
+    "sha256": "dade3debb3585e616a853b54937495689327cb1ca3146ec8d47ef5e5fd4d408b"
+  },
+  {
+    "file": "r4-stability.log",
+    "bytes": 3509,
+    "sha256": "4de2f1ed77f5dc7f7f48b4a714ce1211deee15f19c25d7639939126f00204d94"
+  },
+  {
+    "file": "r5-cloudwatch-privacy.json",
+    "bytes": 141,
+    "sha256": "7bcae7b98d54f8ad9b98fd09768e63a86986a101aed9cdf88821ac9e07a4a5a7"
+  },
+  {
+    "file": "r5-confirmed.log",
+    "bytes": 7294,
+    "sha256": "3aa02eb8b467063764f35d2944389d1e9649a5542aa87f40d8940556c1a1c157"
+  },
+  {
+    "file": "r5-pass.txt",
+    "bytes": 1332,
+    "sha256": "e77e47990f0a68bf38437911d166e03ed46753eb8ea73c4fe69f1d25059f557f"
+  },
+  {
+    "file": "r5-restart.log",
+    "bytes": 2861,
+    "sha256": "c320cf0ab3160c9fe564d8a69f5d937e4af885b4848259a031cb9a88b034f475"
+  },
+  {
+    "file": "r5-restore.log",
+    "bytes": 5346,
+    "sha256": "db992a37066effec6924975215b858f8581b9d7d999cbdf9a9da3b80cee1416e"
+  },
+  {
+    "file": "r5-settled.log",
+    "bytes": 19384,
+    "sha256": "0cad157dc0d782d1d0d430566fa4d0899e58a706669e40a73084385d705b0e69"
+  },
+  {
+    "file": "r5-stability.log",
+    "bytes": 3509,
+    "sha256": "a51241884107f7589307f573668cf0aa2cb12a410c51518b2609d1ebe0253848"
+  }
+]
