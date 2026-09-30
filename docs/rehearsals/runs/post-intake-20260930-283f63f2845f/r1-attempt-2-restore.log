@@ -1,0 +1,54 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-b3b5e32d23tzqyfc9ceqiors78
+R1_ENTRY=2026-09-30T20:15:20Z
+{"status":"ok","service":"api","version":"0.1.0","boot_id":"69adea88-3869-491e-8633-3ec42ae8c6ec","image":"283f63f2845f"}{"status":"ready","service":"api","version":"0.1.0","boot_id":"69adea88-3869-491e-8633-3ec42ae8c6ec","database":{"configured":true,"reachable":true,"current_user":"promisepatch_app","expected_user":"promisepatch_app","detail":null},"migrations":{"at_head":true,"expected_revision":"0010_condition_clarification","actual_revision":"0010_condition_clarification","detail":null},"fixture":{"readable":true,"present":true,"fixture_name":"hollow-oak","anchor_at":"2026-09-30T20:01:46.428359Z","loaded_at":"2026-09-30T20:01:46.428359Z","digest":"a65bc8722f243f7997107fbcf0f3df40141a1c27f03aa299abff4e2295f35417","detail":null}}{"sendMessage": 0, "worker.telegram.sent": 0, "getUpdates": 0}
+action:   inspected
+before:   fixture=hollow-oak cases=1 live=0 outbox=0 unsettled=0 requests=0 decisions=0 approvals=0 replies=0 audit=629 events=775 bound=True
+binding:  restored (would be carried across)
+result:   nothing was written
+2026-09-30 20:15:26 [info     ] intake.case.opened             case_id=1c10eb3b-27fd-57a7-9462-c98a323f6de8 worker=maya
+2026-09-30 20:15:26 [info     ] worker.step.executed           attempt=1 kind=BEGIN_INTERPRETATION result=COMPLETED step_id=d26cd9f3-5844-4217-8033-51e8e0b39cb9 step_key=interpret:52523a69-d281-5f85-8e58-adbf9438e9d6
+2026-09-30 20:15:27 [info     ] worker.step.executed           attempt=1 kind=RESOLVE_OBSERVATION result=COMPLETED step_id=be647c42-284d-4d80-8eb5-4c02209e4838 step_key=resolve:52523a69-d281-5f85-8e58-adbf9438e9d6
+2026-09-30 20:15:27 [info     ] intake.clarification.answered  case_id=1c10eb3b-27fd-57a7-9462-c98a323f6de8 worker=maya
+2026-09-30 20:15:27 [info     ] worker.step.executed           attempt=1 kind=BEGIN_INTERPRETATION result=COMPLETED step_id=77a96206-0f67-466d-a6c9-d4247ffc9710 step_key=interpret:c7fda976-8283-5636-bb89-a2f9e36e5a57
+2026-09-30 20:15:27 [info     ] worker.step.executed           attempt=1 kind=RESOLVE_OBSERVATION result=COMPLETED step_id=82d717bb-501b-4b54-85c7-819894c40e32 step_key=resolve:c7fda976-8283-5636-bb89-a2f9e36e5a57
+2026-09-30 20:15:27 [info     ] worker.step.executed           attempt=1 kind=ANALYZE_IMPACT result=COMPLETED step_id=7d701954-cc23-45c1-87c7-af116a6aa25d step_key=analyze:c7fda976-8283-5636-bb89-a2f9e36e5a57
+2026-09-30 20:15:27 [info     ] worker.step.executed           attempt=1 kind=PLAN_RECOVERY result=COMPLETED step_id=811b960e-abae-4cc2-bb5a-9327f9e1210f step_key=plan:c7fda976-8283-5636-bb89-a2f9e36e5a57
+2026-09-30 20:15:27 [info     ] provisioning.demo_case.opened  case_id=1c10eb3b-27fd-57a7-9462-c98a323f6de8 rolled=False state=PLANNED
+2026-09-30 20:15:27 [info     ] demo customer channel bound    audit_seq=643 bot_username=PromisePatchDemoBot channel_kind=telegram customer_id=cus-tomas
+2026-09-30 20:15:27 [info     ] demo_restore.completed         anchor=2026-09-30T20:15:25.238842+00:00 binding=restored case_state=PLANNED cases_destroyed=1 orders_reset=6 provisioning=OPENED rows_written=160
+action:   restored
+before:   fixture=hollow-oak cases=1 live=0 outbox=0 unsettled=0 requests=0 decisions=0 approvals=0 replies=0 audit=629 events=775 bound=True
+after:    fixture=hollow-oak cases=1 live=1 outbox=0 unsettled=0 requests=0 decisions=0 approvals=0 replies=0 audit=643 events=794 bound=True
+anchor:   2026-09-30T20:15:25.238842+00:00
+local:    2026-09-30T21:15:25.238842+01:00 Africa/Tunis
+digest:   60e69ef8d3d419ad6b3c84463fa9f6af104d810c066a330da35c6535e8eab98a
+rows:     160
+orders:   6 reset in the external order system
+case:     1c10eb3b-27fd-57a7-9462-c98a323f6de8
+state:    PLANNED
+binding:  restored
+ledgers:  grew only
+result:   restored; no plan was confirmed and no message was sent
+RESTORE_EXIT_ZERO
+db_now=2026-09-30T20:15:29.108861+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=fbdc5cf591c124c2 n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=23944d2adac3c9d8 n=4
+unrelated.promises=7652d88e2480fea5 n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=858c5139d75bfbc3 n=4
+unrelated.tracks=d0dd5bfffba6480a n=4
+unrelated_digest=ab6ca75d30768b100e74c57a783a6723f7db72b5b3b739aabc8dbd411651ea54
+ef_digest=8f43d98c8b670a1f44fd420a3e55056239d63d4c4118296631e70fbe9ec110f8
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[["pr-e","UNAFFECTED","UNAFFECTED"],["pr-f","UNAFFECTED","UNAFFECTED"]] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+FROZEN_READER_EXIT_ZERO
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-b3b5e32d23tzqyfc9ceqiors78.
+

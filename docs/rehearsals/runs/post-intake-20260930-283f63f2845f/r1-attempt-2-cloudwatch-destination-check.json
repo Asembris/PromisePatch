@@ -1,0 +1,5 @@
+{
+  "events": 296,
+  "destination_fingerprint_matches": 0,
+  "numeric_pattern_classification": "106 metadata matches: epoch timestamps, fractional durations, header contexts; no destination match"
+}

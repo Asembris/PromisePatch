@@ -1,0 +1,10 @@
+{
+  "stack": "UPDATE_COMPLETE",
+  "image": "283f63f2845f",
+  "declared": "283f63f2845f",
+  "instance": "i-087c742587f83d61d",
+  "ami": "ami-0fa4996c14e7d501e",
+  "launch": "2026-09-18T12:19:33+02:00",
+  "rds": "db-U2JWQBTINX6W6GAB56EOTHOCSM",
+  "rds_status": "available"
+}

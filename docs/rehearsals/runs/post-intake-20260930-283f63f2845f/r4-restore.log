@@ -1,0 +1,60 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-898rysijt8p6iuz88svy7cgl7e
+/tmp/pp-post-intake-g8ev.py: OK
+R4_ENTRY=2026-09-30T20:47:54Z
+{"status":"ok","service":"api","version":"0.1.0","boot_id":"69adea88-3869-491e-8633-3ec42ae8c6ec","image":"283f63f2845f"}{"status":"ready","service":"api","version":"0.1.0","boot_id":"69adea88-3869-491e-8633-3ec42ae8c6ec","database":{"configured":true,"reachable":true,"current_user":"promisepatch_app","expected_user":"promisepatch_app","detail":null},"migrations":{"at_head":true,"expected_revision":"0010_condition_clarification","actual_revision":"0010_condition_clarification","detail":null},"fixture":{"readable":true,"present":true,"fixture_name":"hollow-oak","anchor_at":"2026-09-30T20:39:10.086651Z","loaded_at":"2026-09-30T20:39:10.086651Z","digest":"2a9d41f8e4aa8313f8dcf5e733649350de5d0c05a4d0bbfbacfaff6521f9a8f3","detail":null}}{"sendMessage": 3, "worker.telegram.sent": 3, "getUpdates": 0}
+require_database_url=ok
+require_migration_database_url=ok
+require_demo_worker_password=ok
+require_demo_owner_password=ok
+allow_fixture_reset=True demo_session_enabled=True provider=telegram
+action:   inspected
+before:   fixture=hollow-oak cases=1 live=0 outbox=3 unsettled=0 requests=1 decisions=1 approvals=1 replies=1 audit=764 events=925 bound=True
+binding:  restored (would be carried across)
+result:   nothing was written
+2026-09-30 20:48:02 [info     ] intake.case.opened             case_id=bc34373a-87a6-5f5d-b89b-a0135eab99a7 worker=maya
+2026-09-30 20:48:02 [info     ] worker.step.executed           attempt=1 kind=BEGIN_INTERPRETATION result=COMPLETED step_id=318c15c8-3a26-4e06-9954-dca2b97af131 step_key=interpret:c8923636-1019-5658-b34a-ee8e32fb3fc3
+2026-09-30 20:48:02 [info     ] worker.step.executed           attempt=1 kind=RESOLVE_OBSERVATION result=COMPLETED step_id=02f758d0-d135-4a93-8d69-5b1008bd0454 step_key=resolve:c8923636-1019-5658-b34a-ee8e32fb3fc3
+2026-09-30 20:48:02 [info     ] intake.clarification.answered  case_id=bc34373a-87a6-5f5d-b89b-a0135eab99a7 worker=maya
+2026-09-30 20:48:02 [info     ] worker.step.executed           attempt=1 kind=BEGIN_INTERPRETATION result=COMPLETED step_id=5ed5f82f-5009-4f1f-b4ca-8c3d8f25f82b step_key=interpret:a72e8160-6c9f-5fe3-a95f-96387e2061d6
+2026-09-30 20:48:03 [info     ] worker.step.executed           attempt=1 kind=RESOLVE_OBSERVATION result=COMPLETED step_id=a91938ad-7482-480f-895c-b65c1eea1f1e step_key=resolve:a72e8160-6c9f-5fe3-a95f-96387e2061d6
+2026-09-30 20:48:03 [info     ] worker.step.executed           attempt=1 kind=ANALYZE_IMPACT result=COMPLETED step_id=acb87df0-a85f-457d-af3a-c5a248ced34f step_key=analyze:a72e8160-6c9f-5fe3-a95f-96387e2061d6
+2026-09-30 20:48:03 [info     ] worker.step.executed           attempt=1 kind=PLAN_RECOVERY result=COMPLETED step_id=0dfc41f2-1cac-4400-831d-b17ac4abec80 step_key=plan:a72e8160-6c9f-5fe3-a95f-96387e2061d6
+2026-09-30 20:48:03 [info     ] provisioning.demo_case.opened  case_id=bc34373a-87a6-5f5d-b89b-a0135eab99a7 rolled=False state=PLANNED
+2026-09-30 20:48:03 [info     ] demo customer channel bound    audit_seq=778 bot_username=PromisePatchDemoBot channel_kind=telegram customer_id=cus-tomas
+2026-09-30 20:48:03 [info     ] demo_restore.completed         anchor=2026-09-30T20:48:00.894045+00:00 binding=restored case_state=PLANNED cases_destroyed=1 orders_reset=6 provisioning=OPENED rows_written=160
+action:   restored
+before:   fixture=hollow-oak cases=1 live=0 outbox=3 unsettled=0 requests=1 decisions=1 approvals=1 replies=1 audit=764 events=925 bound=True
+after:    fixture=hollow-oak cases=1 live=1 outbox=0 unsettled=0 requests=0 decisions=0 approvals=0 replies=0 audit=778 events=944 bound=True
+anchor:   2026-09-30T20:48:00.894045+00:00
+local:    2026-09-30T21:48:00.894045+01:00 Africa/Tunis
+digest:   4929fc5202040fe798b6d9eaa85ff146eac5f4ee690352941777ee2e39ec02d7
+rows:     160
+orders:   6 reset in the external order system
+case:     bc34373a-87a6-5f5d-b89b-a0135eab99a7
+state:    PLANNED
+binding:  restored
+ledgers:  grew only
+result:   restored; no plan was confirmed and no message was sent
+RESTORE_EXIT_ZERO
+db_now=2026-09-30T20:48:04.852631+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=395bdf0846d620cd n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=12abac4409b078ad n=4
+unrelated.promises=3daab5ce6ceb11fc n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=f13ac9d8b5426e75 n=4
+unrelated.tracks=f4fbc52e51926da6 n=4
+unrelated_digest=d291b38f0e63d63c04ee27c7c868e05f52523a3f30ea6b8e7670116c0016938c
+ef_digest=4116dfccf19039d0851c53c75f34a5abe0a45019a24796f3115e42e7039f200e
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[["pr-e","UNAFFECTED","UNAFFECTED"],["pr-f","UNAFFECTED","UNAFFECTED"]] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+FROZEN_READER_EXIT_ZERO
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-898rysijt8p6iuz88svy7cgl7e.
+

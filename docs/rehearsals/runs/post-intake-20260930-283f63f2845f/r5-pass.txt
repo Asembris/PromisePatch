@@ -1,0 +1,18 @@
+Post-intake R5: PASS, repeat R1 waiting-state restart.
+Release283f63f2845f8c5e93b2a791eebc15bc4de3f4d7 / image283f63f2845f.
+Cased1457010-1a92-5a20-92ca-989dd1a1e744.
+Guarded restore20:54:00.016517Z digest033f5032c0e6a2a1f05625b6e3c64ddb7d82bc662f97c64a91b916b035db6d68.
+Genuine Maya BROWSER_SESSION approval20:54:27.378592Z HUMAN_APPROVAL.
+One auto amendment and one message deliveredattempt1; waitingcase.
+Restart stop20:55:26.804128Z,start20:55:29.804655Z, workerc1265eab->758858c7 PRESENT rolledfalse.
+StartedAt20:55:27.724724266Z.
+Complete snapshots pre20:55:25, immediateafter,20:57:27 identical, auditmax834/domainmax2018.
+CustomerphoneAPPROVE20:57:58.130723Z, LITERAL, match1, one reply/inboxPROCESSED.
+Userconfirmedexactlyone newmessage.
+Ten checkspassed20:57:58.258580Z afterdecision, newworker only.
+RESOLVED, recovered2/escalated2/unaffected2; three effects deliveredattempt1 distinctkeys.
+Oneplanapproval/request/decision/reply/case; mirrorA/Bv2 almond4/rose3 equalstore, C..Fv1.
+Unrelatedc88f1183a443cf3493858633d772ce92eb95b2a65a8aa0f0cf8766c6dd52c74e unchangedCONFIRMED->SETTLED.
+EF2d27b5d76aee9c5d1db8b2c8167cc4fbfe06cc58fb75df5a2759b8e199f014db unchangedPLANNED->SETTLED; attributionall0.
+Containerprivacyall0; CloudWatch201events destination0/token0/unredactedlinks0.
+No Telegram provider-level exactly-once claim.

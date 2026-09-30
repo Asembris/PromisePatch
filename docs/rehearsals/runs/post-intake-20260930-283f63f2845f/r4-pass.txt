@@ -1,0 +1,18 @@
+Post-intake R4: PASS, restart after settlement.
+Release283f63f2845f8c5e93b2a791eebc15bc4de3f4d7 / image283f63f2845f.
+Casebc34373a-87a6-5f5d-b89b-a0135eab99a7.
+Guarded restore20:48:00.894045Z digest4929fc5202040fe798b6d9eaa85ff146eac5f4ee690352941777ee2e39ec02d7.
+Genuine Maya browserapproval20:48:43.836620Z HUMAN_APPROVAL.
+PhoneAPPROVE20:49:36.217496Z, LITERAL, sender match1; user exactlyone newmessage.
+Ten checks allpassed afterdecision, recovery completed before restart; stateRESOLVED.
+Recovered2/escalated2/unaffected2; three effects deliveredattempt1 distinctkeys,
+approval1/request1/decision1/reply1/case1. EXT-A/Bv2 authored recipes equalstore; C..Fv1.
+Unrelated43dfb4cd27b5099662f95e924341b8d04ed383dd0811f89fdd4d5b24a9a6d057 unchangedCONFIRMED->SETTLED.
+EF4116dfccf19039d0851c53c75f34a5abe0a45019a24796f3115e42e7039f200e unchangedPLANNED->SETTLED; attributionall0.
+Finished-world gate passed: RESOLVED, pr-bRECOVERED, requestANSWERED, no open steps/unsettled effects.
+Restart stop20:51:01.186731Z start20:51:04.155817Z worker6d5bbd80->c1265eab PRESENT rolledfalse.
+StartedAt20:51:02.138457465Z.
+Full state digests and auditmax809/domainmax1950 identical pre, immediateafter, and20:52:51Z.
+No extra effect/retry/case/approval/reanchor/message. taskE stillSTARTED/unheld.
+Container privacyall0, messagecounts1/1/0; CloudWatch177events privacyall0/destination0.
+No provider-level exactly-once guarantee.

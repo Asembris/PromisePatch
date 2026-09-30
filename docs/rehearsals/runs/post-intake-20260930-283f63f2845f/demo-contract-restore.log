@@ -1,0 +1,23 @@
+2026-09-30 23:07:08 [info     ] intake.case.opened             case_id=1149d61f-4a3b-5467-b86e-ad019ec00e6d worker=maya
+2026-09-30 23:07:08 [info     ] worker.step.executed           attempt=1 kind=BEGIN_INTERPRETATION result=COMPLETED step_id=feda76f6-3fe7-4685-a06e-cc8d4a7d4e7c step_key=interpret:06045514-5285-59cc-8f34-9072a2f845ff
+2026-09-30 23:07:09 [info     ] worker.step.executed           attempt=1 kind=RESOLVE_OBSERVATION result=COMPLETED step_id=8d858e9f-6af6-4e20-a2df-5b5c50f0b6e3 step_key=resolve:06045514-5285-59cc-8f34-9072a2f845ff
+2026-09-30 23:07:09 [info     ] intake.clarification.answered  case_id=1149d61f-4a3b-5467-b86e-ad019ec00e6d worker=maya
+2026-09-30 23:07:09 [info     ] worker.step.executed           attempt=1 kind=BEGIN_INTERPRETATION result=COMPLETED step_id=36a2ef7d-cc03-492e-abf1-4a090f0c6273 step_key=interpret:40494933-3457-569f-ba85-445dcaf18234
+2026-09-30 23:07:09 [info     ] worker.step.executed           attempt=1 kind=RESOLVE_OBSERVATION result=COMPLETED step_id=4d3fa907-d995-4123-80a5-56b68e1256e2 step_key=resolve:40494933-3457-569f-ba85-445dcaf18234
+2026-09-30 23:07:10 [info     ] worker.step.executed           attempt=1 kind=ANALYZE_IMPACT result=COMPLETED step_id=135341ad-a953-4cdb-8ed3-c7d7e8fb079a step_key=analyze:40494933-3457-569f-ba85-445dcaf18234
+2026-09-30 23:07:11 [info     ] worker.step.executed           attempt=1 kind=PLAN_RECOVERY result=COMPLETED step_id=848bf00c-4b4e-4aad-a220-9b5b14251901 step_key=plan:40494933-3457-569f-ba85-445dcaf18234
+2026-09-30 23:07:11 [info     ] provisioning.demo_case.opened  case_id=1149d61f-4a3b-5467-b86e-ad019ec00e6d rolled=False state=PLANNED
+2026-09-30 23:07:11 [info     ] demo_restore.completed         anchor=2026-09-30T21:07:06.743409+00:00 binding=none-held case_state=PLANNED cases_destroyed=1 orders_reset=6 provisioning=OPENED rows_written=160
+action:   restored
+before:   fixture=hollow-oak cases=1 live=0 outbox=3 unsettled=0 requests=1 decisions=1 approvals=1 replies=1 audit=265490 events=336327 bound=False
+after:    fixture=hollow-oak cases=1 live=1 outbox=0 unsettled=0 requests=0 decisions=0 approvals=0 replies=0 audit=265503 events=336345 bound=False
+anchor:   2026-09-30T21:07:06.743409+00:00
+local:    2026-09-30T22:07:06.743409+01:00 Africa/Tunis
+digest:   1095d7a991e888ff63f280de6205ac2d8382fe4708312e981b83e503ea63198f
+rows:     160
+orders:   6 reset in the external order system
+case:     1149d61f-4a3b-5467-b86e-ad019ec00e6d
+state:    PLANNED
+binding:  none-held
+ledgers:  grew only
+result:   restored; no plan was confirmed and no message was sent

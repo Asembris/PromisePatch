@@ -1,0 +1,19 @@
+Post-intake R3: PASS, corrected section10.2 offline-answer protocol unchanged.
+Release283f63f2845f8c5e93b2a791eebc15bc4de3f4d7, image283f63f2845f.
+Case9f9135c7-ea0e-57ff-856c-66cf110894e5.
+Restore20:39:10.086651Z digest2a9d41f8e4aa8313f8dcf5e733649350de5d0c05a4d0bbfbacfaff6521f9a8f3.
+Genuine Maya BROWSER_SESSION approval20:40:32.704855Z, HUMAN_APPROVAL.
+Confirmed one auto amendment and one message deliveredattempt1; stopped20:41:19.283777Z.
+Phone press delivered inboxRECEIVED20:42:08.436299Z; userconfirmedexactlyone newmessage.
+Whileoffline decisions0/replies0/revalidation0, requestSENT undecided, WAITING, EXT-Bv1 bothmirror/store.
+Complete snapshots20:42:59 and20:45:20 identical; inboxsameRECEIVED timestamps; no reanchor/neweffect.
+Startissued20:45:23; StartedAt20:45:26.30842226Z; worker6d5bbd80 starts20:45:28.215213Z PRESENT rolledfalse.
+DecisionAPPROVE LITERAL20:45:28.309705Z, senderaggregate match1, one reply, inboxPROCESSED.
+Ten checkspassed20:45:28.438750Z afterdecision; recoverynewworkeronly HUMAN_APPROVAL.
+RESOLVED, recovered2/escalated2/unaffected2, three effectsatattempt1, threekeys.
+Store A/Bv2 authored almond4/rose3 agreesmirror, C..Fv1, taskE STARTED unheld.
+Unrelated digest4c82c8be5709472e172a354797cccbe11655383a51ed3ace41355a7c9649d9c7 unchanged.
+EF digest746996c05a50e0af48f777bead73c5402c3a6e8d33dca71a2a25fa984ca6d97b unchanged; attributionall0.
+Container privacyall0; CloudWatch262events destination0/token0/unredactedlinks0.
+Compose start reran migrate dependency, noseed. External message provider exactly-once not claimed.
+Raw captures preserve step retry information and real customer action, no edits.

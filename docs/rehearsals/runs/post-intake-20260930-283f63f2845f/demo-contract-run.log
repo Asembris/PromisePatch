@@ -1,0 +1,66 @@
+demo-contract runner 1.0.0
+      case 1149d61f-4a3b-5467-b86e-ad019ec00e6d
+PASS  PLANNED: intent status answers
+PASS  PLANNED: a plan is on offer
+PASS  PLANNED: status names the threatened four
+PASS  PLANNED: status names pr-e and pr-f untouched
+PASS  order system answers its own read
+PASS  PLANNED: every order is at version 1 in the order system
+      plan c022a50991bfed7b36d3e36438852045d9a2ff9990dafc30af877b1ca5813ba5
+
+OPERATOR ACTION [approve-plan]
+Approve this plan as yourself, on a surface where you authenticate (ADR-0018). Either press Approve on the case in your own workspace, or run:
+  uv run pp confirm-plan --case 1149d61f-4a3b-5467-b86e-ad019ec00e6d --worker maya --plan c022a50991bfed7b36d3e36438852045d9a2ff9990dafc30af877b1ca5813ba5
+The runner never approves a plan; it carries out the approval you leave.
+Press Enter once it is done.
+PASS  CONFIRMED: exactly one human approval of this plan exists
+      approved by maya via OPERATOR_CONSOLE
+      the operator's own surface already carried the approval out
+PASS  CONFIRMED: case is WAITING
+PASS  CONFIRMED: pr-a recovered without asking anyone
+PASS  CONFIRMED: pr-b waits for its customer
+PASS  CONFIRMED: pr-c and pr-d escalated to the owner
+PASS  CONFIRMED: the tasks of pr-c and pr-d are held, and only theirs
+PASS  CONFIRMED: one request SENT on pr-b
+PASS  CONFIRMED: one amendment and one message, each delivered at attempt 1
+PASS  CONFIRMED: approval and confirmation are HUMAN_APPROVAL by the person who approved
+PASS  order system answers its own read
+PASS  CONFIRMED: the order system itself holds EXT-A at v2 on the authored version
+PASS  CONFIRMED: EXT-B is untouched until its customer answers
+PASS  CONFIRMED: plan approvals are still exactly one
+PASS  RESTART: the work so far was done by a worker process
+
+OPERATOR ACTION [restart-worker]
+Restart the worker process now, while the customer has not answered:
+  docker compose restart worker
+The runner does not restart anything; it checks afterwards that a different worker process did the rest.
+Press Enter once it is done.
+PASS  RESTART: the restart itself changed nothing durable
+PASS  CONSENT: the delivered message carries an approval link
+PASS  CONSENT: the link opens the question
+PASS  CONSENT: the customer's APPROVE is stored by the link transport
+PASS  SETTLED: case is RESOLVED
+PASS  CONSENT: one decision, APPROVE, by the literal parser, from the asked channel
+PASS  CONSENT: the answer arrived through the customer link and was processed
+PASS  CONSENT: the decision is HUMAN_APPROVAL by the customer
+PASS  CONSENT: ten revalidation checks, all passed, written after the decision
+PASS  CONSENT: pr-b revalidated, applied and completed under HUMAN_APPROVAL
+PASS  SETTLED: pr-a and pr-b recovered, pr-c and pr-d escalated
+PASS  SETTLED: the request is ANSWERED
+PASS  SETTLED: a customer's yes spent no worker approval
+PASS  EXACTLY ONCE: three effects, two amendments and one message, all at attempt 1
+PASS  EXACTLY ONCE: three distinct idempotency keys
+PASS  EXACTLY ONCE: one case, one request, one decision, one reply
+PASS  order system answers its own read
+PASS  SETTLED: the order system holds EXT-A at v2 on the authored version
+PASS  SETTLED: the mirror agrees on EXT-A
+PASS  SETTLED: the order system holds EXT-B at v2 on the authored version
+PASS  SETTLED: the mirror agrees on EXT-B
+PASS  UNTOUCHED: EXT-C to EXT-F at v1, in the order system and in the mirror
+PASS  UNTOUCHED: no message, write, hold or audit event is attributed to pr-e or pr-f
+PASS  UNTOUCHED: pr-e and pr-f are byte-identical to PLANNED
+PASS  UNTOUCHED: everything outside pr-a and pr-b is identical from CONFIRMED to SETTLED
+PASS  RESTART: every check was run by one worker process
+PASS  RESTART: the work after the restart carries no identity the work before it carried
+      2 worker identity before the restart, 1 after, disjoint
+DEMO CONTRACT PASS (47 assertions)

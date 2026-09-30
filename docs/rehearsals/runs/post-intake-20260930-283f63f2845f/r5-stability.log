@@ -1,0 +1,50 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-zvkq37fofhj94fbnq977rnucfa
+STABILITY_CHECK=2026-09-30T20:57:27Z
+fixture_state=1:f044efb1315fa5c2a4275047ee36bddd03916ec17460ac6f0541813be9c76e53
+cases=1:43bce4d095517f6597da1456a14036fcb6700d3f136c18912d3f649a52ee65f2
+tracks=6:7d6f7b6033674b8bfcc771dbd75c490bfce62c0918204295ea0a30ee6e17741a
+timers=1:23e5e5e2809df04fa0493ee2bfcd6ac1e250c4c63abab1e5fcbe84a66094ec4a
+case_steps=11:af56a131d45c09e76009b8f982f45413a4a289018040315396779282bc5193ec
+customers=6:0d46bdac015b6342a921f4f30bc5a1df987bdc611d05cbf49d691fc2832c879f
+orders=6:ddf3b9242538ad6c42d8b5c5748db5b0c62d4a1f99f8a9883dea9acee718a733
+order_lines=6:643621c014570215aa8dd1f74f260faddbcf8b9ec24f2be6e25c1712adbe5e5b
+production_tasks=6:0948b2be493756f7e24e40c9080dc6df1995404efbb3934a9c26f248644963e9
+outbox_messages=2:754421affb25002c7fd36c5254cc012dad81ce035a9d726df81e76666f62f9fd
+approval_requests=1:4331c1adb5fd11f6846689d443866d319c4012d6f2e96651a5fe9e3aa2c80f71
+approval_decisions=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+inbound_replies=0:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+plan_approvals=1:28f1ce4cb369d140b53b19681d189afe2fb30d0e3be00b598c087932cf3f8c11
+audit_events_max=834
+domain_events_max=2018
+R5_RESTART_90_SECOND_STATE_IDENTICAL
+db_now=2026-09-30T20:57:29.113036+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=2b4de7db8dd678ef n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=a348c313ea7f872e n=4
+unrelated.promises=6c1a7970f2a91d80 n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=543b4c787f643268 n=4
+unrelated.tracks=a2bc2a688b358a04 n=4
+unrelated_digest=c88f1183a443cf3493858633d772ce92eb95b2a65a8aa0f0cf8766c6dd52c74e
+ef_digest=2d27b5d76aee9c5d1db8b2c8167cc4fbfe06cc58fb75df5a2759b8e199f014db
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[["pr-e","UNAFFECTED","UNAFFECTED"],["pr-f","UNAFFECTED","UNAFFECTED"]] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+privacy.caddy={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.api={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.worker={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+message_counts={"sendMessage": 1, "worker.telegram.sent": 1, "getUpdates": 0}
+lifecycle={"worker": "41e8c7674d8c:1:c1265eab", "event": "worker.stop", "timestamp": "2026-09-30T20:55:26.804128Z"}
+lifecycle={"action": "PRESENT", "case_id": "d1457010-1a92-5a20-92ca-989dd1a1e744", "state": null, "rolled": false, "event": "worker.demo_case", "timestamp": "2026-09-30T20:55:29.804525Z"}
+lifecycle={"worker": "41e8c7674d8c:1:758858c7", "event": "worker.start", "timestamp": "2026-09-30T20:55:29.804655Z"}
+privacy.mcp={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+privacy.order-simulator={"token_shaped": 0, "bot_token": 0, "unredacted_query": 0, "unredacted_path": 0}
+PRIVACY_SCAN_PASS
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-zvkq37fofhj94fbnq977rnucfa.
+
