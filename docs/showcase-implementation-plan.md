@@ -3,9 +3,8 @@
 Date: **2026-09-27**. Status: **P1–P5 implemented; P6 implemented with one target not met
 (Lighthouse mobile performance, see the S4 notes); P7 CLOSED after the claim-hardening pass,
 which corrected its five copy discrepancies (see the later truth under the P7 audit); P8
-COMPLETE; P9 QA COMPLETE and ready for final closure (§12), which occurs only after
-`showcase/closeout` reaches `main`, the new Pages deployment succeeds, and the owner confirms
-the updated public site.** `showcase/` holds the
+COMPLETE; P9 CLOSED (2026-09-30, §12), after the successful Pages deployment of `6370e9b` and
+the owner's direct verification of the public site.** `showcase/` holds the
 scaffold, tokens, self-hosted fonts, brand copy, every section's static content, the data modules
 with their build-time render (P3), the interactive six promises, revalidation gate,
 architecture traces, Copy buttons and section reveals (P4), the hero: three.js `0.149.0`
@@ -866,3 +865,25 @@ on the public site only when this branch reaches `main` and the workflow runs ag
 - no by-hand check of the external links on deployment day;
 - no new reference capture;
 - no public-origin observation from this container.
+
+**Later truth (2026-09-30, P9 CLOSED).** The closure conditions above are met:
+
+- **The branch reached `main`.** Its first Pages run, `36471045830` on `07026d1`, failed its gate on
+  two Playwright tests. One was a real fade-out of armed reveal blocks that axe caught part-way;
+  the other was a race in how the Play-case test sampled a stage. Commit `6370e9b` fixed both.
+- **The new deployment succeeded.** `showcase-pages` run **`36475649479`** on `main` at
+  `6370e9b890c42eed8db088add98f1452412b6a3b`: the gate passed `npm run check` with 94 of 94, it
+  uploaded artifact `10993951371`, and the deploy created the Pages deployment for `6370e9b` and
+  reported success at `https://asembris.github.io/PromisePatch/`, on attempt 1.
+- **The owner then checked the public site directly** and confirmed:
+  - the page loads correctly;
+  - Play case steps through the stages, pauses, resumes and finishes at Settled;
+  - the refusal wording says `STALE` was reproduced locally through the frozen implementation,
+    that `EXPIRED`, `UNAUTHORIZED` and `NOOP` are proved by tests only, and that no refusal path
+    has been exercised live;
+  - the illustration still shows `ILLUSTRATION · NOT A RECORDED RUN`;
+  - the browser console shows no errors and no asset request fails.
+
+These public-site observations are the owner's; no session container reached the Pages host.
+`30acdd5` remains the initial successful Pages deployment. The accepted limitations above are
+unchanged.

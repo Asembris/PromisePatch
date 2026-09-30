@@ -18,9 +18,9 @@ hero (P5). P6 (the Playwright suite, accessibility and budgets) is in, with one 
 Lighthouse mobile performance (see the plan's S4 notes). P7's content audit is done, and its five
 copy discrepancies against the repository record are corrected by the claim-hardening pass, with
 the content rules extended to hold them; see the later truth under the plan's P7 audit. P8 is
-complete and the showcase is live at <https://asembris.github.io/PromisePatch/>. P9 QA is complete and
-ready for final closure, which occurs only after this branch reaches `main`, the new Pages
-deployment succeeds and the owner confirms the updated public site; the plan's §10 resolution and §12 list what is met, what is qualified and the accepted
+complete and the showcase is live at <https://asembris.github.io/PromisePatch/>. P9 is CLOSED, after the
+successful Pages deployment of `6370e9b` (run `36475649479`) and the owner's direct verification
+of the public site; the plan's §10 resolution and §12 list what is met, what is qualified and the accepted
 limitations.
 
 **One model, two renders.** The prototype's tables live in `src/data/`. Pure renderers in
