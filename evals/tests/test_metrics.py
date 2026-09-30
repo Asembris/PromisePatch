@@ -86,7 +86,7 @@ def _observe(case: WorkerCase, reading: ObservationInterpretation) -> WorkerObse
         deterministic_reason=case.deterministic_reason or EscalationReason.NO_CATEGORY,
     )
     return WorkerObservation(
-        reading=reading, grounding=resolution.grounding, outcome=resolution.outcome
+        reading=reading, grounding=resolution.grounding, outcome=resolution.reading_outcome
     )
 
 

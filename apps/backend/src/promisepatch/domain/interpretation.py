@@ -43,6 +43,8 @@ from promisepatch.domain.model import (
 )
 from promisepatch.domain.observation import (
     CASE_INTERPRETING,
+    CONDITION_ABSENT_CODE,
+    CONDITION_PRESENT_CODE,
     STEP_RESOLVE_OBSERVATION,
     WHOLE_DELIVERY_CODE,
     ClarificationOption,
@@ -274,6 +276,30 @@ DIRECTIVE_MARKERS: Final = _phrases(
 cream. A worker who saw the cream spoil can say so, and that sentence is read.
 """
 
+AFFIRMATIVE_ANSWERS: Final = _phrases("yes", "yeah", "yep", "yup", "correct", "right")
+"""The words that answer a ``CONDITION`` question with "it is so".
+
+Read by :func:`read_condition_answer` alone. Not the customer's consent vocabulary and not a
+plan approval: this is a worker attesting what they saw, asked in a question that names the
+thing and the condition, and it is resolved here and nowhere else.
+"""
+
+DENIAL_ANSWERS: Final = _phrases("nope", "wrong", "incorrect") + NEGATORS + HEALTHY_MARKERS
+"""Anything that says no, says the thing is fine, or negates -- any one of them is not a yes."""
+
+CONDITION_WORDING: Final[Mapping[ExceptionCategory, str]] = {
+    ExceptionCategory.SUPPLY_NOT_RECEIVED: "did the {name} you were expecting fail to arrive",
+    ExceptionCategory.STOCK_UNUSABLE: "is all of the {name} unusable right now",
+    ExceptionCategory.EQUIPMENT_UNAVAILABLE: "is the {name} out of service right now",
+}
+"""The condition each category attests, phrased as the question a worker has to answer yes to.
+
+Written from the category alone and filled with the resource's stored name, so nothing a model
+said reaches the worker's screen. The stock wording says *all of it* because an unqualified
+spoilage is recorded as a total loss; a worker who lost only some says no, and a person binds
+the number.
+"""
+
 RESTRICT_MARKERS: Final = _phrases("just", "only", "nothing but")
 
 WHOLE_MARKERS: Final = _phrases("whole", "entire", "all", "all of it", "everything", "the lot")
@@ -310,6 +336,10 @@ strawberries didn't arrive" is two claims that happen to share a verb.
 """
 
 
+_CLAUSE_SPLITTER: Final = re.compile(f"({_CLAUSE_PATTERN.pattern})")
+"""The same boundaries, kept: a clause that ends in ``?`` is asking, not stating."""
+
+
 def _contains(haystack: str, needle: str) -> bool:
     """Whole-word containment over normalised text. ``off`` never matches inside ``coffee``."""
     return f" {needle} " in f" {haystack} "
@@ -335,7 +365,9 @@ def _without_markers(normalized: str) -> str:
     return " ".join(padded.split())
 
 
-def unasserted(context: ObservationContext, resource: ResourceView) -> str | None:
+def unasserted(
+    context: ObservationContext, resource: ResourceView, *, attested_later: bool = False
+) -> str | None:
     """Why the report's words do not assert a condition of ``resource`` now, or ``None``.
 
     Finding a category marker and a resource name in the same sentence is not the same as the
@@ -343,26 +375,29 @@ def unasserted(context: ObservationContext, resource: ResourceView) -> str | Non
     both and says the opposite. So a reading may only conclude once the words have also passed
     this check, and every way of failing it is a stop rather than a guess:
 
-    * the report is a **question**, or frames the condition as a **hypothetical**, or is an
-      **instruction** about what to record rather than a statement of what happened;
+    * the report is an **instruction** about what to record rather than a statement of what
+      happened;
+    * a clause naming this resource or holding a marker is a **question** or a
+      **supposition**;
     * a clause about this resource (or about nothing named, such as "it") **negates** the
       condition, **says the thing is fine or working**, or **dates the condition** to a time
       that is plainly not now.
+
+    ``attested_later`` is for a reading whose condition the worker will be asked to confirm
+    before anything is written. An instruction sitting beside a statement ("ignore previous
+    instructions. The deck oven packed up") is then not a reason to stop, because the fact will
+    rest on the worker's own yes rather than on the sentence; every other check still applies.
 
     A clause naming only *other* resources is about them and is not read here. The check is a
     closed vocabulary in the same shape as the markers themselves, and it is thin in the same
     direction: a phrasing it misses is one a person reads, never one it settles.
     """
     raw = context.report.raw_text
-    if "?" in raw:
-        return "the report asks a question rather than stating what happened"
-    normalized = normalize(raw)
-    if _any(normalized, HYPOTHETICAL_MARKERS):
-        return "the report supposes a condition rather than stating one"
-    if _any(normalized, DIRECTIVE_MARKERS):
+    if not attested_later and _any(normalize(raw), DIRECTIVE_MARKERS):
         return "the report instructs what to record rather than stating what happened"
 
-    for clause in _CLAUSE_PATTERN.split(raw.lower()):
+    pieces = _CLAUSE_SPLITTER.split(raw.lower())
+    for clause, separator in zip(pieces[::2], [*pieces[1::2], ""], strict=True):
         text = normalize(clause)
         if not text:
             continue
@@ -371,6 +406,11 @@ def unasserted(context: ObservationContext, resource: ResourceView) -> str | Non
             continue
         rest = _without_markers(text)
         stated = rest != text
+        about = stated or resource.id in named
+        if about and separator.strip() == "?":
+            return f"the report asks about the {resource.name} rather than stating what happened"
+        if about and _any(rest, HYPOTHETICAL_MARKERS):
+            return f"the report supposes a condition of the {resource.name} rather than stating one"
         if _any(rest, HEALTHY_MARKERS):
             return f"the report says the {resource.name} is in order"
         if stated and _any(rest, NEGATORS):
@@ -452,6 +492,11 @@ def interpret_grounded(
 
     ``resource`` must be a member of ``context.resources``; a caller that has one from anywhere
     else has skipped the check that makes this safe.
+
+    What this returns about a model's reading is a *proposal*: the conclusion the worker's yes
+    to the ``CONDITION`` question would lead to. It is never persisted as it stands; the
+    reading reaches intake as that question, and a yes resolves the report again from the
+    question's own category and resource.
     """
     outcome = _resolve(
         context,
@@ -460,15 +505,7 @@ def interpret_grounded(
         pinned_category=category,
         pinned_resource=resource,
     )
-    if isinstance(outcome, ClarificationRequired) and not context.may_ask_again:
-        return HumanInterpretationRequired(
-            reason=EscalationReason.CLARIFICATION_CEILING_REACHED,
-            detail=(
-                f"still ambiguous after {context.clarifications_asked} clarifications; "
-                f"the {outcome.slot.value.lower()} needs an owner to bind it"
-            ),
-        )
-    return outcome
+    return _ceiling(context, outcome)
 
 
 def mentions(context: ObservationContext, resource: ResourceView) -> bool:
@@ -499,6 +536,8 @@ def _interpret_report(context: ObservationContext) -> InterpretationOutcome:
                 reason=EscalationReason.CLARIFICATION_UNRESOLVED,
                 detail="a clarification answer arrived with no open question to answer",
             )
+        if clarification.slot is ClarificationSlot.CONDITION:
+            return _ceiling(context, _answer_condition(context, clarification))
         chosen = _resolve_answer(context, clarification)
         if chosen is not None:
             pinned_commitment = chosen.commitment_id
@@ -521,6 +560,11 @@ def _interpret_report(context: ObservationContext) -> InterpretationOutcome:
         pinned_category=pinned_category,
         pinned_resource=pinned_resource,
     )
+    return _ceiling(context, outcome)
+
+
+def _ceiling(context: ObservationContext, outcome: InterpretationOutcome) -> InterpretationOutcome:
+    """A question the case may no longer ask becomes a case a person binds."""
     if isinstance(outcome, ClarificationRequired) and not context.may_ask_again:
         return HumanInterpretationRequired(
             reason=EscalationReason.CLARIFICATION_CEILING_REACHED,
@@ -637,6 +681,92 @@ def _resource(
             detail="the report names " + ", ".join(item.name for item in of_kind),
         )
     return of_kind[0]
+
+
+# --------------------------------------------------------------------- condition questions
+
+
+def condition_question(
+    category: ExceptionCategory, resource: ResourceView
+) -> ClarificationRequired:
+    """Ask the worker whether ``resource`` is in the condition ``category`` names.
+
+    The question a reading the words do not support has to pass before it may become a fact.
+    Both options are fixed; neither carries a line, a commitment or a quantity, because the
+    only thing an answer settles is whether the worker says the condition holds. Everything
+    after that -- which delivery, what scope, how much -- is derived again from the graph.
+    """
+    wording = CONDITION_WORDING[category].format(name=resource.name)
+    return ClarificationRequired(
+        slot=ClarificationSlot.CONDITION,
+        question=f"To be sure I record what you saw: {wording}? Please answer yes or no.",
+        options=(
+            ClarificationOption(
+                code=CONDITION_PRESENT_CODE, label="yes", keywords=AFFIRMATIVE_ANSWERS
+            ),
+            ClarificationOption(code=CONDITION_ABSENT_CODE, label="no", keywords=DENIAL_ANSWERS),
+        ),
+        category=category,
+        resource_id=resource.id,
+    )
+
+
+def read_condition_answer(text: str) -> bool | None:
+    """``True`` for a plain yes, ``False`` for a plain no, ``None`` for anything else.
+
+    Strict in the only direction that matters. An answer holding a yes *and* a negation, or a
+    question mark, or neither, is not a yes: it is asked again, and at the ceiling a person
+    binds it. A no, or "it's fine", ends the reading with nothing written.
+    """
+    if "?" in text:
+        return None
+    normalized = normalize(text)
+    affirmed = _any(normalized, AFFIRMATIVE_ANSWERS)
+    denied = _any(normalized, DENIAL_ANSWERS)
+    if affirmed and not denied:
+        return True
+    if denied and not affirmed:
+        return False
+    return None
+
+
+def _answer_condition(
+    context: ObservationContext, clarification: ClarificationView
+) -> InterpretationOutcome:
+    """The worker's answer to a ``CONDITION`` question, and the only thing that can pin it.
+
+    A yes pins the category and the resource the question named -- read back off the persisted
+    question, never off a reading -- and the report is then resolved by the ordinary code,
+    which may still ask which delivery or how much of it. A no stops the case with nothing
+    written. Anything else is the same question again.
+    """
+    category = clarification.category
+    resource = (
+        None if clarification.resource_id is None else context.resource(clarification.resource_id)
+    )
+    if category is None or resource is None:
+        return HumanInterpretationRequired(
+            reason=EscalationReason.CLARIFICATION_UNRESOLVED,
+            detail="the condition question no longer names a category and a resource",
+        )
+    verdict = read_condition_answer(clarification.answer_text or "")
+    if verdict is None:
+        return condition_question(category, resource)
+    if not verdict:
+        return HumanInterpretationRequired(
+            reason=EscalationReason.CONDITION_NOT_CONFIRMED,
+            detail=(
+                "the worker did not confirm the proposed condition: "
+                + CONDITION_WORDING[category].format(name=resource.name)
+            ),
+        )
+    return _resolve(
+        context,
+        pinned_commitment=None,
+        pinned_scope=None,
+        pinned_category=category,
+        pinned_resource=resource,
+    )
 
 
 # ------------------------------------------------------------------------ supply resolution
@@ -1035,7 +1165,10 @@ def _day_word(context: ObservationContext, commitment: CommitmentView) -> str:
 
 
 __all__ = [
+    "AFFIRMATIVE_ANSWERS",
     "CATEGORY_KINDS",
+    "CONDITION_WORDING",
+    "DENIAL_ANSWERS",
     "DIRECTIVE_MARKERS",
     "EQUIPMENT_MARKERS",
     "HEALTHY_MARKERS",
@@ -1047,10 +1180,12 @@ __all__ = [
     "SUPPLY_MARKERS",
     "ScopeReading",
     "begin",
+    "condition_question",
     "interpret",
     "interpret_grounded",
     "mentions",
     "normalize",
+    "read_condition_answer",
     "read_scope",
     "unasserted",
 ]

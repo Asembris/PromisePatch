@@ -57,6 +57,7 @@ from promise_graph.model import ExceptionCategory
 from promisepatch.db.models import CaseStep, EquipmentOutage
 from promisepatch.domain import crash, retry, semantic_intake
 from promisepatch.domain.observation import (
+    AUDIT_CLARIFICATION_REQUESTED,
     AUDIT_NEEDS_HUMAN_INTERPRETATION,
     AUDIT_PHYSICAL_FACT_RECORDED,
     AUDIT_SEMANTIC_INTERPRETATION_REQUESTED,
@@ -91,6 +92,15 @@ async def semantic_step(physical: Intake, case_id: UUID) -> Any:
         step for step in await physical.steps(case_id) if step.kind == STEP_INTERPRET_SEMANTICALLY
     ]
     return steps[-1] if steps else None
+
+
+async def confirm(physical: Intake, case_id: UUID, session: Any, text: str = "yes") -> None:
+    """The worker answers the condition question a model's reading has to pass."""
+    asked = await physical.clarifications(case_id)
+    assert asked[-1].slot == "CONDITION"
+    assert await physical.facts(case_id) == []
+    await physical.answer(case_id, text)
+    await physical.drain_intake(case_id, worker=session.worker)
 
 
 # ------------------------------------------------------- deterministic first (§30, §31, §23)
@@ -174,12 +184,18 @@ async def test_equipment_language_the_lexicon_lacks_becomes_a_worker_attested_fa
     """The product improvement, in one test: a sentence that used to need a person, read.
 
     "packed up" is in no marker list. The reading proposes the deck oven, the deck oven is
-    written in the sentence, and what follows is the deterministic equipment path -- an
+    written in the sentence, and the worker is asked whether it is out of service. Their yes,
+    and nothing the model said, is what the deterministic equipment path then runs on -- an
     outage, a fact, and a case ready for analysis.
     """
     session = scripted(physical, EQUIPMENT_READING)
     opened = await physical.report(DECK_OVEN_DOWN)
     await physical.drain_intake(opened.case_id, worker=session.worker)
+
+    assert (await physical.case(opened.case_id)).state == CASE_CLARIFYING
+    assert await physical.exception(opened.case_id) is None
+    assert await physical.rows_of(EquipmentOutage) == []
+    await confirm(physical, opened.case_id, session)
 
     assert session.calls == 1
     exception = await physical.exception(opened.case_id)
@@ -192,16 +208,29 @@ async def test_equipment_language_the_lexicon_lacks_becomes_a_worker_attested_fa
 async def test_the_worker_remains_the_attestor_of_a_semantic_assisted_fact(
     physical: Intake,
 ) -> None:
-    """The trust line, as a row. The model is provenance; the person is authority.
+    """The trust line, as rows. The model is provenance on a question; the person is authority.
 
-    The audit row's actor is the baker who spoke, its authority is ``NONE`` because no policy
-    and no customer permitted the oven to fail, and its rule id is the physical-fact rule. The
-    model appears once, under provenance, described as what read the sentence.
+    The model appears once, on the row that asked the worker, described as what proposed the
+    reading. The fact is recorded only after the worker answered, by the baker who spoke,
+    under authority ``NONE`` because no policy and no customer permitted the oven to fail --
+    and it rests on their answer, so nothing on it says a model read anything.
     """
     session = scripted(physical, EQUIPMENT_READING)
     opened = await physical.report(DECK_OVEN_DOWN)
     await physical.drain_intake(opened.case_id, worker=session.worker)
 
+    asked = [
+        row
+        for row in await physical.audits(opened.case_id)
+        if row.type == AUDIT_CLARIFICATION_REQUESTED
+    ]
+    assert len(asked) == 1
+    assert asked[0].after["slot"] == "CONDITION"
+    assert asked[0].provenance["interpretation_source"] == SOURCE_SEMANTIC_ASSISTED
+    assert asked[0].provenance["semantic"]["provider"] == "fake"
+    assert asked[0].provenance["semantic"]["grounding"]["accepted"] == [DECK_OVEN]
+
+    await confirm(physical, opened.case_id, session)
     recorded = [
         row
         for row in await physical.audits(opened.case_id)
@@ -211,9 +240,7 @@ async def test_the_worker_remains_the_attestor_of_a_semantic_assisted_fact(
     assert recorded[0].actor_kind == "WORKER"
     assert recorded[0].actor_id == BAKER
     assert recorded[0].authority == "NONE"
-    assert recorded[0].provenance["interpretation_source"] == SOURCE_SEMANTIC_ASSISTED
-    assert recorded[0].provenance["semantic"]["provider"] == "fake"
-    assert recorded[0].provenance["semantic"]["grounding"]["accepted"] == [DECK_OVEN]
+    assert recorded[0].provenance["clarified"] is True
 
     facts = await physical.facts(opened.case_id)
     assert {fact.attested_by for fact in facts} == {BAKER}
@@ -242,6 +269,8 @@ async def test_an_alias_carries_a_reading_the_lexicon_could_not_reach(physical: 
     session = scripted(physical, CREAM_READING)
     opened = await physical.report(CREAM_TURNED)
     await physical.drain_intake(opened.case_id, worker=session.worker)
+    assert await physical.on_hand(HEAVY_CREAM) == before
+    await confirm(physical, opened.case_id, session)
 
     assert session.calls == 1
     assert (await physical.exception(opened.case_id)).category == "STOCK_UNUSABLE"
@@ -267,21 +296,21 @@ async def test_partial_delivery_language_becomes_the_frozen_scope_question(
 ) -> None:
     """The reading says which ingredient. The deterministic reader says what is still unknown.
 
-    It is the same consequential question the canonical sentence produces, reached from a
-    sentence the lexicon cannot parse -- and the strawberries stay expected until a person
-    says otherwise.
+    Once the worker has said the raspberries did fail to arrive, it is the same consequential
+    question the canonical sentence produces, reached from a sentence the lexicon cannot parse
+    -- and the strawberries stay expected until a person says otherwise.
     """
     session = scripted(physical, PARTIAL_READING)
     opened = await physical.report(PARTIAL_DELIVERY)
     await physical.drain_intake(opened.case_id, worker=session.worker)
+    await confirm(physical, opened.case_id, session)
 
     assert session.calls == 1
     case = await physical.case(opened.case_id)
     assert case.state == CASE_CLARIFYING
     asked = await physical.clarifications(opened.case_id)
-    assert len(asked) == 1
-    assert asked[0].slot == "SCOPE"
-    assert {option["code"] for option in asked[0].options} == {
+    assert [item.slot for item in asked] == ["CONDITION", "SCOPE"]
+    assert {option["code"] for option in asked[1].options} == {
         "WHOLE_DELIVERY",
         "JUST_RASPBERRIES",
     }
@@ -314,6 +343,7 @@ async def test_the_worker_answer_after_a_semantic_reading_settles_normally(
 
     opened = await physical.report(PARTIAL_DELIVERY)
     await physical.drain_intake(opened.case_id, worker=session.worker)
+    await confirm(physical, opened.case_id, session)
     await physical.answer(opened.case_id, RASPBERRY_ONLY)
     await physical.drain_intake(opened.case_id, worker=session.worker)
 
@@ -792,6 +822,9 @@ async def test_a_worker_that_dies_after_the_transition_repeats_nothing(
 
     fresh = physical.worker(semantic=session.provider)
     await physical.drain_intake(opened.case_id, worker=fresh)
+    assert len(await physical.clarifications(opened.case_id)) == 1
+    await physical.answer(opened.case_id, "yes")
+    await physical.drain_intake(opened.case_id, worker=fresh)
 
     assert len(await physical.facts(opened.case_id)) == 1
     assert len(await physical.rows_of(EquipmentOutage)) == 1
@@ -807,6 +840,9 @@ async def test_a_clarification_reached_semantically_resumes_after_a_restart(
     assert (await physical.case(opened.case_id)).state == CASE_CLARIFYING
 
     fresh = physical.worker(identity="restarted", semantic=session.provider)
+    await physical.answer(opened.case_id, "yes")
+    await physical.drain_intake(opened.case_id, worker=fresh)
+    assert (await physical.case(opened.case_id)).state == CASE_CLARIFYING
     await physical.answer(opened.case_id, RASPBERRY_ONLY)
     await physical.drain_intake(opened.case_id, worker=fresh)
 
@@ -911,3 +947,96 @@ async def test_what_the_model_is_shown_is_the_bakery_and_the_sentence(
     assert "res-raspberries" in prompt
     for forbidden in ("Tomas", "Priya", "ord-", "pro-", "cus-", "rec-"):
         assert forbidden not in prompt
+
+
+# -------------------------------------- a model's category is a question, never a fact
+
+
+async def _no_trace(physical: Intake, case_id: UUID, *, cream: Any) -> None:
+    assert await physical.exception(case_id) is None
+    assert await physical.facts(case_id) == []
+    assert await physical.on_hand(HEAVY_CREAM) == cream
+    assert await physical.rows_of(EquipmentOutage) == []
+    assert AUDIT_PHYSICAL_FACT_RECORDED not in [row.type for row in await physical.audits(case_id)]
+
+
+async def test_an_invoice_request_read_as_spoilage_writes_off_nothing(physical: Intake) -> None:
+    """The audit's case: the cream is named, the model says unusable, and the words say neither.
+
+    Before the worker answers, the cream is whole and the case is waiting on a yes-or-no
+    question. The worker says no, and it stays whole: no exception, no fact, no ledger row.
+    """
+    before = await physical.on_hand(HEAVY_CREAM)
+    session = scripted(physical, CREAM_READING)
+    opened = await physical.report("I need the heavy cream invoice")
+    await physical.drain_intake(opened.case_id, worker=session.worker)
+
+    assert session.calls == 1
+    assert (await physical.case(opened.case_id)).state == CASE_CLARIFYING
+    asked = await physical.clarifications(opened.case_id)
+    assert [item.slot for item in asked] == ["CONDITION"]
+    assert "heavy cream" in asked[0].question
+    await _no_trace(physical, opened.case_id, cream=before)
+
+    await physical.answer(opened.case_id, "no, I just need the invoice")
+    await physical.drain(worker=session.worker)
+
+    assert (await physical.case(opened.case_id)).state == CASE_NEEDS_HUMAN
+    await _no_trace(physical, opened.case_id, cream=before)
+    escalation = next(
+        row
+        for row in await physical.audits(opened.case_id)
+        if row.type == AUDIT_NEEDS_HUMAN_INTERPRETATION
+    )
+    assert escalation.after["reason"] == EscalationReason.CONDITION_NOT_CONFIRMED.value
+    assert session.calls == 1
+
+
+async def test_a_question_about_a_manual_read_as_an_outage_asks_nothing(physical: Intake) -> None:
+    before = await physical.on_hand(HEAVY_CREAM)
+    session = scripted(physical, EQUIPMENT_READING)
+    opened = await physical.report("Where is the deck oven manual?")
+    await physical.drain(worker=session.worker)
+
+    assert (await physical.case(opened.case_id)).state == CASE_NEEDS_HUMAN
+    assert await physical.clarifications(opened.case_id) == []
+    await _no_trace(physical, opened.case_id, cream=before)
+
+
+async def test_an_unclear_answer_is_asked_again_and_then_goes_to_a_person(
+    physical: Intake,
+) -> None:
+    before = await physical.on_hand(HEAVY_CREAM)
+    session = scripted(physical, CREAM_READING)
+    opened = await physical.report(CREAM_TURNED)
+    await physical.drain_intake(opened.case_id, worker=session.worker)
+
+    await physical.answer(opened.case_id, "yes, but not all of it")
+    await physical.drain_intake(opened.case_id, worker=session.worker)
+    assert [item.slot for item in await physical.clarifications(opened.case_id)] == [
+        "CONDITION",
+        "CONDITION",
+    ]
+    await _no_trace(physical, opened.case_id, cream=before)
+
+    await physical.answer(opened.case_id, "maybe")
+    await physical.drain(worker=session.worker)
+    assert (await physical.case(opened.case_id)).state == CASE_NEEDS_HUMAN
+    await _no_trace(physical, opened.case_id, cream=before)
+
+
+async def test_the_workers_yes_is_what_writes_the_cream_off(physical: Intake) -> None:
+    """The legitimate path through the same boundary: asked, answered, attested once."""
+    before = await physical.on_hand(HEAVY_CREAM)
+    session = scripted(physical, CREAM_READING)
+    opened = await physical.report(CREAM_TURNED)
+    await physical.drain_intake(opened.case_id, worker=session.worker)
+    await _no_trace(physical, opened.case_id, cream=before)
+
+    await confirm(physical, opened.case_id, session)
+
+    assert await physical.on_hand(HEAVY_CREAM) == Decimal("0.000")
+    postings = await physical.postings(HEAVY_CREAM)
+    assert [posting.delta for posting in postings] == [-before]
+    facts = await physical.facts(opened.case_id)
+    assert {fact.attested_by for fact in facts} == {BAKER}

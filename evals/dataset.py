@@ -54,6 +54,7 @@ from promisepatch.domain import grounding as grounding_rules
 from promisepatch.domain.grounding import GroundingFailure
 from promisepatch.domain.observation import (
     ClarificationRequired,
+    ClarificationSlot,
     EscalationReason,
     HumanInterpretationRequired,
     InterpretationOutcome,
@@ -280,7 +281,12 @@ def _deterministic_problems(case: WorkerCase) -> list[str]:
 
 
 def _expected_problems(case: WorkerCase) -> list[str]:
-    """Check the case's expected outcome by running the reading through production grounding."""
+    """Check the case's expected outcome by running the reading through production grounding.
+
+    The expected outcome is the reading's conclusion on the worker's yes -- the delivery, scope
+    or fact the interpreter reaches once the proposed condition is attested -- and every
+    grounded reading is also checked to reach intake as that condition question first.
+    """
     if case.expected is None:
         if case.semantic_eligible:
             return [
@@ -305,28 +311,41 @@ def _expected_problems(case: WorkerCase) -> list[str]:
             f"{case.id}: expects grounding {case.expected.grounding.value}, production "
             f"reaches {resolution.grounding.failure.value}"
         )
-    kind = _outcome_kind(resolution.outcome)
+    kind = _outcome_kind(resolution.reading_outcome)
     if kind is not case.expected.outcome:
         problems.append(
             f"{case.id}: expects outcome {case.expected.outcome.value}, production reaches "
             f"{kind.value}"
         )
-    if isinstance(resolution.outcome, ClarificationRequired):
-        if resolution.outcome.slot is not case.expected.clarification_slot:
+    if isinstance(resolution.reading_outcome, ClarificationRequired):
+        if resolution.reading_outcome.slot is not case.expected.clarification_slot:
             problems.append(
                 f"{case.id}: expects clarification slot {case.expected.clarification_slot}, "
-                f"production reaches {resolution.outcome.slot.value}"
+                f"production reaches {resolution.reading_outcome.slot.value}"
             )
     elif case.expected.clarification_slot is not None:
         problems.append(f"{case.id}: names a clarification slot but does not expect a question")
-    if isinstance(resolution.outcome, HumanInterpretationRequired):
-        if resolution.outcome.reason is not case.expected.escalation_reason:
+    if isinstance(resolution.reading_outcome, HumanInterpretationRequired):
+        if resolution.reading_outcome.reason is not case.expected.escalation_reason:
             problems.append(
                 f"{case.id}: expects escalation {case.expected.escalation_reason}, production "
-                f"reaches {resolution.outcome.reason.value}"
+                f"reaches {resolution.reading_outcome.reason.value}"
             )
     elif case.expected.escalation_reason is not None:
         problems.append(f"{case.id}: names an escalation reason but does not expect one")
+    if resolution.proposed is not None and not isinstance(
+        resolution.proposed, HumanInterpretationRequired
+    ):
+        # The expected outcome is what the reading comes to on the worker's yes. What intake
+        # does with it first is always the question that asks for that yes.
+        asked = resolution.outcome
+        if not (
+            isinstance(asked, ClarificationRequired) and asked.slot is ClarificationSlot.CONDITION
+        ):
+            problems.append(
+                f"{case.id}: a grounded reading reaches intake as {_outcome_kind(asked).value} "
+                f"rather than as the worker's condition question"
+            )
     return problems
 
 
