@@ -134,7 +134,11 @@ declared.** The frozen repository release SHA is **`56c302366b3d`** and the froz
 product/image SHA is **`4529a802e34e`**. They are two different SHAs whose deployable product
 paths are tree-identical. A later product-path change voids the freeze and needs a new release
 and five new rehearsals. The AWS state read back unchanged since the RC. Only submission, evidence
-and docs corrections are allowed. **G9, submission, is next.** See
+and docs corrections are allowed. **G9, submission, is next.** **ADR-0027 (2026-09-30) reopens
+that freeze for a reproduced physical-intake correctness blocker**: it changes `apps/backend/src`
+and adds migration `0010`, so once merged the freeze at `56c3023` / `4529a802e34e` no longer
+describes the code, and a new release SHA, green `pr`, a new deployment and five new rehearsals
+are owed (the ADR lists them). The frozen SHAs and their evidence stay historical fact. See
 [g8-closeout.md](docs/g8-closeout.md) and [g8-evidence-packaging.md](docs/g8-evidence-packaging.md).
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
@@ -430,7 +434,7 @@ git diff --cached --stat
 gitignored, local-only and **authoritative whenever present**. Read them before deciding
 anything they cover. Never modify them unless explicitly asked. Never commit them.
 
-`docs/adr/` holds every architectural decision, `0001` through `0026`. The ones that constrain
+`docs/adr/` holds every architectural decision, `0001` through `0027`. The ones that constrain
 day-to-day work most: [0008](docs/adr/0008-remove-runtime-customer-intent-classifier.md) (no
 runtime intent classifier), [0011](docs/adr/0011-conversational-orchestrator-authority.md) (the
 orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-principal.md) and
@@ -456,7 +460,11 @@ it arrives, not when a silent sibling's window closes; `RECONCILING` finishes it
 may be entered more than once), and
 [0026](docs/adr/0026-a-first-dispatch-that-provably-sends-nothing-is-judged-again.md) (an
 amendment's first dispatch claim, `attempts == 1`, re-judges the production start and refuses
-unsent; from the second claim nothing refuses it).
+unsent; from the second claim nothing refuses it), and
+[0027](docs/adr/0027-a-physical-exception-rests-on-the-workers-words-or-the-workers-yes.md) (a
+physical exception rests on the worker's words or the worker's yes: a lexicon reading the
+sentence does not assert stops at `CONDITION_NOT_ASSERTED`, and a model's category reaches
+intake only as the `CONDITION` question).
 
 ## Historical record
 
