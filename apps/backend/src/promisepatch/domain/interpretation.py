@@ -190,6 +190,90 @@ NEGATIVE_MARKERS: Final = _phrases(
     "short",
 )
 
+NEGATORS: Final = _phrases(
+    "not", "never", "no", "nothing", "none", "neither", "nor", "without", "t"
+)
+"""Words that turn a stated condition into its denial.
+
+Checked only in what is left of a clause once every category marker has been taken out of it,
+so the negation *inside* ``didn't arrive`` or ``not working`` is the marker's own and never
+counts twice. ``t`` is here because it is what ``n't`` normalises to: ``isn't`` is ``isn t``,
+and a lone ``t`` in this vocabulary is always that contraction.
+"""
+
+HEALTHY_MARKERS: Final = _phrases(
+    "fine",
+    "ok",
+    "okay",
+    "all good",
+    "still good",
+    "works",
+    "working",
+    "works again",
+    "working again",
+    "back up",
+    "back on",
+    "fixed",
+    "repaired",
+    "usable",
+)
+"""A statement that the thing is in order now.
+
+Read after the category markers are taken out, so ``not working`` and ``not usable`` are never
+mistaken for health. A clause saying this about the resource the report binds -- or about an
+unnamed "it" -- contradicts any exception the same sentence seems to state, and a sentence that
+contradicts itself is not a physical claim this reader may settle.
+"""
+
+HISTORICAL_MARKERS: Final = _phrases(
+    "last year",
+    "last month",
+    "last week",
+    "years ago",
+    "months ago",
+    "weeks ago",
+    "a while ago",
+    "long ago",
+    "used to",
+    "in the past",
+    "previously",
+    "back in",
+)
+"""A condition dated to a time that is plainly not now.
+
+Deliberately not ``yesterday`` or ``this morning``: a cream that spoiled yesterday is still
+spoiled, and a delivery due this morning is today's.
+"""
+
+HYPOTHETICAL_MARKERS: Final = _phrases(
+    "if",
+    "what if",
+    "suppose",
+    "supposing",
+    "in case",
+    "might",
+    "may",
+    "could",
+    "would",
+    "maybe",
+    "perhaps",
+    "probably",
+    "possibly",
+    "unless",
+    "whether",
+    "hypothetically",
+)
+"""Words that make the rest of the sentence a supposition rather than something seen."""
+
+DIRECTIVE_MARKERS: Final = _phrases(
+    "mark", "record", "flag", "log", "register", "pretend", "ignore", "treat"
+)
+"""Words that tell PromisePatch what to write instead of saying what happened.
+
+"Mark the cream as spoiled" is an instruction about the ledger, not an observation of the
+cream. A worker who saw the cream spoil can say so, and that sentence is read.
+"""
+
 RESTRICT_MARKERS: Final = _phrases("just", "only", "nothing but")
 
 WHOLE_MARKERS: Final = _phrases("whole", "entire", "all", "all of it", "everything", "the lot")
@@ -233,6 +317,67 @@ def _contains(haystack: str, needle: str) -> bool:
 
 def _any(haystack: str, needles: Iterable[str]) -> bool:
     return any(_contains(haystack, needle) for needle in needles)
+
+
+_ALL_CATEGORY_MARKERS: Final = tuple(
+    sorted(
+        {marker for markers in _CATEGORY_MARKERS.values() for marker in markers},
+        key=lambda marker: (-len(marker), marker),
+    )
+)
+
+
+def _without_markers(normalized: str) -> str:
+    """The clause with every category marker taken out, longest first, whole-word."""
+    padded = f" {normalized} "
+    for marker in _ALL_CATEGORY_MARKERS:
+        padded = padded.replace(f" {marker} ", " | ")
+    return " ".join(padded.split())
+
+
+def unasserted(context: ObservationContext, resource: ResourceView) -> str | None:
+    """Why the report's words do not assert a condition of ``resource`` now, or ``None``.
+
+    Finding a category marker and a resource name in the same sentence is not the same as the
+    sentence saying that resource is in that condition. "The heavy cream is not spoiled" holds
+    both and says the opposite. So a reading may only conclude once the words have also passed
+    this check, and every way of failing it is a stop rather than a guess:
+
+    * the report is a **question**, or frames the condition as a **hypothetical**, or is an
+      **instruction** about what to record rather than a statement of what happened;
+    * a clause about this resource (or about nothing named, such as "it") **negates** the
+      condition, **says the thing is fine or working**, or **dates the condition** to a time
+      that is plainly not now.
+
+    A clause naming only *other* resources is about them and is not read here. The check is a
+    closed vocabulary in the same shape as the markers themselves, and it is thin in the same
+    direction: a phrasing it misses is one a person reads, never one it settles.
+    """
+    raw = context.report.raw_text
+    if "?" in raw:
+        return "the report asks a question rather than stating what happened"
+    normalized = normalize(raw)
+    if _any(normalized, HYPOTHETICAL_MARKERS):
+        return "the report supposes a condition rather than stating one"
+    if _any(normalized, DIRECTIVE_MARKERS):
+        return "the report instructs what to record rather than stating what happened"
+
+    for clause in _CLAUSE_PATTERN.split(raw.lower()):
+        text = normalize(clause)
+        if not text:
+            continue
+        named = {item.id for item in _matched_resources(context, text)}
+        if named and resource.id not in named:
+            continue
+        rest = _without_markers(text)
+        stated = rest != text
+        if _any(rest, HEALTHY_MARKERS):
+            return f"the report says the {resource.name} is in order"
+        if stated and _any(rest, NEGATORS):
+            return f"the report denies the condition of the {resource.name}"
+        if stated and _any(rest, HISTORICAL_MARKERS):
+            return f"the report dates the condition of the {resource.name} to the past"
+    return None
 
 
 def _mentions(normalized: str, resource: ResourceView) -> bool:
@@ -410,6 +555,16 @@ def _resolve(
     resource = pinned_resource or _resource(context, normalized, category)
     if isinstance(resource, HumanInterpretationRequired):
         return resource
+
+    if pinned_category is None:
+        # The category came from the lexicon, so the only thing standing behind it is the
+        # sentence -- and a marker in the sentence is not yet a claim. A pinned category was
+        # settled earlier by this same check, or by the worker answering a question about it.
+        problem = unasserted(context, resource)
+        if problem is not None:
+            return HumanInterpretationRequired(
+                reason=EscalationReason.CONDITION_NOT_ASSERTED, detail=problem
+            )
 
     if category is ExceptionCategory.SUPPLY_NOT_RECEIVED:
         return _resolve_supply(
@@ -881,7 +1036,12 @@ def _day_word(context: ObservationContext, commitment: CommitmentView) -> str:
 
 __all__ = [
     "CATEGORY_KINDS",
+    "DIRECTIVE_MARKERS",
     "EQUIPMENT_MARKERS",
+    "HEALTHY_MARKERS",
+    "HISTORICAL_MARKERS",
+    "HYPOTHETICAL_MARKERS",
+    "NEGATORS",
     "PARTIAL_MARKERS",
     "STOCK_MARKERS",
     "SUPPLY_MARKERS",
@@ -892,4 +1052,5 @@ __all__ = [
     "mentions",
     "normalize",
     "read_scope",
+    "unasserted",
 ]
