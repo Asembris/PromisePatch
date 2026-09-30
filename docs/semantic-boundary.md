@@ -194,6 +194,8 @@ deterministic interpreter         the fixed lexicon, unchanged
                 |
       deterministic semantic resolution   (promisepatch.domain.grounding, pure)
                 |
+      CONDITION question to the worker    a model's category is never a fact (ADR-0027)
+                |  yes
       the ordinary intake machinery       the same fact, question or escalation as always
 ```
 
@@ -218,13 +220,24 @@ It is not asked for anything else, and the exclusions are the interesting half:
 
 ### What the model contributes
 
-**A category and one identity. Nothing else.** Not which delivery, not the scope, not a
-quantity, and not a physical outcome. Everything after the identity is decided by
+**A proposed category and one identity. Nothing else.** Not which delivery, not the scope, not
+a quantity, and not a physical outcome. Everything after the identity is decided by
 `interpret_grounded`, which is the same code that decides it for the canonical sentence — so
 there is one interpreter, and a reading a model helped with faces every question a reading it
 did not help with faces, including the clarification that makes the demo consequential.
 
-Four rules make that hold:
+**Amended 2026-09-30 by [ADR-0027](adr/0027-a-physical-exception-rests-on-the-workers-words-or-the-workers-yes.md).**
+Until then a reading that grounded went straight on to that conclusion, so a model's category
+became a physical fact on the strength of the resource being named: *"I need the heavy cream
+invoice"* read as unusable stock wrote the cream off. Now a grounded reading reaches intake only
+as the `CONDITION` question — *"is all of the heavy cream unusable right now? Please answer yes
+or no."* — and only the worker's plain yes lets `interpret_grounded`'s conclusion go ahead,
+resolved again from the persisted question. A no writes nothing and escalates under
+`CONDITION_NOT_CONFIRMED`. A proposal about a sentence that plainly states nothing — a question,
+a supposition, a healthy state, a denial — is refused as `CONDITION_NOT_ASSERTED` without being
+asked.
+
+Five rules make that hold:
 
 - **Identity must be in the bakery's own words.** A proposed resource is accepted only if the
   worker's sentence contains that resource's stored name or one of its recorded aliases. This
@@ -246,6 +259,10 @@ Four rules make that hold:
   the other was reported. So every proposal the worker's words support is collected first, and
   a set spanning more than one kind refuses the reading entire — the same stop the
   deterministic reader reaches for the same sentence, for the same reason.
+- **The condition must be the worker's.** The resource can be checked against the sentence and
+  the category cannot, because the lexicon found no marker for it — that is why a model was asked
+  at all. So the category is put to the worker as a closed question built from stored words, and
+  nothing the model said, including its evidence span, reaches the question or the fact.
 - **Advice is advice.** `clarification_needed`, `confidence`, `scope_hint` and `quantity_hint`
   are never read by the resolver. A reading that says clarification is unnecessary and offers
   its own scope still produces the frozen scope question when the delivery holds a second open
@@ -254,10 +271,14 @@ Four rules make that hold:
 ### Who attested what
 
 `PHYSICAL_FACT_RECORDED` is written with the **worker** as actor and `NONE` as authority,
-whether a model was involved or not. The model appears once, under `provenance.semantic`:
-provider, model id, how many candidates it was offered, which identifiers grounded and which
-were dropped, and the normalised proposal. Every intake audit row also carries
-`interpretation_source`, which is `DETERMINISTIC` or `SEMANTIC_ASSISTED`.
+whether a model was involved or not. The model appears once, under `provenance.semantic` on the
+`CLARIFICATION_REQUESTED` row that asked the worker the `CONDITION` question: provider, model id,
+how many candidates it was offered, which identifiers grounded and which were dropped, and the
+normalised proposal. The fact itself is written from the worker's answer, so it carries
+`clarified: true` and `interpretation_source: DETERMINISTIC`. Every intake audit row carries
+`interpretation_source`, which is `DETERMINISTIC` or `SEMANTIC_ASSISTED`. (Until ADR-0027 the
+model's provenance sat on the fact row itself, because the fact was written straight from the
+reading.)
 
 There is no audit type, no field and no value anywhere that says a model observed a delivery,
 an ingredient or a piece of equipment. Downstream analysis cannot tell the difference and has
@@ -291,7 +312,8 @@ was wrong in a way that repeats, so the case escalates under the reason the sent
 for all along.
 
 No migration was needed for any of this. The step ledger already had a fenced result column,
-and the audit ledger already had provenance.
+and the audit ledger already had provenance. ADR-0027 later added one value, `CONDITION`, to
+the clarification slot vocabulary (`0010_condition_clarification`).
 
 ## Where it is deliberately not wired: reading a customer's reply
 
