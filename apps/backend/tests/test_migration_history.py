@@ -15,7 +15,7 @@ from alembic.script import ScriptDirectory
 
 from promisepatch.db.boundary import AUDIT_MARKER
 from promisepatch.db.revision import HEAD_REVISION
-from promisepatch.db.types import APPROVAL_CHANNELS, WORKER_ROLES
+from promisepatch.db.types import APPROVAL_CHANNELS, CLARIFICATION_SLOTS, WORKER_ROLES
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -82,3 +82,16 @@ def test_the_approval_migration_admits_exactly_the_channels_the_runtime_declares
     source = APPROVAL_MIGRATION.read_text(encoding="utf-8")
     rendered = ", ".join(f'"{channel}"' for channel in APPROVAL_CHANNELS)
     assert f"CHANNELS = ({rendered})" in source
+
+
+# ------------------------------------------------------ what 0010 restates rather than imports
+
+
+CONDITION_MIGRATION = BACKEND / "alembic" / "versions" / "0010_condition_clarification.py"
+
+
+def test_the_condition_migration_admits_exactly_the_slots_the_runtime_declares() -> None:
+    """The one value 0010 adds is the question a model's proposed condition has to pass."""
+    source = CONDITION_MIGRATION.read_text(encoding="utf-8")
+    rendered = ", ".join(f'"{slot}"' for slot in CLARIFICATION_SLOTS)
+    assert f"AFTER = ({rendered})" in source

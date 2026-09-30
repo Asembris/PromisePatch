@@ -6,7 +6,7 @@ sentence is not unreadable, it is only unread by *that* lexicon. This module is 
 reading of such a sentence meets the rules, and where it either becomes an ordinary
 deterministic reading or becomes nothing at all.
 
-**The model contributes identity, and only identity.** One category, and one thing in the
+**The model proposes identity, and only identity.** One category, and one thing in the
 bakery the worker was reaching for. It contributes no delivery, no scope, no quantity and no
 physical outcome. Which commitment, whether the crate also held something nobody mentioned,
 whether a number was attested -- every one of those is decided afterwards by
@@ -14,6 +14,16 @@ whether a number was attested -- every one of those is decided afterwards by
 decides them for the canonical sentence. So there is one interpreter, not two, and the reading
 a model helped with is subject to every question the reading it did not help with is subject
 to, including the clarification that makes the demo consequential.
+
+**A model's category is never a physical fact.** The resource can be checked against the
+worker's words; the condition cannot, because the lexicon found no marker for it -- that is why
+a model was asked at all. So a reading that grounds reaches intake as one closed question, the
+``CONDITION`` clarification ("is the deck oven out of service right now?"), and only the
+worker's yes lets the deterministic interpreter go on from the category and resource the
+question named. A no, or anything that is not a plain yes, writes nothing. A proposal about a
+sentence that plainly states nothing -- a question, a supposition, a denial, a statement that
+the thing is fine -- is refused without being asked, by the same check the lexicon's own
+readings pass through. (Until 2026-09-30 a grounded reading went straight on to a fact.)
 
 **Identity must be in the bakery's own words.** A proposed resource is accepted only if the
 worker's sentence contains that resource's stored name or one of its recorded aliases. That
@@ -178,6 +188,15 @@ class GroundingFailure(StrEnum):
     AMBIGUOUS_RESOURCE = "AMBIGUOUS_RESOURCE"
     """More than one of the bakery's things is named, and the sentence does not choose."""
 
+    CONDITION_NOT_ASSERTED = "CONDITION_NOT_ASSERTED"
+    """The resource is named, and the sentence plainly does not say it is in any condition.
+
+    A question ("where is the deck oven manual?"), a supposition, an instruction about what to
+    record, a statement that the thing is fine, or a denial of the condition. The same check the
+    deterministic reader applies to a lexicon reading, applied here to a model's: a proposal
+    about a sentence that says the opposite is refused rather than put to the worker.
+    """
+
 
 @dataclass(frozen=True, slots=True)
 class Grounding:
@@ -222,13 +241,26 @@ class Grounding:
 class SemanticResolution:
     """The application's decision about one reading: an ordinary outcome, plus why.
 
-    ``outcome`` is a member of the same union the deterministic interpreter returns, and that
-    is the whole design: whatever happens next is decided by code that cannot tell how the
-    binding was arrived at.
+    ``outcome`` is what intake does next, and it is a member of the same union the
+    deterministic interpreter returns. For a reading that grounded it is never a
+    :class:`~promisepatch.domain.observation.ResolvedObservation` and never a delivery or scope
+    question: it is the ``CONDITION`` question, which asks the worker whether the proposed
+    condition holds. Only their yes lets the reading go on, and what it then goes on to is
+    decided afresh by the deterministic interpreter from the question they answered.
+
+    ``proposed`` is that later conclusion, computed now so it can be measured and recorded:
+    what the interpreter reaches *if* the worker says yes. It is not persisted as a fact, not
+    asked as a question and not read by intake. ``None`` when the reading did not ground.
     """
 
     outcome: InterpretationOutcome
     grounding: Grounding
+    proposed: InterpretationOutcome | None = None
+
+    @property
+    def reading_outcome(self) -> InterpretationOutcome:
+        """What the reading comes to on the worker's yes, or the refusal if it did not ground."""
+        return self.outcome if self.proposed is None else self.proposed
 
 
 # --------------------------------------------------------------- the fallback condition
@@ -504,8 +536,32 @@ def resolve_semantic_observation(
         )
 
     resource = confirmed[0]
+    problem = interpretation.unasserted(context, resource, attested_later=True)
+    if problem is not None:
+        return SemanticResolution(
+            outcome=HumanInterpretationRequired(
+                reason=EscalationReason.CONDITION_NOT_ASSERTED, detail=problem
+            ),
+            grounding=Grounding(
+                failure=GroundingFailure.CONDITION_NOT_ASSERTED,
+                category=category,
+                proposed=proposed,
+                dropped=dropped,
+                detail=problem,
+            ),
+        )
+
+    # The resource is in the worker's words. The condition is not: the lexicon found no marker
+    # for it, so the category is the model's alone, and a model's category is a proposal. It
+    # becomes a question to the worker here, and is never a fact until they answer it.
+    conclusion = interpretation.interpret_grounded(context, category=category, resource=resource)
+    outcome: InterpretationOutcome = (
+        conclusion
+        if isinstance(conclusion, HumanInterpretationRequired)
+        else interpretation.condition_question(category, resource)
+    )
     return SemanticResolution(
-        outcome=interpretation.interpret_grounded(context, category=category, resource=resource),
+        outcome=outcome,
         grounding=Grounding(
             failure=GroundingFailure.NONE,
             category=category,
@@ -514,6 +570,7 @@ def resolve_semantic_observation(
             dropped=dropped,
             detail=f"{resource.name} is named in the report",
         ),
+        proposed=conclusion,
     )
 
 

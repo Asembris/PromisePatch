@@ -76,6 +76,17 @@ class ClarificationSlot(StrEnum):
 
     COMMITMENT = "COMMITMENT"
     SCOPE = "SCOPE"
+    CONDITION = "CONDITION"
+    """Whether the resource is in the proposed condition at all. Asked about a model's reading.
+
+    A model may propose which condition a sentence the lexicon could not read is about, and
+    which of the bakery's things it concerns. It cannot attest that condition, and nor can the
+    sentence: the lexicon found no marker in it, so nothing in the words has been checked to say
+    the thing is spoiled, missing or out of service. So the worker is asked, in a closed
+    question built from the category and the resource's stored name, and only their yes lets
+    the reading go on to become a physical fact. A no, or an answer that is neither, settles
+    nothing.
+    """
 
 
 class EscalationReason(StrEnum):
@@ -96,6 +107,8 @@ class EscalationReason(StrEnum):
     CLARIFICATION_CEILING_REACHED = "CLARIFICATION_CEILING_REACHED"
     CORRECTION_UNRESOLVED = "CORRECTION_UNRESOLVED"
     NOT_BOUND = "NOT_BOUND"
+    CONDITION_NOT_CONFIRMED = "CONDITION_NOT_CONFIRMED"
+    """The worker was asked whether a proposed condition holds, and did not say that it does."""
     CONDITION_NOT_ASSERTED = "CONDITION_NOT_ASSERTED"
     """The words name a resource and a condition without saying the resource is in it now.
 
@@ -116,6 +129,14 @@ class EscalationReason(StrEnum):
 
 WHOLE_DELIVERY_CODE: Final = "WHOLE_DELIVERY"
 """The option code for "all of it", the same word whatever the delivery contained."""
+
+CONDITION_PRESENT_CODE: Final = "CONDITION_PRESENT"
+CONDITION_ABSENT_CODE: Final = "CONDITION_ABSENT"
+"""The two answers to a ``CONDITION`` question: the worker says it is so, or says it is not.
+
+Physical-attestation vocabulary. It shares nothing with a customer's literal ``YES`` and
+``NO`` or with a worker's plan approval, and is resolved by its own reader.
+"""
 
 
 def just_code(resource_name: str) -> str:
@@ -485,6 +506,8 @@ __all__: Sequence[str] = [
     "CASE_NEEDS_HUMAN",
     "CASE_RECEIVED",
     "CLARIFICATION_CEILING",
+    "CONDITION_ABSENT_CODE",
+    "CONDITION_PRESENT_CODE",
     "EVENT_CASE_OPENED",
     "EVENT_CLARIFICATION_ANSWERED",
     "EVENT_CLARIFICATION_REQUIRED",

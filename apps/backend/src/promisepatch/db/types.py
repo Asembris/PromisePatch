@@ -88,7 +88,7 @@ REPORT_KINDS: tuple[str, ...] = ("REPORT", "CLARIFICATION_ANSWER", "CORRECTION")
 Mirrors :class:`promisepatch.domain.observation.ReportKind`; a test asserts the two agree.
 """
 
-CLARIFICATION_SLOTS: tuple[str, ...] = ("COMMITMENT", "SCOPE")
+CLARIFICATION_SLOTS: tuple[str, ...] = ("COMMITMENT", "SCOPE", "CONDITION")
 
 APPROVAL_CHANNELS: tuple[str, ...] = ("BROWSER_SESSION", "OPERATOR_CONSOLE")
 """The channels through which PromisePatch itself authenticates the human who approves a plan.

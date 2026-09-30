@@ -14,5 +14,5 @@ from __future__ import annotations
 
 from typing import Final
 
-HEAD_REVISION: Final = "0009_human_plan_approval"
+HEAD_REVISION: Final = "0010_condition_clarification"
 """The Alembic revision a database must be at for this code to be ready to serve."""

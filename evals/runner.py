@@ -402,7 +402,7 @@ async def _run_worker(
         deterministic_reason=case.deterministic_reason or EscalationReason.NO_CATEGORY,
     )
     observed = WorkerObservation(
-        reading=value, grounding=resolution.grounding, outcome=resolution.outcome
+        reading=value, grounding=resolution.grounding, outcome=resolution.reading_outcome
     )
     score = worker_metrics.score_worker(
         case,
