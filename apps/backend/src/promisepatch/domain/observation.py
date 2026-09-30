@@ -96,6 +96,14 @@ class EscalationReason(StrEnum):
     CLARIFICATION_CEILING_REACHED = "CLARIFICATION_CEILING_REACHED"
     CORRECTION_UNRESOLVED = "CORRECTION_UNRESOLVED"
     NOT_BOUND = "NOT_BOUND"
+    CONDITION_NOT_ASSERTED = "CONDITION_NOT_ASSERTED"
+    """The words name a resource and a condition without saying the resource is in it now.
+
+    A negation ("is not spoiled"), a statement that the thing is fine or working, a condition
+    dated to the past, a question, a supposition, or an instruction about what to record. Not a
+    parse failure, so no model is asked: a second reading of a sentence that denies the
+    condition could only ever find the condition by overruling the words.
+    """
     SEMANTIC_UNAVAILABLE = "SEMANTIC_UNAVAILABLE"
     """No model could be reached inside the retry bound, so nobody has read the sentence yet.
 

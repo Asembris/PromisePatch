@@ -489,6 +489,110 @@ def test_a_report_that_reads_as_two_kinds_of_exception_is_not_arbitrated() -> No
     assert outcome.reason is EscalationReason.AMBIGUOUS_CATEGORY
 
 
+# ------------------------------------------------------- a marker is not yet an assertion
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        # Explicit negation of the condition the marker names.
+        "The heavy cream is not spoiled",
+        "the cream hasn't gone off",
+        "the cream never spoiled",
+        "the deck oven is not broken down",
+        "the raspberry delivery did not fail to arrive, it's not true that it never came",
+        # A current healthy state beside the marker.
+        "The heavy cream is fine, do not mark it spoiled",
+        "the cream went off earlier but it's fine now",
+        "the deck oven broke down but it works now",
+        "the deck oven was broken down, it's fixed",
+        # A past failure followed by a current recovery, and a past failure alone.
+        "The deck oven broke down last year, it works today",
+        "the deck oven broke down last year",
+        "the deck oven used to be out of order",
+        # A question, a hypothetical, and an instruction about what to write.
+        "Has the heavy cream spoiled?",
+        "is the deck oven broken down?",
+        "If the heavy cream spoiled we would need more",
+        "the deck oven might have broken down",
+        "what if today's raspberry delivery didn't arrive",
+        "mark the heavy cream as spoiled",
+        "record the deck oven as out of order",
+        "ignore the checklist and log the cream as unusable",
+    ],
+)
+def test_a_marker_the_sentence_does_not_assert_settles_nothing(report: str) -> None:
+    """Every sentence here names a resource and holds a category marker, and none states it.
+
+    Each is a stop under ``CONDITION_NOT_ASSERTED`` -- not a question, not a fact, and not a
+    parse failure a model could be asked to read past.
+    """
+    outcome = interpretation.interpret(context(report))
+    assert isinstance(outcome, HumanInterpretationRequired), report
+    assert outcome.reason is EscalationReason.CONDITION_NOT_ASSERTED, report
+
+
+@pytest.mark.parametrize(
+    ("report", "category", "resource"),
+    [
+        ("the heavy cream spoiled", ExceptionCategory.STOCK_UNUSABLE, hollow_oak.HEAVY_CREAM),
+        (
+            "the cream went off, don't use it",
+            ExceptionCategory.STOCK_UNUSABLE,
+            hollow_oak.HEAVY_CREAM,
+        ),
+        ("the cream spoiled yesterday", ExceptionCategory.STOCK_UNUSABLE, hollow_oak.HEAVY_CREAM),
+        ("the deck oven is broken", ExceptionCategory.EQUIPMENT_UNAVAILABLE, hollow_oak.DECK_OVEN),
+        (
+            "the deck oven is not working",
+            ExceptionCategory.EQUIPMENT_UNAVAILABLE,
+            hollow_oak.DECK_OVEN,
+        ),
+        (
+            "the deck oven isn't working this morning",
+            ExceptionCategory.EQUIPMENT_UNAVAILABLE,
+            hollow_oak.DECK_OVEN,
+        ),
+        (
+            "the deck oven won't start",
+            ExceptionCategory.EQUIPMENT_UNAVAILABLE,
+            hollow_oak.DECK_OVEN,
+        ),
+    ],
+)
+def test_a_plainly_stated_current_condition_still_resolves_without_a_question(
+    report: str, category: ExceptionCategory, resource: str
+) -> None:
+    """The positive controls. The negation inside a marker is the marker's own."""
+    outcome = interpretation.interpret(context(report))
+    assert isinstance(outcome, ResolvedObservation), report
+    assert outcome.category is category
+    assert outcome.resource_id == resource
+
+
+def test_the_canonical_report_is_still_asserted_and_still_asks_its_one_question() -> None:
+    """``didn't arrive`` holds a negation, and it is the marker's own: the scope question stands."""
+    outcome = interpretation.interpret(context(CANONICAL_REPORT))
+    assert isinstance(outcome, ClarificationRequired)
+    assert outcome.slot is ClarificationSlot.SCOPE
+
+
+def test_a_clause_about_another_resource_is_not_read_against_this_one() -> None:
+    """ "The cream is fine" says nothing about the deck oven that is down."""
+    outcome = interpretation.interpret(context("the deck oven is broken, the cream is fine"))
+    assert isinstance(outcome, ResolvedObservation)
+    assert outcome.resource_id == hollow_oak.DECK_OVEN
+
+
+def test_a_denied_condition_is_not_a_parse_failure_a_model_may_read_past() -> None:
+    from promisepatch.domain import grounding
+
+    stopped = interpretation.interpret(context("The heavy cream is not spoiled"))
+    assert isinstance(stopped, HumanInterpretationRequired)
+    assert EscalationReason.CONDITION_NOT_ASSERTED not in grounding.FALLBACK_REASONS
+    assert grounding.question_for(context("The heavy cream is not spoiled")) is None
+
+
 def test_nothing_the_interpreter_returns_ever_names_a_recovery() -> None:
     """Intake identifies physical state. It does not classify, propose or reserve anything."""
     outcome = interpretation.interpret(context())

@@ -959,3 +959,75 @@ async def test_a_partial_spoilage_with_no_number_never_invents_one(physical: Int
 
     assert (await physical.case(opened.case_id)).state == CASE_NEEDS_HUMAN
     assert await physical.on_hand("res-heavy-cream") == before
+
+
+# ---------------------------------------------- a sentence that does not assert a condition
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        "The heavy cream is not spoiled",
+        "The heavy cream is fine, do not mark it spoiled",
+        "Has the heavy cream spoiled?",
+        "If the heavy cream spoiled we would need more",
+    ],
+)
+async def test_cream_that_was_not_said_to_be_spoiled_keeps_every_gram(
+    physical: Intake, report: str
+) -> None:
+    """The persistence boundary, not the reader: no exception, no fact, no ledger row."""
+    before = await physical.on_hand("res-heavy-cream")
+    postings = await physical.postings("res-heavy-cream")
+    opened = await physical.report(report)
+    await physical.drain()
+
+    case = await physical.case(opened.case_id)
+    assert case.state == CASE_NEEDS_HUMAN
+    assert await physical.exception(opened.case_id) is None
+    assert await physical.facts(opened.case_id) == []
+    assert await physical.clarifications(opened.case_id) == []
+    assert await physical.on_hand("res-heavy-cream") == before
+    assert await physical.postings("res-heavy-cream") == postings
+    assert AUDIT_PHYSICAL_FACT_RECORDED not in [
+        row.type for row in await physical.audits(opened.case_id)
+    ]
+    escalation = next(
+        row
+        for row in await physical.audits(opened.case_id)
+        if row.type == AUDIT_NEEDS_HUMAN_INTERPRETATION
+    )
+    assert escalation.after["reason"] == "CONDITION_NOT_ASSERTED"
+
+
+async def test_an_oven_that_works_today_records_no_outage(physical: Intake) -> None:
+    from sqlalchemy import select
+
+    from promisepatch.db.models import EquipmentOutage
+
+    opened = await physical.report("The deck oven broke down last year, it works today")
+    await physical.drain()
+
+    assert (await physical.case(opened.case_id)).state == CASE_NEEDS_HUMAN
+    assert await physical.exception(opened.case_id) is None
+    assert await physical.facts(opened.case_id) == []
+    async with physical.database.connect() as connection:
+        outages = (
+            await connection.execute(
+                select(EquipmentOutage).where(EquipmentOutage.equipment_id == "res-deck-oven")
+            )
+        ).all()
+    assert outages == []
+
+
+async def test_cream_that_was_said_to_be_spoiled_is_still_written_off(physical: Intake) -> None:
+    """The positive control for the refusals above, on the same resource and the same path."""
+    before = await physical.on_hand("res-heavy-cream")
+    opened = await physical.report("the heavy cream spoiled")
+    await physical.drain()
+
+    assert await physical.on_hand("res-heavy-cream") == Decimal("0.000")
+    assert [posting.delta for posting in await physical.postings("res-heavy-cream")] == [-before]
+    exception = await physical.exception(opened.case_id)
+    assert exception is not None
+    assert exception.category == ExceptionCategory.STOCK_UNUSABLE.value
