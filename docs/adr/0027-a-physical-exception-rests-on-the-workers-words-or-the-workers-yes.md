@@ -140,6 +140,10 @@ Only the check constraint changes: no column, table or data.
   pair an exception with a hedge or a healthy clause now go to a person instead of resolving. For
   example, *the cream spoiled, the rest is fine* names nothing in its second clause, and that
   conservatism is deliberate.
+- The `CONDITION` question counts toward the frozen two-question ceiling, which is unchanged. A
+  model-assisted supply report that also needs *both* a delivery question and a scope question
+  therefore reaches the ceiling after the worker's yes and the delivery answer, and goes to a
+  person instead of asking a third question. A report that needs one of the two still completes.
 - A worker can still answer yes to something untrue. That is a false attestation by a person,
   exactly as with the canonical sentence, and the correction path is unchanged.
 
