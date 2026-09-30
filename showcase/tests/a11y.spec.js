@@ -185,12 +185,15 @@ test.describe('keyboard', () => {
         if (!f) break; // left the document: no trap
         if (seen.has(f.key)) break;
         if (!f.onScreen) {
-          // Focus scrolling follows the page's smooth scroll-behavior; let it land.
-          await page.waitForTimeout(700);
-          f.onScreen = await page.evaluate(() => {
+          // Focus scrolling follows the page's smooth scroll-behavior. Its start
+          // waits on a busy main thread (the WebGL hero) and its length on the
+          // distance, so a fixed pause can sample it mid-flight: wait, bounded,
+          // for the focused control to land on screen. One that never does is
+          // still reported below.
+          f.onScreen = await page.waitForFunction(() => {
             const r = document.activeElement.getBoundingClientRect();
             return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
-          });
+          }, null, { timeout: 3000, polling: 'raf' }).then(() => true, () => false);
         }
         seen.add(f.key);
         if (!f.ring) problems.push(`no ring: ${f.tag}`);
