@@ -35,6 +35,7 @@ import { Card, Message, SectionLabel } from '../../components/surfaces'
 import { Count, Value } from '../../components/values'
 import { ClarificationHistory } from './Clarifications'
 import { Conversation } from './Conversation'
+import { SimulatedAlexa } from './SimulatedAlexa'
 import { EvidenceLayers } from './Evidence'
 import { formatDateTime } from '../../components/time'
 import { actionOwnerTone } from '../../components/vocabulary'
@@ -104,8 +105,9 @@ function Bands({ view }: { view: CaseWorkspaceResponse }): ReactNode {
           and spent the whole of the first screen, so the one comparison this product exists to
           show began below the fold. The document order is unchanged, which is what keeps the
           reading order and the phone layout the same as they were. */}
-      <div className="xl:col-start-2 xl:row-start-1 xl:row-span-3">
+      <div className="space-y-4 xl:col-start-2 xl:row-start-1 xl:row-span-3">
         <Conversation view={view} />
+        <SimulatedAlexa view={view} />
       </div>
       <div className="xl:col-start-1 xl:row-start-3">
         <Propagation view={view} />

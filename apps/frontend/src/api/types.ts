@@ -574,3 +574,29 @@ export interface CustomerApprovalResponse {
 
 /** The two answers a button can carry, which are the two the literal parser reads. */
 export type CustomerAnswer = 'APPROVE' | 'DECLINE'
+
+/**
+ * One simulated Alexa+ turn (ADR-0028), as the server carried it over MCP.
+ *
+ * `reply` is the orchestrator's reply, built from speech the domain rendered. `calls` are the MCP
+ * tools the turn called, after the fresh `status` read that `hydrated` reports on.
+ */
+export interface SimulatedAlexaReply {
+  case_id: string
+  reply: string
+  phase: string
+  hydrated: boolean
+  selected: string | null
+  calls: string[]
+  blocked: string | null
+  refusal: string | null
+}
+
+/** A worker's recorded approval of one plan. Nothing has been carried out when this returns. */
+export interface ApprovalRecorded {
+  case_id: string
+  plan_id: string
+  approved_by: string
+  approved_via: string
+  speech: string
+}

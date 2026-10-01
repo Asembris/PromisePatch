@@ -25,6 +25,7 @@ import {
 import {
   ApiError,
   answerCustomerApproval,
+  approvePlan,
   clarifyTurn,
   confirmTurn,
   fetchCase,
@@ -38,10 +39,12 @@ import {
   logout,
   openDemoSession,
   reportTurn,
+  simulatedAlexaTurn,
   withdrawTurn,
 } from './client'
 import { responseReceived, turnSent, type TurnVerb } from '../instrumentation/turnTiming'
 import type {
+  ApprovalRecorded,
   CaseListResponse,
   CaseWorkspaceResponse,
   CustomerAnswer,
@@ -49,6 +52,7 @@ import type {
   PromisesResponse,
   ResourcesResponse,
   SignInOptions,
+  SimulatedAlexaReply,
   TurnAccepted,
   WithdrawalAccepted,
   WorkerResponse,
@@ -543,5 +547,45 @@ export function useAnswerCustomerApproval(
       client.setQueryData(customerApprovalKey(token ?? ''), reading)
     },
     onError: () => client.invalidateQueries({ queryKey: customerApprovalKey(token ?? '') }),
+  })
+}
+
+export interface SimulatedAlexaInput {
+  caseId: string
+  text: string
+}
+
+/** One simulated Alexa+ turn (ADR-0028). The case is re-read afterwards, never patched here. */
+export function useSimulatedAlexaTurn(): UseMutationResult<
+  SimulatedAlexaReply,
+  Error,
+  SimulatedAlexaInput
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ caseId, text }: SimulatedAlexaInput) =>
+      simulatedAlexaTurn({ case_id: caseId, text }),
+    onSettled: (_result, _error, variables) => {
+      void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
+      void client.invalidateQueries({ queryKey: casesKey })
+    },
+  })
+}
+
+export interface ApprovePlanInput {
+  caseId: string
+  /** The plan identity the case response presented, quoted back unchanged. */
+  planId: string
+}
+
+/** Record the worker's approval of one plan; nothing moves until something spends it. */
+export function useApprovePlan(): UseMutationResult<ApprovalRecorded, Error, ApprovePlanInput> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ caseId, planId }: ApprovePlanInput) =>
+      approvePlan({ case_id: caseId, plan_id: planId }),
+    onSettled: (_result, _error, variables) => {
+      void client.invalidateQueries({ queryKey: caseKey(variables.caseId) })
+    },
   })
 }

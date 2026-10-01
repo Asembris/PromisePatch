@@ -10,6 +10,7 @@ from promisepatch.api.routers.integrations import router as integrations_router
 from promisepatch.api.routers.intents import router as intents_router
 from promisepatch.api.routers.promises import router as promises_router
 from promisepatch.api.routers.resources import router as resources_router
+from promisepatch.api.routers.simulated_alexa import router as simulated_alexa_router
 
 __all__ = [
     "auth_router",
@@ -22,4 +23,5 @@ __all__ = [
     "intents_router",
     "promises_router",
     "resources_router",
+    "simulated_alexa_router",
 ]

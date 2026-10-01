@@ -28,6 +28,7 @@ from promisepatch.api.routers import (
     intents_router,
     promises_router,
     resources_router,
+    simulated_alexa_router,
 )
 from promisepatch.api.spa import mount_spa
 from promisepatch.api.stream import EventBroadcaster
@@ -121,6 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(cases_router)
     app.include_router(conversation_router)
+    app.include_router(simulated_alexa_router)
     app.include_router(customer_router)
     app.include_router(promises_router)
     app.include_router(resources_router)

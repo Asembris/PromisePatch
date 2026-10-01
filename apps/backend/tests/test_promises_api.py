@@ -298,6 +298,7 @@ CONVERSATION_FIELDS: dict[str, frozenset[str]] = {
     "ClarifyTurn": frozenset({"command_id", "case_id", "text"}),
     "ConfirmTurn": frozenset({"command_id", "case_id", "plan_id", "text"}),
     "WithdrawTurn": frozenset({"command_id", "case_id"}),
+    "SimulatedAlexaTurn": frozenset({"case_id", "text"}),
 }
 """Every field a browser may put in a conversation request. Stated whole, not sampled.
 
@@ -306,6 +307,8 @@ that only looked for the words somebody thought to forbid. ``ConfirmTurn.text`` 
 and was such a failure: it arrived with ADR-0015, and it is admitted here because it is the
 worker's own sentence -- read on the route by a closed literal rule, never stored as a
 clarification and never able to name an order -- rather than because a test went red.
+``SimulatedAlexaTurn`` (ADR-0028) is the narrowest of them: a case and the reviewed words, with
+no plan identity, because the bridge reads the plan fresh over MCP rather than taking one.
 """
 
 
@@ -371,7 +374,11 @@ def test_no_conversation_request_carries_an_actor_or_a_clock(api: TestClient) ->
 
 
 def test_every_conversation_route_is_a_session_mutation(api: TestClient) -> None:
-    """Five POSTs and nothing else: no read, no delete, no route that skipped the list."""
+    """Six POSTs and nothing else: no read, no delete, no route that skipped the list.
+
+    The sixth is the simulated Alexa+ bridge (ADR-0028): the same person's words, carried to the
+    same case over MCP instead of directly, and admitted to this family for that reason.
+    """
     schema = api.get("/openapi.json").json()
 
     conversation = {
@@ -386,6 +393,7 @@ def test_every_conversation_route_is_a_session_mutation(api: TestClient) -> None
         "/api/conversation/confirm": {"post"},
         "/api/conversation/approve": {"post"},
         "/api/conversation/withdraw": {"post"},
+        "/api/conversation/simulated-alexa": {"post"},
     }
 
 

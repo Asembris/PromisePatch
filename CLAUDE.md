@@ -434,7 +434,7 @@ git diff --cached --stat
 gitignored, local-only and **authoritative whenever present**. Read them before deciding
 anything they cover. Never modify them unless explicitly asked. Never commit them.
 
-`docs/adr/` holds every architectural decision, `0001` through `0027`. The ones that constrain
+`docs/adr/` holds every architectural decision, `0001` through `0028`. The ones that constrain
 day-to-day work most: [0008](docs/adr/0008-remove-runtime-customer-intent-classifier.md) (no
 runtime intent classifier), [0011](docs/adr/0011-conversational-orchestrator-authority.md) (the
 orchestrator holds no authority), [0013](docs/adr/0013-read-only-observer-principal.md) and
@@ -464,7 +464,11 @@ unsent; from the second claim nothing refuses it), and
 [0027](docs/adr/0027-a-physical-exception-rests-on-the-workers-words-or-the-workers-yes.md) (a
 physical exception rests on the worker's words or the worker's yes: a lexicon reading the
 sentence does not assert stops at `CONDITION_NOT_ASSERTED`, and a model's category reaches
-intake only as the `CONDITION` question).
+intake only as the `CONDITION` question), and
+[0028](docs/adr/0028-a-simulated-alexa-turn-is-a-case-scoped-mcp-client-on-the-server.md) (a
+simulated Alexa+ turn is a case-scoped MCP client on the server: only the surface worker's own
+session may drive it, it reads fresh status first, never reports, and spends but never creates a
+plan approval).
 
 ## Historical record
 

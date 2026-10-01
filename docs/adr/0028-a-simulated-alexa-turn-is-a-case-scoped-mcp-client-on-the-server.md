@@ -1,6 +1,7 @@
 # ADR-0028 — A simulated Alexa+ turn is a case-scoped MCP client on the server
 
-**Status:** accepted. No code yet: this ADR defines the boundary the bridge must be built inside.
+**Status:** accepted. Implemented locally in
+`apps/backend/src/promisepatch/api/routers/simulated_alexa.py`; not deployed.
 **Date:** 2026-10-01
 **Phase:** post-G8, before G9
 **Supersedes:** nothing. It narrows how ADR-0011's turn budget is counted for one caller and
@@ -129,8 +130,8 @@ none of them.
 - Both files are written only at bootstrap and are not rewritten by `converge.sh`. Under
   [non-destructive-release.md](../non-destructive-release.md) §10.1 the bridge therefore needs either
   host replacement or a separately authorised in-place migration.
-- The bridge changes deployable product paths, so it belongs inside the release ADR-0027 already
-  owes: a new release SHA with green `pr`, a new deployment and five new rehearsals. It must not add
-  a second round.
+- The bridge changes deployable product paths, so it belongs, together with `caf8064`, to the next
+  final release and revalidation cycle: a new release SHA with green `pr`, a new deployment and
+  five new rehearsals. It must not add a second round.
 - If that release cannot carry it, the bridge stays local, and the deployed Alexa+ story remains
   `pp converse` against the deployed MCP endpoint.

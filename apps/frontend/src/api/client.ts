@@ -17,6 +17,7 @@
  * validates the header against the session row rather than against the cookie.
  */
 import type {
+  ApprovalRecorded,
   CaseListResponse,
   CaseWorkspaceResponse,
   CustomerAnswer,
@@ -25,6 +26,7 @@ import type {
   PromisesResponse,
   ResourcesResponse,
   SignInOptions,
+  SimulatedAlexaReply,
   TurnAccepted,
   WithdrawalAccepted,
   WorkerResponse,
@@ -245,6 +247,35 @@ export async function confirmTurn(body: {
   text?: string
 }): Promise<TurnAccepted> {
   return requestJson<TurnAccepted>('/api/conversation/confirm', { method: 'POST', body })
+}
+
+/**
+ * Record this worker's approval of one plan, and carry nothing out (ADR-0018).
+ *
+ * The explicit control the simulated Alexa+ panel shows beside its spoken turns: MCP `confirm`
+ * can spend this approval and can never create one, so it is pressed here and never spoken there.
+ */
+export async function approvePlan(body: {
+  case_id: string
+  plan_id: string
+}): Promise<ApprovalRecorded> {
+  return requestJson<ApprovalRecorded>('/api/conversation/approve', { method: 'POST', body })
+}
+
+/**
+ * One reviewed turn to an existing case, carried by the server over MCP (ADR-0028).
+ *
+ * A case and the words, and nothing else: no plan, no tool and no actor. The server reads the
+ * case fresh, lets its orchestrator choose a verb, and holds the MCP credential itself.
+ */
+export async function simulatedAlexaTurn(body: {
+  case_id: string
+  text: string
+}): Promise<SimulatedAlexaReply> {
+  return requestJson<SimulatedAlexaReply>('/api/conversation/simulated-alexa', {
+    method: 'POST',
+    body,
+  })
 }
 
 // -------------------------------------------------------------------------------- customer
