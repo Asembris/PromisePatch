@@ -128,7 +128,7 @@ Three states are kept apart, and none stands in for another:
 
 | state | commit / image | product gate (`pr`) |
 |---|---|---|
-| **latest product-code SHA** | `caf806474d2b` | run [`36849971651`](https://github.com/Asembris/PromisePatch/actions/runs/36849971651), 13 of 13 jobs. **Not deployed**, and no deployed measurement was taken on it. Repository HEAD (`2b0ead8`) is this README correction on top of it, with no product change. |
+| **latest product-code SHA** | `caf806474d2b` | run [`36849971651`](https://github.com/Asembris/PromisePatch/actions/runs/36849971651), 13 of 13 jobs. **Not deployed**, and no deployed measurement was taken on it. Repository HEAD may contain documentation-only commits on top of it. |
 | **last deployed and revalidated release** | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7`, image `283f63f2845f` | run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324), 13 of 13 jobs. Evidence: [post-intake-release.md](docs/post-intake-release.md). |
 | older historical release | `56c302366b3d` / image `4529a802e34e` | run [`36310794944`](https://github.com/Asembris/PromisePatch/actions/runs/36310794944), 13 of 13 jobs. Kept as history. |
 
@@ -557,4 +557,4 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 The G8 freeze at `56c3023` was reopened by ADR-0027 and re-established at the deployed release
 `283f63f`. The latest product-code SHA is `caf8064`, which is not deployed; repository HEAD
-(`2b0ead8`) adds documentation only on top of it.
+may contain documentation-only commits on top of it.
