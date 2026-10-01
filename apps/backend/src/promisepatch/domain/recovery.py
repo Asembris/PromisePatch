@@ -72,7 +72,7 @@ from enum import StrEnum
 from typing import Any, Final
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -143,6 +143,7 @@ from promisepatch.domain.model import (
 from promisepatch.domain.model import (
     EFFECT_ORDER_AMEND as _EFFECT_ORDER_AMEND,
 )
+from promisepatch.domain.observation import AUDIT_CASE_OPENED
 from promisepatch.domain.timers import cancel_timer
 from promisepatch.observability import get_logger
 
@@ -1360,13 +1361,24 @@ async def _applied_authority(
     from the option alone would name the policy under a change a customer approved. The row
     written in the same transaction as the effect, under the same idempotency key, is the one
     answer that cannot drift from what actually permitted it.
+
+    The ledger outlives the case. A demo restore truncates every case and keeps ``audit_events``,
+    and a restore at the same anchor re-derives the same case, track, option and order version --
+    so the same key. Only rows written after this case's own ``CASE_OPENED`` belong to it, and
+    one of those is still all there may be.
     """
+    opened = (
+        select(func.max(AuditEvent.seq))
+        .where(AuditEvent.case_id == track.case_id, AuditEvent.type == AUDIT_CASE_OPENED)
+        .scalar_subquery()
+    )
     row = (
         await connection.execute(
             select(AuditEvent.authority, AuditEvent.provenance).where(
                 AuditEvent.track_id == track.id,
                 AuditEvent.type == AUDIT_RECOVERY_APPLIED,
                 AuditEvent.after["idempotency_key"].astext == idempotency_key,
+                AuditEvent.seq > opened,
             )
         )
     ).one_or_none()

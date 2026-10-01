@@ -30,6 +30,7 @@ import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -74,6 +75,7 @@ from promisepatch.db.models import Case, OutboxMessage, PlanApproval
 from promisepatch.db.runtime import RuntimeDatabase
 from promisepatch.domain.adapters import FakeEffectAdapter, RoutedEffectAdapter
 from promisepatch.domain.model import EFFECT_ORDER_AMEND
+from promisepatch.fixtures import demo
 from promisepatch.integrations.order_system import OrderSystemAdapter, OrderSystemClient
 from promisepatch.main import create_app as create_promisepatch
 from promisepatch.worker import Worker
@@ -412,23 +414,36 @@ async def test_the_storyboard_holds_with_a_browser_approval_and_a_real_restart(
 
 
 async def test_an_approval_already_carried_out_at_the_console_is_observed_not_repeated(
-    physical: Intake, deployed: Settings, tmp_path: Path
+    physical: Intake, deployed: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Twice, at one anchor -- what every restore in the hour either side of local midnight gets.
+
+    The second restore re-derives the same case, so the preserved ledger already holds a finished
+    incarnation of it. Neither the worker nor the runner may read that one as this one's.
+    """
+    pinned = demo.resolve_demo_anchor(datetime.now(UTC), deployed.bakery_tz)
+    monkeypatch.setattr(demo, "resolve_demo_anchor", lambda now, timezone: pinned)
     async with stack(physical, deployed, tmp_path) as ready:
-        await restore_world(ready)
-        ready.worker.start()
-        operator = ScriptedOperator(
-            {
-                OperatorAction.APPROVE_PLAN: confirm_at_the_console(ready),
-                OperatorAction.RESTART_WORKER: restart_the_worker(ready),
-            }
-        )
+        cases = []
+        for _ in range(2):
+            await ready.worker.halt()
+            await restore_world(ready)
+            cases.append((await demo_contract.read_world(physical.database)).cases[0][0])
+            ready.worker.start()
+            ready.api_calls.calls.clear()
+            operator = ScriptedOperator(
+                {
+                    OperatorAction.APPROVE_PLAN: confirm_at_the_console(ready),
+                    OperatorAction.RESTART_WORKER: restart_the_worker(ready),
+                }
+            )
 
-        code, output = await run(ready, operator)
+            code, output = await run(ready, operator)
 
-        assert code == EXIT_PASS, output
-        assert ready.api_calls.to("/internal/intents/confirm") == []
-        assert "already carried the approval out" in output
+            assert code == EXIT_PASS, output
+            assert ready.api_calls.to("/internal/intents/confirm") == []
+            assert "already carried the approval out" in output
+        assert cases[0] == cases[1], "the second restore did not re-derive the same case"
 
 
 # ============================================================ a fault the operator did not inject

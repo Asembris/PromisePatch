@@ -111,6 +111,7 @@ from promisepatch.domain import customer_link
 from promisepatch.domain.approvals import AUDIT_APPROVAL_DECISION, CUSTOMER_REPLY_SOURCE
 from promisepatch.domain.cases import CASE_PLANNED, CASE_RESOLVED, CASE_WAITING
 from promisepatch.domain.model import EFFECT_MESSAGE_SEND, EFFECT_ORDER_AMEND
+from promisepatch.domain.observation import AUDIT_CASE_OPENED
 from promisepatch.domain.plan_approval import AUDIT_PLAN_APPROVED, ApprovalChannel
 from promisepatch.domain.recovery import (
     AUDIT_PLAN_CONFIRMED,
@@ -121,7 +122,7 @@ from promisepatch.domain.recovery import (
 )
 from promisepatch.domain.revalidation import AUDIT_REVALIDATION_CHECK, AUDIT_REVALIDATION_PASSED
 
-RUNNER_VERSION: Final = "1.0.0"
+RUNNER_VERSION: Final = "1.0.1"
 
 EXIT_PASS: Final = 0
 EXIT_FAIL: Final = 1
@@ -466,6 +467,14 @@ async def _read(connection: AsyncConnection) -> World:
             .group_by(OrderLine.order_id)
         )
     }
+    # The ledger outlives the case: a restore keeps ``audit_events``, and one at the same anchor
+    # re-derives the same case id. A case's rows are the ones from its own ``CASE_OPENED`` on.
+    opened = (
+        select(AuditEvent.case_id, func.max(AuditEvent.seq).label("seq"))
+        .where(AuditEvent.case_id.in_(case_ids), AuditEvent.type == AUDIT_CASE_OPENED)
+        .group_by(AuditEvent.case_id)
+        .subquery()
+    )
     audit = tuple(
         AuditRow(
             seq=row.seq,
@@ -488,8 +497,11 @@ async def _read(connection: AsyncConnection) -> World:
                 AuditEvent.provenance,
                 AuditEvent.after,
             )
+            .join(
+                opened,
+                (opened.c.case_id == AuditEvent.case_id) & (AuditEvent.seq >= opened.c.seq),
+            )
             .outerjoin(Track, Track.id == AuditEvent.track_id)
-            .where(AuditEvent.case_id.in_(case_ids))
             .order_by(AuditEvent.seq)
         )
     )
