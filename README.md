@@ -23,7 +23,7 @@
   <a href="https://184.194.40.87.sslip.io"><img src="https://img.shields.io/badge/Open_the_live_app-8390F2?style=for-the-badge" alt="Open the live app"></a>
   <a href="#60-second-judge-path"><img src="https://img.shields.io/badge/60--second_judge_path-182238?style=for-the-badge" alt="60-second judge path"></a>
   <a href="#proof-index"><img src="https://img.shields.io/badge/Proof_index-182238?style=for-the-badge" alt="Proof index"></a>
-  <a href="https://github.com/Asembris/PromisePatch/actions/runs/36849971651"><img src="https://img.shields.io/badge/Current_source_CI-13_of_13_jobs-2E7D5B?style=for-the-badge" alt="Current source CI: 13 of 13 jobs on caf8064"></a>
+  <a href="https://github.com/Asembris/PromisePatch/actions/runs/36849971651"><img src="https://img.shields.io/badge/Latest_product_SHA_CI-13_of_13_jobs-2E7D5B?style=for-the-badge" alt="Latest product-code SHA CI: 13 of 13 jobs on caf8064"></a>
 </p>
 
 <p align="center">
@@ -128,12 +128,14 @@ Three states are kept apart, and none stands in for another:
 
 | state | commit / image | product gate (`pr`) |
 |---|---|---|
-| **current source** | `caf806474d2b` (`main`) | run [`36849971651`](https://github.com/Asembris/PromisePatch/actions/runs/36849971651), 13 of 13 jobs. **Not deployed**, and no deployed measurement was taken on it. |
+| **latest product-code SHA** | `caf806474d2b` | run [`36849971651`](https://github.com/Asembris/PromisePatch/actions/runs/36849971651), 13 of 13 jobs. **Not deployed**, and no deployed measurement was taken on it. Repository HEAD (`2b0ead8`) is this README correction on top of it, with no product change. |
 | **last deployed and revalidated release** | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7`, image `283f63f2845f` | run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324), 13 of 13 jobs. Evidence: [post-intake-release.md](docs/post-intake-release.md). |
 | older historical release | `56c302366b3d` / image `4529a802e34e` | run [`36310794944`](https://github.com/Asembris/PromisePatch/actions/runs/36310794944), 13 of 13 jobs. Kept as history. |
 
-`caf8064` follows the deployed release with a demo-evidence fix only
-(`fix(demo): scope preserved ledger evidence to the current case incarnation`).
+`caf8064` is a product-code change made after the deployed release: it scopes the preserved ledger
+evidence to the current case incarnation (`apps/backend/src/promisepatch/domain/recovery.py`, with
+`scripts/demo_contract.py` and its test). It is not a documentation or evidence-only change, and
+the deployed image `283f63f2845f` does not contain it.
 
 ## How authority works
 
@@ -259,7 +261,7 @@ anywhere. It serves the case workspace, the API, the event stream and the MCP en
 |---|---|
 | deployed image | `283f63f2845f`, as `GET /healthz` reported it on 2026-09-30 |
 | repository release SHA | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7`, `pr` run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324) |
-| current source | `caf8064` on `main`, `pr` run [`36849971651`](https://github.com/Asembris/PromisePatch/actions/runs/36849971651) 13 of 13. **Not deployed.** |
+| latest product-code SHA | `caf8064`, `pr` run [`36849971651`](https://github.com/Asembris/PromisePatch/actions/runs/36849971651) 13 of 13. **Not deployed.** |
 | older historical release | `56c302366b3ddc0d824c1588a4a9ddbd193ed891` / image `4529a802e34e`, the G8 freeze. Its deployable paths were tree-identical to each other ([g8-closeout.md](docs/g8-closeout.md) §3) |
 | customer channel | Telegram outbound is live; one message was delivered per rehearsal. Customers answer through the signed web link ([deployed-customer-channel.md](docs/deployed-customer-channel.md)) |
 | release freeze | the G8 freeze of 2026-09-27 was reopened by [ADR-0027](docs/adr/0027-a-physical-exception-rests-on-the-workers-words-or-the-workers-yes.md) and re-established at `283f63f` ([post-intake-release.md](docs/post-intake-release.md)) |
@@ -307,7 +309,7 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 
 | claim | record | what it proves |
 |---|---|---|
-| current source passes CI | [`pr` run 36849971651](https://github.com/Asembris/PromisePatch/actions/runs/36849971651) | 13 of 13 jobs on `caf8064`. This commit is not deployed. |
+| latest product-code SHA passes CI | [`pr` run 36849971651](https://github.com/Asembris/PromisePatch/actions/runs/36849971651) | 13 of 13 jobs on `caf8064`. This commit is not deployed. |
 | last deployed release, revalidated | [post-intake-release.md](docs/post-intake-release.md) | release `283f63f`, image `283f63f2845f`, [`pr` run 36759222324](https://github.com/Asembris/PromisePatch/actions/runs/36759222324) 13 of 13; migration 0010; v2 effect set 16/16; five new deployed restart rehearsals; local demo contract 47 assertions |
 | older release proof, historical | [g8-closeout.md](docs/g8-closeout.md) | 22 of 22 G8 rows closed at `56c3023`, image `4529a802e34e`, [`pr` run 36310794944](https://github.com/Asembris/PromisePatch/actions/runs/36310794944) 13 of 13 |
 | restart-safe on the deployment, historical | [R1](docs/g8-rehearsal-r1.md) · [R2](docs/g8-rehearsal-r2.md) · [R3](docs/g8-rehearsal-r3.md) · [R4](docs/g8-rehearsal-r4.md) · [R5](docs/g8-rehearsal-r5.md) | five worker restarts at four points on `4529a802e34e`, each PASS, every effect recorded once and delivered on attempt 1. The same five were repeated on `283f63f2845f`, in the post-intake record |
@@ -554,5 +556,5 @@ cd apps/frontend && npx playwright install chromium && npm run e2e
 Apache-2.0. See [LICENSE](LICENSE).
 
 The G8 freeze at `56c3023` was reopened by ADR-0027 and re-established at the deployed release
-`283f63f`. `main` is now at `caf8064`, which is not deployed. Only submission, evidence and
-documentation corrections land after the release.
+`283f63f`. The latest product-code SHA is `caf8064`, which is not deployed; repository HEAD
+(`2b0ead8`) adds documentation only on top of it.
