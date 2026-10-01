@@ -1,8 +1,6 @@
 # The deployed composition: SSM /promisepatch/<env>/compose, written to
 # /opt/promisepatch/docker-compose.yml at boot. It must fit a 4096-byte standard-tier
 # parameter, so the reasoning lives in the template and the P6 docs.
-#
-# Same images and commands as the local stack; RDS, a TLS proxy in front, CloudWatch Logs.
 
 name: promisepatch
 
@@ -18,9 +16,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        # Fixed subnet so the TLS proxy has a fixed address: the simulator must resolve the
-        # public hostname to something, and an instance has no route back to its own public
-        # address. Why that keeps the TLS hop real is in the template.
+        # Fixed, so the simulator can resolve the public name to the TLS proxy.
         - subnet: 172.29.0.0/24
 
 services:
@@ -47,7 +43,9 @@ services:
 
   api:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
-    env_file: [env/api.env, {path: env/channel.env, required: false}]
+    # ADR-0028: the bridge's bearer is in mcp.env; api.env wins shared keys.
+    env_file: [env/mcp.env, env/api.env, {path: env/channel.env, required: false}]
+    environment: {PP_ORCHESTRATOR_MCP_URL: "http://mcp:8001/mcp"}
     depends_on:
       migrate: { condition: service_completed_successfully }
     networks: [stack]
@@ -64,7 +62,7 @@ services:
   worker:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
     command: ["pp", "worker"]
-    env_file: [env/api.env, {path: env/channel.env, required: false}]
+    env_file: [env/mcp.env, env/api.env, {path: env/channel.env, required: false}]
     depends_on:
       migrate: { condition: service_completed_successfully }
     networks: [stack]
@@ -76,6 +74,8 @@ services:
     image: ${REGISTRY}/promisepatch/backend:${IMAGE_TAG}
     command: ["pp", "mcp", "--host", "0.0.0.0", "--port", "8001"]
     env_file: [env/mcp.env]
+    # ADR-0028: the api's bridge connects as Host mcp:8001.
+    environment: {PP_MCP_ALLOWED_HOSTS: "${TLS_HOSTNAME},mcp:8001"}
     depends_on:
       api: { condition: service_healthy }
     networks: [stack]
@@ -105,7 +105,7 @@ services:
     ports: ["80:80", "443:443", "443:443/udp"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Certificate and ACME account key on a volume, so a restart does not re-order one.
+      # Certificate on a volume, so a restart does not re-order one.
       - caddy-data:/data
       - caddy-config:/config
     environment:

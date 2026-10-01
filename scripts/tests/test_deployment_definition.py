@@ -33,6 +33,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import jmespath
 import pytest
@@ -58,6 +59,7 @@ from scripts.deployment_smoke import PROTOCOL_REVISION
 
 from promisepatch.config import Settings
 from promisepatch.fixtures import demo
+from promisepatch.mcp.server import MCP_PATH
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
 DEPLOY = REPOSITORY_ROOT / "deploy"
@@ -351,6 +353,47 @@ def test_the_deployed_worker_reads_the_setting_that_provisions_the_case(
     """
     assert compose["services"]["worker"]["env_file"] == compose["services"]["api"]["env_file"]
     assert "PP_DEMO_SESSION_ENABLED=true" in _env_file_block(template, "api.env", "mcp.env")
+
+
+def test_the_simulated_alexa_bridge_reaches_mcp_on_the_stack_network(
+    compose: dict[str, Any],
+) -> None:
+    """ADR-0028: the api is an MCP client of this deployment's own endpoint, over the bridge net.
+
+    The URL is the ``mcp`` service's own name, port and path, so a bridged turn never leaves the
+    host and never passes Caddy. The ``mcp`` process must accept exactly that ``Host`` beside the
+    public name, or every bridged turn is a ``421`` in a deployment where everything else is
+    healthy -- and it must accept nothing wider, because the list is rebinding protection.
+    """
+    url = urlsplit(compose["services"]["api"]["environment"]["PP_ORCHESTRATOR_MCP_URL"])
+    mcp = compose["services"]["mcp"]
+    port = mcp["command"][mcp["command"].index("--port") + 1]
+    assert (url.scheme, url.hostname, str(url.port), url.path) == ("http", "mcp", port, MCP_PATH)
+    allowed = mcp["environment"]["PP_MCP_ALLOWED_HOSTS"].split(",")
+    assert allowed == ["${TLS_HOSTNAME}", url.netloc], (
+        "the mcp process must accept the public name and the api's internal Host, and no other"
+    )
+    assert "PP_ORCHESTRATOR_MCP_URL" not in json.dumps(compose["services"]["worker"]), (
+        "only the api serves the bridge; the worker has no reason to know where MCP is"
+    )
+
+
+def test_the_bridge_bearer_reaches_the_api_from_the_host_and_never_from_the_composition(
+    compose: dict[str, Any], template: dict[str, Any]
+) -> None:
+    """ADR-0028 decision 4: the bearer stays on the server, and the composition is no place for it.
+
+    The composition is an SSM ``String`` anyone who can read configuration can read; the token is
+    a ``SecureString`` the host decrypted into ``env/mcp.env`` at bootstrap. So the api is lent
+    that file rather than a copy of the secret, and ``env/api.env`` is read after it, so every key
+    the two files share keeps the api's own value.
+    """
+    files = [f if isinstance(f, str) else f["path"] for f in compose["services"]["api"]["env_file"]]
+    assert files.index("env/mcp.env") < files.index("env/api.env")
+    assert "PP_MCP_BEARER_TOKEN=" in _env_file_block(template, "mcp.env", "order-simulator.env")
+    composition = COMPOSE_PATH.read_text("utf-8")
+    assert "PP_MCP_BEARER_TOKEN" not in composition
+    assert "mcp-bearer-token" not in composition
 
 
 def test_the_deployment_serves_the_page_from_the_image_rather_than_from_configuration(
