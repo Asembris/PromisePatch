@@ -16,8 +16,8 @@ read-only authority reader written for this proof.
 | | |
 |---|---|
 | **Constructed** | The demo world: the Hollow Oak fixture, restored by the guarded `pp restore-demo-world` (settings preflight, dry run, three-condition gate, one confirmed run, binding re-verified with no message sent). |
-| **Real** | The deployed stack and the frozen image. The project owner, signed in as Maya, pressed "Approve this plan" and then sent a sentence through the deployed panel. The choice of verb was made by Bedrock. The MCP endpoint is the deployed `mcp` container, reached from `api` with the server-held bearer. One real Telegram ask reached the owner's phone. |
-| **Not done** | No customer decision. The owner left the Telegram ask unanswered, so request B stayed `SENT`. This session created no approval, decision or consent; it only read. |
+| **Real** | The deployed stack and the frozen image. The project owner, signed in as Maya, pressed "Approve this plan" and then sent a sentence through the deployed panel. The choice of verb was made by Bedrock. The MCP endpoint is the deployed `mcp` container, reached from `api` with the server-held bearer. One real Telegram ask was sent successfully; its arrival on the phone was not separately confirmed in this session. |
+| **Not done** | No customer decision. The owner left the Telegram ask unanswered, so request B stayed `SENT`. The human user created the one plan approval, through the browser. Claude and its automation created no approval, customer decision or consent. |
 
 ## Procedure and timeline (UTC, 2026-10-02)
 
@@ -84,8 +84,9 @@ after { case_state EXECUTING, applying [A], awaiting_approval [B], escalated {C,
   before the turn by the browser route. The turn wrote no second one.
 - The confirmation's correlation id is the MCP tool call's. The approval it spent is the browser
   press's. So the effecting step came over MCP, and its authority is the person's earlier press.
-  The ledger names Maya, not the surface worker, and `BROWSER_SESSION`, the only kind of channel
-  that can write an approval (ADR-0018).
+  The ledger attributes the action to Maya under her existing human approval, on
+  `BROWSER_SESSION`, the only kind of channel that can write an approval (ADR-0018), and not to the
+  MCP bearer or service credential.
 - No `POST /api/conversation/confirm` appears in the window. The browser's combined
   record-and-confirm route was not used.
 
