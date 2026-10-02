@@ -1,0 +1,44 @@
+
+PROOF run=alexa label=store at=2026-10-02T12:00:50.403736
+case=621a46a5-79b1-50a6-9956-62dbf897ba3b state=WAITING
+track pr-a RECOVERED AUTO_RECOVERABLE R-PREAPPROVED
+track pr-b WAITING_FOR_CUSTOMER APPROVAL_REQUIRED R-VISIBLE-ASK
+track pr-c ESCALATED BLOCKED R-NOSUB
+track pr-d ESCALATED BLOCKED R-NOSUB
+track pr-e UNAFFECTED UNAFFECTED R-UNREACH
+track pr-f UNAFFECTED UNAFFECTED R-UNREACH
+request {"captured_order_version": 1, "captured_recipe_version_id": "rv-raspberry-rose-2", "deadline": "2026-10-02T16:55:55.138224+00:00", "decided": false, "promise_id": "pr-b", "sent_at": "2026-10-02T12:00:04.327714+00:00", "state": "SENT"}
+plan_approvals=1
+step 2026-10-02T11:55:57.234092+00:00 None PLAN_RECOVERY DONE attempts=1 {"outcome": "PLANNED"}
+step 2026-10-02T12:00:02.312467+00:00 pr-b REQUEST_APPROVAL DONE attempts=1 {"outcome": "REQUESTED"}
+step 2026-10-02T12:00:02.312467+00:00 pr-a APPLY_RECOVERY DONE attempts=1 {"outcome": "APPLYING"}
+step 2026-10-02T12:00:04.263941+00:00 None FINALIZE_RECOVERY DONE attempts=2 {"outcome": "RECOVERED"}
+audit 1261 None CASE_OPENED WORKER NONE 2026-10-02T11:55:56.642337+00:00 {}
+audit 1263 None CLARIFICATION_REQUESTED SYSTEM NONE 2026-10-02T11:55:56.862474+00:00 {}
+audit 1265 None CLARIFICATION_ANSWERED WORKER NONE 2026-10-02T11:55:56.955418+00:00 {}
+audit 1267 None PHYSICAL_FACT_RECORDED WORKER NONE 2026-10-02T11:55:57.100414+00:00 {}
+audit 1269 None IMPACT_ANALYZED SYSTEM NONE 2026-10-02T11:55:57.234092+00:00 {}
+audit 1271 None RECOVERY_PLANNED SYSTEM NONE 2026-10-02T11:55:57.501905+00:00 {}
+audit 1274 None PLAN_APPROVED WORKER HUMAN_APPROVAL 2026-10-02T11:58:10.776192+00:00 {}
+audit 1275 None PLAN_CONFIRMED WORKER HUMAN_APPROVAL 2026-10-02T12:00:02.312467+00:00 {}
+audit 1276 pr-b APPROVAL_REQUESTED SYSTEM CONSTRAINT 2026-10-02T12:00:03.335675+00:00 {}
+audit 1278 pr-a RECOVERY_APPLIED SYSTEM CONSTRAINT 2026-10-02T12:00:04.099390+00:00 {"track_state": "APPLYING"}
+audit 1280 pr-b APPROVAL_SENT SYSTEM NONE 2026-10-02T12:00:04.327714+00:00 {"track_state": "WAITING_FOR_CUSTOMER"}
+audit 1283 pr-a RECOVERY_COMPLETED SYSTEM CONSTRAINT 2026-10-02T12:00:05.615534+00:00 {"track_state": "RECOVERED"}
+outbox MESSAGE_SEND DELIVERED attempts=1 key=- created=2026-10-02T12:00:03.335675+00:00 target=null
+outbox ORDER_AMEND DELIVERED attempts=1 key=pp:amend:f5881e5b-0c61-5b07-8b7c-981f6f4f9777:58cd11e3-3cdf-5356-bbd4-e8744d4fa615:1 created=2026-10-02T12:00:04.099390+00:00 target={"option_id": "58cd11e3-3cdf-5356-bbd4-e8744d4fa615"}
+mirror EXT-A v2 AMENDED rv-raspberry-almond-4 qty=1
+mirror EXT-B v1 ACCEPTED rv-raspberry-rose-2 qty=1
+mirror EXT-C v1 ACCEPTED rv-raspberry-charlotte-1 qty=1
+mirror EXT-D v1 ACCEPTED rv-raspberry-lemon-2 qty=1
+mirror EXT-E v1 ACCEPTED rv-dark-chocolate-ganache-5 qty=1
+mirror EXT-F v1 ACCEPTED rv-blueberry-danish-1 qty=24
+store EXT-A {"lines": [{"item": "rv-raspberry-almond-4", "note": "Amended by PromisePatch \u2014 approved by customer, ", "qty": 1}], "state": "AMENDED", "version": 2}
+store EXT-B {"lines": [{"item": "rv-raspberry-rose-2", "note": "", "qty": 1}], "state": "ACCEPTED", "version": 1}
+store_event {"attempts": 1, "delivery": "DELIVERED", "lines": [{"item": "rv-raspberry-almond-4", "note": "Amended by PromisePatch \u2014 approved by customer, ", "qty": 1}], "occurred_at": "2026-10-02T12:00:04.251469Z", "order": "EXT-A", "origin": "PromisePatch amendment pp:amend:f5881e5b-0c61-5b07-8b7c-981f6f4f9777:58cd11e3-3cdf-5356-bbd4-e8744d4fa615:1", "version": 2}
+masked_check_addresses=0
+address_leak_guard=False
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-leg922h26zff39fxi9v4koj978.
+

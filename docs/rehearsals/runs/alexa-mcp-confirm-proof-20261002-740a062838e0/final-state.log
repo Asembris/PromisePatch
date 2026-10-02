@@ -1,0 +1,61 @@
+
+ALEXA run=final label=after-final-restore at=2026-10-02T12:02:06.991522 since=2026-10-02T11:55:37Z
+fixture_loaded_at=2026-10-02T12:01:39.387876+00:00 db_now=2026-10-02T12:02:07.680093+00:00
+case=efa7d70b-906a-5bdd-a64f-86288bf679af state=PLANNED version=7 cases_total=1
+track pr-a PENDING AUTO_RECOVERABLE R-PREAPPROVED
+track pr-b PENDING APPROVAL_REQUIRED R-VISIBLE-ASK
+track pr-c PENDING BLOCKED R-NOSUB
+track pr-d PENDING BLOCKED R-NOSUB
+track pr-e UNAFFECTED UNAFFECTED R-UNREACH
+track pr-f UNAFFECTED UNAFFECTED R-UNREACH
+plan_approvals_total=0
+audit 1286 None CASE_OPENED WORKER NONE 2026-10-02T12:01:40.953972+00:00
+audit 1288 None CLARIFICATION_REQUESTED SYSTEM NONE 2026-10-02T12:01:41.187846+00:00
+audit 1290 None CLARIFICATION_ANSWERED WORKER NONE 2026-10-02T12:01:41.278901+00:00
+audit 1292 None PHYSICAL_FACT_RECORDED WORKER NONE 2026-10-02T12:01:41.407490+00:00
+audit 1294 None IMPACT_ANALYZED SYSTEM NONE 2026-10-02T12:01:41.543457+00:00
+audit 1296 None RECOVERY_PLANNED SYSTEM NONE 2026-10-02T12:01:41.808731+00:00
+approval_requests_total=0
+approval_decisions_total=0
+inbound_replies_total=0
+customer_inbox_since_fixture=0
+mirror EXT-A v1 ACCEPTED rv-raspberry-almond-3
+mirror EXT-B v1 ACCEPTED rv-raspberry-rose-2
+mirror EXT-C v1 ACCEPTED rv-raspberry-charlotte-1
+mirror EXT-D v1 ACCEPTED rv-raspberry-lemon-2
+mirror EXT-E v1 ACCEPTED rv-dark-chocolate-ganache-5
+mirror EXT-F v1 ACCEPTED rv-blueberry-danish-1
+address_leak_guard=False
+--- api: bridge, model, approval and intent lines
+{"case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "worker": "maya", "event": "conversation.approve.recorded", "correlation_id": "494448d4-0fe5-4aa9-8d59-9df84b3fbc93", "level": "info", "timestamp": "2026-10-02T11:58:10.804568Z"}
+INFO:     172.29.0.10:34396 - "POST /api/conversation/approve HTTP/1.1" 201 Created
+INFO:     172.29.0.5:47216 - "POST /internal/intents/status HTTP/1.1" 200 OK
+{"job": "select_tool", "provider": "bedrock", "correlation_id": "8234ddf5-3528-49b0-a869-eccb12259bd8", "case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "outcome": "answered", "model_id": "us.amazon.nova-2-lite-v1:0", "attempts": 1, "input_tokens": 1847, "output_tokens": 28, "latency_ms": 814, "event": "semantic.answered", "level": "info", "timestamp": "2026-10-02T12:00:02.140389Z"}
+{"case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "created": true, "worker": "maya", "approved_via": "BROWSER_SESSION", "event": "intents.confirm.accepted", "correlation_id": "1b6a1f6c-742c-4348-a006-ac9f145b3315", "level": "info", "timestamp": "2026-10-02T12:00:02.905889Z"}
+INFO:     172.29.0.5:47216 - "POST /internal/intents/confirm HTTP/1.1" 202 Accepted
+INFO:     172.29.0.5:47216 - "POST /internal/intents/status HTTP/1.1" 200 OK
+{"case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "hydrated": true, "selected": "CONFIRM", "calls": ["confirm", "status"], "phase": "WORKING", "event": "simulated_alexa.turn", "correlation_id": "0c8a70a3-a06a-415e-af86-560942ddb5f3", "level": "info", "timestamp": "2026-10-02T12:00:03.474809Z"}
+INFO:     172.29.0.10:54938 - "POST /api/conversation/simulated-alexa HTTP/1.1" 200 OK
+--- api: request paths for conversation/intent POSTs
+      1 POST /api/conversation/approve HTTP/1.1
+      1 POST /api/conversation/simulated-alexa HTTP/1.1
+      1 POST /internal/intents/confirm HTTP/1.1
+      2 POST /internal/intents/status HTTP/1.1
+--- mcp: tool and auth lines
+INFO:     172.29.0.2:56152 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     172.29.0.2:56158 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     172.29.0.2:56174 - "POST /mcp HTTP/1.1" 200 OK
+{"client": "bearer:802b52be7f34", "case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "correlation_id": "67813ce0-5785-42eb-9d76-58d372917352", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-10-02T12:00:01.200936Z"}
+INFO:     172.29.0.2:56190 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     172.29.0.2:56206 - "POST /mcp HTTP/1.1" 200 OK
+{"client": "bearer:802b52be7f34", "case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "correlation_id": "1b6a1f6c-742c-4348-a006-ac9f145b3315", "event": "mcp.tool.confirm", "level": "info", "timestamp": "2026-10-02T12:00:02.908017Z"}
+INFO:     172.29.0.2:56222 - "POST /mcp HTTP/1.1" 200 OK
+{"client": "bearer:802b52be7f34", "case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "correlation_id": "1c9c7ae2-c6c9-43f4-8617-0812d1805256", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-10-02T12:00:03.464741Z"}
+--- container ip of api
+172.29.0.2 
+counters sendMessage=10 worker.telegram.sent=10 getUpdates=0 worker.start=9 worker.stop=8
+privacy since=2026-10-02T11:55:37Z lines=188 address=0 bot_token=0 link_secret=0 mcp_bearer=0 internal_token=0 token_shaped=0 unredacted_query=0 unredacted_path=0
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-qkpnbz2ko6z6v3zecughvtnkoi.
+

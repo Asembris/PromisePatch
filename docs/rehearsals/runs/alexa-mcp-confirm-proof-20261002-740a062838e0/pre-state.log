@@ -1,0 +1,15 @@
+
+STATE run=pre at=2026-10-02T11:55:21.259906 worker_running=true
+cases=[{"id": "5645dee8-c907-5803-ad8e-84b518938c1c", "state": "RESOLVED", "version": 9, "needs_owner_attention": true}]
+tracks=[{"promise_id": "pr-a", "state": "ESCALATED", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "ESCALATED", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-d", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-e", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}, {"promise_id": "pr-f", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}]
+plan_approvals=[]
+requests=[]
+decisions=[]
+inbox=[]
+outbox=[]
+orders=[{"external_id": "EXT-A", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-almond-3"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+counters sendMessage=9 worker.telegram.sent=9 getUpdates=0 worker.start=9 worker.stop=8
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-8yuk9yoydbr5rkd6bkpi8ik8f4.
+

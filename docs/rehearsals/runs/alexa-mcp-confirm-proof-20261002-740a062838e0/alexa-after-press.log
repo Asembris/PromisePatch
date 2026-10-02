@@ -1,0 +1,45 @@
+
+ALEXA run=alexa label=after-press at=2026-10-02T11:58:40.721889 since=2026-10-02T11:55:37Z
+fixture_loaded_at=2026-10-02T11:55:55.138224+00:00 db_now=2026-10-02T11:58:41.347911+00:00
+case=621a46a5-79b1-50a6-9956-62dbf897ba3b state=PLANNED version=7 cases_total=1
+track pr-a PENDING AUTO_RECOVERABLE R-PREAPPROVED
+track pr-b PENDING APPROVAL_REQUIRED R-VISIBLE-ASK
+track pr-c PENDING BLOCKED R-NOSUB
+track pr-d PENDING BLOCKED R-NOSUB
+track pr-e UNAFFECTED UNAFFECTED R-UNREACH
+track pr-f UNAFFECTED UNAFFECTED R-UNREACH
+plan_approvals_total=1
+plan_approval {"approved_at": "2026-10-02T11:58:10.776192+00:00", "approved_by": "maya", "case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "channel": "BROWSER_SESSION", "evidence": "<explicit confirmation control>", "id": "f5eb7769-5cd1-4ced-af29-3e75ccb3ab74", "plan_id": "7311b4f8a30900fc397b7b8228886a411131177677da88eb555a8f574c3dd367"}
+authority_audit {"actor_id": "maya", "actor_kind": "WORKER", "after": {"approved_by": "maya", "channel": "BROWSER_SESSION", "plan_id": "7311b4f8a30900fc397b7b8228886a411131177677da88eb555a8f574c3dd367"}, "authority": "HUMAN_APPROVAL", "correlation_id": "ba996ab4-1c53-4cfc-9445-a6a0c5e907d3", "occurred_at": "2026-10-02T11:58:10.776192+00:00", "provenance": {"approval_id": "f5eb7769-5cd1-4ced-af29-3e75ccb3ab74", "channel": "BROWSER_SESSION"}, "seq": 1274, "type": "PLAN_APPROVED"}
+audit 1261 None CASE_OPENED WORKER NONE 2026-10-02T11:55:56.642337+00:00
+audit 1263 None CLARIFICATION_REQUESTED SYSTEM NONE 2026-10-02T11:55:56.862474+00:00
+audit 1265 None CLARIFICATION_ANSWERED WORKER NONE 2026-10-02T11:55:56.955418+00:00
+audit 1267 None PHYSICAL_FACT_RECORDED WORKER NONE 2026-10-02T11:55:57.100414+00:00
+audit 1269 None IMPACT_ANALYZED SYSTEM NONE 2026-10-02T11:55:57.234092+00:00
+audit 1271 None RECOVERY_PLANNED SYSTEM NONE 2026-10-02T11:55:57.501905+00:00
+audit 1274 None PLAN_APPROVED WORKER HUMAN_APPROVAL 2026-10-02T11:58:10.776192+00:00
+approval_requests_total=0
+approval_decisions_total=0
+inbound_replies_total=0
+customer_inbox_since_fixture=0
+mirror EXT-A v1 ACCEPTED rv-raspberry-almond-3
+mirror EXT-B v1 ACCEPTED rv-raspberry-rose-2
+mirror EXT-C v1 ACCEPTED rv-raspberry-charlotte-1
+mirror EXT-D v1 ACCEPTED rv-raspberry-lemon-2
+mirror EXT-E v1 ACCEPTED rv-dark-chocolate-ganache-5
+mirror EXT-F v1 ACCEPTED rv-blueberry-danish-1
+address_leak_guard=False
+--- api: bridge, model, approval and intent lines
+{"case_id": "621a46a5-79b1-50a6-9956-62dbf897ba3b", "worker": "maya", "event": "conversation.approve.recorded", "correlation_id": "494448d4-0fe5-4aa9-8d59-9df84b3fbc93", "level": "info", "timestamp": "2026-10-02T11:58:10.804568Z"}
+INFO:     172.29.0.10:34396 - "POST /api/conversation/approve HTTP/1.1" 201 Created
+--- api: request paths for conversation/intent POSTs
+      1 POST /api/conversation/approve HTTP/1.1
+--- mcp: tool and auth lines
+--- container ip of api
+172.29.0.2 
+counters sendMessage=9 worker.telegram.sent=9 getUpdates=0 worker.start=9 worker.stop=8
+privacy since=2026-10-02T11:55:37Z lines=67 address=0 bot_token=0 link_secret=0 mcp_bearer=0 internal_token=0 token_shaped=0 unredacted_query=0 unredacted_path=0
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-7sp9yfhnhsdrd8scjjukjrx6ry.
+

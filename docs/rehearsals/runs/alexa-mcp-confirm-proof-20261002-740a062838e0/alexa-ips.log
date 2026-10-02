@@ -1,0 +1,19 @@
+
+IPS at=2026-10-02T12:00:42.880308
+ip api 172.29.0.2 
+ip worker 172.29.0.4 
+ip mcp 172.29.0.5 
+ip caddy 172.29.0.10 
+ip order-simulator 172.29.0.3 
+healthz={"status":"ok","service":"api","version":"0.1.0","boot_id":"91c6ba5c-287c-4406-b0e0-e22f99b33635","image":"740a062838e0"}
+readyz ready migration 0010_condition_clarification fixture 2026-10-02T11:55:55.138224Z 6a07e5ccfc64048da2f6a953b210be23472f6c1bfe512753703e4c508ec69eb3
+container api image=740a062838e0 running=true started=2026-10-01T21:24:30.095635935Z restarts=0
+container worker image=740a062838e0 running=true started=2026-10-02T10:49:48.267557163Z restarts=0
+container mcp image=740a062838e0 running=true started=2026-10-01T21:24:36.551929777Z restarts=0
+container caddy image=2.10-alpine running=true started=2026-10-01T21:24:36.744978679Z restarts=0
+container order-simulator image=740a062838e0 running=true started=2026-10-01T21:24:26.958674864Z restarts=0
+host_boot_id=d0e0f54c-7535-4f39-b176-c8934ed62570
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-see69cydddtbocx4974nla5sse.
+
