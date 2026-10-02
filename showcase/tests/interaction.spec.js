@@ -265,8 +265,8 @@ test.describe('copy buttons', () => {
     const buttons = page.locator('#deployment [data-copy]');
     await expect(buttons).toHaveCount(2);
     for (const [key, value, name] of [
-      ['prod', '4529a802e34e', 'Deployed product SHA'],
-      ['rel', '56c302366b3ddc0d824c1588a4a9ddbd193ed891', 'Repository release SHA'],
+      ['prod', '740a062838e0', 'Deployed product SHA'],
+      ['rel', '740a062838e0ea2620499abed27d653c42fc05f7', 'Repository release SHA'],
     ]) {
       const btn = page.locator(`#deployment [data-copy="${key}"]`);
       await expect(btn).toBeVisible();
@@ -277,7 +277,7 @@ test.describe('copy buttons', () => {
       await expect(btn).toHaveText('Copy', { timeout: 3000 });
     }
     // The copied values are the ones the page shows.
-    await expect(page.locator('#deployment .sha-card__value--short')).toHaveText('4529a802e34e');
-    await expect(page.locator('#deployment .sha-card__value--long')).toHaveText('56c302366b3ddc0d824c1588a4a9ddbd193ed891');
+    await expect(page.locator('#deployment .sha-card__value--short')).toHaveText('740a062838e0');
+    await expect(page.locator('#deployment .sha-card__value--long')).toHaveText('740a062838e0ea2620499abed27d653c42fc05f7');
   });
 });

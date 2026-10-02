@@ -55,9 +55,11 @@ for (const [key, entry] of Object.entries({ ...FACTS, ...BOUNDARIES })) {
 }
 
 // The root README is the other judge-facing surface: the same claim-scope
-// rules hold there. Markdown emphasis, code ticks and <br/> are presentation.
+// rules hold there. Markdown emphasis, code ticks and <br/> are presentation;
+// a table cell is its own statement, so a row's cells never run together.
 const readme = readFileSync(resolve(repo, 'README.md'), 'utf8')
   .replace(/<br\s*\/?>/gi, ' ')
+  .replace(/^\|.*\|$/gm, (row) => row.replace(/\s*\|\s*/g, '. '))
   .replace(/[*`_]/g, '')
   .replace(/\s+/g, ' ');
 for (const f of checkClaims(readme)) failures.push(`README.md: ${f}`);

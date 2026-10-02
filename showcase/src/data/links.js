@@ -15,15 +15,16 @@ export const LINKS = {
   liveApp: LIVE_APP,
   repo: REPO,
   honestLimitations: `${REPO}#honest-limitations`,
-  ciRun: `${REPO}/actions/runs/36310794944`,
+  ciRun: `${REPO}/actions/runs/36925136266`,
   caseDefinition: doc('seeded-demo-case.md'),
   r3Record: doc('g8-rehearsal-r3.md'),
   demoFunnel: doc('g8-demo-funnel.md'),
-  r1: doc('g8-rehearsal-r1.md'),
-  r2: doc('g8-rehearsal-r2.md'),
-  r3: doc('g8-rehearsal-r3.md'),
-  r4: doc('g8-rehearsal-r4.md'),
-  r5: doc('g8-rehearsal-r5.md'),
+  // R1–R5 on the current release: one record, one section (bridge-release.md).
+  r1: doc('bridge-release.md#r1r5-on-740a062838e0'),
+  r2: doc('bridge-release.md#r1r5-on-740a062838e0'),
+  r3: doc('bridge-release.md#r1r5-on-740a062838e0'),
+  r4: doc('bridge-release.md#r1r5-on-740a062838e0'),
+  r5: doc('bridge-release.md#r1r5-on-740a062838e0'),
   firstScoredRun: doc('effect-set-first-scored-run.md'),
   releaseCondition: doc('g8-effect-set-release-condition.md'),
   voice: doc('g7-ten-turn-voice-measurement.md'),
@@ -32,6 +33,9 @@ export const LINKS = {
   customerChannel: doc('deployed-customer-channel.md'),
   claimsAudit: doc('claims-audit.md'),
   contractRunner: doc('g8-demo-contract-runner.md'),
+  bridgeRelease: doc('bridge-release.md'),
+  revalidationProof: doc('revalidation-proof.md'),
+  alexaConfirmProof: doc('alexa-mcp-confirm-proof.md'),
 };
 
 /** Non-navigation URLs the page names (canonical, social preview). */

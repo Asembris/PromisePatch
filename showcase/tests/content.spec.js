@@ -84,8 +84,11 @@ test('negative control: the live rules catch a mutated DOM', async ({ page }) =>
     document.querySelector('#revalidate [data-gate-header]').textContent = '';
     document.querySelector('.evidence-cards__pair .caveat strong').textContent = 'The benchmark went up to 16/16.';
     document.querySelector('.hero__aside .btn--deferred').outerHTML = '<a class="btn" href="https://example.com">Demo video · deferred</a>';
+    document.querySelector('.limits__list').insertAdjacentHTML('beforeend', '<li>EXPIRED and UNAUTHORIZED refusals were exercised live on the deployment.</li><li>Every refusal path was exercised live, once.</li>');
   });
   const failures = checkContent({ html: await liveHtml(page), state: 'live' });
+  expect(failures.join('\n')).toMatch(/refusal claimed live or on the deployment: "EXPIRED and UNAUTHORIZED/);
+  expect(failures.join('\n')).toMatch(/refusal claimed live or on the deployment: "Every refusal path/);
   expect(failures.join('\n')).toMatch(/went up to 16\/16/);
   expect(failures.join('\n')).toMatch(/illustrated STALE outcome is shown without its label/);
   expect(failures.join('\n')).toMatch(/Demo video · deferred" must be aria-disabled with no href/);
@@ -142,9 +145,9 @@ const CORRECTED = [
   'After it, only the production start is judged again, at the amendment’s first dispatch.',
   'The owner, as the demo customer, presses APPROVE. Stored; nothing acts on it.',
   'One customer is asked and answers YES on a signed link. Conditions can change while an answer waits.',
-  'No refusal path has been exercised live.',
-  'STALE was reproduced locally through the frozen implementation, not on the deployment; EXPIRED, UNAUTHORIZED and NOOP are proved by tests only.',
-  'This scenario is illustrative, not a recorded run. STALE was reproduced locally on the frozen code, and EXPIRED, UNAUTHORIZED and NOOP are proved by tests only; none was exercised live.',
+  'One refusal kind has been exercised live, once.',
+  'STALE, through check 2, on 740a062838e0. The other checks refusing, EXPIRED, UNAUTHORIZED, NOOP and the commit-time freshness gate are proved by tests only.',
+  'This scenario is illustrative, not a recorded run: the substitute never ran out. The one live STALE, on 740a062838e0, failed check 2 when the order moved to v2, not this check; EXPIRED, UNAUTHORIZED and NOOP are proved by tests only.',
   'Approval deadline not passed, judged at processing time. 24 Sep 20:31:01Z ≤ 25 Sep 01:26:54Z',
 ];
 

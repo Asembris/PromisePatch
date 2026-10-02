@@ -1,4 +1,4 @@
-// The proof index: ten rows of claim · what it proves · file.
+// The proof index: one row per PROOFS entry, claim · what it proves · file.
 
 import { PROOFS } from '../data/proofs.js';
 import { doc } from '../data/links.js';

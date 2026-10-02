@@ -212,10 +212,10 @@
         <p class="eyebrow">05 · The revalidation moment</p>
         <h2 id="revalidate-title" class="revalidate__title">A yes is <span class="accent-ask">perishable.</span></h2>
       </div>
-      <p class="revalidate__lede">Approval is not a permanent permission token. When a customer’s YES arrives, PromisePatch takes a fresh snapshot and runs ten checks before the change may be committed. A change that is no longer true is refused as <code>STALE</code>, nothing is sent, and that track is re-planned; an expired answer goes to the owner and an unauthorized one is refused. The ten checks guard the commit. After it, only the production start is judged again, at the amendment’s first dispatch.</p>
+      <p class="revalidate__lede">Approval is not a permanent permission token. When a customer’s YES arrives, PromisePatch takes a fresh snapshot and runs ten checks before the change may be committed. A change that is no longer true is refused as <code>STALE</code>, nothing is sent, and that track is re-planned; an expired answer goes to the owner and an unauthorized one is refused. The ten checks guard the commit. After it, only the production start is judged again, at the amendment’s first dispatch. On the current release, one live run showed it: a customer’s yes about one cake at order v1 was refused as <code>STALE</code> at check 2 once a deliberate edit in the simulated order system made it two cakes at v2, and no amendment reached that order. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/revalidation-proof.md">Live revalidation proof</a></p>
     </div>
 
-    <ol data-reveal class="timeline" aria-label="Rehearsal R3 timeline, 24 September 2026, UTC">
+    <ol data-reveal class="timeline" aria-label="Rehearsal R3 timeline, G8 freeze on 4529a802e34e (historical), 24 September 2026, UTC">
       <li><span class="timeline__time">20:27:10</span><span>One Telegram message delivered</span></li>
       <li><span class="timeline__time">20:27:23</span><span>Worker stopped on purpose</span></li>
       <li class="timeline--ask"><span class="timeline__time">20:28:31</span><span>The owner, as the demo customer, presses APPROVE. Stored; nothing acts on it.</span></li>
@@ -259,7 +259,7 @@
           </div>
           <div class="pair__result pair__result--separate">
             <div class="pair__figure"><span class="numeral">{{fact.v2Condition}}</span><span class="chip chip--separate">SEPARATE RELEASE CONDITION</span></div>
-            <p class="card__text">Run once against v2, a separately versioned label correction in which one label moved: S12’s hold, because started kitchen work is never held. Product code identical to the deployed release candidate.</p>
+            <p class="card__text">Run once against v2, a separately versioned label correction in which one label moved: S12’s hold, because started kitchen work is never held. Taken once on the current release, 740a062.</p>
             <a class="text-link" href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-effect-set-release-condition.md">v2 release condition →</a>
           </div>
         </div>
@@ -278,7 +278,7 @@
         <h3 id="ci-title" class="label">RELEASE CI</h3>
         <p class="numeral">{{fact.ci}}</p>
         <p class="card__text card__grow">jobs green on the exact release SHA <code class="code-ink">{{fact.releaseShort}}</code>, the whole-stack browser job among them.</p>
-        <a class="text-link" href="https://github.com/Asembris/PromisePatch/actions/runs/36310794944">pr run {{fact.ciRun}} →</a>
+        <a class="text-link" href="https://github.com/Asembris/PromisePatch/actions/runs/36925136266">pr run {{fact.ciRun}} →</a>
       </article>
     </div>
   </div>
@@ -306,7 +306,7 @@
 
     <!-- @render:arch-chain -->
 
-    <p class="architecture__mcp">PromisePatch exposes five intent tools (report, clarify, confirm, withdraw, status) over MCP protocol revision <code class="code-ink">{{fact.mcpRevision}}</code>. <strong>This is not a native Alexa+ integration.</strong> The Alexa+-style experience is simulated by compatible MCP clients calling the real endpoint. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/p5.1-mcp-transport-spine.md">MCP transport proof</a></p>
+    <p class="architecture__mcp">PromisePatch exposes five intent tools (report, clarify, confirm, withdraw, status) over MCP protocol revision <code class="code-ink">{{fact.mcpRevision}}</code>. <strong>This is not a native Alexa+ integration.</strong> The Alexa+-style experience is simulated: a panel in the app drives a case-scoped MCP client on the server, which calls the real, authenticated endpoint. Live on 740a062838e0, a typed “Yes, go ahead.” became a Bedrock <code>CONFIRM</code> and a real MCP <code>confirm</code> that spent the worker’s earlier browser approval and created none. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/alexa-mcp-confirm-proof.md">Live MCP confirm proof</a> · <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/p5.1-mcp-transport-spine.md">MCP transport proof</a></p>
   </div>
 </section>
 
@@ -335,7 +335,7 @@
         <code class="sha-card__value sha-card__value--long">{{fact.releaseSha}}</code>
       </div>
       <p class="visually-hidden" role="status" data-copy-status></p>
-      <p class="deployment__relation">Two different commits whose deployable product paths are tree-identical. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-closeout.md">G8 closeout §3</a> · <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/deployed-customer-channel.md">Customer channel</a></p>
+      <p class="deployment__relation">The image tag is the release commit’s first twelve characters; repository HEAD may carry documentation-only commits on top. Earlier releases are historical: <code>283f63f2845f</code>, and the G8 freeze <code>56c3023</code> / <code>4529a802e34e</code>. <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/bridge-release.md">Bridge release</a> · <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/g8-closeout.md">G8 closeout</a> · <a href="https://github.com/Asembris/PromisePatch/blob/main/docs/deployed-customer-channel.md">Customer channel</a></p>
     </div>
   </div>
 </section>
@@ -357,7 +357,8 @@
       <h3 class="limits__title">What the numbers do not say</h3>
       <ul class="limits__list">
         <li>One bakery, fixture data, a simulated order system. The Telegram message and the web approval are the real parts.</li>
-        <li>No refusal path has been exercised live. <code>STALE</code> was reproduced locally through the frozen implementation, not on the deployment; <code>EXPIRED</code>, <code>UNAUTHORIZED</code> and <code>NOOP</code> are proved by tests only.</li>
+        <li>The Alexa+ experience is simulated by an MCP client on the server; no native Alexa+ skill exists. The live MCP confirm proof is one run of the success path.</li>
+        <li>One refusal kind has been exercised live, once. <code>STALE</code>, through check 2, on 740a062838e0. The other checks refusing, <code>EXPIRED</code>, <code>UNAUTHORIZED</code>, <code>NOOP</code> and the commit-time freshness gate are proved by tests only.</li>
         <li>Telegram inbound is deliberately not built. The signed link proves possession of the message, not identity.</li>
         <li>Telegram’s Bot API has no idempotency key, so a retry after an uncertain send can deliver a duplicate message. Order amendments carry a stable idempotency key, so a duplicate is a second message, never a second amendment.</li>
         <li>MCP intake is a trusted reporting channel. A report over MCP is attested as the server’s configured worker, not by a person the server authenticated.</li>

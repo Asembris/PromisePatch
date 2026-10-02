@@ -58,7 +58,7 @@ test.describe('no JavaScript', () => {
       expect(await isShown(page.locator(width >= 1080 ? '.arch-diagram' : '.chain'))).toBe(true);
 
       // Proof index and the rehearsal table.
-      await expect(page.locator('#proof .proofs > li')).toHaveCount(10);
+      await expect(page.locator('#proof .proofs > li')).toHaveCount(13);
       await expect(page.locator('#evidence table.rehearsals tbody tr')).toHaveCount(5);
 
       // No dead controls: every button is hidden; every visible link navigates.

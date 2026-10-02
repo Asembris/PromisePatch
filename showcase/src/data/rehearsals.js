@@ -1,7 +1,8 @@
 // The R1–R5 table, verbatim from the approved prototype
-// (docs/g8-demo-funnel.md §2; docs/g8-rehearsal-r1.md … r5.md).
+// (docs/g8-demo-funnel.md §2), as taken again on the current release
+// (docs/bridge-release.md §R1–R5 on 740a062838e0).
 
-export const REHEARSALS_CAPTION = '5/5 REHEARSALS ON 4529a802e34e';
+export const REHEARSALS_CAPTION = '5/5 REHEARSALS ON 740a062838e0';
 
 /** [run, link key in LINKS, where the worker was restarted, untouched, verdict] */
 export const REHEARSALS = [

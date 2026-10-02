@@ -144,7 +144,8 @@ CSS `url()`).
   caveat nearby, if a cited source path does not exist, if anything joins 11/16 and 16/16 as a
   progression (an arrow between the two scores, "improved", "now 16/16", "from … to",
   before/after, "benchmark scored 16/16"), if a score appears without its own label, if Telegram
-  is implied as a consent channel, if a refusal is claimed live, if the illustration loses its
+  is implied as a consent channel, if a refusal is claimed live beyond the one `STALE` at check 2 on
+  `740a062838e0`, if the illustration loses its
   label, on any forbidden phrase outside an explicit negation, or if a deferred item gains an
   `href`. A link arrow such as "First scored run →" is not a progression. It also fails on a
   claim wider than the implementation: option-code consent, a plan approval tied to a signed-in
@@ -152,7 +153,8 @@ CSS `url()`).
   execution-time revalidation, a customer pressing APPROVE in R3, a universal `STALE` re-plan, a
   refusal presented as recorded, a midnight-crossing time without dates, or an R3 timeline
   interval that does not reach back to another row. It checks the no-JS page, every string the
-  page can show after an interaction, and (claim scope only) the root `README.md`.
+  page can show after an interaction, and (claim scope only) the root `README.md`, whose table cells it
+  reads as separate statements.
 - `verify:links` fails on an empty, `#` or TBD href, an anchor with no target, an external URL
   not listed in `src/data/links.js`, a `blob/main/` target missing from the working tree, or a
   deferred item rendered as a link. It never fetches anything.

@@ -32,7 +32,7 @@ export const GATE_MODES = {
     header: 'AUDIT 503–512 · SNAPSHOT 20:31:01.207Z',
     verdict: 'PROCEED',
     sub: 'EXT-B amended once, v1 → v2, under HUMAN_APPROVAL. Case RESOLVED at 20:31:03Z.',
-    note: 'Values as pp case-status printed them in rehearsal R3, on the frozen deployment 4529a802e34e.',
+    note: 'Values as pp case-status printed them in rehearsal R3 of the G8 freeze, on the earlier deployment 4529a802e34e (historical). R3 passed again on the current release, 740a062838e0.',
     failIndex: -1,
   },
   hypo: {
@@ -40,7 +40,7 @@ export const GATE_MODES = {
     header: 'ILLUSTRATION · NOT A RECORDED RUN',
     verdict: 'STALE',
     sub: 'Refused as STALE and re-planned. Nothing is written to the order system.',
-    note: 'This scenario is illustrative, not a recorded run. STALE was reproduced locally on the frozen code, and EXPIRED, UNAUTHORIZED and NOOP are proved by tests only; none was exercised live.',
+    note: 'This scenario is illustrative, not a recorded run: the substitute never ran out. The one live STALE, on 740a062838e0, failed check 2 when the order moved to v2, not this check; EXPIRED, UNAUTHORIZED and NOOP are proved by tests only.',
     failIndex: 4,
     failValue: 'no longer available',
   },

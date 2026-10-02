@@ -12,7 +12,8 @@
 //    progression and is allowed;
 //  - product boundaries: Telegram is outbound only, the signed web link is the
 //    consent entry, the order system is labelled simulated, Alexa+ is not
-//    native, no refusal is claimed live, the illustration is labelled;
+//    native, a live refusal is claimed only as the one STALE at check 2 on
+//    740a062838e0, the illustration is labelled;
 //  - claim scope: consent is a literal YES or NO (no option code); a plan
 //    approval comes from a signed-in session or the operator console; MCP
 //    intake is a trusted reporting channel; revalidation guards the commit,
@@ -130,10 +131,11 @@ const SCOPED = [
   [(s) => /\b(?:every|any|all|always)\b[^.]{0,60}\bSTALE\b[^.]{0,60}\bre-?plan/i.test(s)
     || /\bSTALE\b[^.]{0,40}\balways\b[^.]{0,30}\bre-?plan/i.test(s),
     'every stale finding claimed to re-plan (some escalate to the owner instead)'],
-  // STALE was reproduced locally on the frozen code (docs/evidence-hardening-stale-refusal-2026-09-28.md):
-  // it is no longer tests-only, and the local reproduction is never a live one.
-  [(s) => /\bSTALE\b[^.;]{0,80}\bproved (?:only )?by (?:their )?tests\b/i.test(s) && !/\breproduced locally\b/i.test(s),
-    'STALE listed as proved by tests only (it was reproduced locally on the frozen code)'],
+  // STALE was refused live once, at check 2, on 740a062838e0 (docs/revalidation-proof.md):
+  // it is no longer tests-only. The earlier local reproduction
+  // (docs/evidence-hardening-stale-refusal-2026-09-28.md) is never a live one.
+  [(s) => /\bSTALE\b[^.;]{0,80}\bproved (?:only )?by (?:their )?tests\b/i.test(s) && !/\blive\b|\bcheck 2\b/i.test(s),
+    'STALE listed as proved by tests only (it was refused live once, at check 2, on 740a062838e0)'],
   [(s) => /\bSTALE\b[^.;]{0,60}\breproduced\b/i.test(s) && /\blive\b|\bdeploy\w*|\bproduction\b/i.test(s)
     && !/\b(?:not|no|none|never)\b/i.test(s),
     'the local STALE reproduction presented as live or on the deployment'],
@@ -266,11 +268,15 @@ export function checkContent({ html, extra = [], state = 'default' }) {
   if (!/not a native Alexa\+ integration/i.test(page)) fail('"not a native Alexa+ integration" must be present');
   if (!/Alexa\+-style experience is simulated/.test(page)) fail('the Alexa+-style experience must be labelled simulated');
 
-  // A refusal (or refusal state) and "live"/"deployment" in one sentence needs a negation.
+  // A refusal (or refusal state) and "live"/"deployment" in one sentence needs a
+  // negation, unless it is the one live refusal, scoped as such: STALE (or "one
+  // refusal kind") with "once", "check 2" or the release, and no other state.
   for (const sentence of corpus.split(/(?<=[.;!?])\s+/)) {
     if (/\b(?:refus\w*|STALE|EXPIRED|UNAUTHORIZED|NOOP)\b/i.test(sentence)
       && /\b(?:live|deploy\w*)\b/i.test(sentence)
-      && !/\b(?:no|none|not|never)\b|illustrat/i.test(sentence)) {
+      && !/\b(?:no|none|not|never)\b|illustrat/i.test(sentence)
+      && !(/\bstale\b|\bone refusal kind\b/i.test(sentence) && /\bonce\b|\bcheck 2\b|740a062838e0/i.test(sentence)
+        && !/\b(?:EXPIRED|UNAUTHORIZED|NOOP)\b/.test(sentence))) {
       fail(`refusal claimed live or on the deployment: "${sentence.slice(0, 160)}"`);
     }
   }
@@ -280,9 +286,9 @@ export function checkContent({ html, extra = [], state = 'default' }) {
   if (GATE_MODES.hypo.header !== ILLUSTRATION || !hypo.includes(ILLUSTRATION)) {
     fail(`the illustrative gate must be headed "${ILLUSTRATION}"`);
   }
-  if (!/proved by tests only/.test(GATE_MODES.hypo.note) || !/none was exercised live/.test(GATE_MODES.hypo.note)
-    || !/STALE was reproduced locally/.test(GATE_MODES.hypo.note)) {
-    fail('the illustrative gate must carry the local-STALE, tests-only, not-live note');
+  if (!/proved by tests only/.test(GATE_MODES.hypo.note) || !/illustrative, not a recorded run/.test(GATE_MODES.hypo.note)
+    || !/one live STALE[^.;]*check 2[^.;]*not this check/.test(GATE_MODES.hypo.note)) {
+    fail('the illustrative gate must carry the not-a-recorded-run, live-STALE-at-check-2, tests-only note');
   }
   // Wherever the illustrated refusal shows, its label and note show with it.
   if (/Refused as STALE and re-planned|\bno longer available\b/.test(page)
@@ -297,7 +303,7 @@ export function checkContent({ html, extra = [], state = 'default' }) {
       fail('the no-JS gate must show R3 at 10/10 PROCEED');
     }
   }
-  if (!/No refusal path has been exercised live/.test(page)) fail('the limitations panel must say no refusal path was exercised live');
+  if (!/One refusal kind has been exercised live, once\./.test(page)) fail('the limitations panel must say one refusal kind was exercised live, once');
 
   // ---------- claim scope ----------
   for (const f of checkClaims(corpus)) fail(f);
@@ -308,7 +314,7 @@ export function checkContent({ html, extra = [], state = 'default' }) {
     [/\bno idempotency key\b/, 'that Telegram exposes no idempotency key'],
     [/\bowner, as the demo customer, presses APPROVE\b/, 'the owner, as the demo customer, pressing APPROVE in R3'],
     [/\bfirst dispatch\b/, 'where revalidation stops: only the production start is judged again at the first dispatch'],
-    [/\bSTALE was reproduced locally\b[^.;]*\bnot on the deployment\b/, 'that STALE was reproduced locally, not on the deployment'],
+    [/\bSTALE\b[^.;]*\bthrough check 2, on 740a062838e0\b/, 'that the one live STALE went through check 2, on 740a062838e0'],
   ]) if (!re.test(page)) fail(`the page must state ${what}`);
 
   // ---------- forbidden phrases ----------
