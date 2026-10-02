@@ -1,0 +1,118 @@
+{
+    "S": "UPDATE_COMPLETE",
+    "U": "2026-09-30T19:39:56.613000+00:00",
+    "P": [
+        {
+            "ParameterKey": "ImageTag",
+            "ParameterValue": "283f63f2845f"
+        },
+        {
+            "ParameterKey": "SeedDemoFixtureOnFirstBoot",
+            "ParameterValue": "false"
+        },
+        {
+            "ParameterKey": "DatabaseBackupRetentionDays",
+            "ParameterValue": "1"
+        },
+        {
+            "ParameterKey": "DatabaseStorageGiB",
+            "ParameterValue": "20"
+        },
+        {
+            "ParameterKey": "AllowedIngressCidr",
+            "ParameterValue": "0.0.0.0/0"
+        },
+        {
+            "ParameterKey": "TlsHostname",
+            "ParameterValue": ""
+        },
+        {
+            "ParameterKey": "HostSubnetId",
+            "ParameterValue": "subnet-0c8ed66d49566ba6e"
+        },
+        {
+            "ParameterKey": "VpcId",
+            "ParameterValue": "vpc-033f9da8cac696679"
+        },
+        {
+            "ParameterKey": "HostAmiId",
+            "ParameterValue": "ami-0fa4996c14e7d501e"
+        },
+        {
+            "ParameterKey": "Environment",
+            "ParameterValue": "prod"
+        },
+        {
+            "ParameterKey": "InstanceType",
+            "ParameterValue": "t4g.small"
+        },
+        {
+            "ParameterKey": "DatabaseInstanceClass",
+            "ParameterValue": "db.t4g.micro"
+        },
+        {
+            "ParameterKey": "DatabaseSubnetIds",
+            "ParameterValue": "subnet-06892e46df75ae5b6,subnet-0c8ed66d49566ba6e"
+        }
+    ],
+    "O": [
+        {
+            "OutputKey": "TlsHostname",
+            "OutputValue": "184.194.40.87.sslip.io",
+            "Description": "The name the certificate is issued for and every client verifies -- the supplied one, or the one derived from ElasticIp. Read it from here rather than assuming which branch ran."
+        },
+        {
+            "OutputKey": "InstanceRoleArn",
+            "OutputValue": "arn:aws:iam::265243686715:role/PromisePatchInstanceRole",
+            "Description": "The only runtime principal the deployment creates."
+        },
+        {
+            "OutputKey": "PublicUrl",
+            "OutputValue": "https://184.194.40.87.sslip.io",
+            "Description": "The verified HTTPS origin. The MCP endpoint is this plus /mcp."
+        },
+        {
+            "OutputKey": "PublicAddress",
+            "OutputValue": "184.194.40.87",
+            "Description": "Point the TlsHostname DNS A record at this before the certificate is ordered."
+        },
+        {
+            "OutputKey": "DemoFixtureSeededOnFirstBoot",
+            "OutputValue": "false",
+            "Description": "Whether the boot that provisioned an instance would load the demo fixture. False on every release. Read it before a host is replaced: it says whether the replacement's first boot would erase the cases in the database the old host leaves behind."
+        },
+        {
+            "OutputKey": "LogGroupName",
+            "OutputValue": "/promisepatch/prod"
+        },
+        {
+            "OutputKey": "HostInstanceId",
+            "OutputValue": "i-087c742587f83d61d",
+            "Description": "For `aws ssm start-session --target <this>`, and for the restart proof."
+        },
+        {
+            "OutputKey": "DeclaredImageTag",
+            "OutputValue": "283f63f2845f",
+            "Description": "The commit this deploy intended to run. The host converges on the image tag in SSM, which the same deploy wrote, and reports at /healthz the commit its image was built from -- so this and that are two independently readable answers to the same question, and the deployment smoke check fails when they differ."
+        },
+        {
+            "OutputKey": "DeclaredHostAmiId",
+            "OutputValue": "ami-0fa4996c14e7d501e",
+            "Description": "The image this host was built from. Published so `deploy.sh stack` can pass it back unchanged rather than resolving a newer one, which is what keeps an application release from replacing the instance, and so the AMI a deployment actually runs is readable without describing the instance."
+        },
+        {
+            "OutputKey": "McpEndpoint",
+            "OutputValue": "https://184.194.40.87.sslip.io/mcp"
+        },
+        {
+            "OutputKey": "WebhookEndpoint",
+            "OutputValue": "https://184.194.40.87.sslip.io/api/integrations/order-system/events",
+            "Description": "Where the separate order system posts its signed events."
+        },
+        {
+            "OutputKey": "DatabaseEndpoint",
+            "OutputValue": "promisepatch-prod.cado2q0matxj.us-east-1.rds.amazonaws.com",
+            "Description": "Private. Not reachable from outside the host security group."
+        }
+    ]
+}

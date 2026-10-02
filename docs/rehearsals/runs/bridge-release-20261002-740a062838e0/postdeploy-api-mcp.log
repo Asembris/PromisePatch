@@ -1,0 +1,15 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-7alhpsiv6ogpjd5z9x6zcikzia
+api: orchestrator_mcp_url = http://mcp:8001/mcp
+api: mcp_bearer_token set = True
+api: llm_provider = bedrock surface_worker = maya
+api: demo_session_enabled = True
+worker: orchestrator_mcp_url = None provider telegram
+mcp: allowed host count 2 includes mcp:8001 True public sslip True
+internal host + bearer: 200 protocol=2025-11-25
+internal host, no bearer: 401 
+foreign host + bearer: 421 
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-7alhpsiv6ogpjd5z9x6zcikzia.
+

@@ -1,0 +1,24 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-gq97e7sjujgub2cpu2iaa86ili
+STOP_ISSUED=2026-10-02T08:50:55.709361
+ Container promisepatch-worker-1  Stopping
+ Container promisepatch-worker-1  Stopped
+STOP_RETURNED=2026-10-02T08:50:56.401071 worker_running=false
+{"worker": "d790de5fe854:1:661b94ef", "event": "worker.stop", "level": "info", "timestamp": "2026-10-02T08:50:55.810766Z"}
+counters sendMessage=1 worker.telegram.sent=1 getUpdates=0 worker.start=2 worker.stop=2
+cases=[{"id": "0dbcde18-1a4f-5b0d-94ba-e7ae3509f744", "state": "PLANNED", "version": 7, "needs_owner_attention": false}]
+plan_approvals=[]
+requests=[]
+decisions=[]
+inbox=[]
+outbox=[]
+orders=[{"external_id": "EXT-A", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-almond-3"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+tasks=[{"id": "task-ol-a", "state": "SCHEDULED", "held": false}, {"id": "task-ol-b", "state": "SCHEDULED", "held": false}, {"id": "task-ol-c", "state": "SCHEDULED", "held": false}, {"id": "task-ol-d", "state": "SCHEDULED", "held": false}, {"id": "task-ol-e", "state": "STARTED", "held": false}, {"id": "task-ol-f", "state": "SCHEDULED", "held": false}]
+timers=[{"kind": "PLAN_AUTO_ESCALATION", "due_at": "2026-10-02 08:59:25.565116+00:00", "claimed": false, "fired_at": null}]
+steps=[{"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "ANALYZE_IMPACT", "state": "DONE", "attempts": 1}, {"kind": "PLAN_RECOVERY", "state": "DONE", "attempts": 1}]
+audit_max=933 events_max=2248
+revalidation=[{"n": 0, "passed": 0, "first_seq": null, "at": null, "workers": null}]
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-gq97e7sjujgub2cpu2iaa86ili.
+

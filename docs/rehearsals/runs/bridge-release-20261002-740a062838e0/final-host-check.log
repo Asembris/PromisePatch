@@ -1,0 +1,20 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-hjvvalq8htf8gy2c8oa7g59dbe
+FINAL=2026-10-02T09:16:54.256917
+healthz={"status":"ok","service":"api","version":"0.1.0","boot_id":"91c6ba5c-287c-4406-b0e0-e22f99b33635","image":"740a062838e0"}
+readyz ready migration 0010_condition_clarification fixture 2026-10-02T09:12:17.348419Z 93c24bdc52bd9a789292ec8528cd1b3d242379dce5c91f95d82607f109afa5e1
+container api image=740a062838e0 running=true started=2026-10-01T21:24:30.095635935Z restarts=0
+container worker image=740a062838e0 running=true started=2026-10-02T09:13:29.598478746Z restarts=0
+container mcp image=740a062838e0 running=true started=2026-10-01T21:24:36.551929777Z restarts=0
+container caddy image=2.10-alpine running=true started=2026-10-01T21:24:36.744978679Z restarts=0
+container order-simulator image=740a062838e0 running=true started=2026-10-01T21:24:26.958674864Z restarts=0
+host_boot_id=d0e0f54c-7535-4f39-b176-c8934ed62570
+counters sendMessage=6 worker.telegram.sent=6 getUpdates=0 worker.start=7 worker.stop=6
+privacy since=2026-10-01T21:24:00Z lines=9498 address=0 bot_token=0 link_secret=0 mcp_bearer=0 internal_token=0 token_shaped=0 unredacted_query=0 unredacted_path=0
+sha256 compose=8bd533b7d89c630e caddy=2336f25aa8cae184 converge=09105b1001184df4
+volumes: promisepatch_caddy-config promisepatch_caddy-data promisepatch_order-simulator-data 
+api bridge: url http://mcp:8001/mcp bearer_set True
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-hjvvalq8htf8gy2c8oa7g59dbe.
+

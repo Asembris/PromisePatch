@@ -1,0 +1,15 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-rdjo7i6svt4hkci434upan44pa
+AT=2026-10-02T08:40:11.769215
+{"case_id": "3dbedd71-1b4e-5de0-b9e3-2b3cc26c8c21", "worker": "maya", "event": "conversation.approve.recorded", "correlation_id": "6a35ae4a-cc9b-4f0a-9c5f-30cd29071740", "level": "info", "timestamp": "2026-10-02T08:36:38.901620Z"}
+INFO:     172.29.0.10:56712 - "POST /api/conversation/approve HTTP/1.1" 201 Created
+{"job": "select_tool", "provider": "bedrock", "correlation_id": "16bc54f0-c4c3-427a-a895-0387abe9e3ab", "case_id": "3dbedd71-1b4e-5de0-b9e3-2b3cc26c8c21", "outcome": "answered", "model_id": "us.amazon.nova-2-lite-v1:0", "attempts": 1, "input_tokens": 1848, "output_tokens": 28, "latency_ms": 752, "event": "semantic.answered", "level": "info", "timestamp": "2026-10-02T08:39:18.488641Z"}
+{"selected": "CONFIRM", "reason": "NEEDS_THE_WORKERS_YES", "phase": "PLANNED", "event": "orchestrator.turn.blocked", "correlation_id": "fd5702bf-bae1-476b-a119-8a142f1b46a3", "level": "info", "timestamp": "2026-10-02T08:39:18.489003Z"}
+{"case_id": "3dbedd71-1b4e-5de0-b9e3-2b3cc26c8c21", "hydrated": true, "selected": "CONFIRM", "calls": ["status"], "phase": "PLANNED", "event": "simulated_alexa.turn", "correlation_id": "fd5702bf-bae1-476b-a119-8a142f1b46a3", "level": "info", "timestamp": "2026-10-02T08:39:18.621553Z"}
+--- mcp
+{"client": "bearer:802b52be7f34", "case_id": "3dbedd71-1b4e-5de0-b9e3-2b3cc26c8c21", "correlation_id": "4ba5ccc5-36c4-4475-b5ea-5e846f5ef9e1", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-10-02T08:39:17.698768Z"}
+{"client": "bearer:802b52be7f34", "case_id": "3dbedd71-1b4e-5de0-b9e3-2b3cc26c8c21", "correlation_id": "6c8c9987-16cc-4d0c-9b89-3ae95af9738a", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-10-02T08:39:18.617328Z"}
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-rdjo7i6svt4hkci434upan44pa.
+

@@ -1,0 +1,97 @@
+{
+  "run_id": 36925136266,
+  "head_sha": "740a062838e0ea2620499abed27d653c42fc05f7",
+  "jobs": [
+    {
+      "name": "ruff",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:44Z",
+      "completed_at": "2026-10-01T20:55:54Z"
+    },
+    {
+      "name": "mypy",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:44Z",
+      "completed_at": "2026-10-01T20:56:15Z"
+    },
+    {
+      "name": "mcp protocol",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:43Z",
+      "completed_at": "2026-10-01T20:56:12Z"
+    },
+    {
+      "name": "frontend",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:44Z",
+      "completed_at": "2026-10-01T20:56:37Z"
+    },
+    {
+      "name": "whole-stack browser",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:44Z",
+      "completed_at": "2026-10-01T20:59:27Z"
+    },
+    {
+      "name": "gitleaks",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:47Z",
+      "completed_at": "2026-10-01T20:55:57Z"
+    },
+    {
+      "name": "backend + postgres",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:44Z",
+      "completed_at": "2026-10-01T21:09:41Z"
+    },
+    {
+      "name": "order contract + order system",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:43Z",
+      "completed_at": "2026-10-01T20:56:06Z"
+    },
+    {
+      "name": "semantic evaluation",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:44Z",
+      "completed_at": "2026-10-01T20:57:26Z"
+    },
+    {
+      "name": "hypothesis (ci profile)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:43Z",
+      "completed_at": "2026-10-01T20:56:22Z"
+    },
+    {
+      "name": "import-linter",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:43Z",
+      "completed_at": "2026-10-01T20:55:54Z"
+    },
+    {
+      "name": "pytest + coverage",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:56:03Z",
+      "completed_at": "2026-10-01T20:56:45Z"
+    },
+    {
+      "name": "semantic boundary",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-01T20:55:43Z",
+      "completed_at": "2026-10-01T20:55:58Z"
+    }
+  ]
+}

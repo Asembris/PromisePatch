@@ -1,0 +1,9 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-j7a36uyzgek3j3dlxbyqqbgosi
+mcp-requires-bearer status=401 time=0.022640
+origin-refused status=403 time=0.020006
+host-refused status=421 time=0.017610
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-j7a36uyzgek3j3dlxbyqqbgosi.
+

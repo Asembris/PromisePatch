@@ -1,0 +1,4 @@
+action:   inspected
+before:   fixture=hollow-oak cases=0 live=0 outbox=0 unsettled=0 requests=0 decisions=0 approvals=0 replies=0 audit=268889 events=340517 bound=False
+binding:  none-held (would be carried across)
+result:   nothing was written

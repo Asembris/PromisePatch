@@ -1,0 +1,9 @@
+Bridge release R4 attempt 1: NOT COUNTED (evidence incomplete by operator error). Not a FAIL: nothing measured deviated.
+Case b2d506a4-8b31-5aad-9ca3-c697080c19a0. Restore 09:03:14Z-09:03:19Z exit 0; anchor 2026-10-02T09:03:16.193105Z; digest 26364b8709fe6ef787f46e20cfeab04681a92b10e0ded1dfd85252c4bdb808d5.
+The session told the operator to confirm and then press APPROVE immediately, so no CONFIRMED-checkpoint read was taken.
+The protocol's untouched item "unrelated digest equal between CONFIRMED and SETTLED" was therefore not measured, and a PASS cannot be claimed.
+What was measured: confirmation maya BROWSER_SESSION 09:03:58.671730Z; one message (operator confirmed); decision 09:04:05.495090Z APPROVE LITERAL sender match 1;
+  ten checks passed after decision (1035 -> 1037); EXT-A/B v2 store equals mirror; outbox 3 DELIVERED attempt 1, 3 keys; sendMessage +1; case RESOLVED; plan_approvals 1;
+  EXT-C..F v1 mirror and store; ef_digest c05dc8d46aa5ba4824821895f1267b540d54422ff1469b1ef08183611aa40331 PLANNED -> SETTLED unchanged; attribution 0; privacy 0.
+Restart after RESOLVED: issued 09:05:05.105457Z; d790de5fe854:1:06da4bb8 -> d790de5fe854:1:d9eb5326; PRESENT rolled=false; state identical immediately and after 95 s; reader identical; errors 0.
+R4 is re-run in full as attempt 2 with the CONFIRMED read taken before the customer answers.

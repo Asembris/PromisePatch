@@ -1,0 +1,90 @@
+
+=== preflight (zero mutation)
+identity : arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment
+account  : 265243686715
+region   : us-east-1
+
+-- preflight -----------------------------------------------------------------
+  ALLOWED     sts:GetCallerIdentity
+                on *
+                establish which identity the rest of this table describes
+  ALLOWED     iam:SimulatePrincipalPolicy  [informational]
+                on role/PromisePatchDeveloperRole
+                the only API that could prove a mutating permission without mutating
+  DENIED      bedrock:GetFoundationModel  (AccessDeniedException)  [informational]
+                on foundation-model/amazon.nova-2-lite-v1:0
+                not needed to deploy; probed to show the control plane is separately scoped
+
+-- deployment ----------------------------------------------------------------
+  ALLOWED     cloudformation:ListStacks, DescribeStacks, CreateChangeSet, ExecuteChangeSet
+                on stack/promisepatch-*/*
+                the stack is the deployment unit; nothing can be created or read without it
+  ALLOWED     iam:ListRoles, GetRole, CreateRole, PutRolePolicy, CreateInstanceProfile
+                on role/PromisePatch*, instance-profile/PromisePatch*
+                create the instance's runtime role; no other principal is created anywhere
+  DECLARED    iam:PassRole  (not testable)
+                on role/PromisePatchInstanceRole, PassedToService ec2.amazonaws.com
+                attach that one role to that one instance, and nothing else anywhere
+  ALLOWED     ec2:DescribeVpcs, DescribeSubnets, DescribeSecurityGroups, DescribeImages
+                on *
+                place the host and the database subnet group in the account's existing VPC
+  DECLARED    ec2:RunInstances, TerminateInstances, StopInstances, StartInstances  (not testable)
+                on instance/* created by this stack
+                the single host that runs api, worker, mcp, the simulator and the TLS proxy
+  DECLARED    ec2:CreateSecurityGroup, AuthorizeSecurityGroupIngress, AuthorizeSecurityGroupEgress  (not testable)
+                on security-group/* in the stack's VPC
+                inbound 80/443 only; egress 443 plus the database port and nothing else
+  DECLARED    ec2:AllocateAddress, AssociateAddress, ReleaseAddress  (not testable)
+                on elastic-ip/* created by this stack
+                a stable address, so the TLS hostname survives an instance stop and start
+  ALLOWED     ecr:DescribeRepositories, CreateRepository, PutLifecyclePolicy
+                on repository/promisepatch/backend (named, not a registry listing)
+                the two image repositories the host pulls from
+  DECLARED    ecr:GetAuthorizationToken, InitiateLayerUpload, UploadLayerPart, CompleteLayerUpload, PutImage  (not testable)
+                on repository/promisepatch/{backend,order-simulator,frontend}
+                push the locally built images; an image push is not a CloudFormation action
+  ALLOWED     rds:DescribeDBInstances, DescribeDBSubnetGroups, DescribeDBEngineVersions
+                on db:promisepatch-*, subgrp:promisepatch-*
+                the durable PostgreSQL the case state and the step ledger live in
+  DECLARED    rds:CreateDBInstance, CreateDBSubnetGroup, ModifyDBInstance, DeleteDBInstance  (not testable)
+                on db:promisepatch-*, subgrp:promisepatch-*
+                create it private, encrypted, and reachable only from the host's group
+  ALLOWED     ssm:DescribeParameters
+                on parameter/promisepatch/*
+                the secret store; a read proves whether the service is reachable at all
+  DECLARED    ssm:PutParameter, DeleteParameter  (not testable)
+                on parameter/promisepatch/*
+                write the bearer token, session secret, webhook secret and database password
+  ALLOWED     logs:DescribeLogGroups
+                on log-group:/promisepatch/*
+                where container output goes; a read proves whether the service is reachable
+  DECLARED    logs:CreateLogGroup, PutRetentionPolicy, FilterLogEvents  (not testable)
+                on log-group:/promisepatch/*
+                create the group with a retention limit, and read the deployed loop back out
+
+-- runtime -------------------------------------------------------------------
+  ALLOWED     bedrock:InvokeModel
+                on inference-profile/us.amazon.nova-2-lite-v1:0
+                the orchestrator's one semantic call; the instance role needs exactly this
+  DECLARED    ecr:GetAuthorizationToken, BatchGetImage, GetDownloadUrlForLayer, BatchCheckLayerAvailability  (not testable)
+                on repository/promisepatch/*
+                the host pulls its own images at boot and again after a restart
+  DECLARED    ssm:GetParameter, GetParameters, GetParametersByPath, kms:Decrypt  (not testable)
+                on parameter/promisepatch/*, alias/aws/ssm
+                the host reads its secrets at boot; none are baked into an image or an AMI
+  DECLARED    logs:CreateLogStream, PutLogEvents, DescribeLogStreams  (not testable)
+                on log-group:/promisepatch/*
+                container output leaves the host, so a restart cannot erase the evidence
+  DECLARED    ssmmessages:*, ec2messages:*  (not testable)
+                on *
+                Session Manager access, so the host needs no inbound SSH and no key pair
+
+tested   : 9/9 required allowed
+declared : 12 mutating requirements, not testable read-only
+
+Every tested requirement is allowed.
+
+=== stack (application release)
+  release 740a062838e0, host image ami-0fa4996c14e7d501e (unchanged), seed false
+  preserving 10 infrastructure parameters as the stack declares them
+error: this release would replace or remove: ElasticIpAssociation	Host. A release moves the image tag and nothing else, so the change set was deleted unexecuted and nothing was mutated. Run host-image if replacing the instance is what you want.

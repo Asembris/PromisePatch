@@ -23,7 +23,7 @@
   <a href="https://184.194.40.87.sslip.io"><img src="https://img.shields.io/badge/Open_the_live_app-8390F2?style=for-the-badge" alt="Open the live app"></a>
   <a href="#60-second-judge-path"><img src="https://img.shields.io/badge/60--second_judge_path-182238?style=for-the-badge" alt="60-second judge path"></a>
   <a href="#proof-index"><img src="https://img.shields.io/badge/Proof_index-182238?style=for-the-badge" alt="Proof index"></a>
-  <a href="https://github.com/Asembris/PromisePatch/actions/runs/36849971651"><img src="https://img.shields.io/badge/Latest_product_SHA_CI-13_of_13_jobs-2E7D5B?style=for-the-badge" alt="Latest product-code SHA CI: 13 of 13 jobs on caf8064"></a>
+  <a href="https://github.com/Asembris/PromisePatch/actions/runs/36925136266"><img src="https://img.shields.io/badge/Deployed_release_CI-13_of_13_jobs-2E7D5B?style=for-the-badge" alt="Deployed release CI: 13 of 13 jobs on 740a062"></a>
 </p>
 
 <p align="center">
@@ -37,8 +37,9 @@
 
 > **0 of 2 untouched orders received an incident-caused effect, in each of five deployed restart
 > rehearsals** of the canonical case, while the four threatened orders were recovered or escalated.
-> Measured on the G8 deployment (`4529a802e34e`) and repeated on the current deployed release
-> (`283f63f2845f`, [post-intake record](docs/post-intake-release.md)), counted per effect type:
+> Measured on the G8 deployment (`4529a802e34e`), repeated on `283f63f2845f`
+> ([post-intake record](docs/post-intake-release.md)) and again on the current deployed release
+> (`740a062838e0`, [bridge release record](docs/bridge-release.md)), counted per effect type:
 > [the demo funnel](docs/g8-demo-funnel.md).
 
 ## 60-second judge path
@@ -124,18 +125,18 @@ What those numbers do **not** say:
   runs are published in full. They ran on the local stack, with no public-internet round trip,
   using the browser's own speech APIs.
 
-Three states are kept apart, and none stands in for another:
+Releases are kept apart, and none stands in for another:
 
 | state | commit / image | product gate (`pr`) |
 |---|---|---|
-| **latest product-code SHA** | `caf806474d2b` | run [`36849971651`](https://github.com/Asembris/PromisePatch/actions/runs/36849971651), 13 of 13 jobs. **Not deployed**, and no deployed measurement was taken on it. Repository HEAD may contain documentation-only commits on top of it. |
-| **last deployed and revalidated release** | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7`, image `283f63f2845f` | run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324), 13 of 13 jobs. Evidence: [post-intake-release.md](docs/post-intake-release.md). |
+| **deployed, revalidated and frozen release** | `740a062838e0ea2620499abed27d653c42fc05f7`, image `740a062838e0` | run [`36925136266`](https://github.com/Asembris/PromisePatch/actions/runs/36925136266), 13 of 13 jobs. Evidence: [bridge-release.md](docs/bridge-release.md). Repository HEAD may contain documentation-only commits on top of it. |
+| earlier deployed release, historical | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7`, image `283f63f2845f` | run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324), 13 of 13 jobs. Evidence: [post-intake-release.md](docs/post-intake-release.md). |
 | older historical release | `56c302366b3d` / image `4529a802e34e` | run [`36310794944`](https://github.com/Asembris/PromisePatch/actions/runs/36310794944), 13 of 13 jobs. Kept as history. |
 
-`caf8064` is a product-code change made after the deployed release: it scopes the preserved ledger
-evidence to the current case incarnation (`apps/backend/src/promisepatch/domain/recovery.py`, with
-`scripts/demo_contract.py` and its test). It is not a documentation or evidence-only change, and
-the deployed image `283f63f2845f` does not contain it.
+The current release carries `caf8064`, which scopes the preserved ledger evidence to the current
+case incarnation, and the simulated Alexa+ via MCP bridge of
+[ADR-0028](docs/adr/0028-a-simulated-alexa-turn-is-a-case-scoped-mcp-client-on-the-server.md),
+with the deployment wiring that bridge needed.
 
 ## How authority works
 
@@ -259,15 +260,15 @@ anywhere. It serves the case workspace, the API, the event stream and the MCP en
 
 | | |
 |---|---|
-| deployed image | `283f63f2845f`, as `GET /healthz` reported it on 2026-09-30 |
-| repository release SHA | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7`, `pr` run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324) |
-| latest product-code SHA | `caf8064`, `pr` run [`36849971651`](https://github.com/Asembris/PromisePatch/actions/runs/36849971651) 13 of 13. **Not deployed.** |
+| deployed image | `740a062838e0`, as `GET /healthz` reported it on 2026-10-02 |
+| repository release SHA | `740a062838e0ea2620499abed27d653c42fc05f7`, `pr` run [`36925136266`](https://github.com/Asembris/PromisePatch/actions/runs/36925136266) 13 of 13 |
+| earlier deployed release, historical | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7` / image `283f63f2845f`, `pr` run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324) ([post-intake-release.md](docs/post-intake-release.md)) |
 | older historical release | `56c302366b3ddc0d824c1588a4a9ddbd193ed891` / image `4529a802e34e`, the G8 freeze. Its deployable paths were tree-identical to each other ([g8-closeout.md](docs/g8-closeout.md) §3) |
 | customer channel | Telegram outbound is live; one message was delivered per rehearsal. Customers answer through the signed web link ([deployed-customer-channel.md](docs/deployed-customer-channel.md)) |
-| release freeze | the G8 freeze of 2026-09-27 was reopened by [ADR-0027](docs/adr/0027-a-physical-exception-rests-on-the-workers-words-or-the-workers-yes.md) and re-established at `283f63f` ([post-intake-release.md](docs/post-intake-release.md)) |
+| release freeze | the G8 freeze of 2026-09-27 was reopened by [ADR-0027](docs/adr/0027-a-physical-exception-rests-on-the-workers-words-or-the-workers-yes.md) and re-established at `283f63f` ([post-intake-release.md](docs/post-intake-release.md)), then reopened for the ADR-0028 bridge and re-established at `740a062` ([bridge-release.md](docs/bridge-release.md)) |
 
-How it got there: [post-intake-release.md](docs/post-intake-release.md) (the release that runs
-now), then the earlier history in [p6.2-first-deployment.md](docs/p6.2-first-deployment.md),
+How it got there: [bridge-release.md](docs/bridge-release.md) (the release that runs now),
+[post-intake-release.md](docs/post-intake-release.md) (the one before it), then the earlier history in [p6.2-first-deployment.md](docs/p6.2-first-deployment.md),
 [phase7-rc-deployment.md](docs/phase7-rc-deployment.md),
 [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) (the
 `4529a802e34e` image) and [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md).
@@ -309,10 +310,11 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 
 | claim | record | what it proves |
 |---|---|---|
-| latest product-code SHA passes CI | [`pr` run 36849971651](https://github.com/Asembris/PromisePatch/actions/runs/36849971651) | 13 of 13 jobs on `caf8064`. This commit is not deployed. |
-| last deployed release, revalidated | [post-intake-release.md](docs/post-intake-release.md) | release `283f63f`, image `283f63f2845f`, [`pr` run 36759222324](https://github.com/Asembris/PromisePatch/actions/runs/36759222324) 13 of 13; migration 0010; v2 effect set 16/16; five new deployed restart rehearsals; local demo contract 47 assertions |
+| deployed release passes CI | [`pr` run 36925136266](https://github.com/Asembris/PromisePatch/actions/runs/36925136266) | 13 of 13 jobs on `740a062`, the commit that is deployed |
+| deployed release, revalidated | [bridge-release.md](docs/bridge-release.md) | release `740a062`, image `740a062838e0`; the simulated Alexa+ bridge verified live with a real Bedrock turn over the real MCP endpoint; v2 effect set 16/16; five deployed restart rehearsals, each PASS; local demo contract 47 assertions |
+| earlier deployed release, historical | [post-intake-release.md](docs/post-intake-release.md) | release `283f63f`, image `283f63f2845f`, [`pr` run 36759222324](https://github.com/Asembris/PromisePatch/actions/runs/36759222324) 13 of 13; migration 0010; v2 effect set 16/16; five deployed restart rehearsals; local demo contract 47 assertions |
 | older release proof, historical | [g8-closeout.md](docs/g8-closeout.md) | 22 of 22 G8 rows closed at `56c3023`, image `4529a802e34e`, [`pr` run 36310794944](https://github.com/Asembris/PromisePatch/actions/runs/36310794944) 13 of 13 |
-| restart-safe on the deployment, historical | [R1](docs/g8-rehearsal-r1.md) · [R2](docs/g8-rehearsal-r2.md) · [R3](docs/g8-rehearsal-r3.md) · [R4](docs/g8-rehearsal-r4.md) · [R5](docs/g8-rehearsal-r5.md) | five worker restarts at four points on `4529a802e34e`, each PASS, every effect recorded once and delivered on attempt 1. The same five were repeated on `283f63f2845f`, in the post-intake record |
+| restart-safe on the deployment, historical | [R1](docs/g8-rehearsal-r1.md) · [R2](docs/g8-rehearsal-r2.md) · [R3](docs/g8-rehearsal-r3.md) · [R4](docs/g8-rehearsal-r4.md) · [R5](docs/g8-rehearsal-r5.md) | five worker restarts at four points on `4529a802e34e`, each PASS, every effect recorded once and delivered on attempt 1. The same five were repeated on `283f63f2845f`, in the post-intake record, and on `740a062838e0`, in the bridge release record |
 | untouched means untouched | [g8-demo-funnel.md](docs/g8-demo-funnel.md) | the funnel 6 → 1/1/2 + 2, and 0/2 untouched orders affected, in all five rehearsals |
 | the storyboard is executable | [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md) | 49 assertions through the intent API and the signed link, with no direct consent insert; the post-intake local run recorded 47 (console confirmation skips two browser-intent assertions) |
 | the immutable headline | [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) | 11/16 against frozen v1, with every diff published |
@@ -321,7 +323,7 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 | the voice number | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) | 9/10 in run 2, with void run 1 and every timing published |
 | MCP transport | [p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) | Streamable HTTP, `2025-11-25`, bearer and `Origin`/`Host` refusals, tested with the official SDK |
 | real customer loop | [deployed-customer-channel.md](docs/deployed-customer-channel.md) · [customer-approval-link.md](docs/customer-approval-link.md) | one Telegram delivery and a web `YES`, revalidated, then `EXT-B` amended once |
-| the deployment | [post-intake-release.md](docs/post-intake-release.md) · [p6.2-first-deployment.md](docs/p6.2-first-deployment.md) | the release that runs now (`283f63f2845f`), and the AWS stack it runs on |
+| the deployment | [bridge-release.md](docs/bridge-release.md) · [p6.2-first-deployment.md](docs/p6.2-first-deployment.md) | the release that runs now (`740a062838e0`), and the AWS stack it runs on |
 | engine from a clean clone | [g8-standalone-fresh-clone-proof.md](docs/g8-standalone-fresh-clone-proof.md) | 335 tests passed from a fresh public clone |
 | effect-set clone check | [g8-effect-set-fresh-clone-proof.md](docs/g8-effect-set-fresh-clone-proof.md) | `uv sync --frozen` and both manifests' checks exit `0` |
 | development evidence | [g8-development-evidence.md](docs/g8-development-evidence.md) | curated, redacted evaluation results, failures kept |
@@ -555,6 +557,6 @@ cd apps/frontend && npx playwright install chromium && npm run e2e
 
 Apache-2.0. See [LICENSE](LICENSE).
 
-The G8 freeze at `56c3023` was reopened by ADR-0027 and re-established at the deployed release
-`283f63f`. The latest product-code SHA is `caf8064`, which is not deployed; repository HEAD
-may contain documentation-only commits on top of it.
+The G8 freeze at `56c3023` was reopened by ADR-0027 and re-established at `283f63f`, then
+reopened for the ADR-0028 bridge and re-established at the deployed release `740a062`, image
+`740a062838e0`. Repository HEAD may contain documentation-only commits on top of it.

@@ -1,0 +1,31 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-ik3zy8j2kzuodeqylaz8zq8d88
+host_boot_id=d0e0f54c-7535-4f39-b176-c8934ed62570 uptime_since=2026-10-01 21:24:06
+promisepatch-mcp-1 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:740a062838e0 Up 44 seconds
+promisepatch-caddy-1 caddy:2.10-alpine Up 43 seconds
+promisepatch-worker-1 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:740a062838e0 Up 50 seconds
+promisepatch-api-1 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:740a062838e0 Up 50 seconds (healthy)
+promisepatch-order-simulator-1 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/order-simulator:740a062838e0 Up 53 seconds (healthy)
+api started=2026-10-01T21:24:30.095635935Z restarts=0
+worker started=2026-10-01T21:24:30.110895695Z restarts=0
+mcp started=2026-10-01T21:24:36.551929777Z restarts=0
+8bd533b7d89c630e
+2336f25aa8cae184
+09105b1001184df4
+59528002fbb81a5a
+env files present
+worker: orchestrator_mcp_url = None provider telegram
+mcp: allowed host count 2 includes mcp:8001 True public sslip True
+--- worker start lines
+{"action": "REFUSED", "case_id": null, "state": null, "detail": "an operational effect has been queued; this world is no longer untouched", "rolled": false, "event": "worker.demo_case", "level": "info", "timestamp": "2026-10-01T21:24:32.044947Z"}
+{"worker": "d790de5fe854:1:3715595f", "event": "worker.start", "level": "info", "timestamp": "2026-10-01T21:24:32.045159Z"}
+--- error-level lines since boot
+api 0
+worker 0
+mcp 0
+caddy 0
+order-simulator 0
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-ik3zy8j2kzuodeqylaz8zq8d88.
+

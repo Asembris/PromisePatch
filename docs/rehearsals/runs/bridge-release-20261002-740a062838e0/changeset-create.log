@@ -1,0 +1,63 @@
+current ImageTag=283f63f2845f intended=740a062838e0
+parameters submitted: 13
+arn:aws:cloudformation:us-east-1:265243686715:changeSet/bridge-release-740a062838e0/1f1aa0a5-4e56-4ba1-a8b1-b24531650f01
+{
+    "Status": "CREATE_COMPLETE",
+    "Exec": "AVAILABLE",
+    "Reason": null,
+    "Changes": [],
+    "Params": [
+        [
+            "ImageTag",
+            "740a062838e0"
+        ],
+        [
+            "SeedDemoFixtureOnFirstBoot",
+            "false"
+        ],
+        [
+            "DatabaseBackupRetentionDays",
+            "1"
+        ],
+        [
+            "DatabaseStorageGiB",
+            "20"
+        ],
+        [
+            "AllowedIngressCidr",
+            "0.0.0.0/0"
+        ],
+        [
+            "TlsHostname",
+            ""
+        ],
+        [
+            "HostSubnetId",
+            "subnet-0c8ed66d49566ba6e"
+        ],
+        [
+            "VpcId",
+            "vpc-033f9da8cac696679"
+        ],
+        [
+            "HostAmiId",
+            "ami-0fa4996c14e7d501e"
+        ],
+        [
+            "Environment",
+            "prod"
+        ],
+        [
+            "InstanceType",
+            "t4g.small"
+        ],
+        [
+            "DatabaseInstanceClass",
+            "db.t4g.micro"
+        ],
+        [
+            "DatabaseSubnetIds",
+            "subnet-06892e46df75ae5b6,subnet-0c8ed66d49566ba6e"
+        ]
+    ]
+}

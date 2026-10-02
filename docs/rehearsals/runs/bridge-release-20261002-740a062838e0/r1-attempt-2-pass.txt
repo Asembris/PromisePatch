@@ -1,0 +1,18 @@
+Bridge release R1 attempt 2: PASS (restart while waiting for the customer).
+Release/image: 740a062838e0ea2620499abed27d653c42fc05f7 / 740a062838e0. Frozen reader sha256 c9731c8f8dedfe15fbc6af0c2db6a8d5d19ca090d7863f3d2e945b18220b0dd4.
+Case 8aa0cc6e-03ac-5039-b32d-982ca17b8cb6. Restore 08:41:33Z-08:41:38Z exit 0; anchor 2026-10-02T08:41:35.295170Z; digest 1644692c47a17e32a97ff9214ebe75819dd18966a224f225546448abf509da02; binding restored and verified (private, id matches).
+Human browser confirmation: maya, BROWSER_SESSION ("Yes, go ahead" control), 08:43:56.682478Z; PLAN_APPROVED 889 and PLAN_CONFIRMED 890 HUMAN_APPROVAL.
+  BROWSER_SESSION rather than the protocol table's OPERATOR_CONSOLE, as in the post-intake cycle (ADR-0018 human channel).
+CONFIRMED: pr-a RECOVERED, EXT-A v2 almond-4 (CONSTRAINT); pr-b WAITING_FOR_CUSTOMER, request SENT; MESSAGE_SEND DELIVERED attempt 1; pr-c/pr-d ESCALATED, task-ol-c/d HELD; task-ol-e STARTED unheld; case WAITING.
+Operator confirmed exactly one new Telegram message.
+Restart: issued 08:44:44.013709Z, returned 08:44:45.105850Z; worker d790de5fe854:1:3715595f -> d790de5fe854:1:661b94ef; demo_case PRESENT rolled=false.
+  State digests and ledger maxima (audit 899, events 2178) identical immediately and after 95 s; reader identical; errors 0; host boot unchanged.
+Customer phone APPROVE: decision 08:46:58.048677Z, APPROVE, LITERAL, sender match count 1; one reply; customer-reply inbox PROCESSED.
+Ten REVALIDATION_CHECK rows all passed, first seq 902 after decision seq 900, by the new instance only.
+RECOVERY_REVALIDATED/APPLIED/COMPLETED HUMAN_APPROVAL; EXT-B v2 rose-3; store equals mirror for EXT-A and EXT-B.
+SETTLED: pr-a/pr-b RECOVERED, pr-c/pr-d ESCALATED, pr-e/pr-f UNAFFECTED; case RESOLVED; request ANSWERED; plan_approvals 1; cases 1.
+Exactly once: outbox 3 (ORDER_AMEND x2, MESSAGE_SEND x1), all DELIVERED attempt 1, 3 distinct keys; sendMessage 1, worker.telegram.sent 1, getUpdates 0.
+Untouched: EXT-C..F v1 in mirror and store; unrelated_digest 583049a2652ed6110adbff175a7dd96c806269c0ff24c8a4d43193b845b105aa CONFIRMED -> SETTLED unchanged;
+  ef_digest 53673efa203a757d582311829a4b476e4f6ba5752d41cc086ecd74eb00c1f0c0 PLANNED -> SETTLED unchanged; attribution counts 0/0/0/0.
+Privacy: container logs since restore: address 0, bot token 0, link secret 0, MCP bearer 0, internal token 0, token-shaped 0, unredacted query/path 0. Reader and snapshot leak guards False.
+Preceded by attempt 1, VOID (r1-attempt-1-void.txt). No provider-level exactly-once guarantee is claimed.

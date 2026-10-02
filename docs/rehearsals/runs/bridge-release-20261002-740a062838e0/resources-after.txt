@@ -1,0 +1,12 @@
+Database	promisepatch-prod
+DatabaseIngressFromHost	sgr-081b0edb3007e18c1
+DatabaseSecurityGroup	sg-02ff1a73d3d998df2
+DatabaseSubnetGroup	promisepatch-prod-databasesubnetgroup-ezh80nx2xcuq
+ElasticIp	184.194.40.87
+ElasticIpAssociation	eipassoc-0c22bc5413637eb5a
+Host	i-087c742587f83d61d
+HostEgressToDatabase	sgr-08c284a18e2223b5d
+HostSecurityGroup	sg-0f0752d22077b5b47
+InstanceProfile	PromisePatchInstanceProfile
+InstanceRole	PromisePatchInstanceRole
+LogGroup	/promisepatch/prod

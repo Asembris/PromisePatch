@@ -1,0 +1,17 @@
+Bridge release R2: PASS (plan confirmed while no worker ran).
+Release/image: 740a062838e0ea2620499abed27d653c42fc05f7 / 740a062838e0. Frozen reader sha256 c9731c8f... verified on host before every read.
+Case 0dbcde18-1a4f-5b0d-94ba-e7ae3509f744. Restore 08:49:21Z-08:49:26Z exit 0; anchor 2026-10-02T08:49:23.138438Z; digest 7d468b38a8fc8df128aee3b171e3fec35594ec6ce3bacf124382b85e3093453e; binding restored and verified.
+Operator note: the session's AWS credentials expired between restore and stop; the operator re-authenticated (aws login) and the stop ran at 08:50:55Z, before any confirmation. Nothing was mutated in between (census at stop: PLANNED, 0 approvals, 0 outbox).
+Worker stop: issued 08:50:55.709361Z, returned 08:50:56.401071Z; worker.stop d790de5fe854:1:661b94ef.
+Human browser confirmation while stopped: maya, BROWSER_SESSION, 08:52:42.074880Z; PLAN_APPROVED/PLAN_CONFIRMED HUMAN_APPROVAL.
+While stopped (08:53:04Z and 08:53:25Z): case EXECUTING; REQUEST_APPROVAL and APPLY_RECOVERY PENDING attempts 0; outbox 0; sendMessage unchanged; all orders v1; pr-c/pr-d ESCALATED with tasks HELD (synchronous at confirmation).
+Worker start: issued 08:53:26.390573Z (compose start re-ran migrate, exit 0, no-op), started 08:53:29.289607Z; new instance d790de5fe854:1:c3897965; demo_case PRESENT rolled=false.
+  REQUEST_APPROVAL, APPLY_RECOVERY, MARK_APPROVAL_SENT, FINALIZE_RECOVERY each at attempt 1; MESSAGE_SEND and EXT-A ORDER_AMEND DELIVERED attempt 1. sendMessage 1 -> 2.
+Operator confirmed exactly one new Telegram message.
+Customer phone APPROVE: decision 08:55:22.699755Z, APPROVE, LITERAL, sender match 1; one reply; customer-reply PROCESSED.
+Ten REVALIDATION_CHECK all passed, first seq 947 after decision 945; RECOVERY_REVALIDATED/APPLIED/COMPLETED HUMAN_APPROVAL; EXT-B v2 rose-3; store equals mirror for EXT-A/B.
+SETTLED: case RESOLVED; pr-a/pr-b RECOVERED; pr-c/pr-d ESCALATED; pr-e/pr-f UNAFFECTED; plan_approvals 1; cases 1.
+Exactly once: outbox 3 DELIVERED attempt 1, 3 distinct keys; sendMessage +1 over the run; getUpdates 0.
+Untouched: EXT-C..F v1 mirror and store; unrelated_digest 67fa0961ce4467b00a22b39afba22f41a90114d2c8dcd8322571384fc566927f CONFIRMED -> SETTLED unchanged;
+  ef_digest 97de4f13bf5a534e585a64aedaf0919ba24b6d1d19ca5566032d5f7a0cc3639f PLANNED -> SETTLED unchanged; attribution 0/0/0/0.
+Privacy: container logs since restore, every term 0; leak guards False.

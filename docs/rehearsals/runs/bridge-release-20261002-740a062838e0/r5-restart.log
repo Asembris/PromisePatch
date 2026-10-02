@@ -1,0 +1,67 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-rkcblljraror8fz2ns5og7k6y4
+PRE_RESTART=2026-10-02T09:13:26.199627
+BEFORE worker started=2026-10-02T09:10:05.274175713Z restarts=0
+counters sendMessage=6 worker.telegram.sent=6 getUpdates=0 worker.start=6 worker.stop=5
+fixture=hollow-oak anchor=2026-10-02T09:12:17.348419+00:00 digest=93c24bdc52bd9a789292ec8528cd1b3d242379dce5c91f95d82607f109afa5e1
+cases=[{"id": "b1777b99-41d7-5d12-a9be-8421d797600d", "state": "WAITING", "version": 12, "needs_owner_attention": true}]
+tracks=[{"promise_id": "pr-a", "state": "RECOVERED", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "WAITING_FOR_CUSTOMER", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-d", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-e", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}, {"promise_id": "pr-f", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}]
+plan_approvals=[{"approved_by": "maya", "channel": "BROWSER_SESSION", "approved_at": "2026-10-02 09:12:54.891178+00:00", "plan": "d0976a6296d4"}]
+requests=[{"promise_id": "pr-b", "state": "SENT", "decided": false, "sent_at": "2026-10-02 09:12:56.934963+00:00", "deadline": "2026-10-02 14:12:17.348419+00:00"}]
+decisions=[]
+replies=0
+outbox=[{"kind": "ORDER_AMEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:amend:4ecf0a37-69ff-56e7-871d-29b675b4cd20:1fd8ec03-5e21-5efb-9143-1f910743e285:1", "delivered_at": "2026-10-02 09:12:56.218213+00:00"}, {"kind": "MESSAGE_SEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:approval:14b77514-012e-5c01-9d3e-9c6099687ce3", "delivered_at": "2026-10-02 09:12:56.741183+00:00"}]
+orders=[{"external_id": "EXT-A", "external_version": 2, "state": "AMENDED", "recipe_version_id": "rv-raspberry-almond-4"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+tasks=[{"id": "task-ol-a", "state": "SCHEDULED", "held": false}, {"id": "task-ol-b", "state": "SCHEDULED", "held": false}, {"id": "task-ol-c", "state": "HELD", "held": true}, {"id": "task-ol-d", "state": "HELD", "held": true}, {"id": "task-ol-e", "state": "STARTED", "held": false}, {"id": "task-ol-f", "state": "SCHEDULED", "held": false}]
+timers=[{"kind": "APPROVAL_DEADLINE", "due_at": "2026-10-02 14:12:17.348419+00:00", "claimed": false, "fired_at": null}]
+steps=[{"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "ANALYZE_IMPACT", "state": "DONE", "attempts": 1}, {"kind": "PLAN_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "CONFIRM_PLAN", "state": "DONE", "attempts": 0}, {"kind": "APPLY_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "REQUEST_APPROVAL", "state": "DONE", "attempts": 1}, {"kind": "FINALIZE_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "MARK_APPROVAL_SENT", "state": "DONE", "attempts": 1}]
+audit_max=1124 events_max=2678
+bound_customers=[{"id": "cus-tomas", "address_length": 10}]
+hash.fixture_state=1:924ac9c1a4af74fd
+hash.cases=1:3c39f22a60c3195d
+hash.tracks=6:402a4951c013e31f
+hash.timers=1:117d2d4bdb585b41
+hash.case_steps=11:01e2c42edc4f951e
+hash.customers=6:0c96b1fb3960b944
+hash.orders=6:9cb91ed55d63c459
+hash.order_lines=6:7ff4d0dc1bdf3a15
+hash.production_tasks=6:8aa247528896a966
+hash.outbox_messages=2:804e127039611222
+hash.approval_requests=1:018377d158ea681d
+hash.approval_decisions=0:4f53cda18c2baa0c
+hash.inbound_replies=0:4f53cda18c2baa0c
+hash.plan_approvals=1:0f126c32a71ffa02
+hash.inbox_events=1:d48035167ebae6ee
+reader_sha256=c9731c8f8dedfe15fbc6af0c2db6a8d5d19ca090d7863f3d2e945b18220b0dd4 container=worker-1
+reader_leak_guard=False
+unrelated_digest=27c77d0304871dae00cbfb000d83c8b2cafca5eddcba705543a86cb5391eb476
+ef_digest=b3229901ba7100635464afa762db13780e0f39991833be18514364bf7acb46b6
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+FROZEN_READER_EXIT_ZERO
+RESTART_ISSUED=2026-10-02T09:13:28.593460
+ Container promisepatch-worker-1  Restarting
+ Container promisepatch-worker-1  Started
+RESTART_RETURNED=2026-10-02T09:13:29.610666
+AFTER worker started=2026-10-02T09:13:29.598478746Z restarts=0
+{"worker": "d790de5fe854:1:06e071ca", "event": "worker.stop", "level": "info", "timestamp": "2026-10-02T09:13:28.695626Z"}
+{"action": "PRESENT", "case_id": "b1777b99-41d7-5d12-a9be-8421d797600d", "state": null, "detail": "this world's case already exists; nothing was touched", "rolled": false, "event": "worker.demo_case", "level": "info", "timestamp": "2026-10-02T09:13:31.473328Z"}
+{"worker": "d790de5fe854:1:f91fd290", "event": "worker.start", "level": "info", "timestamp": "2026-10-02T09:13:31.473461Z"}
+RESTART_IMMEDIATE_STATE_IDENTICAL
+WAITING_95S_FROM=2026-10-02T09:13:34.462010
+STABILITY_CHECK=2026-10-02T09:15:09.465833
+RESTART_STABLE_AFTER_95S
+READER_IDENTICAL_ACROSS_RESTART
+counters sendMessage=6 worker.telegram.sent=6 getUpdates=0 worker.start=7 worker.stop=6
+errors_since_restart=0
+healthz={"status":"ok","service":"api","version":"0.1.0","boot_id":"91c6ba5c-287c-4406-b0e0-e22f99b33635","image":"740a062838e0"}
+readyz ready migration 0010_condition_clarification fixture 2026-10-02T09:12:17.348419Z 93c24bdc52bd9a789292ec8528cd1b3d242379dce5c91f95d82607f109afa5e1
+container api image=740a062838e0 running=true started=2026-10-01T21:24:30.095635935Z restarts=0
+container worker image=740a062838e0 running=true started=2026-10-02T09:13:29.598478746Z restarts=0
+container mcp image=740a062838e0 running=true started=2026-10-01T21:24:36.551929777Z restarts=0
+container caddy image=2.10-alpine running=true started=2026-10-01T21:24:36.744978679Z restarts=0
+container order-simulator image=740a062838e0 running=true started=2026-10-01T21:24:26.958674864Z restarts=0
+host_boot_id=d0e0f54c-7535-4f39-b176-c8934ed62570
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-rkcblljraror8fz2ns5og7k6y4.
+

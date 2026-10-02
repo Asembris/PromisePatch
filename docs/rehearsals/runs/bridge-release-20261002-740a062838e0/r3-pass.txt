@@ -1,0 +1,18 @@
+Bridge release R3: PASS (customer answered while no worker ran), judged against the corrected section 10.2 row.
+Release/image: 740a062838e0ea2620499abed27d653c42fc05f7 / 740a062838e0. Frozen reader sha256 c9731c8f... verified on host before every read.
+Case ba6f1754-d2ac-5afb-a17e-daa413cb78e0. Restore 08:56:36Z-08:56:41Z exit 0; anchor 2026-10-02T08:56:38.150917Z; digest 2c92edc991ba49f4308d995701c913ad847e1032ba56d79e0f19f84e94265fa7; binding restored and verified.
+Human browser confirmation: maya, BROWSER_SESSION, 08:58:02.019098Z; CONFIRMED reached with the worker running: EXT-A v2, request SENT, MESSAGE_SEND DELIVERED attempt 1, sendMessage 2 -> 3.
+Operator confirmed exactly one new Telegram message.
+Worker stop: issued 08:58:31.630351Z, returned 08:58:32.320468Z; worker.stop d790de5fe854:1:c3897965; all steps DONE, none pending.
+Phone APPROVE while stopped: one customer-reply inbox row RECEIVED at 09:00:10.935092Z; no decision, no reply row, no REVALIDATION_CHECK, request SENT, EXT-B v1.
+  Snapshots 09:00:29Z and 09:01:35Z (65 s apart) identical, ledgers included (audit 989, events 2378).
+Worker start: issued 09:01:55.786060Z (compose start re-ran migrate, no-op), started 09:01:58.587625Z; new instance d790de5fe854:1:06da4bb8; demo_case PRESENT rolled=false.
+  RECEIVE_CUSTOMER_REPLY attempt 1; decision 09:02:00.677585Z APPROVE LITERAL sender match 1; inbox row PROCESSED 09:02:00.607803Z.
+  Ten REVALIDATION_CHECK all passed, first seq 992 after decision 990, new instance only; RECOVERY_REVALIDATED/APPLIED/COMPLETED HUMAN_APPROVAL.
+  EXT-B ORDER_AMEND DELIVERED attempt 1, v2 rose-3; store equals mirror for EXT-A/B.
+  FINALIZE_RECOVERY attempts 1-2 RETRY_SCHEDULED waiting for the mirror echo, attempt 3 COMPLETED, as historically documented; no external effect repeated.
+SETTLED: case RESOLVED; request ANSWERED; plan_approvals 1; cases 1.
+Exactly once: outbox 3 DELIVERED attempt 1, 3 distinct keys; sendMessage +1 over the run; getUpdates 0.
+Untouched: EXT-C..F v1 mirror and store; unrelated_digest 218d4579018b32ebddc35a079fca8b8a0b3f1e314ae3502108316bca814e80d8 CONFIRMED -> SETTLED unchanged;
+  ef_digest f06067375d6cf30b75f02cfb7438c289e5d043b3fb0676f0c11faca0cae4104f PLANNED -> SETTLED unchanged; attribution 0/0/0/0.
+Privacy: container logs since restore, every term 0; leak guards False.

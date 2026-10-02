@@ -1,7 +1,10 @@
 # ADR-0028 — A simulated Alexa+ turn is a case-scoped MCP client on the server
 
-**Status:** accepted. Implemented locally in
-`apps/backend/src/promisepatch/api/routers/simulated_alexa.py`; not deployed.
+**Status:** accepted. Implemented in
+`apps/backend/src/promisepatch/api/routers/simulated_alexa.py`. Deployed and revalidated in release
+`740a062838e0ea2620499abed27d653c42fc05f7`, image `740a062838e0`, on 2026-10-02: see
+[bridge-release.md](../bridge-release.md). The deployment wiring of the section below was carried
+by the compose file alone, not by host replacement or an in-place host migration.
 **Date:** 2026-10-01
 **Phase:** post-G8, before G9
 **Supersedes:** nothing. It narrows how ADR-0011's turn budget is counted for one caller and

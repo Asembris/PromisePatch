@@ -1,0 +1,24 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-croppy8gl6ryd4egkolyool5li
+OFFLINE_A=2026-10-02T09:00:29.604861 worker_running=false
+cases=[{"id": "ba6f1754-d2ac-5afb-a17e-daa413cb78e0", "state": "WAITING", "version": 12, "needs_owner_attention": true}]
+tracks=[{"promise_id": "pr-a", "state": "RECOVERED", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "WAITING_FOR_CUSTOMER", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-d", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-e", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}, {"promise_id": "pr-f", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}]
+plan_approvals=[{"approved_by": "maya", "channel": "BROWSER_SESSION", "approved_at": "2026-10-02 08:58:02.019098+00:00", "plan": "a6a89feda85a"}]
+requests=[{"promise_id": "pr-b", "state": "SENT", "decided": false, "sent_at": "2026-10-02 08:58:03.417853+00:00", "deadline": "2026-10-02 13:56:38.150917+00:00"}]
+decisions=[]
+replies=0
+inbox=[{"source": "external-order-system", "state": "PROCESSED", "received_at": "2026-10-02 08:58:02.916572+00:00", "processed_at": "2026-10-02 08:58:03.266942+00:00"}, {"source": "customer-reply", "state": "RECEIVED", "received_at": "2026-10-02 09:00:10.935092+00:00", "processed_at": null}]
+outbox=[{"kind": "ORDER_AMEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:amend:f8693fb7-8a21-55fa-9fa9-728cd8b5fccb:63aa0c9c-f991-50e1-9f2b-96ce2719df9e:1", "delivered_at": "2026-10-02 08:58:02.636214+00:00"}, {"kind": "MESSAGE_SEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:approval:4917b426-5ddf-5946-aa60-ad1539f41909", "delivered_at": "2026-10-02 08:58:03.237918+00:00"}]
+orders=[{"external_id": "EXT-A", "external_version": 2, "state": "AMENDED", "recipe_version_id": "rv-raspberry-almond-4"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+timers=[{"kind": "APPROVAL_DEADLINE", "due_at": "2026-10-02 13:56:38.150917+00:00", "claimed": false, "fired_at": null}]
+steps=[{"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "ANALYZE_IMPACT", "state": "DONE", "attempts": 1}, {"kind": "PLAN_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "CONFIRM_PLAN", "state": "DONE", "attempts": 0}, {"kind": "APPLY_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "REQUEST_APPROVAL", "state": "DONE", "attempts": 1}, {"kind": "FINALIZE_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "MARK_APPROVAL_SENT", "state": "DONE", "attempts": 1}]
+audit_max=989 events_max=2378
+revalidation=[{"n": 0, "passed": 0, "first_seq": null, "at": null, "workers": null}]
+WAIT_65S
+OFFLINE_B=2026-10-02T09:01:35.469442 worker_running=false
+OFFLINE_SNAPSHOTS_IDENTICAL
+counters sendMessage=3 worker.telegram.sent=3 getUpdates=0 worker.start=3 worker.stop=3
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-croppy8gl6ryd4egkolyool5li.
+

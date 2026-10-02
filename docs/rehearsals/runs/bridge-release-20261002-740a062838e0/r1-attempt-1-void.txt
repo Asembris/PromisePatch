@@ -1,0 +1,14 @@
+Bridge release R1 attempt 1: VOID (g8-rehearsal-preparation.md section 3.1: could not reach its restart point for an operational reason).
+Release/image: 740a062838e0ea2620499abed27d653c42fc05f7 / 740a062838e0.
+Restore 08:30:32Z-08:30:37Z, exit 0; anchor 2026-10-02T08:30:34.345834Z, digest e71c01ae099763dbee3b4bc368b57554a75d6eb6538301c47f37a3f4e5da0bf6.
+Case 3dbedd71-1b4e-5de0-b9e3-2b3cc26c8c21 PLANNED; PLAN_AUTO_ESCALATION due 08:40:36.787020Z.
+08:36:38.853837Z: the operator pressed "Approve this plan" in the Simulated Alexa+ via MCP panel.
+  That control records a plan approval only (ADR-0028 decision 10): plan_approvals 1, maya, BROWSER_SESSION, PLAN_APPROVED HUMAN_APPROVAL. No PLAN_CONFIRMED.
+08:39:18Z: on this session's instruction the operator said "Yes, confirm the plan" over the bridge.
+  Bedrock selected CONFIRM; the orchestrator blocked it NEEDS_THE_WORKERS_YES because "the plan" is not in
+  the closed AFFIRMATIONS set (reads_as_worker_confirmation: every word must be an affirmation). Only status was called.
+  This is the designed fail-safe behaviour, not a product defect; the phrase was the session's operator error.
+08:40:37.684528Z: PLAN_AUTO_ESCALATED; case RESOLVED with four tracks ESCALATED, tasks a-d HELD, task-ol-e STARTED unheld.
+No message, no outbox row, no request, no decision, no order write; sendMessage 0; EXT-A..F all v1.
+Untouched attribution counts 0; privacy scan zero on every term.
+Not counted, not retried into a pass, not deleted. R1 is re-run as attempt 2 from a fresh restore.

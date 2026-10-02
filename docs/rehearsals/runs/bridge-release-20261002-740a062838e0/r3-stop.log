@@ -1,0 +1,24 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-adejvrs5v7rrfkz9od8ts3yrgq
+STOP_ISSUED=2026-10-02T08:58:31.630351
+ Container promisepatch-worker-1  Stopping
+ Container promisepatch-worker-1  Stopped
+STOP_RETURNED=2026-10-02T08:58:32.320468 worker_running=false
+{"worker": "d790de5fe854:1:c3897965", "event": "worker.stop", "level": "info", "timestamp": "2026-10-02T08:58:31.733259Z"}
+counters sendMessage=3 worker.telegram.sent=3 getUpdates=0 worker.start=3 worker.stop=3
+cases=[{"id": "ba6f1754-d2ac-5afb-a17e-daa413cb78e0", "state": "WAITING", "version": 12, "needs_owner_attention": true}]
+plan_approvals=[{"approved_by": "maya", "channel": "BROWSER_SESSION", "approved_at": "2026-10-02 08:58:02.019098+00:00", "plan": "a6a89feda85a"}]
+requests=[{"promise_id": "pr-b", "state": "SENT", "decided": false, "sent_at": "2026-10-02 08:58:03.417853+00:00", "deadline": "2026-10-02 13:56:38.150917+00:00"}]
+decisions=[]
+inbox=[{"source": "external-order-system", "state": "PROCESSED", "received_at": "2026-10-02 08:58:02.916572+00:00", "processed_at": "2026-10-02 08:58:03.266942+00:00"}]
+outbox=[{"kind": "ORDER_AMEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:amend:f8693fb7-8a21-55fa-9fa9-728cd8b5fccb:63aa0c9c-f991-50e1-9f2b-96ce2719df9e:1", "delivered_at": "2026-10-02 08:58:02.636214+00:00"}, {"kind": "MESSAGE_SEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:approval:4917b426-5ddf-5946-aa60-ad1539f41909", "delivered_at": "2026-10-02 08:58:03.237918+00:00"}]
+orders=[{"external_id": "EXT-A", "external_version": 2, "state": "AMENDED", "recipe_version_id": "rv-raspberry-almond-4"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+tasks=[{"id": "task-ol-a", "state": "SCHEDULED", "held": false}, {"id": "task-ol-b", "state": "SCHEDULED", "held": false}, {"id": "task-ol-c", "state": "HELD", "held": true}, {"id": "task-ol-d", "state": "HELD", "held": true}, {"id": "task-ol-e", "state": "STARTED", "held": false}, {"id": "task-ol-f", "state": "SCHEDULED", "held": false}]
+timers=[{"kind": "APPROVAL_DEADLINE", "due_at": "2026-10-02 13:56:38.150917+00:00", "claimed": false, "fired_at": null}]
+steps=[{"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "ANALYZE_IMPACT", "state": "DONE", "attempts": 1}, {"kind": "PLAN_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "CONFIRM_PLAN", "state": "DONE", "attempts": 0}, {"kind": "APPLY_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "REQUEST_APPROVAL", "state": "DONE", "attempts": 1}, {"kind": "FINALIZE_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "MARK_APPROVAL_SENT", "state": "DONE", "attempts": 1}]
+audit_max=989 events_max=2378
+revalidation=[{"n": 0, "passed": 0, "first_seq": null, "at": null, "workers": null}]
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-adejvrs5v7rrfkz9od8ts3yrgq.
+

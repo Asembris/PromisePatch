@@ -84,6 +84,9 @@ orchestrator's separation from everything authoritative.
 Phase 4, the G5 deployment-entry subset and the first deployment are closed in their committed
 records. **G7 is closed with one criterion deliberately not performed** — the demo-narrative
 comprehension check, declined by the project owner. **G8 is closed (2026-09-27); G9 is next.**
+**The product is frozen for submission at release `740a062838e0ea2620499abed27d653c42fc05f7`,
+image `740a062838e0`** (2026-10-02): deployed, `pr` 13/13, R1–R5 passed. See
+[bridge-release.md](docs/bridge-release.md). Any later change to a deployable product path voids it.
 
 **Phase 7 is CLOSED** (2026-09-24). The release candidate is frozen at deployed code SHA
 **`4529a802e34e`**, audited read-only at repo HEAD `da7ceca`, with `pr` green on that code and
@@ -140,10 +143,22 @@ and adds migration `0010`, so once merged the freeze at `56c3023` / `4529a802e34
 describes the code, and a new release SHA, green `pr`, a new deployment and five new rehearsals
 are owed (the ADR lists them). The frozen SHAs and their evidence stay historical fact. See
 [g8-closeout.md](docs/g8-closeout.md) and [g8-evidence-packaging.md](docs/g8-evidence-packaging.md).
+**Those obligations were met at `283f63f2845f`** (2026-09-30,
+[post-intake-release.md](docs/post-intake-release.md)). **ADR-0028's bridge and `caf8064` then
+reopened the freeze once more, and it is re-established at the final release
+`740a062838e0ea2620499abed27d653c42fc05f7`, image `740a062838e0`** (2026-10-02,
+[bridge-release.md](docs/bridge-release.md)): `pr` run `36925136266` 13/13, deployed by the
+parameter-only change set with the host rebooted and never replaced, the bridge verified live
+with a real Bedrock turn over the real MCP endpoint, v2 16/16 once, the demo contract 47, and
+**R1–R5 all PASS** on that image (R1 attempt 1 VOID and R4 attempt 1 not counted, both operator
+errors, recorded). The bridge wiring lives in the compose file alone. Docs and evidence commits on
+top of the release do not move the freeze.
 
 - **Deployed** at `https://184.194.40.87.sslip.io` — one EC2 host, private encrypted RDS, Caddy
   with a real Let's Encrypt certificate. See [p6.2-first-deployment.md](docs/p6.2-first-deployment.md).
-  **The deployed image is `4529a802e34e`**, the approval-log privacy repair, released 2026-09-24 by
+  **The deployed image is `740a062838e0`** (2026-10-02, [bridge-release.md](docs/bridge-release.md)),
+  after `283f63f2845f` (2026-09-30, [post-intake-release.md](docs/post-intake-release.md)). Before
+  those, the deployed image was `4529a802e34e`, the approval-log privacy repair, released 2026-09-24 by
   the same parameter-only change set (`Changes: []`), the host rebooted and never replaced; see
   [phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md). The Phase 7
   RC `abbbd11006f7` before it is [phase7-rc-deployment.md](docs/phase7-rc-deployment.md).
@@ -529,5 +544,7 @@ read the source document rather than a paraphrase of it.
 | G8 row 20 effect-set clean-clone proof (sync + four checks exit 0, closed) | [g8-effect-set-fresh-clone-proof.md](docs/g8-effect-set-fresh-clone-proof.md) |
 | G8 row 1 demo-contract runner (built, 9 tests + one live local run pass, closed) | [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md) |
 | G8 closeout (rows 13, 15 closed; 22/0/0; freeze at `56c3023`, deployed `4529a802e34e`) | [g8-closeout.md](docs/g8-closeout.md) |
+| Post-intake release (ADR-0027; `283f63f2845f` deployed and revalidated, historical) | [post-intake-release.md](docs/post-intake-release.md) |
+| Bridge release (ADR-0028 + `caf8064`; `740a062838e0` deployed, R1–R5 PASS, frozen for submission) | [bridge-release.md](docs/bridge-release.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |

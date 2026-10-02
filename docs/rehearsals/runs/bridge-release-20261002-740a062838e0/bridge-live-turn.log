@@ -1,0 +1,34 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-gllfp7r5hr88pf4do49zzrl42y
+--- api: semantic + bridge lines
+{"reason": "not_surface_worker", "role": "observer", "event": "simulated_alexa.refused", "correlation_id": "11376233-a1e9-439c-a652-7314b15282f6", "level": "info", "timestamp": "2026-10-01T21:28:35.314965Z"}
+{"job": "select_tool", "provider": "bedrock", "correlation_id": "b11ab5bc-c071-40b2-a43f-e506f3a42256", "case_id": "d1457010-1a92-5a20-92ca-989dd1a1e744", "outcome": "answered", "model_id": "us.amazon.nova-2-lite-v1:0", "attempts": 1, "input_tokens": 1816, "output_tokens": 27, "latency_ms": 1353, "event": "semantic.answered", "level": "info", "timestamp": "2026-10-01T21:42:21.056677Z"}
+{"case_id": "d1457010-1a92-5a20-92ca-989dd1a1e744", "hydrated": true, "selected": "STATUS", "calls": ["status"], "phase": "SETTLED", "event": "simulated_alexa.turn", "correlation_id": "3ffe39e3-949f-480f-80a4-7dc2ddfe2f1d", "level": "info", "timestamp": "2026-10-01T21:42:21.183686Z"}
+--- mcp: requests from api (172.29.0.2 expected for api) in last 60m
+api_ip=172.29.0.2
+INFO:     172.29.0.2:42592 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     172.29.0.2:42596 - "POST /mcp HTTP/1.1" 401 Unauthorized
+INFO:     172.29.0.2:42608 - "POST /mcp HTTP/1.1" 421 Misdirected Request
+INFO:     172.29.0.10:58800 - "POST /mcp HTTP/1.1" 401 Unauthorized
+INFO:     172.29.0.10:58800 - "POST /mcp HTTP/1.1" 403 Forbidden
+INFO:     172.29.0.10:34586 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     172.29.0.10:39252 - "POST /mcp HTTP/1.1" 401 Unauthorized
+INFO:     172.29.0.10:39252 - "POST /mcp HTTP/1.1" 403 Forbidden
+INFO:     172.29.0.2:40410 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     172.29.0.2:40418 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     172.29.0.2:40430 - "POST /mcp HTTP/1.1" 200 OK
+{"client": "bearer:802b52be7f34", "case_id": "d1457010-1a92-5a20-92ca-989dd1a1e744", "correlation_id": "aac42c38-b801-4e74-ad1e-fcded330dc3a", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-10-01T21:42:19.626598Z"}
+INFO:     172.29.0.2:40434 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     172.29.0.2:40442 - "POST /mcp HTTP/1.1" 200 OK
+{"client": "bearer:802b52be7f34", "case_id": "d1457010-1a92-5a20-92ca-989dd1a1e744", "correlation_id": "1b7b11a3-5922-4ad3-b3ad-e3887e54db49", "event": "mcp.tool.status", "level": "info", "timestamp": "2026-10-01T21:42:21.179521Z"}
+--- secret scans (counts only)
+api bearer=0 internal=0 session_secret=0 authz_header=0
+worker bearer=0 internal=0 session_secret=0 authz_header=0
+mcp bearer=0 internal=0 session_secret=0 authz_header=0
+caddy bearer=0 internal=0 session_secret=0 authz_header=0
+order-simulator bearer=0 internal=0 session_secret=0 authz_header=0
+bundle/page bearer: 0
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-gllfp7r5hr88pf4do49zzrl42y.
+

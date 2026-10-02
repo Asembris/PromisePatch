@@ -1,0 +1,19 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-fp5zxt67s4lcgufub5xr6z4v7i
+unauthenticated -> 401 UNAUTHENTICATED
+observer demo-session -> 200
+case for probe: d1457010…
+observer, no CSRF -> 403 CSRF_TOKEN_INVALID
+observer, with CSRF -> 403 NOT_THE_SURFACE_WORKER
+observer, extra actor field -> 422 INVALID_REQUEST
+bearer occurrences in all bridge responses: 0
+--- api log lines for these requests
+{"errors": "1 validation error:\n  {'type': 'uuid_parsing', 'loc': ('body', 'case_id'), 'msg': 'Input should be a valid UUID, invalid length: expected length 32 for simple format, found 0', 'input': '', 'ctx': {'error': 'invalid length: expected length 32 for simple format, found 0'}}\n\n  File \"/app/.venv/lib/python3.12/site-packages/promisepatch/api/routers/simulated_alexa.py\", line 77, in turn\n    POST /api/conversation/simulated-alexa", "event": "api.request_invalid", "correlation_id": "89fe24d1-c4b7-4bd0-b357-c53623a0b621", "level": "info", }
+{"errors": "2 validation errors:\n  {'type': 'uuid_parsing', 'loc': ('body', 'case_id'), 'msg': 'Input should be a valid UUID, invalid length: expected length 32 for simple format, found 0', 'input': '', 'ctx': {'error': 'invalid length: expected length 32 for simple format, found 0'}}\n  {'type': 'extra_forbidden', 'loc': ('body', 'actor'), 'msg': 'Extra inputs are not permitted', 'input': 'maya'}\n\n  File \"/app/.venv/lib/python3.12/site-packages/promisepatch/api/routers/simulated_alexa.py\", line 77, in turn\n    POST /api/conversation/simulated-alexa", "event": "api.request_invalid", "correlation_id": "d1aaa4cf-c437-4ba6-8d29-38aa64ccefce", "level": "info", }
+{"reason": "not_surface_worker", "role": "observer", "event": "simulated_alexa.refused", "correlation_id": "11376233-a1e9-439c-a652-7314b15282f6", "level": "info", }
+{"errors": "1 validation error:\n  {'type': 'extra_forbidden', 'loc': ('body', 'actor'), 'msg': 'Extra inputs are not permitted', 'input': 'maya'}\n\n  File \"/app/.venv/lib/python3.12/site-packages/promisepatch/api/routers/simulated_alexa.py\", line 77, in turn\n    POST /api/conversation/simulated-alexa", "event": "api.request_invalid", "correlation_id": "74aea96c-a6cf-4b89-a1ab-9e5fa4fe11be", "level": "info", }
+mcp log lines in last 2m: 7
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-fp5zxt67s4lcgufub5xr6z4v7i.
+

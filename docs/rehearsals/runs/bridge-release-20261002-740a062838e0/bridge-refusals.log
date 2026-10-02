@@ -1,0 +1,20 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-lfn32ggg425j35nrjs3ij3hufu
+unauthenticated -> 401 UNAUTHENTICATED
+observer demo-session -> 200
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'id'
+case for probe: …
+observer, no CSRF -> 403 CSRF_TOKEN_INVALID
+observer, with CSRF -> 422 INVALID_REQUEST
+observer, extra actor field -> 422 INVALID_REQUEST
+bearer occurrences in all bridge responses: 0
+--- api log lines for these requests
+{"errors": "1 validation error:\n  {'type': 'uuid_parsing', 'loc': ('body', 'case_id'), 'msg': 'Input should be a valid UUID, invalid length: expected length 32 for simple format, found 0', 'input': '', 'ctx': {'error': 'invalid length: expected length 32 for simple format, found 0'}}\n\n  File \"/app/.venv/lib/python3.12/site-packages/promisepatch/api/routers/simulated_alexa.py\", line 77, in turn\n    POST /api/conversation/simulated-alexa", "event": "api.request_invalid", "correlation_id": "89fe24d1-c4b7-4bd0-b357-c53623a0b621", "level": "info", }
+{"errors": "2 validation errors:\n  {'type': 'uuid_parsing', 'loc': ('body', 'case_id'), 'msg': 'Input should be a valid UUID, invalid length: expected length 32 for simple format, found 0', 'input': '', 'ctx': {'error': 'invalid length: expected length 32 for simple format, found 0'}}\n  {'type': 'extra_forbidden', 'loc': ('body', 'actor'), 'msg': 'Extra inputs are not permitted', 'input': 'maya'}\n\n  File \"/app/.venv/lib/python3.12/site-packages/promisepatch/api/routers/simulated_alexa.py\", line 77, in turn\n    POST /api/conversation/simulated-alexa", "event": "api.request_invalid", "correlation_id": "d1aaa4cf-c437-4ba6-8d29-38aa64ccefce", "level": "info", }
+mcp log lines in last 2m: 10
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-lfn32ggg425j35nrjs3ij3hufu.
+

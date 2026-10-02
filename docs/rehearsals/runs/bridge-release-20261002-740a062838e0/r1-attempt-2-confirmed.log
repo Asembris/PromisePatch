@@ -1,0 +1,73 @@
+
+Starting session with SessionId: PromisePatchLocalDevelopment-4vvto7r35kdrvjhtvhrvz88ss4
+CHECK run=r1-attempt-2 label=confirmed at=2026-10-02T08:44:20.774412
+healthz={"status":"ok","service":"api","version":"0.1.0","boot_id":"91c6ba5c-287c-4406-b0e0-e22f99b33635","image":"740a062838e0"}
+readyz ready migration 0010_condition_clarification fixture 2026-10-02T08:41:35.295170Z 1644692c47a17e32a97ff9214ebe75819dd18966a224f225546448abf509da02
+container api image=740a062838e0 running=true started=2026-10-01T21:24:30.095635935Z restarts=0
+container worker image=740a062838e0 running=true started=2026-10-01T21:24:30.110895695Z restarts=0
+container mcp image=740a062838e0 running=true started=2026-10-01T21:24:36.551929777Z restarts=0
+container caddy image=2.10-alpine running=true started=2026-10-01T21:24:36.744978679Z restarts=0
+container order-simulator image=740a062838e0 running=true started=2026-10-01T21:24:26.958674864Z restarts=0
+host_boot_id=d0e0f54c-7535-4f39-b176-c8934ed62570
+counters sendMessage=1 worker.telegram.sent=1 getUpdates=0 worker.start=1 worker.stop=0
+db_now=2026-10-02T08:44:21.831025+00:00
+fixture=hollow-oak anchor=2026-10-02T08:41:35.295170+00:00 digest=1644692c47a17e32a97ff9214ebe75819dd18966a224f225546448abf509da02
+cases=[{"id": "8aa0cc6e-03ac-5039-b32d-982ca17b8cb6", "state": "WAITING", "version": 12, "needs_owner_attention": true}]
+tracks=[{"promise_id": "pr-a", "state": "RECOVERED", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "WAITING_FOR_CUSTOMER", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-d", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-e", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}, {"promise_id": "pr-f", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}]
+plan_approvals=[{"approved_by": "maya", "channel": "BROWSER_SESSION", "approved_at": "2026-10-02 08:43:56.682478+00:00", "plan": "b113aace2da2"}]
+requests=[{"promise_id": "pr-b", "state": "SENT", "decided": false, "sent_at": "2026-10-02 08:43:57.980988+00:00", "deadline": "2026-10-02 13:41:35.295170+00:00"}]
+decisions=[]
+sender_match_count=0
+replies=0
+inbox=[{"source": "external-order-system", "state": "PROCESSED", "received_at": "2026-10-02 08:43:57.414815+00:00", "processed_at": "2026-10-02 08:43:57.802863+00:00"}]
+outbox=[{"kind": "ORDER_AMEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:amend:2c873efd-74c9-5e4f-a60e-daffd0cc87dc:2d800faa-4ce6-54c6-8903-6ff67936f5c8:1", "delivered_at": "2026-10-02 08:43:57.223610+00:00"}, {"kind": "MESSAGE_SEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:approval:7a40ab56-ad9a-5a62-87c5-07eb47b97239", "delivered_at": "2026-10-02 08:43:57.776628+00:00"}]
+outbox_distinct_keys=2
+orders=[{"external_id": "EXT-A", "external_version": 2, "state": "AMENDED", "recipe_version_id": "rv-raspberry-almond-4"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+tasks=[{"id": "task-ol-a", "state": "SCHEDULED", "held": false}, {"id": "task-ol-b", "state": "SCHEDULED", "held": false}, {"id": "task-ol-c", "state": "HELD", "held": true}, {"id": "task-ol-d", "state": "HELD", "held": true}, {"id": "task-ol-e", "state": "STARTED", "held": false}, {"id": "task-ol-f", "state": "SCHEDULED", "held": false}]
+timers=[{"kind": "APPROVAL_DEADLINE", "due_at": "2026-10-02 13:41:35.295170+00:00", "claimed": false, "fired_at": null}]
+steps=[{"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "ANALYZE_IMPACT", "state": "DONE", "attempts": 1}, {"kind": "PLAN_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "CONFIRM_PLAN", "state": "DONE", "attempts": 0}, {"kind": "REQUEST_APPROVAL", "state": "DONE", "attempts": 1}, {"kind": "APPLY_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "FINALIZE_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "MARK_APPROVAL_SENT", "state": "DONE", "attempts": 1}]
+audit_max=899 events_max=2178
+authority=[{"seq": 876, "type": "CASE_OPENED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-10-02 08:41:36.799849+00:00"}, {"seq": 878, "type": "CLARIFICATION_REQUESTED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:410:08e9b0ec", "authority": "NONE", "occurred_at": "2026-10-02 08:41:37.046697+00:00"}, {"seq": 880, "type": "CLARIFICATION_ANSWERED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-10-02 08:41:37.140565+00:00"}, {"seq": 882, "type": "PHYSICAL_FACT_RECORDED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-10-02 08:41:37.272952+00:00"}, {"seq": 884, "type": "IMPACT_ANALYZED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:410:08e9b0ec", "authority": "NONE", "occurred_at": "2026-10-02 08:41:37.404970+00:00"}, {"seq": 886, "type": "RECOVERY_PLANNED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:410:08e9b0ec", "authority": "NONE", "occurred_at": "2026-10-02 08:41:37.664201+00:00"}, {"seq": 889, "type": "PLAN_APPROVED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-10-02 08:43:56.682478+00:00"}, {"seq": 890, "type": "PLAN_CONFIRMED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-10-02 08:43:56.717450+00:00"}, {"seq": 891, "type": "RECOVERY_APPLIED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:3715595f", "authority": "CONSTRAINT", "occurred_at": "2026-10-02 08:43:57.055437+00:00"}, {"seq": 893, "type": "APPROVAL_REQUESTED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:3715595f", "authority": "CONSTRAINT", "occurred_at": "2026-10-02 08:43:57.267646+00:00"}, {"seq": 896, "type": "RECOVERY_COMPLETED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:3715595f", "authority": "CONSTRAINT", "occurred_at": "2026-10-02 08:43:57.875730+00:00"}, {"seq": 898, "type": "APPROVAL_SENT", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:3715595f", "authority": "NONE", "occurred_at": "2026-10-02 08:43:57.980988+00:00"}]
+revalidation=[{"n": 0, "passed": 0, "first_seq": null, "at": null, "workers": null}]
+step_workers=[{"actor_id": "d790de5fe854:410:08e9b0ec", "n": 6, "first_seq": 877, "last_seq": 887}, {"actor_id": "d790de5fe854:1:3715595f", "n": 4, "first_seq": 892, "last_seq": 899}]
+bound_customers=[{"id": "cus-tomas", "address_length": 10}]
+hash.fixture_state=1:5f6c00e7ba83c1e7
+hash.cases=1:52f8a10d0f4a7081
+hash.tracks=6:6e8702360f36dccb
+hash.timers=1:80beb96f135be210
+hash.case_steps=11:04f5512ab4c8a5ec
+hash.customers=6:0c96b1fb3960b944
+hash.orders=6:8ba4b9b23afee1f4
+hash.order_lines=6:7ff4d0dc1bdf3a15
+hash.production_tasks=6:1af1427cbaf28346
+hash.outbox_messages=2:da7e0ebb6c2b01ff
+hash.approval_requests=1:0a5736ee87498d9d
+hash.approval_decisions=0:4f53cda18c2baa0c
+hash.inbound_replies=0:4f53cda18c2baa0c
+hash.plan_approvals=1:6274a2560b4cdab7
+hash.inbox_events=1:0ff6126f622e5fd4
+address_leak_guard=False
+reader_sha256=c9731c8f8dedfe15fbc6af0c2db6a8d5d19ca090d7863f3d2e945b18220b0dd4 container=worker-1
+reader_leak_guard=False
+db_now=2026-10-02T08:44:22.757517+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=922db468918938ed n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=dde91942f270f1f7 n=4
+unrelated.promises=412e609e7f89062a n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=830096f444103acc n=4
+unrelated.tracks=5a1f763b7003823e n=4
+unrelated_digest=583049a2652ed6110adbff175a7dd96c806269c0ff24c8a4d43193b845b105aa
+ef_digest=53673efa203a757d582311829a4b476e4f6ba5752d41cc086ecd74eb00c1f0c0
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[["pr-e","UNAFFECTED","UNAFFECTED"],["pr-f","UNAFFECTED","UNAFFECTED"]] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+FROZEN_READER_EXIT_ZERO
+privacy since=2026-10-02T08:41:30Z lines=101 address=0 bot_token=0 link_secret=0 mcp_bearer=0 internal_token=0 token_shaped=0 unredacted_query=0 unredacted_path=0
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-4vvto7r35kdrvjhtvhrvz88ss4.
+

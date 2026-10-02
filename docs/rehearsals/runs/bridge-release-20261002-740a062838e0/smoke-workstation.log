@@ -1,0 +1,18 @@
+
+=== smoke
+  origin https://184.194.40.87.sslip.io, declared 740a062838e0
+target : https://184.194.40.87.sslip.io
+  PASSED   tls-and-readiness          GET /readyz is 200 over a certificate that verifies  (certificate verified, schema at head)
+  PASSED   http-redirects             http:// redirects to https:// rather than serving the API  (308 to https://184.194.40.87.sslip.io/readyz)
+  FAILED   mcp-requires-bearer        unauthenticated POST /mcp is 401  (ReadTimeout: The read operation timed out)
+  FAILED   origin-refused             an unlisted Origin is 403  (ReadTimeout: The read operation timed out)
+  FAILED   host-refused               an unlisted Host is 421  (ReadTimeout: The read operation timed out)
+  PASSED   webhook-rejects-unsigned   an unsigned order-system event is refused  (refused with 401)
+  PASSED   protocol-revision          initialize negotiates protocolVersion 2025-11-25  (2025-11-25)
+  PASSED   spa-at-root                GET / serves the built page  (1131 bytes, not stored)
+  PASSED   deep-link                  GET /?case=<id> serves the page rather than a 404  (200)
+  PASSED   unknown-api-path           an unknown /api path answers JSON rather than the page  (404 json)
+  PASSED   internal-not-published     POST /internal/intents/report from outside is 404  (404)
+  PASSED   deployed-image             the deployed image is the commit the stack declares  (740a062838e0)
+
+9/12 passed, 3 failed, 0 skipped

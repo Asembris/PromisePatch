@@ -1,0 +1,2 @@
+{"worker": "435d52e1beb5:1:c06c24ef", "event": "worker.stop", "level": "info", "timestamp": "2026-10-02T08:19:32.807879Z
+{"worker": "435d52e1beb5:1:cde5d528", "event": "worker.start", "level": "info", "timestamp": "2026-10-02T08:19:34.750924

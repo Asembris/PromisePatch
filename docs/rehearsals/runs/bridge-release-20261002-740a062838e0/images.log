@@ -1,0 +1,325 @@
+
+=== preflight (zero mutation)
+identity : arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment
+account  : 265243686715
+region   : us-east-1
+
+-- preflight -----------------------------------------------------------------
+  ALLOWED     sts:GetCallerIdentity
+                on *
+                establish which identity the rest of this table describes
+  ALLOWED     iam:SimulatePrincipalPolicy  [informational]
+                on role/PromisePatchDeveloperRole
+                the only API that could prove a mutating permission without mutating
+  DENIED      bedrock:GetFoundationModel  (AccessDeniedException)  [informational]
+                on foundation-model/amazon.nova-2-lite-v1:0
+                not needed to deploy; probed to show the control plane is separately scoped
+
+-- deployment ----------------------------------------------------------------
+  ALLOWED     cloudformation:ListStacks, DescribeStacks, CreateChangeSet, ExecuteChangeSet
+                on stack/promisepatch-*/*
+                the stack is the deployment unit; nothing can be created or read without it
+  ALLOWED     iam:ListRoles, GetRole, CreateRole, PutRolePolicy, CreateInstanceProfile
+                on role/PromisePatch*, instance-profile/PromisePatch*
+                create the instance's runtime role; no other principal is created anywhere
+  DECLARED    iam:PassRole  (not testable)
+                on role/PromisePatchInstanceRole, PassedToService ec2.amazonaws.com
+                attach that one role to that one instance, and nothing else anywhere
+  ALLOWED     ec2:DescribeVpcs, DescribeSubnets, DescribeSecurityGroups, DescribeImages
+                on *
+                place the host and the database subnet group in the account's existing VPC
+  DECLARED    ec2:RunInstances, TerminateInstances, StopInstances, StartInstances  (not testable)
+                on instance/* created by this stack
+                the single host that runs api, worker, mcp, the simulator and the TLS proxy
+  DECLARED    ec2:CreateSecurityGroup, AuthorizeSecurityGroupIngress, AuthorizeSecurityGroupEgress  (not testable)
+                on security-group/* in the stack's VPC
+                inbound 80/443 only; egress 443 plus the database port and nothing else
+  DECLARED    ec2:AllocateAddress, AssociateAddress, ReleaseAddress  (not testable)
+                on elastic-ip/* created by this stack
+                a stable address, so the TLS hostname survives an instance stop and start
+  ALLOWED     ecr:DescribeRepositories, CreateRepository, PutLifecyclePolicy
+                on repository/promisepatch/backend (named, not a registry listing)
+                the two image repositories the host pulls from
+  DECLARED    ecr:GetAuthorizationToken, InitiateLayerUpload, UploadLayerPart, CompleteLayerUpload, PutImage  (not testable)
+                on repository/promisepatch/{backend,order-simulator,frontend}
+                push the locally built images; an image push is not a CloudFormation action
+  ALLOWED     rds:DescribeDBInstances, DescribeDBSubnetGroups, DescribeDBEngineVersions
+                on db:promisepatch-*, subgrp:promisepatch-*
+                the durable PostgreSQL the case state and the step ledger live in
+  DECLARED    rds:CreateDBInstance, CreateDBSubnetGroup, ModifyDBInstance, DeleteDBInstance  (not testable)
+                on db:promisepatch-*, subgrp:promisepatch-*
+                create it private, encrypted, and reachable only from the host's group
+  ALLOWED     ssm:DescribeParameters
+                on parameter/promisepatch/*
+                the secret store; a read proves whether the service is reachable at all
+  DECLARED    ssm:PutParameter, DeleteParameter  (not testable)
+                on parameter/promisepatch/*
+                write the bearer token, session secret, webhook secret and database password
+  ALLOWED     logs:DescribeLogGroups
+                on log-group:/promisepatch/*
+                where container output goes; a read proves whether the service is reachable
+  DECLARED    logs:CreateLogGroup, PutRetentionPolicy, FilterLogEvents  (not testable)
+                on log-group:/promisepatch/*
+                create the group with a retention limit, and read the deployed loop back out
+
+-- runtime -------------------------------------------------------------------
+  ALLOWED     bedrock:InvokeModel
+                on inference-profile/us.amazon.nova-2-lite-v1:0
+                the orchestrator's one semantic call; the instance role needs exactly this
+  DECLARED    ecr:GetAuthorizationToken, BatchGetImage, GetDownloadUrlForLayer, BatchCheckLayerAvailability  (not testable)
+                on repository/promisepatch/*
+                the host pulls its own images at boot and again after a restart
+  DECLARED    ssm:GetParameter, GetParameters, GetParametersByPath, kms:Decrypt  (not testable)
+                on parameter/promisepatch/*, alias/aws/ssm
+                the host reads its secrets at boot; none are baked into an image or an AMI
+  DECLARED    logs:CreateLogStream, PutLogEvents, DescribeLogStreams  (not testable)
+                on log-group:/promisepatch/*
+                container output leaves the host, so a restart cannot erase the evidence
+  DECLARED    ssmmessages:*, ec2messages:*  (not testable)
+                on *
+                Session Manager access, so the host needs no inbound SSH and no key pair
+
+tested   : 9/9 required allowed
+declared : 12 mutating requirements, not testable read-only
+
+Every tested requirement is allowed.
+
+=== images
+Login Succeeded
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.backend
+#1 transferring dockerfile: 8.41kB 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/node:24-bookworm-slim
+#2 ...
+
+#3 [internal] load metadata for docker.io/library/python:3.12-slim-bookworm
+#3 DONE 0.2s
+
+#4 [internal] load metadata for ghcr.io/astral-sh/uv:0.9.18
+#4 ...
+
+#2 [internal] load metadata for docker.io/library/node:24-bookworm-slim
+#2 DONE 1.3s
+
+#4 [internal] load metadata for ghcr.io/astral-sh/uv:0.9.18
+#4 DONE 2.1s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 1.26kB done
+#5 DONE 0.0s
+
+#6 [build  1/14] FROM docker.io/library/python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
+#6 resolve docker.io/library/python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 0.0s done
+#6 DONE 0.0s
+
+#7 [frontend 1/6] FROM docker.io/library/node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+#7 resolve docker.io/library/node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 0.0s done
+#7 DONE 0.0s
+
+#8 FROM ghcr.io/astral-sh/uv:0.9.18@sha256:5713fa8217f92b80223bc83aac7db36ec80a84437dbc0d04bbc659cae030d8c9
+#8 resolve ghcr.io/astral-sh/uv:0.9.18@sha256:5713fa8217f92b80223bc83aac7db36ec80a84437dbc0d04bbc659cae030d8c9 0.0s done
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 29.36kB 0.1s done
+#9 DONE 0.1s
+
+#10 [build  7/14] COPY packages/order-contract/pyproject.toml packages/order-contract/pyproject.toml
+#10 CACHED
+
+#11 [build 11/14] COPY packages/promise-graph packages/promise-graph
+#11 CACHED
+
+#12 [build  3/14] WORKDIR /src
+#12 CACHED
+
+#13 [build  8/14] COPY apps/backend/pyproject.toml apps/backend/pyproject.toml
+#13 CACHED
+
+#14 [build 10/14] RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-dev --no-editable --no-install-workspace --package promisepatch
+#14 CACHED
+
+#15 [build  9/14] COPY apps/order-simulator/pyproject.toml apps/order-simulator/pyproject.toml
+#15 CACHED
+
+#16 [build  2/14] COPY --from=ghcr.io/astral-sh/uv:0.9.18 /uv /bin/uv
+#16 CACHED
+
+#17 [build  4/14] RUN --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.crt     if [ -s /tmp/extra-ca.crt ]; then         cp /tmp/extra-ca.crt /usr/local/share/ca-certificates/extra-ca.crt &&         update-ca-certificates;     fi
+#17 CACHED
+
+#18 [build  5/14] COPY pyproject.toml uv.lock .python-version ./
+#18 CACHED
+
+#19 [build  6/14] COPY packages/promise-graph/pyproject.toml packages/promise-graph/pyproject.toml
+#19 CACHED
+
+#20 [build 12/14] COPY packages/order-contract packages/order-contract
+#20 CACHED
+
+#21 [build 13/14] COPY apps/backend apps/backend
+#21 DONE 0.7s
+
+#22 [build 14/14] RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-dev --no-editable --package promisepatch
+#22 4.491    Building promisepatch @ file:///src/apps/backend
+#22 4.495    Building order-contract @ file:///src/packages/order-contract
+#22 4.497    Building promise-graph @ file:///src/packages/promise-graph
+#22 13.30       Built order-contract @ file:///src/packages/order-contract
+#22 13.32       Built promise-graph @ file:///src/packages/promise-graph
+#22 13.70       Built promisepatch @ file:///src/apps/backend
+#22 13.74 Prepared 3 packages in 9.29s
+#22 13.80 Installed 3 packages in 56ms
+#22 16.98 Bytecode compiled 2250 files in 3.17s
+#22 16.98  + order-contract==0.1.0 (from file:///src/packages/order-contract)
+#22 16.99  + promise-graph==0.1.0 (from file:///src/packages/promise-graph)
+#22 16.99  + promisepatch==0.1.0 (from file:///src/apps/backend)
+#22 DONE 17.1s
+
+#23 [runtime 2/7] RUN useradd --system --create-home --shell /usr/sbin/nologin promisepatch
+#23 CACHED
+
+#24 [frontend 3/6] COPY apps/frontend/package.json apps/frontend/package-lock.json ./
+#24 CACHED
+
+#25 [frontend 5/6] COPY apps/frontend/ ./
+#25 CACHED
+
+#26 [frontend 2/6] WORKDIR /ui
+#26 CACHED
+
+#27 [frontend 4/6] RUN --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.crt     if [ -s /tmp/extra-ca.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.crt; fi;     npm ci
+#27 CACHED
+
+#28 [runtime 3/7] WORKDIR /app
+#28 CACHED
+
+#29 [frontend 6/6] RUN npm run build
+#29 CACHED
+
+#30 [runtime 4/7] COPY --from=build --chown=promisepatch:promisepatch /app/.venv /app/.venv
+#30 DONE 4.4s
+
+#31 [runtime 5/7] COPY --chown=promisepatch:promisepatch apps/backend/alembic.ini apps/backend/alembic.ini
+#31 DONE 0.2s
+
+#32 [runtime 6/7] COPY --chown=promisepatch:promisepatch apps/backend/alembic apps/backend/alembic
+#32 DONE 0.1s
+
+#33 [runtime 7/7] COPY --from=frontend --chown=promisepatch:promisepatch /ui/dist /app/frontend
+#33 DONE 0.1s
+
+#34 exporting to image
+#34 exporting layers
+#34 exporting layers 8.5s done
+#34 exporting manifest sha256:2780a2174f39b6d21c0f274a637e465db937076c9ab73900bc3a88ba7fdbb20b 0.0s done
+#34 exporting config sha256:84be1433f5b8f48b08faf62459ad14741168f2b4dc60f9322ab34b428c91733f 0.0s done
+#34 exporting attestation manifest sha256:917862212fcc5dc9577f767e107c12f5941cfe965af4d26a466cd5d65e96f8a8 0.0s done
+#34 exporting manifest list sha256:a95740138de6d47b622a16152109192b8ecaccc58c137290355c310dcf4f87a0 0.0s done
+#34 naming to 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:740a062838e0 0.0s done
+#34 pushing layers
+#34 ...
+
+#35 [auth] sharing credentials for 265243686715.dkr.ecr.us-east-1.amazonaws.com
+#35 DONE 0.0s
+
+#34 exporting to image
+#34 pushing layers 367.2s done
+#34 pushing manifest for 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:740a062838e0@sha256:a95740138de6d47b622a16152109192b8ecaccc58c137290355c310dcf4f87a0
+#34 pushing manifest for 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/backend:740a062838e0@sha256:a95740138de6d47b622a16152109192b8ecaccc58c137290355c310dcf4f87a0 1.5s done
+#34 DONE 377.3s
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.simulator
+#1 transferring dockerfile: 3.25kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12-slim-bookworm
+#2 DONE 0.1s
+
+#3 [internal] load metadata for ghcr.io/astral-sh/uv:0.9.18
+#3 DONE 1.6s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 1.26kB done
+#4 DONE 0.0s
+
+#5 [build  1/13] FROM docker.io/library/python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
+#5 resolve docker.io/library/python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 0.0s done
+#5 DONE 0.0s
+
+#6 FROM ghcr.io/astral-sh/uv:0.9.18@sha256:5713fa8217f92b80223bc83aac7db36ec80a84437dbc0d04bbc659cae030d8c9
+#6 resolve ghcr.io/astral-sh/uv:0.9.18@sha256:5713fa8217f92b80223bc83aac7db36ec80a84437dbc0d04bbc659cae030d8c9 0.0s done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 123.78kB 0.1s done
+#7 DONE 0.1s
+
+#8 [build 11/13] COPY packages/order-contract packages/order-contract
+#8 CACHED
+
+#9 [runtime 3/4] WORKDIR /app
+#9 CACHED
+
+#10 [build 12/13] COPY apps/order-simulator apps/order-simulator
+#10 CACHED
+
+#11 [build  8/13] COPY apps/backend/pyproject.toml apps/backend/pyproject.toml
+#11 CACHED
+
+#12 [build 13/13] RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-dev --no-editable --package order-simulator
+#12 CACHED
+
+#13 [build  2/13] COPY --from=ghcr.io/astral-sh/uv:0.9.18 /uv /bin/uv
+#13 CACHED
+
+#14 [build  7/13] COPY packages/order-contract/pyproject.toml packages/order-contract/pyproject.toml
+#14 CACHED
+
+#15 [build 10/13] RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-dev --no-editable --no-install-workspace --package order-simulator
+#15 CACHED
+
+#16 [build  3/13] WORKDIR /src
+#16 CACHED
+
+#17 [build  4/13] RUN --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.crt     if [ -s /tmp/extra-ca.crt ]; then         cp /tmp/extra-ca.crt /usr/local/share/ca-certificates/extra-ca.crt &&         update-ca-certificates;     fi
+#17 CACHED
+
+#18 [runtime 2/4] RUN useradd --system --create-home --shell /usr/sbin/nologin ordersystem     && mkdir -p /data     && chown ordersystem:ordersystem /data
+#18 CACHED
+
+#19 [build  5/13] COPY pyproject.toml uv.lock .python-version ./
+#19 CACHED
+
+#20 [build  6/13] COPY packages/promise-graph/pyproject.toml packages/promise-graph/pyproject.toml
+#20 CACHED
+
+#21 [build  9/13] COPY apps/order-simulator/pyproject.toml apps/order-simulator/pyproject.toml
+#21 CACHED
+
+#22 [runtime 4/4] COPY --from=build --chown=ordersystem:ordersystem /app/.venv /app/.venv
+#22 CACHED
+
+#23 exporting to image
+#23 exporting layers done
+#23 exporting manifest sha256:e20adc00dbddbd902307a0704696245d24f262ce5a4d0bc6da6e02b36fd3a9a3 done
+#23 exporting config sha256:2e25dd663f6fb00cdd1af18174ccb33f045c85c48f5e42bb47a0c555b9717e59 done
+#23 exporting attestation manifest sha256:ba757bb9cbcbc213633214c3cf992850c2aa53c90475bad9f3b6b15281f2acc3 0.0s done
+#23 exporting manifest list sha256:b1c39dc334bfb0c701600306a6291cb98110200bb36b7180363ef1e13726255b
+#23 exporting manifest list sha256:b1c39dc334bfb0c701600306a6291cb98110200bb36b7180363ef1e13726255b 0.0s done
+#23 naming to 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/order-simulator:740a062838e0 done
+#23 pushing layers
+#23 ...
+
+#24 [auth] sharing credentials for 265243686715.dkr.ecr.us-east-1.amazonaws.com
+#24 DONE 0.0s
+
+#23 exporting to image
+#23 pushing layers 1.4s done
+#23 pushing manifest for 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/order-simulator:740a062838e0@sha256:b1c39dc334bfb0c701600306a6291cb98110200bb36b7180363ef1e13726255b
+#23 pushing manifest for 265243686715.dkr.ecr.us-east-1.amazonaws.com/promisepatch/order-simulator:740a062838e0@sha256:b1c39dc334bfb0c701600306a6291cb98110200bb36b7180363ef1e13726255b 1.5s done
+#23 DONE 3.1s
+  pushed at tag 740a062838e0

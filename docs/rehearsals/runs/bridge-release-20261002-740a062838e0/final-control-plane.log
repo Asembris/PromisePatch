@@ -1,0 +1,31 @@
+AT=2026-10-02T09:20:01Z
+arn:aws:sts::265243686715:assumed-role/PromisePatchDeveloperRole/PromisePatchLocalDevelopment
+{
+    "S": "UPDATE_COMPLETE",
+    "U": "2026-10-01T21:22:27.957000+00:00",
+    "ImageTag": "740a062838e0",
+    "Declared": "740a062838e0",
+    "Host": "i-087c742587f83d61d",
+    "Seed": "false"
+}
+change_sets=0
+stack_resources_sha=cdcf1376e8e8106b n=12
+{
+    "id": "i-087c742587f83d61d",
+    "ami": "ami-0fa4996c14e7d501e",
+    "launch": "2026-09-18T10:19:33+00:00",
+    "state": "running",
+    "ip": "184.194.40.87"
+}
+{
+    "r": "db-U2JWQBTINX6W6GAB56EOTHOCSM",
+    "s": "available",
+    "e": "16.13",
+    "p": {}
+}
+ssm compose v16
+ssm caddyfile v15
+ssm image-tag v11
+ssm image-tag=740a062838e0
+ecr backend sha256:a95740138de6d47b622a16152109192b8ecaccc58c137290355c310dcf4f87a0
+ecr order-simulator sha256:b1c39dc334bfb0c701600306a6291cb98110200bb36b7180363ef1e13726255b
