@@ -1,0 +1,72 @@
+
+CHECK run=s1-success-a2 label=settled-check at=2026-10-02T10:45:06.859798
+healthz={"status":"ok","service":"api","version":"0.1.0","boot_id":"91c6ba5c-287c-4406-b0e0-e22f99b33635","image":"740a062838e0"}
+readyz ready migration 0010_condition_clarification fixture 2026-10-02T10:41:37.293225Z 09d2d0cb1d979860f880dd89b54452dae7ca3666de720aa64717f0470cfa6972
+container api image=740a062838e0 running=true started=2026-10-01T21:24:30.095635935Z restarts=0
+container worker image=740a062838e0 running=true started=2026-10-02T10:44:09.088637926Z restarts=0
+container mcp image=740a062838e0 running=true started=2026-10-01T21:24:36.551929777Z restarts=0
+container caddy image=2.10-alpine running=true started=2026-10-01T21:24:36.744978679Z restarts=0
+container order-simulator image=740a062838e0 running=true started=2026-10-01T21:24:26.958674864Z restarts=0
+host_boot_id=d0e0f54c-7535-4f39-b176-c8934ed62570
+counters sendMessage=7 worker.telegram.sent=7 getUpdates=0 worker.start=8 worker.stop=7
+db_now=2026-10-02T10:45:07.994376+00:00
+fixture=hollow-oak anchor=2026-10-02T10:41:37.293225+00:00 digest=09d2d0cb1d979860f880dd89b54452dae7ca3666de720aa64717f0470cfa6972
+cases=[{"id": "bdcbab25-5ae9-5280-a98c-d7227565789e", "state": "RESOLVED", "version": 17, "needs_owner_attention": true}]
+tracks=[{"promise_id": "pr-a", "state": "RECOVERED", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "RECOVERED", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-d", "state": "ESCALATED", "classification": "BLOCKED", "rule_id": "R-NOSUB"}, {"promise_id": "pr-e", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}, {"promise_id": "pr-f", "state": "UNAFFECTED", "classification": "UNAFFECTED", "rule_id": "R-UNREACH"}]
+plan_approvals=[{"approved_by": "maya", "channel": "BROWSER_SESSION", "approved_at": "2026-10-02 10:42:31.084764+00:00", "plan": "62fdbbc4d5ed"}]
+requests=[{"promise_id": "pr-b", "state": "ANSWERED", "decided": true, "sent_at": "2026-10-02 10:42:32.459643+00:00", "deadline": "2026-10-02 15:41:37.293225+00:00"}]
+decisions=[{"decision": "APPROVE", "parser": "LITERAL", "received_at": "2026-10-02 10:44:11.095835+00:00"}]
+sender_match_count=1
+replies=1
+inbox=[{"source": "external-order-system", "state": "PROCESSED", "received_at": "2026-10-02 10:42:31.694381+00:00", "processed_at": "2026-10-02 10:42:32.294733+00:00"}, {"source": "customer-reply", "state": "PROCESSED", "received_at": "2026-10-02 10:43:26.511675+00:00", "processed_at": "2026-10-02 10:44:11.028338+00:00"}, {"source": "external-order-system", "state": "PROCESSED", "received_at": "2026-10-02 10:44:12.143301+00:00", "processed_at": "2026-10-02 10:44:13.149299+00:00"}]
+outbox=[{"kind": "ORDER_AMEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:amend:a84db6ea-f3ac-543c-912c-93b1cb4c8edb:ba1919a3-aed1-5e73-a6b0-037c3c362a91:1", "delivered_at": "2026-10-02 10:42:31.597336+00:00"}, {"kind": "MESSAGE_SEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:approval:93c96717-49bb-5b33-af72-56a79c4e1cdd", "delivered_at": "2026-10-02 10:42:32.175477+00:00"}, {"kind": "ORDER_AMEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:amend:b7014bc4-e215-500d-9ccf-820edaa8787b:88e9c311-e124-5399-8354-1d7ecbade55b:1", "delivered_at": "2026-10-02 10:44:11.858822+00:00"}]
+outbox_distinct_keys=3
+orders=[{"external_id": "EXT-A", "external_version": 2, "state": "AMENDED", "recipe_version_id": "rv-raspberry-almond-4"}, {"external_id": "EXT-B", "external_version": 2, "state": "AMENDED", "recipe_version_id": "rv-raspberry-rose-3"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+tasks=[{"id": "task-ol-a", "state": "SCHEDULED", "held": false}, {"id": "task-ol-b", "state": "SCHEDULED", "held": false}, {"id": "task-ol-c", "state": "HELD", "held": true}, {"id": "task-ol-d", "state": "HELD", "held": true}, {"id": "task-ol-e", "state": "STARTED", "held": false}, {"id": "task-ol-f", "state": "SCHEDULED", "held": false}]
+timers=[{"kind": "APPROVAL_DEADLINE", "due_at": "2026-10-02 15:41:37.293225+00:00", "claimed": false, "fired_at": null}]
+steps=[{"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}, {"kind": "ANALYZE_IMPACT", "state": "DONE", "attempts": 1}, {"kind": "PLAN_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "REQUEST_APPROVAL", "state": "DONE", "attempts": 1}, {"kind": "CONFIRM_PLAN", "state": "DONE", "attempts": 0}, {"kind": "APPLY_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "FINALIZE_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "MARK_APPROVAL_SENT", "state": "DONE", "attempts": 1}, {"kind": "RECEIVE_CUSTOMER_REPLY", "state": "DONE", "attempts": 1}, {"kind": "REVALIDATE_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "APPLY_RECOVERY", "state": "DONE", "attempts": 1}, {"kind": "RECONCILE_CASE", "state": "SKIPPED", "attempts": 1}, {"kind": "FINALIZE_RECOVERY", "state": "DONE", "attempts": 3}]
+audit_max=1195 events_max=2822
+authority=[{"seq": 1152, "type": "CASE_OPENED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-10-02 10:41:38.762017+00:00"}, {"seq": 1154, "type": "CLARIFICATION_REQUESTED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:359:03f7b403", "authority": "NONE", "occurred_at": "2026-10-02 10:41:38.985637+00:00"}, {"seq": 1156, "type": "CLARIFICATION_ANSWERED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-10-02 10:41:39.089768+00:00"}, {"seq": 1158, "type": "PHYSICAL_FACT_RECORDED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-10-02 10:41:39.221294+00:00"}, {"seq": 1160, "type": "IMPACT_ANALYZED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:359:03f7b403", "authority": "NONE", "occurred_at": "2026-10-02 10:41:39.356847+00:00"}, {"seq": 1162, "type": "RECOVERY_PLANNED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:359:03f7b403", "authority": "NONE", "occurred_at": "2026-10-02 10:41:39.618094+00:00"}, {"seq": 1165, "type": "PLAN_APPROVED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-10-02 10:42:31.084764+00:00"}, {"seq": 1166, "type": "PLAN_CONFIRMED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-10-02 10:42:31.123816+00:00"}, {"seq": 1167, "type": "RECOVERY_APPLIED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:f91fd290", "authority": "CONSTRAINT", "occurred_at": "2026-10-02 10:42:31.476422+00:00"}, {"seq": 1169, "type": "APPROVAL_REQUESTED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:f91fd290", "authority": "CONSTRAINT", "occurred_at": "2026-10-02 10:42:31.650255+00:00"}, {"seq": 1172, "type": "RECOVERY_COMPLETED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:f91fd290", "authority": "CONSTRAINT", "occurred_at": "2026-10-02 10:42:32.365608+00:00"}, {"seq": 1174, "type": "APPROVAL_SENT", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:f91fd290", "authority": "NONE", "occurred_at": "2026-10-02 10:42:32.459643+00:00"}, {"seq": 1176, "type": "APPROVAL_DECISION_RECORDED", "actor_kind": "CUSTOMER", "actor_id": "cus-tomas", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-10-02 10:44:11.095835+00:00"}, {"seq": 1188, "type": "RECOVERY_REVALIDATED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:532b2867", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-10-02 10:44:11.243600+00:00"}, {"seq": 1190, "type": "RECOVERY_APPLIED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:532b2867", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-10-02 10:44:11.701169+00:00"}, {"seq": 1194, "type": "RECOVERY_COMPLETED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:532b2867", "authority": "HUMAN_APPROVAL", "occurred_at": "2026-10-02 10:44:18.393237+00:00"}]
+revalidation=[{"n": 10, "passed": 10, "first_seq": 1178, "at": "2026-10-02 10:44:11.243600+00:00", "workers": ["d790de5fe854:1:532b2867"]}]
+step_workers=[{"actor_id": "d790de5fe854:359:03f7b403", "n": 6, "first_seq": 1153, "last_seq": 1163}, {"actor_id": "d790de5fe854:1:f91fd290", "n": 4, "first_seq": 1168, "last_seq": 1175}, {"actor_id": "d790de5fe854:1:532b2867", "n": 5, "first_seq": 1177, "last_seq": 1195}]
+bound_customers=[{"id": "cus-tomas", "address_length": 10}]
+hash.fixture_state=1:ca07574e60c71556
+hash.cases=1:bccc5f710f0d0666
+hash.tracks=6:e29e21479af6a2f3
+hash.timers=1:809aad05c235f59d
+hash.case_steps=16:a116a7da7574f906
+hash.customers=6:0c96b1fb3960b944
+hash.orders=6:c11207fea1169708
+hash.order_lines=6:89f87601d9a758ba
+hash.production_tasks=6:6bfbc09f2e4d1f4c
+hash.outbox_messages=3:74847a3e549ec814
+hash.approval_requests=1:958ad7945b243d77
+hash.approval_decisions=1:23ff428440fd77c2
+hash.inbound_replies=1:089ea6849b9926d7
+hash.plan_approvals=1:1824fe5f1aac7487
+hash.inbox_events=3:5758817cac7f80e9
+address_leak_guard=False
+reader_sha256=c9731c8f8dedfe15fbc6af0c2db6a8d5d19ca090d7863f3d2e945b18220b0dd4 container=worker-1
+reader_leak_guard=False
+db_now=2026-10-02T10:45:08.923747+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=35b7873e3a07a3ae n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=1f273fbdcd0fa980 n=4
+unrelated.promises=f7f11d28c62b298e n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=9984a56bfe5ef618 n=4
+unrelated.tracks=fb2de38876aed70b n=4
+unrelated_digest=f3139c5270427862694cfd6f09891c4755de3619ff97a6c437ff6c44d1e02992
+ef_digest=d9795ef84511ac97cb059f63a43a41c929a9fe4129c7f4d5687c8e1f28ebb9bc
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[["pr-e","UNAFFECTED","UNAFFECTED"],["pr-f","UNAFFECTED","UNAFFECTED"]] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+FROZEN_READER_EXIT_ZERO
+privacy since=2026-10-02T10:39:57Z lines=173 address=0 bot_token=0 link_secret=0 mcp_bearer=0 internal_token=0 token_shaped=0 unredacted_query=0 unredacted_path=0
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-n5grbs7gva56ariyjronc2kxxu.
+

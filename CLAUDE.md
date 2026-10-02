@@ -546,5 +546,6 @@ read the source document rather than a paraphrase of it.
 | G8 closeout (rows 13, 15 closed; 22/0/0; freeze at `56c3023`, deployed `4529a802e34e`) | [g8-closeout.md](docs/g8-closeout.md) |
 | Post-intake release (ADR-0027; `283f63f2845f` deployed and revalidated, historical) | [post-intake-release.md](docs/post-intake-release.md) |
 | Bridge release (ADR-0028 + `caf8064`; `740a062838e0` deployed, R1–R5 PASS, frozen for submission) | [bridge-release.md](docs/bridge-release.md) |
+| Revalidation proof on the frozen release (live success + first live STALE refusal, evidence only) | [revalidation-proof.md](docs/revalidation-proof.md) |
 | Order system | [order-system.md](docs/order-system.md) |
 | Claims against their evidence | [claims-audit.md](docs/claims-audit.md) |

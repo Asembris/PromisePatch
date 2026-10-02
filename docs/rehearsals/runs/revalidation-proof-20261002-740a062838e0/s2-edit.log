@@ -1,0 +1,16 @@
+
+EDIT run=s2-changed-world at=2026-10-02T10:49:17.798120 worker_running=false
+STORE_BEFORE EXT-B {"customer": {"approval_channel": {"address": "1002", "kind": "telegram"}, "external_id": "cus-tomas", "name": "Tomas Lindqvist"}, "due_at": "2026-03-04T18:30:00Z", "external_id": "EXT-B", "lines": [{"external_item_id": "rv-raspberry-rose-2", "external_line_id": "ol-b", "note": "", "quantity": 1}], "state": "ACCEPTED", "version": 1}
+OPERATOR_CHANGE_STATUS 303 at 2026-10-02T10:49:18Z
+STORE_AFTER EXT-B {"customer": {"approval_channel": {"address": "1002", "kind": "telegram"}, "external_id": "cus-tomas", "name": "Tomas Lindqvist"}, "due_at": "2026-03-04T18:30:00Z", "external_id": "EXT-B", "lines": [{"external_item_id": "rv-raspberry-rose-2", "external_line_id": "ol-b", "note": "", "quantity": 2}], "state": "AMENDED", "version": 2}
+EXT_B_EVENTS [{"attempts": 1, "delivery_state": "DELIVERED", "event": {"changed_line_ids": ["ol-b"], "command": null, "event_id": "07c65029-70b5-4091-a1b0-fb78b0cc56c4", "occurred_at": "2026-10-02T10:49:18.323720Z", "order": {"customer": {"approval_channel": {"address": "1002", "kind": "telegram"}, "external_id": "cus-tomas", "name": "Tomas Lindqvist"}, "due_at": "2026-03-04T18:30:00Z", "external_id": "EXT-B", "lines": [{"external_item_id": "rv-raspberry-rose-2", "external_line_id": "ol-b", "note": "", "quantity": 2}], "state": "AMENDED", "version": 2}, "previous_version": 1, "schema_version": 1, "type": "order.updated"}, "event_id": "07c65029-70b5-4091-a1b0-fb78b0cc56c4", "external_order_id": "EXT-B", "occurred_at": "2026-10-02T10:49:18.323720+00:00", "previous_version": 1, "source": "operator", "type": "order.updated", "version": 2}]
+--- PromisePatch side, worker stopped: the event is stored, the mirror has not moved
+inbox external-order-system PROCESSED 2026-10-02T10:48:02.433684+00:00
+inbox customer-reply RECEIVED 2026-10-02T10:48:48.648199+00:00
+inbox external-order-system RECEIVED 2026-10-02T10:49:18.468876+00:00
+mirror EXT-A v2 rv-raspberry-almond-4 qty 1
+mirror EXT-B v1 rv-raspberry-rose-2 qty 1
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-ay3ux3g8ttojufilkolzdgdd8e.
+

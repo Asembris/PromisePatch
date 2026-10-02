@@ -1,0 +1,112 @@
+
+RESTORE_ENTRY run=s1-success at=2026-10-02T10:40:06.450716
+healthz={"status":"ok","service":"api","version":"0.1.0","boot_id":"91c6ba5c-287c-4406-b0e0-e22f99b33635","image":"740a062838e0"}
+readyz ready migration 0010_condition_clarification fixture 2026-10-02T09:12:17.348419Z 93c24bdc52bd9a789292ec8528cd1b3d242379dce5c91f95d82607f109afa5e1
+container api image=740a062838e0 running=true started=2026-10-01T21:24:30.095635935Z restarts=0
+container worker image=740a062838e0 running=true started=2026-10-02T09:13:29.598478746Z restarts=0
+container mcp image=740a062838e0 running=true started=2026-10-01T21:24:36.551929777Z restarts=0
+container caddy image=2.10-alpine running=true started=2026-10-01T21:24:36.744978679Z restarts=0
+container order-simulator image=740a062838e0 running=true started=2026-10-01T21:24:26.958674864Z restarts=0
+host_boot_id=d0e0f54c-7535-4f39-b176-c8934ed62570
+counters sendMessage=6 worker.telegram.sent=6 getUpdates=0 worker.start=7 worker.stop=6
+--- (a) settings preflight under the union
+require_migration_database_url ok
+require_db_app_password ok
+require_demo_worker_password ok
+require_demo_owner_password ok
+require_order_system_base_url ok
+require_customer_link_secret ok
+require_telegram_bot_token ok
+allow_fixture_reset True demo_session_enabled True provider telegram
+--- (b) dry run under the union
+action:   inspected
+before:   fixture=hollow-oak cases=1 live=0 outbox=3 unsettled=0 requests=1 decisions=1 approvals=1 replies=1 audit=1144 events=1355 bound=True
+binding:  restored (would be carried across)
+result:   nothing was written
+dry_run_exit=0
+gate=ok
+--- confirmed restore, once
+RESTORE_START=2026-10-02T10:40:10.627245
+2026-10-02 10:40:13 [info     ] intake.case.opened             case_id=d61e94c6-990a-5b96-80b5-095f8537381d worker=maya
+2026-10-02 10:40:14 [info     ] worker.step.executed           attempt=1 kind=BEGIN_INTERPRETATION result=COMPLETED step_id=33f7dd98-ef7d-4a9d-8f7a-1fb7563b0a20 step_key=interpret:48b8bdd8-5a5d-53eb-84aa-045a59ee0140
+2026-10-02 10:40:14 [warning  ] provisioning.demo_case.stopped case_id=d61e94c6-990a-5b96-80b5-095f8537381d detail=no answerable question was reached state=INTERPRETING
+2026-10-02 10:40:14 [info     ] demo customer channel bound    audit_seq=1150 bot_username=PromisePatchDemoBot channel_kind=telegram customer_id=cus-tomas
+2026-10-02 10:40:14 [info     ] demo_restore.completed         anchor=2026-10-02T10:40:12.412640+00:00 binding=restored case_state=INTERPRETING cases_destroyed=1 orders_reset=6 provisioning=STOPPED rows_written=160
+action:   restored
+before:   fixture=hollow-oak cases=1 live=0 outbox=3 unsettled=0 requests=1 decisions=1 approvals=1 replies=1 audit=1144 events=1355 bound=True
+after:    fixture=hollow-oak cases=1 live=1 outbox=0 unsettled=0 requests=0 decisions=0 approvals=0 replies=0 audit=1150 events=1361 bound=True
+anchor:   2026-10-02T10:40:12.412640+00:00
+local:    2026-10-02T11:40:12.412640+01:00 Africa/Tunis
+digest:   a90cb80d466c1c7a521a24e5d335f7369714888829a1bd4f4485cb7749de35d8
+rows:     160
+orders:   6 reset in the external order system
+case:     d61e94c6-990a-5b96-80b5-095f8537381d
+state:    INTERPRETING
+binding:  restored
+ledgers:  grew only
+result:   restored; no plan was confirmed and no message was sent
+RESTORE_END=2026-10-02T10:40:14.571635 exit=0
+RESTORE_EXIT_ZERO
+--- destination verified, no message sent
+returned_id_matches_stored True chat_type private bot PromisePatchDemoBot
+counters sendMessage=6 worker.telegram.sent=6 getUpdates=0 worker.start=7 worker.stop=6
+db_now=2026-10-02T10:40:17.799515+00:00
+fixture=hollow-oak anchor=2026-10-02T10:40:12.412640+00:00 digest=a90cb80d466c1c7a521a24e5d335f7369714888829a1bd4f4485cb7749de35d8
+cases=[{"id": "d61e94c6-990a-5b96-80b5-095f8537381d", "state": "CLARIFYING", "version": 3, "needs_owner_attention": false}]
+tracks=[]
+plan_approvals=[]
+requests=[]
+decisions=[]
+sender_match_count=0
+replies=0
+inbox=[]
+outbox=[]
+outbox_distinct_keys=0
+orders=[{"external_id": "EXT-A", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-almond-3"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+tasks=[{"id": "task-ol-a", "state": "SCHEDULED", "held": false}, {"id": "task-ol-b", "state": "SCHEDULED", "held": false}, {"id": "task-ol-c", "state": "SCHEDULED", "held": false}, {"id": "task-ol-d", "state": "SCHEDULED", "held": false}, {"id": "task-ol-e", "state": "STARTED", "held": false}, {"id": "task-ol-f", "state": "SCHEDULED", "held": false}]
+timers=[]
+steps=[{"kind": "BEGIN_INTERPRETATION", "state": "DONE", "attempts": 1}, {"kind": "RESOLVE_OBSERVATION", "state": "DONE", "attempts": 1}]
+audit_max=1150 events_max=2722
+authority=[{"seq": 1146, "type": "CASE_OPENED", "actor_kind": "WORKER", "actor_id": "maya", "authority": "NONE", "occurred_at": "2026-10-02 10:40:13.915417+00:00"}, {"seq": 1148, "type": "CLARIFICATION_REQUESTED", "actor_kind": "SYSTEM", "actor_id": "d790de5fe854:1:f91fd290", "authority": "NONE", "occurred_at": "2026-10-02 10:40:14.130487+00:00"}]
+revalidation=[{"n": 0, "passed": 0, "first_seq": null, "at": null, "workers": null}]
+step_workers=[{"actor_id": "d790de5fe854:198:ca083a74", "n": 1, "first_seq": 1147, "last_seq": 1147}, {"actor_id": "d790de5fe854:1:f91fd290", "n": 1, "first_seq": 1149, "last_seq": 1149}]
+bound_customers=[{"id": "cus-tomas", "address_length": 10}]
+hash.fixture_state=1:20c4317354d3bc7a
+hash.cases=1:87cb2a9264283df1
+hash.tracks=0:4f53cda18c2baa0c
+hash.timers=0:4f53cda18c2baa0c
+hash.case_steps=2:ad568f49422bc9ec
+hash.customers=6:0c96b1fb3960b944
+hash.orders=6:556817d9f6dde4c5
+hash.order_lines=6:aaca03c6b2e4738e
+hash.production_tasks=6:29f10213937e6e7a
+hash.outbox_messages=0:4f53cda18c2baa0c
+hash.approval_requests=0:4f53cda18c2baa0c
+hash.approval_decisions=0:4f53cda18c2baa0c
+hash.inbound_replies=0:4f53cda18c2baa0c
+hash.plan_approvals=0:4f53cda18c2baa0c
+hash.inbox_events=0:4f53cda18c2baa0c
+address_leak_guard=False
+reader_sha256=c9731c8f8dedfe15fbc6af0c2db6a8d5d19ca090d7863f3d2e945b18220b0dd4 container=worker-1
+reader_leak_guard=False
+db_now=2026-10-02T10:40:18.753960+00:00
+unrelated_orders=ord-c,ord-d,ord-e,ord-f
+unrelated.constraints=75c2ccb727f1cb54 n=2
+unrelated.customers=6d7bda2339c577f8 n=4
+unrelated.lines=c5686eca8aa71897 n=4
+unrelated.order_system=2eb6e0661227a491 n=4
+unrelated.orders=2d3cbac46a1f7df5 n=4
+unrelated.promises=f6a5879f0ee1c409 n=4
+unrelated.reservations=77ad64f7451357f2 n=8
+unrelated.tasks=2588a22524b27afa n=4
+unrelated.tracks=4f53cda18c2baa0c n=0
+unrelated_digest=4d14c9d89ef3f7dd7e4aa6d899eebdd03d3284baf0abb0d35132c51955f49cbf
+ef_digest=99a1461e52078bced28cd90edb2b2637b92238fd619197d776ba7d4e1721fedd
+versions mirror=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]] store=[["EXT-C",1,"ACCEPTED"],["EXT-D",1,"ACCEPTED"],["EXT-E",1,"ACCEPTED"],["EXT-F",1,"ACCEPTED"]]
+ef_tracks=[] ef_tasks=[["task-ol-e","STARTED",false],["task-ol-f","SCHEDULED",false]]
+attributed_audit=0 attributed_events=0 attributed_outbox=0 attributed_requests=0
+FROZEN_READER_EXIT_ZERO
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-xjlrgbysfkfnzkvdq7iz3ga3oe.
+

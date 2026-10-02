@@ -1,0 +1,15 @@
+
+STATE run=s1-success at=2026-10-02T10:40:44.749612 worker_running=true
+cases=[{"id": "d61e94c6-990a-5b96-80b5-095f8537381d", "state": "CLARIFYING", "version": 3, "needs_owner_attention": false}]
+tracks=[]
+plan_approvals=[]
+requests=[]
+decisions=[]
+inbox=[]
+outbox=[]
+orders=[{"external_id": "EXT-A", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-almond-3"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-charlotte-1"}, {"external_id": "EXT-D", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-lemon-2"}, {"external_id": "EXT-E", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-dark-chocolate-ganache-5"}, {"external_id": "EXT-F", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-blueberry-danish-1"}]
+counters sendMessage=6 worker.telegram.sent=6 getUpdates=0 worker.start=7 worker.stop=6
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-3zq5ueftsf9qlvpbyapxunghre.
+

@@ -1,0 +1,20 @@
+
+WATCH_START=2026-10-02T10:48:41.209173 worker_running=false
+PRESS_STORED=2026-10-02T10:48:55.275080 customer_inbox_rows=1
+WATCH_END=2026-10-02T10:48:55.278019
+cases=[{"id": "d3b3655f-7a08-587b-b480-5dfb9344c3a6", "state": "WAITING", "version": 12, "needs_owner_attention": true}]
+tracks=[{"promise_id": "pr-a", "state": "RECOVERED", "classification": "AUTO_RECOVERABLE", "rule_id": "R-PREAPPROVED"}, {"promise_id": "pr-b", "state": "WAITING_FOR_CUSTOMER", "classification": "APPROVAL_REQUIRED", "rule_id": "R-VISIBLE-ASK"}, {"promise_id": "pr-c", "state": "ESCALATED", "classifica
+requests=[{"promise_id": "pr-b", "state": "SENT", "decided": false, "sent_at": "2026-10-02 10:48:02.351487+00:00", "deadline": "2026-10-02 15:45:23.532784+00:00"}]
+decisions=[]
+replies=0
+inbox=[{"source": "external-order-system", "state": "PROCESSED", "received_at": "2026-10-02 10:48:02.433684+00:00", "processed_at": "2026-10-02 10:48:02.503124+00:00"}, {"source": "customer-reply", "state": "RECEIVED", "received_at": "2026-10-02 10:48:48.648199+00:00", "processed_at": null}]
+outbox=[{"kind": "MESSAGE_SEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:approval:9288d8bd-3db7-5c79-99e4-a52f97102945", "delivered_at": "2026-10-02 10:48:02.116163+00:00"}, {"kind": "ORDER_AMEND", "state": "DELIVERED", "attempts": 1, "idempotency_key": "pp:amend:085a6256-9643-5b
+orders=[{"external_id": "EXT-A", "external_version": 2, "state": "AMENDED", "recipe_version_id": "rv-raspberry-almond-4"}, {"external_id": "EXT-B", "external_version": 1, "state": "ACCEPTED", "recipe_version_id": "rv-raspberry-rose-2"}, {"external_id": "EXT-C", "external_version": 1, "state": "ACCEP
+audit_max=1220 events_max=2890
+revalidation=[{"n": 0, "passed": 0, "first_seq": null, "at": null, "workers": null}]
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-6toltfrontdzzl925bvpqhejl8.
+
+
+[exited with code 0]

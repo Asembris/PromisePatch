@@ -1,0 +1,62 @@
+
+PROOF run=s2-changed-world label=settled at=2026-10-02T10:50:31.092306
+case=d3b3655f-7a08-587b-b480-5dfb9344c3a6 state=PLANNED
+track pr-a RECOVERED AUTO_RECOVERABLE R-PREAPPROVED
+track pr-b PENDING APPROVAL_REQUIRED R-VISIBLE-ASK
+track pr-c ESCALATED BLOCKED R-NOSUB
+track pr-d ESCALATED BLOCKED R-NOSUB
+track pr-e UNAFFECTED UNAFFECTED R-UNREACH
+track pr-f UNAFFECTED UNAFFECTED R-UNREACH
+request {"captured_order_version": 1, "captured_recipe_version_id": "rv-raspberry-rose-2", "deadline": "2026-10-02T15:45:23.532784+00:00", "decided": true, "promise_id": "pr-b", "sent_at": "2026-10-02T10:48:02.351487+00:00", "state": "SUPERSEDED"}
+decision APPROVE LITERAL 2026-10-02T10:49:50.317659+00:00
+plan_approvals=1
+step 2026-10-02T10:45:25.624439+00:00 None PLAN_RECOVERY DONE attempts=1 {"outcome": "PLANNED"}
+step 2026-10-02T10:48:01.170810+00:00 pr-b REQUEST_APPROVAL DONE attempts=1 {"outcome": "REQUESTED"}
+step 2026-10-02T10:48:01.170810+00:00 pr-a APPLY_RECOVERY DONE attempts=1 {"outcome": "APPLYING"}
+step 2026-10-02T10:48:02.295349+00:00 None FINALIZE_RECOVERY DONE attempts=2 {"outcome": "RECOVERED"}
+step 2026-10-02T10:49:50.200063+00:00 None RECEIVE_CUSTOMER_REPLY DONE attempts=1 {"outcome": "APPROVE"}
+step 2026-10-02T10:49:50.317659+00:00 None REVALIDATE_RECOVERY DONE attempts=1 {"deciding_check": 2, "outcome": "STALE"}
+  check {"actual": "track=WAITING_FOR_CUSTOMER case=WAITING", "expected": "track=WAITING_FOR_CUSTOMER case=WAITING", "index": 1, "name": "track and case are waiting", "passed": true}
+  check {"actual": "AMENDED @ v2", "expected": "ACCEPTED|AMENDED @ v1", "index": 2, "name": "order state and version unchanged", "passed": false}
+  check {"actual": "rv-raspberry-rose-2", "expected": "rv-raspberry-rose-2", "index": 3, "name": "pinned recipe version unchanged", "passed": true}
+  check {"actual": "3198a596fb60edd8f8336d9a72709b515a2a369ef86e1a416a5d69689037ad56", "expected": "3198a596fb60edd8f8336d9a72709b515a2a369ef86e1a416a5d69689037ad56", "index": 4, "name": "constraint snapshot unchanged", "passed": true}
+  check {"actual": "3.200", "expected": ">= 2.200", "index": 5, "name": "substitute still available", "passed": true}
+  check {"actual": "SCHEDULED and start 2026-10-02T16:45:23.532784+00:00", "expected": "SCHEDULED|HELD by d3b3655f-7a08-587b-b480-5dfb9344c3a6 and start > 2026-10-02T10:49:50.520736+00:00", "index": 6, "name": "production task not started and still ahead", "passed": true}
+  check {"actual": "2026-10-02T10:49:50.520736+00:00", "expected": "now <= 2026-10-02T15:45:23.532784+00:00", "index": 7, "name": "approval deadline not passed", "passed": true}
+  check {"actual": "<channel-address> via <channel-address>", "expected": "<channel-address>", "index": 8, "name": "sender is the order's approval channel", "passed": true}
+  check {"actual": "LITERAL", "expected": "LITERAL", "index": 9, "name": "decision came from the literal parser", "passed": true}
+  check {"actual": "1 decision(s) for 9288d8bd-3db7-5c79-99e4-a52f97102945 on track e297edac-6dcf-51a0-a438-8d921892a8ec option f578e64a-1d32-5ffc-9c96-20e0820a91a4", "expected": "one decision for 9288d8bd-3db7-5c79-99e4-a52f97102945 on track e297edac-6dcf-51a0-a438-8d921892a8ec option f578e64a-1d32-5ffc-9c96-20e0820a91a4", "index": 10, "name": "one unspent decision, bound to this plan", "passed": true}
+audit 1197 None CASE_OPENED WORKER NONE 2026-10-02T10:45:24.991678+00:00 {}
+audit 1199 None CLARIFICATION_REQUESTED SYSTEM NONE 2026-10-02T10:45:25.255381+00:00 {}
+audit 1201 None CLARIFICATION_ANSWERED WORKER NONE 2026-10-02T10:45:25.362029+00:00 {}
+audit 1203 None PHYSICAL_FACT_RECORDED WORKER NONE 2026-10-02T10:45:25.495879+00:00 {}
+audit 1205 None IMPACT_ANALYZED SYSTEM NONE 2026-10-02T10:45:25.624439+00:00 {}
+audit 1207 None RECOVERY_PLANNED SYSTEM NONE 2026-10-02T10:45:25.881624+00:00 {}
+audit 1210 None PLAN_APPROVED WORKER HUMAN_APPROVAL 2026-10-02T10:48:01.129822+00:00 {}
+audit 1211 None PLAN_CONFIRMED WORKER HUMAN_APPROVAL 2026-10-02T10:48:01.170810+00:00 {}
+audit 1212 pr-b APPROVAL_REQUESTED SYSTEM CONSTRAINT 2026-10-02T10:48:01.609316+00:00 {}
+audit 1214 pr-a RECOVERY_APPLIED SYSTEM CONSTRAINT 2026-10-02T10:48:02.161599+00:00 {"track_state": "APPLYING"}
+audit 1216 pr-b APPROVAL_SENT SYSTEM NONE 2026-10-02T10:48:02.351487+00:00 {"track_state": "WAITING_FOR_CUSTOMER"}
+audit 1219 pr-a RECOVERY_COMPLETED SYSTEM CONSTRAINT 2026-10-02T10:48:03.609495+00:00 {"track_state": "RECOVERED"}
+audit 1222 pr-b APPROVAL_DECISION_RECORDED CUSTOMER HUMAN_APPROVAL 2026-10-02T10:49:50.317659+00:00 {"decision": "APPROVE", "request_state": "ANSWERED", "track_state": "WAITING_FOR_CUSTOMER"}
+audit 1234 pr-b RECOVERY_STALE SYSTEM NONE 2026-10-02T10:49:50.520736+00:00 {"deciding_check": 2, "track_state": "STALE"}
+audit 1236 pr-b TRACK_REPLANNED SYSTEM NONE 2026-10-02T10:49:50.754720+00:00 {"classification": "APPROVAL_REQUIRED", "track_state": "PENDING"}
+outbox MESSAGE_SEND DELIVERED attempts=1 key=- created=2026-10-02T10:48:01.609316+00:00 target=null
+outbox ORDER_AMEND DELIVERED attempts=1 key=pp:amend:085a6256-9643-5b25-8cd8-9293247a4d04:7484e721-2428-58af-9b48-d0488745c0b1:1 created=2026-10-02T10:48:02.161599+00:00 target={"option_id": "7484e721-2428-58af-9b48-d0488745c0b1"}
+outbox MESSAGE_SEND DELIVERED attempts=1 key=- created=2026-10-02T10:49:50.754720+00:00 target=null
+mirror EXT-A v2 AMENDED rv-raspberry-almond-4 qty=1
+mirror EXT-B v2 AMENDED rv-raspberry-rose-2 qty=2
+mirror EXT-C v1 ACCEPTED rv-raspberry-charlotte-1 qty=1
+mirror EXT-D v1 ACCEPTED rv-raspberry-lemon-2 qty=1
+mirror EXT-E v1 ACCEPTED rv-dark-chocolate-ganache-5 qty=1
+mirror EXT-F v1 ACCEPTED rv-blueberry-danish-1 qty=24
+store EXT-A {"lines": [{"item": "rv-raspberry-almond-4", "note": "Amended by PromisePatch \u2014 approved by customer, ", "qty": 1}], "state": "AMENDED", "version": 2}
+store EXT-B {"lines": [{"item": "rv-raspberry-rose-2", "note": "", "qty": 2}], "state": "AMENDED", "version": 2}
+store_event {"attempts": 1, "delivery": "DELIVERED", "lines": [{"item": "rv-raspberry-almond-4", "note": "Amended by PromisePatch \u2014 approved by customer, ", "qty": 1}], "occurred_at": "2026-10-02T10:48:02.282656Z", "order": "EXT-A", "origin": "PromisePatch amendment pp:amend:085a6256-9643-5b25-8cd8-9293247a4d04:7484e721-2428-58af-9b48-d0488745c0b1:1", "version": 2}
+store_event {"attempts": 1, "delivery": "DELIVERED", "lines": [{"item": "rv-raspberry-rose-2", "note": "", "qty": 2}], "occurred_at": "2026-10-02T10:49:18.323720Z", "order": "EXT-B", "origin": "operator change in the order system", "version": 2}
+masked_check_addresses=3
+address_leak_guard=False
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-g5hfbgubfotzp5nbct89rohk7a.
+

@@ -1,0 +1,31 @@
+
+PROOF run=final-canonical label=final-proof at=2026-10-02T11:01:45.371871
+case=5645dee8-c907-5803-ad8e-84b518938c1c state=PLANNED
+track pr-a PENDING AUTO_RECOVERABLE R-PREAPPROVED
+track pr-b PENDING APPROVAL_REQUIRED R-VISIBLE-ASK
+track pr-c PENDING BLOCKED R-NOSUB
+track pr-d PENDING BLOCKED R-NOSUB
+track pr-e UNAFFECTED UNAFFECTED R-UNREACH
+track pr-f UNAFFECTED UNAFFECTED R-UNREACH
+plan_approvals=0
+step 2026-10-02T11:01:23.225482+00:00 None PLAN_RECOVERY DONE attempts=1 {"outcome": "PLANNED"}
+audit 1243 None CASE_OPENED WORKER NONE 2026-10-02T11:01:22.617793+00:00 {}
+audit 1245 None CLARIFICATION_REQUESTED SYSTEM NONE 2026-10-02T11:01:22.873094+00:00 {}
+audit 1247 None CLARIFICATION_ANSWERED WORKER NONE 2026-10-02T11:01:22.963381+00:00 {}
+audit 1249 None PHYSICAL_FACT_RECORDED WORKER NONE 2026-10-02T11:01:23.092166+00:00 {}
+audit 1251 None IMPACT_ANALYZED SYSTEM NONE 2026-10-02T11:01:23.225482+00:00 {}
+audit 1253 None RECOVERY_PLANNED SYSTEM NONE 2026-10-02T11:01:23.499598+00:00 {}
+mirror EXT-A v1 ACCEPTED rv-raspberry-almond-3 qty=1
+mirror EXT-B v1 ACCEPTED rv-raspberry-rose-2 qty=1
+mirror EXT-C v1 ACCEPTED rv-raspberry-charlotte-1 qty=1
+mirror EXT-D v1 ACCEPTED rv-raspberry-lemon-2 qty=1
+mirror EXT-E v1 ACCEPTED rv-dark-chocolate-ganache-5 qty=1
+mirror EXT-F v1 ACCEPTED rv-blueberry-danish-1 qty=24
+store EXT-A {"lines": [{"item": "rv-raspberry-almond-3", "note": "", "qty": 1}], "state": "ACCEPTED", "version": 1}
+store EXT-B {"lines": [{"item": "rv-raspberry-rose-2", "note": "", "qty": 1}], "state": "ACCEPTED", "version": 1}
+masked_check_addresses=0
+address_leak_guard=False
+
+
+Exiting session with sessionId: PromisePatchLocalDevelopment-seep3p5lhatsqyb4g3undiu6o4.
+
