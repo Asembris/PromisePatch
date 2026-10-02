@@ -85,8 +85,10 @@ after { case_state EXECUTING, applying [A], awaiting_approval [B], escalated {C,
 - The confirmation's correlation id is the MCP tool call's. The approval it spent is the browser
   press's. So the effecting step came over MCP, and its authority is the person's earlier press.
   The ledger attributes the action to Maya under her existing human approval, on
-  `BROWSER_SESSION`, the only kind of channel that can write an approval (ADR-0018), and not to the
-  MCP bearer or service credential.
+  `BROWSER_SESSION`, the channel used in this proof, and not to the MCP bearer or service
+  credential. `ApprovalChannel` has two members, `BROWSER_SESSION` and `OPERATOR_CONSOLE`, and
+  none an MCP or service credential could name, so neither can create the human approval
+  (ADR-0018).
 - No `POST /api/conversation/confirm` appears in the window. The browser's combined
   record-and-confirm route was not used.
 
@@ -150,5 +152,8 @@ were compared there and never printed.
 - The panel's spoken reply text was not captured; the logged turn result is what is cited.
 - The utterance was typed in the panel, not dictated. Speech recognition is not under test here.
 - One run, and one success path. The bridge refusing a confirm when no approval exists is proved
-  in CI, and live only by R1 attempt 1's `NEEDS_THE_WORKERS_YES` in
-  [bridge-release.md](bridge-release.md).
+  by the implementation, its tests and CI, not live.
+- A different live refusal is recorded in [bridge-release.md](bridge-release.md), R1 attempt 1: a
+  browser approval already existed, the utterance "Yes, confirm the plan" failed the closed
+  affirmation grammar, Bedrock selected `CONFIRM`, and the server blocked it with
+  `NEEDS_THE_WORKERS_YES`. That run did not test a missing approval.

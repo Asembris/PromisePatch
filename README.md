@@ -67,16 +67,23 @@ audit event for E or F. That held in each of five restart rehearsals on the depl
 customers and the order system are a labelled fixture and a simulator. The Telegram message and the
 web approval are real.
 
-## Why a normal agent is not enough
+## Finding a fix is not permission to apply it
 
 **Finding a possible substitution is not the same as having permission to apply it.**
 
-| | a capable agent | PromisePatch |
-|---|---|---|
-| raspberries missing | finds a recipe that works without them | finds it too, then asks *whose permission covers each order* |
-| applying the fix | applies it wherever it fits | applies it only where a recorded preference or a customer's literal `YES` covers it |
-| after a yes | treats the yes as done | re-reads the world before writing, and refuses a yes the world has outgrown |
-| who decides | the model's output is the action | the model only understands; deterministic rules and fresh state authorize |
+Any capable agent can find a recipe that works without raspberries. What this repository
+demonstrates is what PromisePatch does between that candidate and a write to an order:
+
+| step | what PromisePatch does |
+|---|---|
+| candidate action | the model reads the report; a pre-authored `SubstitutionPolicy` names the only versions a recovery may use |
+| permission | each affected order is checked for what covers it: a recorded preference, a customer's literal `YES`, or nothing, in which case it goes to the owner |
+| human authority | the plan is applied only after a person approves that exact plan; a service credential cannot create that approval |
+| fresh-state revalidation | before writing, the worker re-reads current state and runs ten checks |
+| write or refusal | it amends the order, or refuses with a named reason such as `STALE` and writes nothing |
+
+The model only understands. Deterministic rules and fresh state authorize. This is a claim about
+what PromisePatch does, shown in the evidence below, not about what other agents cannot do.
 
 ## A yes can go stale. PromisePatch checks again.
 
@@ -262,7 +269,7 @@ Each number has a caveat, and the caveat is part of the result.
 | **0/2** | Untouched orders that received any effect, in each of **five** deployed rehearsals. Each restarted the worker at a different point: while waiting for the customer, across the plan confirmation, across the answer, after resolution, and the first again. Per rehearsal: 2 amendments, 1 customer message, 2 task holds, 3 outbox rows, all delivered on attempt 1. | [g8-demo-funnel.md](docs/g8-demo-funnel.md), repeated in [bridge-release.md](docs/bridge-release.md) |
 | **16/16** | The v2 **release condition**, taken once on the current release. v2 is a separately versioned label correction of the effect-set manifest in which one label moved: S12's hold, because started kitchen work is never held ([ADR-0017](docs/adr/0017-a-blocked-promise-does-not-hold-a-started-task.md)). It is not a re-score of v1. | [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md), [bridge-release.md](docs/bridge-release.md) |
 | **11/16** | The **permanent headline**: the first scored run of the sixteen frozen scenarios against the v1 manifest, labelled by hand before the runner existed. Five failed. Four were implementation defects, since fixed under published SHAs; the fifth is the S12 label above. This result is never replaced. | [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) |
-| **9/10** | Voice turns in which a truthful spoken response began within four seconds of speech ending. The gate was 9, so it passed by one turn. | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) |
+| **9/10** | Voice turns in which a truthful spoken response began within four seconds of speech ending. It met the predeclared threshold of K ≥ 9 exactly. | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) |
 
 What those numbers do **not** say:
 
@@ -349,6 +356,15 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 | provenance | [g8-contribution-provenance.md](docs/g8-contribution-provenance.md) | every commit is dated inside the submission window |
 | claims against evidence | [claims-audit.md](docs/claims-audit.md) | an audit of this repository's own claims, overclaims included |
 | integration cost | [prerequisites-integration-cost-and-limitations.md](docs/prerequisites-integration-cost-and-limitations.md) | what adopting this would require, and what is not established |
+
+## Who it is for first
+
+The initial target is small custom-order food businesses, where an ingredient disruption touches
+customer promises and production work at the same time. This is a hypothesis, not a finding: no
+pilot users, demand, savings or time reductions are claimed. Production adoption would require a
+real order and catalog integration, substitution and permission policies authored for that
+business, a configured customer channel, and onboarding and validation with actual operators. See
+[prerequisites-integration-cost-and-limitations.md](docs/prerequisites-integration-cost-and-limitations.md).
 
 ## Honest limitations
 

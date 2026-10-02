@@ -58,17 +58,18 @@ The next deployed call returned `semantic.answered` from Bedrock in 1487 ms.
 
 ---
 
-## 2. CloudFormation reports `Replacement: Conditional` for an EC2 `UserData` edit and cannot say in advance whether a stateful host survives
+## 2. A change set reports `Replacement: Conditional` for an EC2 `UserData` edit, which a conservative release guard cannot resolve on its own
 
 **Task.** Ship a template change that edits `Host.UserData` on a running single-host stack,
 without risking replacement of the instance (which would re-seed the demo data, drop the TLS
 certificate and lose operator state on the host).
 
-**Friction.** The change set is the tool for asking "will this destroy my instance?", and for
-`UserData` it answers "maybe".
+**Friction.** The change set is the tool we used to ask "will this destroy my instance?", and for
+`UserData` it answered "conditionally", without saying which condition applied to this instance.
 
-**Expected.** A change set states whether the instance will be replaced, or offers a way to
-assert "update in place or fail" before execution.
+**Expected.** A change set whose answer depends on a documented runtime condition says which
+condition applies to the resource being updated, so tooling can decide without a separate
+documentation lookup.
 
 **Actual.** Every change set that touched `UserData` returned:
 
@@ -80,17 +81,22 @@ Modify  AWS::EC2::Instance        Host                  Replacement: Conditional
 
 Each time we let one execute, it resolved to an in-place stop/start: same instance id, same root
 volume, launch time moved. `AdditionalInfo` behaved the same way. The only change we found that
-CloudFormation reports as an unconditional replacement is renaming the resource's logical ID. So
-a safe release guard has to treat `Conditional` as `True`, which means a `UserData` edit can
-never pass through an ordinary release; it can only be applied after explicitly authorising the
-host's destruction, even though destruction has not once occurred.
+CloudFormation reports as an unconditional replacement is renaming the resource's logical ID.
+The `AWS::EC2::Instance` property reference does document `UserData` updates as an interruption
+(stop/start) for EBS-backed instances, which matches what we saw; the change set itself did not
+connect its `Conditional` to that documented behaviour for this instance. Our guard reads only
+the change set, so it treats `Conditional` as `True`, and a `UserData` edit cannot pass through
+our ordinary release; it can only be applied after explicitly authorising the host's possible
+replacement, even though replacement has not once occurred. We did not adopt a CloudFormation
+stack policy denying `Update:Replace` on the host, which AWS provides for this kind of
+protection; that is our choice, not a missing AWS feature.
 
 A second, related gap: our first guard matched `Replacement: True` only, and would have executed
 a plan AWS had just marked `Conditional`. That was our defect, fixed in our script, but the
 three-valued field is easy to read as a boolean.
 
-**Impact / severity.** Medium. Nothing was lost, but every template change to the host became a
-decision to accept possible destruction of a stateful instance. The deployed stack's recorded
+**Impact / severity.** Medium. Nothing was lost, but under our guard every template change to the
+host became a decision to accept possible replacement of a stateful instance. The deployed stack's recorded
 template now lags the repository, and later releases had to be carried by a parameter-only
 change set as a documented one-off.
 
@@ -103,14 +109,14 @@ change set as a documented one-off.
   `UserData` (which cloud-init runs once per instance) rarely needs to move.
 
 **Actionable suggestion.**
-- For `AWS::EC2::Instance`, have change sets resolve `UserData`/`AdditionalInfo` to a definite
-  answer where the service can decide it (for example, "update requires stop/start; no
-  replacement") rather than `Conditional`.
-- Offer a stack-update or change-set option that fails the update instead of replacing a named
-  resource (a per-update "no replacement" assertion), so operators do not have to choose between
-  "never change `UserData`" and "authorise destroying the host".
-- Document in the `Replacement` field reference which conditions decide a `Conditional` for EC2
-  instances.
+- Clearer diagnostics: where a change set reports `Conditional`, include the condition that
+  applies (for example, "EBS-backed instance: update requires stop/start, no replacement") when
+  the service can determine it for the resource being updated.
+- Better linkage: point a `Conditional` result at the property reference entry that documents
+  the runtime behaviour for that resource type and property.
+- Easier discoverability for conservative release tooling: surface stack-policy protection
+  against `Update:Replace` alongside change-set replacement results, so a guard that sees
+  `Conditional` can find the existing mechanism.
 
 **Evidence.**
 - [non-destructive-release.md §9.3](non-destructive-release.md) — the first live `Conditional`
@@ -126,14 +132,16 @@ change set as a documented one-off.
 
 ---
 
-## 3. Verifying a least-privilege deployment role before deploying has no side-effect-free path
+## 3. Verifying our narrowly scoped deployment role before deploying needed service-specific probes
 
 **Task.** Before creating any resource, prove that a narrowly scoped deployment role can do
 exactly what the stack needs, and that the runtime role may invoke exactly one Bedrock inference
 profile.
 
-**Friction.** Proving a permission without exercising it depended on per-service error-code
-semantics rather than on a single diagnostic.
+**Friction.** For our narrowly scoped deployment role, validating all required permissions across
+IAM, Bedrock and ECR required service-specific probes, because the role lacked a practical
+self-service read-only path. Proving a permission without exercising it depended on per-service
+error-code semantics rather than on a single diagnostic.
 
 **Expected.** One read-only way to ask "may this principal perform this action on this resource
 ARN?", available to the principal being checked, with consistent denial signalling.
@@ -142,7 +150,7 @@ ARN?", available to the principal being checked, with consistent denial signalli
 - `iam:SimulatePrincipalPolicy`, the API intended for this, was itself denied to the role, as
   were `iam:GetRole` and `iam:ListRolePolicies`, so the role could not inspect its own policy.
   The preflight had to be behavioural.
-- There is no read-only check for `bedrock:InvokeModel`. We sent a deliberately invalid body
+- We found no read-only check for `bedrock:InvokeModel`. We sent a deliberately invalid body
   (`{}`) and read the error class: `AccessDeniedException` means denied, `ValidationException`
   means authorised and then rejected for shape. The control-plane `bedrock:GetFoundationModel`
   is scoped separately and was denied, so it cannot stand in as a proxy.
@@ -208,8 +216,8 @@ profile may route to.
 | Entry | AWS surface | Severity | Workaround |
 |---|---|---|---|
 | 1. `NoCredentialsError` from containers at hop limit 1 | EC2 IMDSv2, AWS SDK credential chain | Medium | Hop limit 2, `HttpTokens: required` kept, reboot |
-| 2. `Replacement: Conditional` on `UserData` | CloudFormation change sets, EC2 | Medium | Treat `Conditional` as replacement; parameter-only change set with `Changes: []`; read config from SSM at boot |
-| 3. No side-effect-free permission check | IAM, Bedrock, ECR | Low–medium | Allowlisted read-only preflight; error-class probes; exact-ARN reads |
+| 2. `Replacement: Conditional` on `UserData`, unresolved for our guard | CloudFormation change sets, EC2 | Medium | Treat `Conditional` as replacement; parameter-only change set with `Changes: []`; read config from SSM at boot |
+| 3. Our scoped role needed service-specific permission probes | IAM, Bedrock, ECR | Low–medium | Allowlisted read-only preflight; error-class probes; exact-ARN reads |
 
 This log is feedback from building on AWS, not a claim that AWS blocked the project: each issue
 had a workaround, and the deployment shipped.
