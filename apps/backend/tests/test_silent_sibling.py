@@ -345,6 +345,7 @@ async def test_c_answering_while_b_is_being_applied_waits_for_b_to_settle(
     (in_flight,) = await amendments(physical, b.id)
     assert (in_flight.state, in_flight.attempts) == ("PENDING", 1)
     assert (await physical.case(case_id)).state == cases.CASE_RECONCILING
+    await physical.defer_effect(in_flight.id)
 
     await physical.deliver_reply(c_request.id, "YES", sender=OKAFOR_CHANNEL)
     await physical.drain(worker=worker, limit=40)

@@ -837,6 +837,20 @@ class Intake:
     async def make_effect_due(self, effect_id: UUID) -> None:
         await self._age_effect(effect_id, "next_attempt_at")
 
+    async def defer_effect(self, effect_id: UUID) -> None:
+        """Keep one retrying effect out of reach until :meth:`make_effect_due` releases it.
+
+        A retry's own backoff is about a second of wall clock, which a slow runner can spend
+        inside one drain, so a test that needs the effect still in flight pins it rather than
+        racing it.
+        """
+        async with self.database.begin() as connection:
+            await connection.execute(
+                sa_update(OutboxMessage)
+                .where(OutboxMessage.id == effect_id)
+                .values(next_attempt_at=text("now() + interval '1 hour'"))
+            )
+
     async def _age_effect(self, effect_id: UUID, column: str) -> None:
         async with self.database.begin() as connection:
             await connection.execute(
