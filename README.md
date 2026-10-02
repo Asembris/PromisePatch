@@ -7,11 +7,18 @@
 
 <h1 align="center">PromisePatch</h1>
 
+<h3 align="center">One failed delivery. Six customer promises. Different permissions.</h3>
+
 <p align="center">
-  <b>The model understands. The deterministic protocol authorizes.</b><br>
-  When a missed delivery breaks promises already made, PromisePatch changes only what it is allowed
-  to change: a swap the customer already agreed to, or one they approve now. The rest goes to the
-  owner, and every order the failure does not reach is left untouched.
+  When a supplier delivery fails, the cakes made from it are already promised to customers.
+  PromisePatch works out which promises the failure breaks. It fixes only the ones it has
+  permission to fix, hands the rest to the owner, and leaves every other order alone.
+</p>
+
+<p align="center">
+  <a href="https://184.194.40.87.sslip.io"><img src="https://img.shields.io/badge/Open_the_live_app-8390F2?style=for-the-badge" alt="Open the live app"></a>
+  <a href="#one-failed-delivery"><img src="https://img.shields.io/badge/The_90--second_story-182238?style=for-the-badge" alt="The 90-second story"></a>
+  <a href="#proof-index"><img src="https://img.shields.io/badge/Proof_index-182238?style=for-the-badge" alt="Proof index"></a>
 </p>
 
 <p align="center">
@@ -20,162 +27,151 @@
 </p>
 
 <p align="center">
-  <a href="https://184.194.40.87.sslip.io"><img src="https://img.shields.io/badge/Open_the_live_app-8390F2?style=for-the-badge" alt="Open the live app"></a>
-  <a href="#60-second-judge-path"><img src="https://img.shields.io/badge/60--second_judge_path-182238?style=for-the-badge" alt="60-second judge path"></a>
-  <a href="#proof-index"><img src="https://img.shields.io/badge/Proof_index-182238?style=for-the-badge" alt="Proof index"></a>
-  <a href="https://github.com/Asembris/PromisePatch/actions/runs/36925136266"><img src="https://img.shields.io/badge/Deployed_release_CI-13_of_13_jobs-2E7D5B?style=for-the-badge" alt="Deployed release CI: 13 of 13 jobs on 740a062"></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/Asembris/PromisePatch/actions/workflows/pr.yml"><img src="https://github.com/Asembris/PromisePatch/actions/workflows/pr.yml/badge.svg?branch=main" alt="product gate"></a>
-  <a href="docs/p5.1-mcp-transport-spine.md"><img src="https://img.shields.io/badge/MCP-2025--11--25_%C2%B7_Streamable_HTTP-182238" alt="MCP 2025-11-25, Streamable HTTP"></a>
   <a href="docs/adr/0007-runtime-semantic-model-nova-2-lite.md"><img src="https://img.shields.io/badge/Amazon_Bedrock-Nova_2_Lite-182238" alt="Amazon Bedrock, Nova 2 Lite"></a>
-  <a href="docs/p6.2-first-deployment.md"><img src="https://img.shields.io/badge/AWS-EC2_%2B_RDS-182238" alt="AWS: EC2 and RDS"></a>
+  <a href="docs/p5.1-mcp-transport-spine.md"><img src="https://img.shields.io/badge/MCP-2025--11--25_%C2%B7_Streamable_HTTP-182238" alt="MCP 2025-11-25, Streamable HTTP"></a>
+  <a href="docs/bridge-release.md"><img src="https://img.shields.io/badge/AWS-EC2_%2B_RDS-182238" alt="AWS: EC2 and RDS"></a>
   <img src="https://img.shields.io/badge/Python-3.12-182238" alt="Python 3.12">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-182238" alt="Apache-2.0"></a>
 </p>
 
-> **0 of 2 untouched orders received an incident-caused effect, in each of five deployed restart
-> rehearsals** of the canonical case, while the four threatened orders were recovered or escalated.
-> Measured on the G8 deployment (`4529a802e34e`), repeated on `283f63f2845f`
-> ([post-intake record](docs/post-intake-release.md)) and again on the current deployed release
-> (`740a062838e0`, [bridge release record](docs/bridge-release.md)), counted per effect type:
-> [the demo funnel](docs/g8-demo-funnel.md).
-
-## 60-second judge path
-
-1. **The problem**: [why a missed delivery is a promise problem, not an inventory problem](#the-problem).
-2. **The scenario**: [one failed raspberry delivery, six orders, four lanes](#the-canonical-scenario),
-   or open the [live app](https://184.194.40.87.sslip.io) and press *Look around a real case*
-   (read-only, no account).
-3. **The authority model**: [who may change what, and what the model is never allowed to do](#how-authority-works).
-4. **The measured results**: [three numbers, each with its caveat](#measured-evidence).
-5. **The architecture**: [one diagram showing where the model stops](#architecture).
-6. **The proof**: [the proof index](#proof-index) links every claim to its committed record.
-
 ## The problem
 
-A made-to-order bakery accepts promises against supply it expects to receive. Then, one morning,
-the raspberries do not arrive.
+A made-to-order bakery takes orders against supplies it expects to receive. One morning the
+raspberries don't arrive.
 
-Replanning the inventory is the easy part. The hard part is the promises already made: which
-customer orders does this failure actually reach? Which may be changed under a substitution the
-customer already agreed to, which need the customer to say yes, which must go to the owner
-because no permitted recovery exists, and which must not be touched at all? A frontline worker
-has to answer that in the middle of a shift. A language model can help understand what they
-said, but it must never be the thing that decides.
+Reordering raspberries is the easy part. The hard part is the promises already made to customers.
+Some orders can be changed because the customer already agreed to a swap. Some can be changed only
+if the customer says yes now. Some cannot be changed at all and need the owner. Most are not
+affected and must not be touched. Get one wrong and a customer receives a cake they refused, or a
+message about an order that was fine.
 
-## What PromisePatch does
+## One failed delivery
 
-| | step | who decides |
-|---|---|---|
-| 1 | A worker reports the failure by voice or text: *"today's raspberry delivery didn't arrive."* | the worker attests the physical fact; over MCP, the server's configured worker does |
-| 2 | PromisePatch understands the report and asks one clarifying question if needed. | deterministic lexicon first; a model only for phrasing it cannot read |
-| 3 | It finds every accepted customer promise the failure reaches. | the deterministic engine |
-| 4 | It puts each promise in exactly one authority lane: **AUTO**, **ASK**, **BLOCKED** or **UNAFFECTED**. | recorded constraints and pre-authored recipe versions |
-| 5 | A worker confirms the plan that was read out, bound to that plan's identity. | a human, in a signed-in browser session or on the operator console |
-| 6 | Pre-authorized changes run; the owner gets the blocked ones, with scheduled work held. | the protocol |
-| 7 | A customer who must agree gets one message and answers on a signed web link. | the customer, with a literal `YES` or `NO` |
-| 8 | Before the change may be committed, ten checks run against a **fresh** snapshot. | the protocol |
-| 9 | The change is written to the external order system as a governed amendment. | the order system stays the system of record |
+The Hollow Oak bakery has six orders for today. A worker says *"today's raspberry delivery didn't
+arrive"* and clarifies *"just raspberries — the strawberries came."*
 
-Promises the failure does not reach get no message, no write, no reservation change, no task hold
-and no audit event.
-
-## The canonical scenario
-
-The Hollow Oak bakery fixture: six accepted orders, one missing raspberry delivery. The worker
-clarifies *"just raspberries - the strawberries came."* This case was provisioned, restored and
-run five times on the deployed release candidate
-([funnel](docs/g8-demo-funnel.md), [case definition](docs/seeded-demo-case.md)).
-
-| order | lane | why | settled outcome |
+| order | what PromisePatch finds | permission | outcome |
 |---|---|---|---|
-| A | **AUTO** | a substitution the customer's recorded preference already allows | amended in the order system, v1 → v2 |
-| B | **ASK** | a substitution the customer must approve | one Telegram message; `YES` on the signed link; revalidated; amended v1 → v2 |
-| C | **BLOCKED** | the customer's constraint forbids substitution | escalated to the owner; scheduled work held |
-| D | **BLOCKED** | no pre-authored recipe version exists | escalated to the owner; scheduled work held |
-| E | **UNAFFECTED** | no raspberries in it | untouched: 0 effects |
-| F | **UNAFFECTED** | no raspberries in it | untouched: 0 effects |
+| **A** | a swap the customer's standing preference already allows | already given | **recovered**: amended automatically |
+| **B** | a swap the customer has not agreed to yet | must ask | **recovered**: one Telegram message, `YES` on a signed link, re-checked, then amended |
+| **C** | the customer forbids substitutions | none | **owner**: escalated, scheduled work held |
+| **D** | no approved alternative recipe exists | none | **owner**: escalated, scheduled work held |
+| **E** | no raspberries in it | not needed | **untouched** |
+| **F** | no raspberries in it | not needed | **untouched** |
 
-The customers, recipes and order system are labelled fixtures and a simulator. The Telegram
-message and the web approval are real.
+<h3 align="center">2 recovered &nbsp;·&nbsp; 2 need the owner &nbsp;·&nbsp; 2 untouched</h3>
 
-## Measured evidence
+Untouched means **zero** effects: no message, no write, no reservation change, no task hold and no
+audit event for E or F. That held in each of five restart rehearsals on the deployed app
+([bridge-release.md](docs/bridge-release.md), [funnel](docs/g8-demo-funnel.md)). The bakery, its
+customers and the order system are a labelled fixture and a simulator. The Telegram message and the
+web approval are real.
 
-Three numbers, as the roadmap requires them to be reported. Each has a caveat, and the caveat is
-part of the result.
+## Why a normal agent is not enough
 
-| result | what it is | read this first |
+**Finding a possible substitution is not the same as having permission to apply it.**
+
+| | a capable agent | PromisePatch |
 |---|---|---|
-| **11/16** | The **permanent headline**. The first scored run of sixteen frozen effect-set scenarios against the v1 manifest, which was hand-labelled before the runner existed. Five failed, and the result is never replaced. | [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) |
-| **16/16** | A **separate** release condition, not a re-score of v1. It was run once against **v2**, a separately versioned label correction in which one label moved: S12's hold, because started kitchen work is never held ([ADR-0017](docs/adr/0017-a-blocked-promise-does-not-hold-a-started-task.md)). The code was product-identical to the deployed release candidate. The other four v1 failures were implementation defects, fixed under published SHAs. | [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md) |
-| **0/2** | Untouched orders that received an incident-caused effect, in each of **five** deployed rehearsals. Each one restarted the worker at a different point: while waiting for the customer, across the plan confirmation, across the answer, after resolution, and the first again. Per rehearsal: 2 amendments, 1 customer message, 2 task holds, 3 outbox rows, all delivered on attempt 1. | [g8-demo-funnel.md](docs/g8-demo-funnel.md) |
-| **9/10** | Voice turns in which a truthful spoken response began within four seconds of speech ending. The gate was 9, so it passed by one turn. | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) |
+| raspberries missing | finds a recipe that works without them | finds it too, then asks *whose permission covers each order* |
+| applying the fix | applies it wherever it fits | applies it only where a recorded preference or a customer's literal `YES` covers it |
+| after a yes | treats the yes as done | re-reads the world before writing, and refuses a yes the world has outgrown |
+| who decides | the model's output is the action | the model only understands; deterministic rules and fresh state authorize |
 
-What those numbers do **not** say:
+## A yes can go stale. PromisePatch checks again.
 
-- The effect sets are **developer-authored, finite and public**. They are not an independent or
-  held-out benchmark. The effect-set CI workflow stays red on purpose, because it judges v1.
-- The funnel is **one fixture measured five times**. It shows the demo repeats, not a reliability
-  rate.
-- The voice result comes from a **second run**. The first run (`K = 1/10`) was voided after its
-  intervals had been computed, which the predeclared protocol forbids, and the
-  [claims audit](docs/claims-audit.md) says a strict reader may treat run 2 as a best-of-two. Both
-  runs are published in full. They ran on the local stack, with no public-internet round trip,
-  using the browser's own speech APIs.
+**A recovery being valid once does not mean it stays valid.** Before it writes, PromisePatch re-reads
+fresh state and runs ten checks. If the world has changed, the old permission is rejected.
 
-Releases are kept apart, and none stands in for another:
+Taken live on the deployed release on 2026-10-02 ([revalidation-proof.md](docs/revalidation-proof.md)):
 
-| state | commit / image | product gate (`pr`) |
+| | order B |
+|---|---|
+| 1. the customer says `YES` | to swapping **one** cake, order version **v1** |
+| 2. the order changes | the order system now says **two** cakes, version **v2** |
+| 3. PromisePatch re-reads fresh state | check 2, *order state and version unchanged*, fails: expected v1, found v2 |
+| 4. the stale yes is rejected | `STALE`. **No write**: the order system keeps its own v2, unamended |
+| 5. what follows | the customer is told the request no longer applies; B is re-planned and, with no new plan confirmation, went to the owner |
+
+A control run with the same steps and no order change passed all ten checks and amended B from v1
+to v2. The change was a deliberate edit in the simulated order system, and the worker was paused so
+the yes, the change and the re-check happened in that order. The live run exercised check 2. The
+other checks refusing, and the later commit-time gate, are proved by tests.
+
+## Alexa+, Bedrock and MCP
+
+A worker can drive the case by conversation. Each layer has one job, and only the last one can
+authorize anything.
+
+| layer | its job | can it authorize? |
 |---|---|---|
-| **deployed, revalidated and frozen release** | `740a062838e0ea2620499abed27d653c42fc05f7`, image `740a062838e0` | run [`36925136266`](https://github.com/Asembris/PromisePatch/actions/runs/36925136266), 13 of 13 jobs. Evidence: [bridge-release.md](docs/bridge-release.md). Repository HEAD may contain documentation-only commits on top of it. |
-| earlier deployed release, historical | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7`, image `283f63f2845f` | run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324), 13 of 13 jobs. Evidence: [post-intake-release.md](docs/post-intake-release.md). |
-| older historical release | `56c302366b3d` / image `4529a802e34e` | run [`36310794944`](https://github.com/Asembris/PromisePatch/actions/runs/36310794944), 13 of 13 jobs. Kept as history. |
+| **Amazon Bedrock** (Nova 2 Lite) | understands the worker's sentence and picks one of five tools: report, clarify, confirm, withdraw, status | **no** |
+| **Simulated Alexa+ via MCP** | carries that action to the real, authenticated MCP endpoint | **no**: it can spend a human approval that already exists, and cannot create one |
+| **Deterministic rules and fresh state** | decide whether the action is actually allowed right now | **yes** |
 
-The current release carries `caf8064`, which scopes the preserved ledger evidence to the current
-case incarnation, and the simulated Alexa+ via MCP bridge of
-[ADR-0028](docs/adr/0028-a-simulated-alexa-turn-is-a-case-scoped-mcp-client-on-the-server.md),
-with the deployment wiring that bridge needed.
+Taken live on the deployed release on 2026-10-02 ([alexa-mcp-confirm-proof.md](docs/alexa-mcp-confirm-proof.md)):
+
+1. The worker approves the plan in the browser. This writes the one human approval.
+2. The worker types *"Yes, go ahead."* into the Simulated Alexa+ panel.
+3. Bedrock selects `CONFIRM`.
+4. The real MCP `confirm` spends that browser approval. Afterwards there is still exactly one
+   approval, attributed to the worker, not to the MCP credential.
+5. The workflow proceeds: A is amended, B's customer is asked, C and D go to the owner, and E and F
+   are untouched.
+
+Bedrock choosing `CONFIRM` is not enough on its own. The server also checks that the worker's words
+are a plain yes. In an earlier live turn, *"Yes, confirm the plan"* was refused for that reason, and
+nothing was confirmed ([bridge-release.md](docs/bridge-release.md)). That MCP cannot create an
+approval is enforced by design ([ADR-0018](docs/adr/0018-a-plan-confirmation-spends-a-human-approval.md))
+and proved in CI. The live run shows the success path.
+
+**This is not a native Alexa+ integration**, and none is claimed. The Alexa+ experience is
+simulated: a panel in the app drives a case-scoped MCP client on the server
+([ADR-0028](docs/adr/0028-a-simulated-alexa-turn-is-a-case-scoped-mcp-client-on-the-server.md)).
+That client calls the same MCP endpoint any Alexa+ agent or other MCP client would call.
+
+## What is real and what is simulated
+
+| real | simulated or constructed |
+|---|---|
+| The AWS deployment: EC2, private encrypted RDS PostgreSQL, a Let's Encrypt certificate | **The external order system**: the project's own simulator, a separate application with its own store, not a real point of sale |
+| Amazon Bedrock calls, made with the instance role | **The Alexa+ experience**: simulated by an MCP client on the server, not a native Alexa+ skill |
+| The MCP endpoint: Streamable HTTP, protocol `2025-11-25`, bearer-authenticated | **The bakery**: its customers, recipes and orders are a labelled fixture |
+| Telegram messages delivered to a real phone, and signed customer approval links | The order change in the stale-yes proof, made on purpose |
+| Persistence, the durable worker, revalidation and authorization | |
 
 ## How authority works
 
 **The model understands; the deterministic protocol authorizes.** Every rule below is enforced in
-code and tests, not by convention. Import-linter contracts forbid the model boundary, the MCP
-server and the conversational client from reaching the domain or the database.
+code and tests, not by convention. Import-linter contracts stop the model boundary, the MCP server
+and the conversational client from reaching the domain or the database.
 
-- **Model output is never authority.** The semantic model proposes interpretations only: a
-  reading of a sentence that must ground in the bakery's own vocabulary. It cannot write a row,
-  record consent, approve a plan or choose a recovery, and a fact it helps read is recorded as the
-  reporting worker's, never the model's. The canonical raspberry report costs **zero** model
-  calls, and a test asserts it.
+- **Model output is never authority.** The model only proposes a reading of a sentence, which must
+  match the bakery's own vocabulary. It cannot write a row, record consent, approve a plan or choose
+  a recovery. The canonical raspberry report costs **zero** model calls, and a test asserts it.
 - **Worker plan approval and customer consent are different things**, with different parsers,
-  records and words. A customer's yes never spends a worker approval, and the reverse is also
-  true.
+  records and words. A customer's yes never spends a worker approval, and a worker's approval never
+  counts as a customer's yes.
 - **Customer consent is a literal `YES` or `NO`**, trimmed and case-insensitive. Any other reply
-  decides nothing: it is stored verbatim and earns one confirmation prompt.
-- **A service credential is not a person.** Holding the MCP bearer token proves a process. MCP
-  intake is therefore a trusted reporting channel: a report it carries is attested under the
-  intent API's configured surface worker (`PP_SURFACE_WORKER_ID`), not by a person the server
-  authenticated. The actor and the clock are always server-derived, and an MCP `confirm` can only
-  spend an approval a human already wrote, in a signed-in browser session or on the operator
-  console ([ADR-0018](docs/adr/0018-a-plan-confirmation-spends-a-human-approval.md)).
+  decides nothing: it is stored word for word and gets one confirmation prompt.
+- **A service credential is not a person.** Holding the MCP bearer token proves a process. A report
+  carried over MCP is attested as the server's configured worker (`PP_SURFACE_WORKER_ID`), and an
+  MCP `confirm` can only spend an approval a human already wrote, in a signed-in browser session or
+  on the operator console.
 - **A confirmation binds to the plan that was read out.** Stale, wrong-case, replayed and repeated
   confirmations fail closed.
 - **A yes is perishable.** When a customer's answer arrives, ten checks run against a fresh
-  snapshot before the change may be committed. If that initial ten-check revalidation finds the
-  change no longer true, it is refused as `STALE`, nothing is sent, and that track is re-planned;
-  an expired answer is escalated to the owner and an unauthorized one is refused. Staleness
-  found later is handled differently: the commit re-judges the plan's fingerprint and production
-  start ([ADR-0024](docs/adr/0024-freshness-is-judged-where-the-effect-is-committed.md)), and the
-  amendment's first dispatch re-judges only the production start
-  ([ADR-0026](docs/adr/0026-a-first-dispatch-that-provably-sends-nothing-is-judged-again.md));
-  a stale finding at the commit or the first dispatch sends nothing and escalates the track to
-  the owner, with no re-plan.
-- **Recovery only selects pre-authored recipe versions.** Nothing invents a substitute at runtime.
+  snapshot. A change that is no longer true is refused as `STALE` and nothing is sent; an expired
+  answer goes to the owner; an unauthorized one is refused. The commit and the amendment's first
+  dispatch each judge freshness again
+  ([ADR-0024](docs/adr/0024-freshness-is-judged-where-the-effect-is-committed.md),
+  [ADR-0026](docs/adr/0026-a-first-dispatch-that-provably-sends-nothing-is-judged-again.md)), and a
+  stale finding there sends nothing and escalates the track to the owner.
+- **Recovery only chooses from recipe versions written in advance.** Nothing invents a substitute
+  at runtime.
 - **Unknown or conflicting state fails closed to `BLOCKED`**, never to `UNAFFECTED`.
-- **Started work is never reported as stopped.** Scheduled work on a blocked promise is held;
-  work that has already started is escalated to its owner instead.
+- **Work that has started is never reported as stopped.** Scheduled work on a blocked promise is
+  held, and work that has already started is escalated to its owner instead.
 - **A withdrawal is never an undo.** It stops future work and reverses no physical fact.
 
 More detail: [semantic-boundary.md](docs/semantic-boundary.md),
@@ -188,17 +184,19 @@ More detail: [semantic-boundary.md](docs/semantic-boundary.md),
 ```mermaid
 flowchart LR
     worker["Bakery worker<br/>browser · voice or text"]
-    agent["Alexa+-style agent<br/>any MCP client"]
+    agent["Simulated Alexa+<br/>case-scoped MCP client<br/>(or any MCP client)"]
     mcp["MCP server<br/>Streamable HTTP · 2025-11-25<br/>no database access"]
     api["Intent API<br/>actor and clock are server-derived"]
-    model["Semantic boundary<br/>Amazon Bedrock<br/>proposes a reading"]
+    model["Semantic boundary<br/>Amazon Bedrock<br/>proposes a reading or a tool"]
     engine["promise_graph<br/>reach · partition · revalidate<br/>pure, deterministic"]
     wf["Durable workflow<br/>case state machine + step ledger<br/>PostgreSQL"]
-    oms["External order system<br/>system of record"]
+    oms["External order system<br/>simulated · system of record"]
     tg["Telegram<br/>outbound message"]
     link["Signed web link<br/>literal YES or NO"]
     customer(("Customer"))
 
+    worker -->|"panel turn"| agent
+    agent -. "which tool?" .-> model
     agent -->|bearer token| mcp -->|service token| api
     worker -->|"session: one of two<br/>plan-approval channels"| api
     api --> wf
@@ -219,8 +217,8 @@ flowchart LR
 
 Solid indigo borders mark where authority lives. The dashed node is understanding only.
 
-- **`promise_graph`** ([`packages/promise-graph`](packages/promise-graph)) is a pure package.
-  It handles reachability, temporal availability, allocation, impact classification, recovery
+- **`promise_graph`** ([`packages/promise-graph`](packages/promise-graph)) is a pure package. It
+  handles reachability, temporal availability, allocation, impact classification, recovery
   validation, snapshot fingerprints and the revalidation checklist. It does no I/O, reads no
   environment and never calls the clock, so every customer-affecting decision can be tested
   without the cloud.
@@ -231,49 +229,72 @@ Solid indigo borders mark where authority lives. The dashed node is understandin
   application with its own store. PromisePatch mirrors it and pushes governed amendments; neither
   reads the other's storage ([order-system.md](docs/order-system.md)).
 - **The case workspace** ([`apps/frontend`](apps/frontend)) renders the case and never decides.
+- **MCP** exposes the five intent tools over an authenticated endpoint, pinned to protocol revision
+  `2025-11-25` by a test. Unauthenticated callers are refused before the protocol layer, and
+  unlisted `Origin` and `Host` values are rejected
+  ([p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md),
+  [p5.2-mcp-clarification-and-confirmation.md](docs/p5.2-mcp-clarification-and-confirmation.md)).
+  In the browser, voice uses the browser's own speech recognition and reaches the same services as a
+  typed turn. No spoken phrase carries authority a typed one could not.
 
-## Alexa+ and MCP
+## Evidence
 
-PromisePatch exposes its five intent tools (**report, clarify, confirm, withdraw, status**) over
-an authenticated MCP endpoint: Streamable HTTP, protocol revision **`2025-11-25`**, pinned with a
-test. That endpoint is what an Alexa+ agent, or any other MCP client, would call. Unauthenticated
-callers are refused before the protocol layer, and unlisted `Origin` and `Host` values are
-rejected.
+### The release that runs now
 
-**This is not a native Alexa+ integration**, and none is claimed. The Alexa+ experience is
-simulated by MCP clients that call the real endpoint: the repository's own conversational client
-(`pp converse`) and the official SDK client in the protocol suite. In the browser, voice uses the
-browser's own speech recognition and synthesis and reaches the same application services as a
-typed turn. No spoken phrase carries authority that a typed one could not.
-
-See [p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) (transport),
-[p5.2-mcp-clarification-and-confirmation.md](docs/p5.2-mcp-clarification-and-confirmation.md)
-(tool contract) and [p5.3-conversational-orchestrator.md](docs/p5.3-conversational-orchestrator.md)
-(the client, which holds no authority).
-
-## AWS deployment
-
-The app is live at **<https://184.194.40.87.sslip.io>**. It runs on one EC2 `t4g.small` in
-`us-east-1` behind Caddy with a Let's Encrypt certificate, against a private, encrypted RDS
-PostgreSQL. IMDSv2 is required, and the instance role calls Amazon Bedrock; no AWS key is held
-anywhere. It serves the case workspace, the API, the event stream and the MCP endpoint.
+The live app at **<https://184.194.40.87.sslip.io>** runs one EC2 `t4g.small` in `us-east-1`,
+behind Caddy with a Let's Encrypt certificate, against a private, encrypted RDS PostgreSQL. IMDSv2
+is required, and the instance role calls Amazon Bedrock, so no AWS key is held anywhere.
 
 | | |
 |---|---|
-| deployed image | `740a062838e0`, as `GET /healthz` reported it on 2026-10-02 |
-| repository release SHA | `740a062838e0ea2620499abed27d653c42fc05f7`, `pr` run [`36925136266`](https://github.com/Asembris/PromisePatch/actions/runs/36925136266) 13 of 13 |
-| earlier deployed release, historical | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7` / image `283f63f2845f`, `pr` run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324) ([post-intake-release.md](docs/post-intake-release.md)) |
-| older historical release | `56c302366b3ddc0d824c1588a4a9ddbd193ed891` / image `4529a802e34e`, the G8 freeze. Its deployable paths were tree-identical to each other ([g8-closeout.md](docs/g8-closeout.md) §3) |
-| customer channel | Telegram outbound is live; one message was delivered per rehearsal. Customers answer through the signed web link ([deployed-customer-channel.md](docs/deployed-customer-channel.md)) |
-| release freeze | the G8 freeze of 2026-09-27 was reopened by [ADR-0027](docs/adr/0027-a-physical-exception-rests-on-the-workers-words-or-the-workers-yes.md) and re-established at `283f63f` ([post-intake-release.md](docs/post-intake-release.md)), then reopened for the ADR-0028 bridge and re-established at `740a062` ([bridge-release.md](docs/bridge-release.md)) |
+| release | `740a062838e0ea2620499abed27d653c42fc05f7`, image `740a062838e0`, as `GET /healthz` reported it on 2026-10-02. Repository HEAD may contain documentation-only commits on top of it |
+| product gate | [`pr` run `36925136266`](https://github.com/Asembris/PromisePatch/actions/runs/36925136266), 13 of 13 jobs on that exact SHA, the whole-stack browser suite included |
+| revalidated on it | the Alexa+ bridge verified live with a real Bedrock turn over the real MCP endpoint; the v2 effect set 16/16; five deployed restart rehearsals, each PASS; the local demo contract, 47 assertions ([bridge-release.md](docs/bridge-release.md)) |
+| proved on it afterwards | a live stale-yes refusal ([revalidation-proof.md](docs/revalidation-proof.md)) and a live MCP `confirm` spending a browser approval ([alexa-mcp-confirm-proof.md](docs/alexa-mcp-confirm-proof.md)) |
+| customer channel | Telegram outbound is live, one message per rehearsal; customers answer on the signed web link ([deployed-customer-channel.md](docs/deployed-customer-channel.md)) |
 
-How it got there: [bridge-release.md](docs/bridge-release.md) (the release that runs now),
-[post-intake-release.md](docs/post-intake-release.md) (the one before it), then the earlier history in [p6.2-first-deployment.md](docs/p6.2-first-deployment.md),
+### Measured results
+
+Each number has a caveat, and the caveat is part of the result.
+
+| result | what it is | record |
+|---|---|---|
+| **0/2** | Untouched orders that received any effect, in each of **five** deployed rehearsals. Each restarted the worker at a different point: while waiting for the customer, across the plan confirmation, across the answer, after resolution, and the first again. Per rehearsal: 2 amendments, 1 customer message, 2 task holds, 3 outbox rows, all delivered on attempt 1. | [g8-demo-funnel.md](docs/g8-demo-funnel.md), repeated in [bridge-release.md](docs/bridge-release.md) |
+| **16/16** | The v2 **release condition**, taken once on the current release. v2 is a separately versioned label correction of the effect-set manifest in which one label moved: S12's hold, because started kitchen work is never held ([ADR-0017](docs/adr/0017-a-blocked-promise-does-not-hold-a-started-task.md)). It is not a re-score of v1. | [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md), [bridge-release.md](docs/bridge-release.md) |
+| **11/16** | The **permanent headline**: the first scored run of the sixteen frozen scenarios against the v1 manifest, labelled by hand before the runner existed. Five failed. Four were implementation defects, since fixed under published SHAs; the fifth is the S12 label above. This result is never replaced. | [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) |
+| **9/10** | Voice turns in which a truthful spoken response began within four seconds of speech ending. The gate was 9, so it passed by one turn. | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) |
+
+What those numbers do **not** say:
+
+- The effect sets are **developer-authored, finite and public**. They are not an independent or
+  held-out benchmark. The effect-set CI workflow stays red on purpose, because it judges v1.
+- The funnel is **one fixture measured five times per release**. It shows the demo repeats, not a
+  reliability rate.
+- The voice result comes from a **second run**. The first run (`K = 1/10`) was voided after its
+  intervals had been computed, which the predeclared protocol forbids, and the
+  [claims audit](docs/claims-audit.md) says a strict reader may treat run 2 as a best-of-two. Both
+  runs are published in full. They ran on the local stack, with no public-internet round trip,
+  using the browser's own speech APIs.
+
+<details>
+<summary>Earlier releases (historical, not current)</summary>
+
+| release | commit / image | product gate (`pr`) | record |
+|---|---|---|---|
+| post-intake release | `283f63f2845f8c5e93b2a791eebc15bc4de3f4d7` / `283f63f2845f` | run [`36759222324`](https://github.com/Asembris/PromisePatch/actions/runs/36759222324), 13 of 13 | [post-intake-release.md](docs/post-intake-release.md): migration 0010, v2 16/16, five deployed rehearsals |
+| G8 freeze | `56c302366b3ddc0d824c1588a4a9ddbd193ed891` / `4529a802e34e` | run [`36310794944`](https://github.com/Asembris/PromisePatch/actions/runs/36310794944), 13 of 13 | [g8-closeout.md](docs/g8-closeout.md): 22 of 22 rows closed; the first five rehearsals ([R1](docs/g8-rehearsal-r1.md) · [R2](docs/g8-rehearsal-r2.md) · [R3](docs/g8-rehearsal-r3.md) · [R4](docs/g8-rehearsal-r4.md) · [R5](docs/g8-rehearsal-r5.md)) |
+
+The G8 freeze of 2026-09-27 was reopened by
+[ADR-0027](docs/adr/0027-a-physical-exception-rests-on-the-workers-words-or-the-workers-yes.md)
+and re-established at `283f63f`, then reopened for the ADR-0028 bridge and re-established at
+`740a062`. Earlier deployment history: [p6.2-first-deployment.md](docs/p6.2-first-deployment.md),
 [phase7-rc-deployment.md](docs/phase7-rc-deployment.md),
-[phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) (the
-`4529a802e34e` image) and [customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md).
+[phase7-approval-log-privacy-repair.md](docs/phase7-approval-log-privacy-repair.md) and
+[customer-disclosure-hardening.md](docs/customer-disclosure-hardening.md).
 
-## Judge demo and reproduction
+</details>
+
+## Try it
 
 **On the live app.** Press *Look around a real case*. It opens a read-only observer session with
 no account. You can read everything, including the evidence drawer, and change nothing, because
@@ -295,9 +316,9 @@ The engine also runs standalone, outside the workspace. See
 
 **The whole storyboard, locally.** Bring up the [local stack](#run-the-local-stack), then run the
 demo-contract runner. It executes the canonical storyboard as 49 assertions through the browser
-path (47 when the plan is confirmed on the operator console, as in the post-intake local run),
-through the product's own transports, and reads its evidence in read-only transactions. The fixture and the worker
-restart stay the operator's actions
+path (47 when the plan is confirmed on the operator console, as in the current release's local
+run), through the product's own transports, and reads its evidence in read-only transactions. The
+fixture and the worker restart stay the operator's actions
 ([g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md)):
 
 ```bash
@@ -310,20 +331,18 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 
 | claim | record | what it proves |
 |---|---|---|
-| deployed release passes CI | [`pr` run 36925136266](https://github.com/Asembris/PromisePatch/actions/runs/36925136266) | 13 of 13 jobs on `740a062`, the commit that is deployed |
-| deployed release, revalidated | [bridge-release.md](docs/bridge-release.md) | release `740a062`, image `740a062838e0`; the simulated Alexa+ bridge verified live with a real Bedrock turn over the real MCP endpoint; v2 effect set 16/16; five deployed restart rehearsals, each PASS; local demo contract 47 assertions |
-| earlier deployed release, historical | [post-intake-release.md](docs/post-intake-release.md) | release `283f63f`, image `283f63f2845f`, [`pr` run 36759222324](https://github.com/Asembris/PromisePatch/actions/runs/36759222324) 13 of 13; migration 0010; v2 effect set 16/16; five deployed restart rehearsals; local demo contract 47 assertions |
-| older release proof, historical | [g8-closeout.md](docs/g8-closeout.md) | 22 of 22 G8 rows closed at `56c3023`, image `4529a802e34e`, [`pr` run 36310794944](https://github.com/Asembris/PromisePatch/actions/runs/36310794944) 13 of 13 |
-| restart-safe on the deployment, historical | [R1](docs/g8-rehearsal-r1.md) · [R2](docs/g8-rehearsal-r2.md) · [R3](docs/g8-rehearsal-r3.md) · [R4](docs/g8-rehearsal-r4.md) · [R5](docs/g8-rehearsal-r5.md) | five worker restarts at four points on `4529a802e34e`, each PASS, every effect recorded once and delivered on attempt 1. The same five were repeated on `283f63f2845f`, in the post-intake record, and on `740a062838e0`, in the bridge release record |
+| a stale yes is refused live | [revalidation-proof.md](docs/revalidation-proof.md) | on `740a062838e0`: a customer's v1 yes refused as `STALE` after the order moved to v2, with no amendment for that order; plus a control run that applied |
+| MCP spends, never creates, a human approval | [alexa-mcp-confirm-proof.md](docs/alexa-mcp-confirm-proof.md) | on `740a062838e0`: browser approval, then *"Yes, go ahead."*, Bedrock `CONFIRM`, real MCP `confirm`; still one approval; no customer consent created |
+| the current release, revalidated | [bridge-release.md](docs/bridge-release.md) | `740a062`, image `740a062838e0`, [`pr` run 36925136266](https://github.com/Asembris/PromisePatch/actions/runs/36925136266) 13 of 13; bridge verified live; v2 16/16; R1–R5 PASS; demo contract 47 |
 | untouched means untouched | [g8-demo-funnel.md](docs/g8-demo-funnel.md) | the funnel 6 → 1/1/2 + 2, and 0/2 untouched orders affected, in all five rehearsals |
-| the storyboard is executable | [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md) | 49 assertions through the intent API and the signed link, with no direct consent insert; the post-intake local run recorded 47 (console confirmation skips two browser-intent assertions) |
+| the storyboard is executable | [g8-demo-contract-runner.md](docs/g8-demo-contract-runner.md) | 49 assertions through the intent API and the signed link, with no direct consent insert; 47 when confirmed on the console |
 | the immutable headline | [effect-set-first-scored-run.md](docs/effect-set-first-scored-run.md) | 11/16 against frozen v1, with every diff published |
 | the separate release condition | [g8-effect-set-release-condition.md](docs/g8-effect-set-release-condition.md) | 16/16 against the v2 label correction, and the fix SHA for each v1 failure |
 | adversarial faults | [g8-adversarial-proof-map.md](docs/g8-adversarial-proof-map.md) | all eleven named faults, from a lost MCP response and model self-confirmation to crashes on either side of external acceptance, each proved |
 | the voice number | [g7-ten-turn-voice-measurement.md](docs/g7-ten-turn-voice-measurement.md) | 9/10 in run 2, with void run 1 and every timing published |
 | MCP transport | [p5.1-mcp-transport-spine.md](docs/p5.1-mcp-transport-spine.md) | Streamable HTTP, `2025-11-25`, bearer and `Origin`/`Host` refusals, tested with the official SDK |
 | real customer loop | [deployed-customer-channel.md](docs/deployed-customer-channel.md) · [customer-approval-link.md](docs/customer-approval-link.md) | one Telegram delivery and a web `YES`, revalidated, then `EXT-B` amended once |
-| the deployment | [bridge-release.md](docs/bridge-release.md) · [p6.2-first-deployment.md](docs/p6.2-first-deployment.md) | the release that runs now (`740a062838e0`), and the AWS stack it runs on |
+| earlier releases, historical | [post-intake-release.md](docs/post-intake-release.md) · [g8-closeout.md](docs/g8-closeout.md) | `283f63f2845f` and `4529a802e34e`, each with its own CI run and five rehearsals |
 | engine from a clean clone | [g8-standalone-fresh-clone-proof.md](docs/g8-standalone-fresh-clone-proof.md) | 335 tests passed from a fresh public clone |
 | effect-set clone check | [g8-effect-set-fresh-clone-proof.md](docs/g8-effect-set-fresh-clone-proof.md) | `uv sync --frozen` and both manifests' checks exit `0` |
 | development evidence | [g8-development-evidence.md](docs/g8-development-evidence.md) | curated, redacted evaluation results, failures kept |
@@ -335,10 +354,12 @@ PP_INTERNAL_SERVICE_TOKEN="$(grep '^PP_INTERNAL_SERVICE_TOKEN=' docker/env/api.e
 
 - **One bakery, fixture data, a simulated order system.** It is not Square or a production point
   of sale. The Telegram message and the web approval are the real parts.
-- **No refusal path has been exercised live.** `STALE` was reproduced locally through the frozen
-  implementation, not on the deployment
-  ([evidence-hardening-stale-refusal-2026-09-28.md](docs/evidence-hardening-stale-refusal-2026-09-28.md));
-  `EXPIRED`, `UNAUTHORIZED` and `NOOP` are proved by tests only.
+- **The Alexa+ experience is simulated** by an MCP client on the server. No native Alexa+ skill
+  exists. The live `confirm` proof is one run of the success path; the refusal when no approval
+  exists is proved in CI.
+- **One refusal kind has been exercised live, once.** `STALE`, through check 2, on the deployed
+  release ([revalidation-proof.md](docs/revalidation-proof.md)). The other checks refusing,
+  `EXPIRED`, `UNAUTHORIZED`, `NOOP` and the commit-time freshness gate are proved by tests only.
 - **Telegram inbound is deliberately not built.** A second route for the word `YES` would be a
   second consent parser. The signed link proves possession of the message, not identity.
 - **Telegram's Bot API has no idempotency key.** A retry after an uncertain send can deliver a
