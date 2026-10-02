@@ -1,0 +1,5 @@
+# Raw rehearsal captures, kept byte-for-byte under capture-integrity.json. The scripts in a
+# run's tools/ directory are evidence of what ran, not maintained code, so they are not linted
+# or formatted: rewriting them would break the hashes that pin them.
+extend = "../../pyproject.toml"
+extend-exclude = ["runs"]
