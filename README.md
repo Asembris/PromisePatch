@@ -17,6 +17,12 @@
 
 <p align="center">
   <a href="https://184.194.40.87.sslip.io"><img src="https://img.shields.io/badge/Open_the_live_app-8390F2?style=for-the-badge" alt="Open the live app"></a>
+  <a href="https://youtu.be/ZeXnfcNY1No"><img src="https://img.shields.io/badge/Watch_the_demo-8390F2?style=for-the-badge" alt="Watch the demo"></a>
+  <a href="https://devpost.com/software/promisepatch"><img src="https://img.shields.io/badge/Devpost_submission-8390F2?style=for-the-badge" alt="Devpost submission"></a>
+</p>
+
+<p align="center">
+  <a href="https://asembris.github.io/PromisePatch/"><img src="https://img.shields.io/badge/Interactive_showcase-182238?style=for-the-badge" alt="Interactive showcase"></a>
   <a href="#one-failed-delivery"><img src="https://img.shields.io/badge/The_90--second_story-182238?style=for-the-badge" alt="The 90-second story"></a>
   <a href="#proof-index"><img src="https://img.shields.io/badge/Proof_index-182238?style=for-the-badge" alt="Proof index"></a>
 </p>
