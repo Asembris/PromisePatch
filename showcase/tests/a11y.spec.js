@@ -163,6 +163,12 @@ test.describe('keyboard', () => {
     test(`${width}px: a full Tab walk reaches every control with a visible ring and no trap`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await openPage(page);
+      // The walk checks where focus lands, not the page's smooth scroll. Each
+      // smooth focus scroll starts from wherever the previous one has got to,
+      // at a pace set by main-thread load (the WebGL hero), so a sample lands
+      // mid-flight. Instant scrolling puts every focused control in its final
+      // place synchronously; the hero keeps full motion and its Pause control.
+      await page.addStyleTag({ content: 'html { scroll-behavior: auto !important; }' });
       const expected = await page.evaluate(() => [...document.querySelectorAll('a[href], button, [tabindex]:not([tabindex="-1"])')]
         .filter((e) => e.checkVisibility() && !e.closest('[hidden]')).length);
       const seen = new Set();
@@ -184,17 +190,6 @@ test.describe('keyboard', () => {
         });
         if (!f) break; // left the document: no trap
         if (seen.has(f.key)) break;
-        if (!f.onScreen) {
-          // Focus scrolling follows the page's smooth scroll-behavior. Its start
-          // waits on a busy main thread (the WebGL hero) and its length on the
-          // distance, so a fixed pause can sample it mid-flight: wait, bounded,
-          // for the focused control to land on screen. One that never does is
-          // still reported below.
-          f.onScreen = await page.waitForFunction(() => {
-            const r = document.activeElement.getBoundingClientRect();
-            return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
-          }, null, { timeout: 3000, polling: 'raf' }).then(() => true, () => false);
-        }
         seen.add(f.key);
         if (!f.ring) problems.push(`no ring: ${f.tag}`);
         if (!f.onScreen) problems.push(`off screen: ${f.tag}`);
