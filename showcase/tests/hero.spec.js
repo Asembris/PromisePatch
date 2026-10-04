@@ -72,7 +72,7 @@ test.describe('seek(t) states', () => {
 test.describe('keyboard', () => {
   test('Tab reaches every hero control; Enter and Space operate them; focus stays visible', async ({ page }) => {
     await openPage(page);
-    await page.locator('.hero__aside .btn--outline').focus();
+    await page.locator('.hero__aside .btn-row a').last().focus();
     const reached = [];
     for (let i = 0; i < 12; i += 1) {
       await page.keyboard.press('Tab');

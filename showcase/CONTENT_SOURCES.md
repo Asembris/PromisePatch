@@ -69,7 +69,8 @@ nearby and that every cited path exists. Links are listed once, in
 | 10 Final CTA | "When reality changes, permission must be checked again." | design copy summarising README §How authority works; no new claim |
 | Footer | Apache-2.0; freeze from `740a062` | `LICENSE`; README §License |
 
-## Deferred
+## Submission links
 
-The demo video and Devpost have no URL. They appear only as `aria-disabled` placeholders with no
-`href` (Devpost not at all), and `verify-content` / `verify-links` fail if either gains a link.
+The demo video (`https://youtu.be/ZeXnfcNY1No`) and the Devpost submission
+(`https://devpost.com/software/promisepatch`) are listed in `src/data/links.js`; `verify-content`
+fails if either link is missing or a deferred placeholder is left on the page.

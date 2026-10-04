@@ -15,7 +15,8 @@
 //    scope, delivery wording, R3 attribution, the illustration), over the page,
 //    the runtime strings and the root README;
 //  - forbidden phrases, case-insensitive, unless inside an explicit negation;
-//  - deferred items carry aria-disabled and no href; Devpost is absent.
+//  - the demo video and Devpost are links to their listed URLs, and no
+//    deferred placeholder is left on the page.
 //
 // The rules themselves live in tools/content-rules.mjs, which the Playwright
 // suite also runs over the live, JavaScript-rendered DOM.

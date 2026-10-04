@@ -22,11 +22,13 @@
 //    STALE is not one universal re-plan; timeline intervals and deadline
 //    dates read true (checkClaims, checkTimeline);
 //  - forbidden phrases, case-insensitive, unless inside an explicit negation;
-//  - deferred items carry aria-disabled and no href; Devpost is absent.
+//  - the demo video and Devpost are links to their listed URLs, and no
+//    deferred placeholder is left on the page.
 
 import { FACTS, BOUNDARIES } from '../src/data/facts.js';
 import { GATE_MODES } from '../src/data/checks.js';
 import { renderGate } from '../src/render/gate.js';
+import { LINKS } from '../src/data/links.js';
 
 const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': ' ' };
 
@@ -326,16 +328,12 @@ export function checkContent({ html, extra = [], state = 'default' }) {
     }
   }
 
-  // ---------- deferred items ----------
-  for (const label of ['Demo video · deferred', 'Watch demo · deferred']) {
-    // The element whose own text is the label (after an optional decorative glyph).
-    const tag = html.match(new RegExp(`<([a-z]+)\\b([^>]*)>\\s*(?:<span aria-hidden="true">[^<]*</span>)?\\s*${label}`, 'i'));
-    if (!tag) fail(`deferred placeholder "${label}" not found`);
-    else if (tag[1].toLowerCase() === 'a' || /\bhref\s*=/.test(tag[2]) || !/aria-disabled="true"/.test(tag[2])) {
-      fail(`deferred placeholder "${label}" must be aria-disabled with no href`);
-    }
+  // ---------- submission links ----------
+  const hrefs = new Set([...html.matchAll(/<a\b[^>]*\shref="([^"]*)"/gi)].map((m) => m[1]));
+  for (const [name, url] of [['demo video', LINKS.demoVideo], ['Devpost', LINKS.devpost]]) {
+    if (!hrefs.has(url)) fail(`the ${name} link to ${url} is missing`);
   }
-  if (/devpost/i.test(html)) fail('Devpost is deferred and must not appear');
+  if (/·\s*deferred\b/i.test(html)) fail('a deferred placeholder is still on the page');
 
   return failures;
 }

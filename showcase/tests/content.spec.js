@@ -68,10 +68,9 @@ test('every interaction state keeps the frozen facts, caveats and boundaries', a
   expect(failures).toEqual([]);
 
   // Across every state: no progression wording, the illustration never without
-  // its disclaimer, no live refusal claim, deferred items never links.
+  // its disclaimer, no live refusal claim, no deferred placeholder left.
   for (const html of snapshots) {
-    expect(html).not.toMatch(/href="[^"]*devpost/i);
-    expect(html).not.toMatch(/<a\b[^>]*>[^<]*(?:<span[^>]*>[^<]*<\/span>)?\s*(?:Demo video|Watch demo)/i);
+    expect(html).not.toMatch(/·\s*deferred/i);
   }
   expect(errors).toEqual([]);
 });
@@ -83,7 +82,7 @@ test('negative control: the live rules catch a mutated DOM', async ({ page }) =>
   await page.evaluate(() => {
     document.querySelector('#revalidate [data-gate-header]').textContent = '';
     document.querySelector('.evidence-cards__pair .caveat strong').textContent = 'The benchmark went up to 16/16.';
-    document.querySelector('.hero__aside .btn--deferred').outerHTML = '<a class="btn" href="https://example.com">Demo video · deferred</a>';
+    for (const a of document.querySelectorAll('a[href^="https://youtu.be/"]')) a.setAttribute('href', 'https://example.com');
     document.querySelector('.limits__list').insertAdjacentHTML('beforeend', '<li>EXPIRED and UNAUTHORIZED refusals were exercised live on the deployment.</li><li>Every refusal path was exercised live, once.</li>');
   });
   const failures = checkContent({ html: await liveHtml(page), state: 'live' });
@@ -91,7 +90,7 @@ test('negative control: the live rules catch a mutated DOM', async ({ page }) =>
   expect(failures.join('\n')).toMatch(/refusal claimed live or on the deployment: "Every refusal path/);
   expect(failures.join('\n')).toMatch(/went up to 16\/16/);
   expect(failures.join('\n')).toMatch(/illustrated STALE outcome is shown without its label/);
-  expect(failures.join('\n')).toMatch(/Demo video · deferred" must be aria-disabled with no href/);
+  expect(failures.join('\n')).toMatch(/the demo video link to https:\/\/youtu\.be\/ZeXnfcNY1No is missing/);
 });
 
 // Each corrected claim, reworded several ways: the rules are semantic shapes,
@@ -182,13 +181,12 @@ test('negative control: the live claim rules catch the old R3, deadline, consent
   expect(failures).toMatch(/option code/);
 });
 
-test('the deferred placeholders are not links and not focusable', async ({ page }) => {
+test('the demo video and Devpost are real links, and no placeholder is left', async ({ page }) => {
   await openPage(page);
-  const deferred = page.locator('[aria-disabled="true"]');
-  await expect(deferred).toHaveCount(2);
-  for (const el of await deferred.all()) {
-    expect(await el.evaluate((e) => [e.tagName, e.hasAttribute('href'), e.tabIndex])).toEqual(['SPAN', false, -1]);
-  }
+  await expect(page.locator('[aria-disabled="true"]')).toHaveCount(0);
+  await expect(page.locator('.hero__aside a[href="https://youtu.be/ZeXnfcNY1No"]')).toHaveCount(1);
+  await expect(page.locator('.final-cta a[href="https://youtu.be/ZeXnfcNY1No"]')).toHaveCount(1);
+  await expect(page.locator('.final-cta a[href="https://devpost.com/software/promisepatch"]')).toHaveCount(1);
 });
 
 test('no credential or token is ever on the page', async ({ page }) => {

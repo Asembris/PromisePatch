@@ -230,17 +230,6 @@
   color: var(--ink);
 }
 
-.btn--deferred {
-  border: 1px dashed var(--line-strong);
-  color: var(--quiet);
-  font-family: var(--font-mono);
-  font-weight: 400;
-  font-size: 14px;
-  padding: 0 16px;
-  cursor: default;
-  user-select: none;
-}
-
 .btn--header {
   height: 38px;
   padding: 0 16px;
@@ -251,10 +240,6 @@
 .btn--cta {
   height: 48px;
   padding: 0 22px;
-}
-
-.btn--cta.btn--deferred {
-  padding: 0 18px;
 }
 
 .btn-row {
