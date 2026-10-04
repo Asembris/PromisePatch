@@ -4,7 +4,7 @@
 // the phase the hero reaches and through label positions.
 
 import { test, expect } from '@playwright/test';
-import { CAPTIONS } from '../src/hero/constants.js';
+import { CAPTIONS, END } from '../src/hero/constants.js';
 import { openPage, seek, heroLabel, heroCaption, trackErrors } from './helpers.js';
 
 const tag = async (page, id) => (await heroLabel(page, `t${id}`));
@@ -88,14 +88,27 @@ test.describe('keyboard', () => {
     }
     expect(reached).toEqual(['0', '1', '2', '3', '4', '5', 'replay', 'pause']);
 
+    // A chosen step keeps playing, so its phase is pressed for under a second
+    // (step 0 for 0.35 s): polling can step over that window on a loaded
+    // runner. Record every phase the controller commits instead, and start
+    // from the settled end, which playback alone never leaves.
     const step = (i) => page.locator(`[data-hero-step="${i}"]`);
+    expect(await seek(page, END)).toBe(6);
+    await page.evaluate(() => {
+      const cap = document.querySelector('[data-hero-caption]');
+      window.__pwPhases = [];
+      new MutationObserver(() => {
+        const on = document.querySelector('[data-hero-step][aria-pressed="true"]');
+        window.__pwPhases.push([on ? Number(on.dataset.heroStep) : -1, cap.textContent]);
+      }).observe(document.querySelector('[data-hero-controls]'), { subtree: true, attributeFilter: ['aria-pressed'] });
+    });
+    const committed = () => page.evaluate(() => window.__pwPhases);
     await step(3).focus();
     await page.keyboard.press('Enter');
-    await expect(step(3)).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('[data-hero-caption]')).toHaveText(CAPTIONS[3]);
+    await expect.poll(committed).toContainEqual([3, CAPTIONS[3]]);
     await step(1).focus();
     await page.keyboard.press('Space');
-    await expect(step(1)).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(committed).toContainEqual([1, CAPTIONS[1]]);
 
     // Pause and Play, by keyboard; the label changes, not aria-pressed.
     const pause = page.locator('[data-hero-pause]');
@@ -113,9 +126,10 @@ test.describe('keyboard', () => {
 
     // Replay: back to the first phase, playing.
     await page.locator('[data-hero-replay]').focus();
+    await page.evaluate(() => { window.__pwPhases = []; });
     await page.keyboard.press('Enter');
-    await expect(step(0)).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('[data-hero-caption]')).toHaveText(CAPTIONS[1], { timeout: 3000 });
+    await expect.poll(committed).toContainEqual([0, CAPTIONS[0]]);
+    await expect.poll(committed, { timeout: 3000 }).toContainEqual([1, CAPTIONS[1]]);
     await expect(page.locator('[data-hero-caption]')).toHaveText(CAPTIONS[6], { timeout: 12_000 });
   });
 });
